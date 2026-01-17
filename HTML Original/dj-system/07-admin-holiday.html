@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin: Holiday Calendar - DJ System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Sarabun', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-rose-900 text-white flex flex-col">
+            <div class="p-4 border-b border-rose-800">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center">
+                        <svg class="w-6 h-6 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg">DJ System</h1>
+                        <p class="text-xs text-rose-300">Design Job Management</p>
+                    </div>
+                </div>
+            </div>
+
+            <nav class="flex-1 p-4 space-y-1">
+                <a href="01-dashboard.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
+                    </svg>
+                    <span>Dashboard</span>
+                </a>
+                <a href="02-create-dj.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    <span>Create DJ</span>
+                </a>
+                <a href="03-dj-list.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                    </svg>
+                    <span>DJ List</span>
+                </a>
+                <a href="05-approvals-queue.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <span>Approvals Queue</span>
+                </a>
+
+                <div class="pt-4 mt-4 border-t border-rose-800">
+                    <p class="px-4 text-xs text-rose-400 uppercase tracking-wider mb-2">Admin</p>
+                    <a href="06-admin-job-type-sla.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <span>Job Type & SLA</span>
+                    </a>
+                    <a href="07-admin-holiday.html" class="flex items-center gap-3 px-4 py-3 rounded-lg bg-rose-800 text-white">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                        <span>Holiday Calendar</span>
+                    </a>
+                    <a href="08-admin-approval-flow.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                        </svg>
+                        <span>Approval Flow</span>
+                    </a>
+                    <a href="09-reports.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                        <span>Reports</span>
+                    </a>
+                </div>
+            </nav>
+
+            <div class="p-4 border-t border-rose-800">
+                <a href="../index.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"></path>
+                    </svg>
+                    <span>Back to Home</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <!-- Top Bar -->
+            <header class="bg-white border-b border-gray-200 px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-800">Holiday Calendar</h2>
+                        <p class="text-sm text-gray-500">จัดการวันหยุดสำหรับคำนวณ SLA</p>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <button onclick="openHolidayModal()" class="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                            </svg>
+                            Add Holiday
+                        </button>
+                        <div class="flex items-center gap-3 pl-4 border-l border-gray-200">
+                            <div class="w-10 h-10 bg-rose-100 rounded-full flex items-center justify-center">
+                                <span class="text-rose-600 font-semibold">AD</span>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-gray-700">Admin User</p>
+                                <p class="text-xs text-gray-500">System Administrator</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Content -->
+            <main class="flex-1 overflow-auto p-6">
+                <!-- Year Selector -->
+                <div class="flex items-center justify-between mb-6">
+                    <div class="flex items-center gap-4">
+                        <select class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 font-medium">
+                            <option value="2568" selected>พ.ศ. 2568 (2025)</option>
+                            <option value="2569">พ.ศ. 2569 (2026)</option>
+                        </select>
+                        <div class="flex items-center gap-2">
+                            <span class="flex items-center gap-1 text-sm text-gray-600">
+                                <span class="w-3 h-3 bg-red-500 rounded"></span>
+                                วันหยุดราชการ
+                            </span>
+                            <span class="flex items-center gap-1 text-sm text-gray-600">
+                                <span class="w-3 h-3 bg-purple-500 rounded"></span>
+                                วันหยุดบริษัท
+                            </span>
+                            <span class="flex items-center gap-1 text-sm text-gray-600">
+                                <span class="w-3 h-3 bg-gray-300 rounded"></span>
+                                วันเสาร์-อาทิตย์
+                            </span>
+                        </div>
+                    </div>
+                    <div class="text-sm text-gray-600">
+                        Total: <span class="font-semibold text-rose-600">22</span> holidays in 2568
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-6">
+                    <!-- Calendar Grid - January 2568 -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div class="bg-rose-600 text-white px-4 py-3">
+                            <h3 class="font-semibold text-center">มกราคม 2568</h3>
+                        </div>
+                        <div class="p-4">
+                            <div class="grid grid-cols-7 gap-1 text-center text-xs mb-2">
+                                <div class="text-red-500 font-medium">อา</div>
+                                <div class="text-gray-600 font-medium">จ</div>
+                                <div class="text-gray-600 font-medium">อ</div>
+                                <div class="text-gray-600 font-medium">พ</div>
+                                <div class="text-gray-600 font-medium">พฤ</div>
+                                <div class="text-gray-600 font-medium">ศ</div>
+                                <div class="text-gray-300 font-medium">ส</div>
+                            </div>
+                            <div class="grid grid-cols-7 gap-1 text-center text-sm">
+                                <div></div><div></div><div></div>
+                                <div class="p-1 bg-red-100 text-red-700 rounded font-medium cursor-pointer hover:bg-red-200" title="วันขึ้นปีใหม่">1</div>
+                                <div class="p-1">2</div><div class="p-1">3</div><div class="p-1 bg-gray-100 text-gray-400 rounded">4</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">5</div><div class="p-1">6</div><div class="p-1">7</div><div class="p-1">8</div><div class="p-1">9</div><div class="p-1">10</div><div class="p-1 bg-gray-100 text-gray-400 rounded">11</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">12</div><div class="p-1">13</div><div class="p-1">14</div><div class="p-1">15</div><div class="p-1">16</div><div class="p-1">17</div><div class="p-1 bg-gray-100 text-gray-400 rounded">18</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">19</div><div class="p-1">20</div><div class="p-1">21</div><div class="p-1">22</div><div class="p-1">23</div><div class="p-1">24</div><div class="p-1 bg-gray-100 text-gray-400 rounded">25</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">26</div><div class="p-1">27</div><div class="p-1">28</div><div class="p-1">29</div><div class="p-1">30</div><div class="p-1">31</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- February -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div class="bg-rose-600 text-white px-4 py-3">
+                            <h3 class="font-semibold text-center">กุมภาพันธ์ 2568</h3>
+                        </div>
+                        <div class="p-4">
+                            <div class="grid grid-cols-7 gap-1 text-center text-xs mb-2">
+                                <div class="text-red-500 font-medium">อา</div>
+                                <div class="text-gray-600 font-medium">จ</div>
+                                <div class="text-gray-600 font-medium">อ</div>
+                                <div class="text-gray-600 font-medium">พ</div>
+                                <div class="text-gray-600 font-medium">พฤ</div>
+                                <div class="text-gray-600 font-medium">ศ</div>
+                                <div class="text-gray-300 font-medium">ส</div>
+                            </div>
+                            <div class="grid grid-cols-7 gap-1 text-center text-sm">
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">1</div>
+                                <div class="p-1">3</div><div class="p-1">4</div><div class="p-1">5</div><div class="p-1">6</div><div class="p-1">7</div><div class="p-1 bg-gray-100 text-gray-400 rounded">8</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">9</div><div class="p-1">10</div><div class="p-1">11</div>
+                                <div class="p-1 bg-red-100 text-red-700 rounded font-medium cursor-pointer hover:bg-red-200" title="วันมาฆบูชา">12</div>
+                                <div class="p-1">13</div><div class="p-1">14</div><div class="p-1 bg-gray-100 text-gray-400 rounded">15</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">16</div><div class="p-1">17</div><div class="p-1">18</div><div class="p-1">19</div><div class="p-1">20</div><div class="p-1">21</div><div class="p-1 bg-gray-100 text-gray-400 rounded">22</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">23</div><div class="p-1">24</div><div class="p-1">25</div><div class="p-1">26</div><div class="p-1">27</div><div class="p-1">28</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- March -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div class="bg-rose-600 text-white px-4 py-3">
+                            <h3 class="font-semibold text-center">มีนาคม 2568</h3>
+                        </div>
+                        <div class="p-4">
+                            <div class="grid grid-cols-7 gap-1 text-center text-xs mb-2">
+                                <div class="text-red-500 font-medium">อา</div>
+                                <div class="text-gray-600 font-medium">จ</div>
+                                <div class="text-gray-600 font-medium">อ</div>
+                                <div class="text-gray-600 font-medium">พ</div>
+                                <div class="text-gray-600 font-medium">พฤ</div>
+                                <div class="text-gray-600 font-medium">ศ</div>
+                                <div class="text-gray-300 font-medium">ส</div>
+                            </div>
+                            <div class="grid grid-cols-7 gap-1 text-center text-sm">
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">1</div>
+                                <div class="p-1">3</div><div class="p-1">4</div><div class="p-1">5</div><div class="p-1">6</div><div class="p-1">7</div><div class="p-1 bg-gray-100 text-gray-400 rounded">8</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">9</div><div class="p-1">10</div><div class="p-1">11</div><div class="p-1">12</div><div class="p-1">13</div><div class="p-1">14</div><div class="p-1 bg-gray-100 text-gray-400 rounded">15</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">16</div><div class="p-1">17</div><div class="p-1">18</div><div class="p-1">19</div><div class="p-1">20</div><div class="p-1">21</div><div class="p-1 bg-gray-100 text-gray-400 rounded">22</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">23</div><div class="p-1">24</div><div class="p-1">25</div><div class="p-1">26</div><div class="p-1">27</div><div class="p-1">28</div><div class="p-1 bg-gray-100 text-gray-400 rounded">29</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">30</div><div class="p-1">31</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- April -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div class="bg-rose-600 text-white px-4 py-3">
+                            <h3 class="font-semibold text-center">เมษายน 2568</h3>
+                        </div>
+                        <div class="p-4">
+                            <div class="grid grid-cols-7 gap-1 text-center text-xs mb-2">
+                                <div class="text-red-500 font-medium">อา</div>
+                                <div class="text-gray-600 font-medium">จ</div>
+                                <div class="text-gray-600 font-medium">อ</div>
+                                <div class="text-gray-600 font-medium">พ</div>
+                                <div class="text-gray-600 font-medium">พฤ</div>
+                                <div class="text-gray-600 font-medium">ศ</div>
+                                <div class="text-gray-300 font-medium">ส</div>
+                            </div>
+                            <div class="grid grid-cols-7 gap-1 text-center text-sm">
+                                <div></div><div></div><div class="p-1">1</div><div class="p-1">2</div><div class="p-1">3</div><div class="p-1">4</div><div class="p-1 bg-gray-100 text-gray-400 rounded">5</div>
+                                <div class="p-1 bg-red-100 text-red-700 rounded font-medium cursor-pointer hover:bg-red-200" title="วันจักรี">6</div>
+                                <div class="p-1 bg-red-100 text-red-700 rounded font-medium cursor-pointer hover:bg-red-200" title="ชดเชยวันจักรี">7</div>
+                                <div class="p-1">8</div><div class="p-1">9</div><div class="p-1">10</div><div class="p-1">11</div><div class="p-1 bg-gray-100 text-gray-400 rounded">12</div>
+                                <div class="p-1 bg-red-100 text-red-700 rounded font-medium cursor-pointer hover:bg-red-200" title="วันสงกรานต์">13</div>
+                                <div class="p-1 bg-red-100 text-red-700 rounded font-medium cursor-pointer hover:bg-red-200" title="วันสงกรานต์">14</div>
+                                <div class="p-1 bg-red-100 text-red-700 rounded font-medium cursor-pointer hover:bg-red-200" title="วันสงกรานต์">15</div>
+                                <div class="p-1 bg-red-100 text-red-700 rounded font-medium cursor-pointer hover:bg-red-200" title="ชดเชยวันสงกรานต์">16</div>
+                                <div class="p-1">17</div><div class="p-1">18</div><div class="p-1 bg-gray-100 text-gray-400 rounded">19</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">20</div><div class="p-1">21</div><div class="p-1">22</div><div class="p-1">23</div><div class="p-1">24</div><div class="p-1">25</div><div class="p-1 bg-gray-100 text-gray-400 rounded">26</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">27</div><div class="p-1">28</div><div class="p-1">29</div><div class="p-1">30</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- May -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div class="bg-rose-600 text-white px-4 py-3">
+                            <h3 class="font-semibold text-center">พฤษภาคม 2568</h3>
+                        </div>
+                        <div class="p-4">
+                            <div class="grid grid-cols-7 gap-1 text-center text-xs mb-2">
+                                <div class="text-red-500 font-medium">อา</div>
+                                <div class="text-gray-600 font-medium">จ</div>
+                                <div class="text-gray-600 font-medium">อ</div>
+                                <div class="text-gray-600 font-medium">พ</div>
+                                <div class="text-gray-600 font-medium">พฤ</div>
+                                <div class="text-gray-600 font-medium">ศ</div>
+                                <div class="text-gray-300 font-medium">ส</div>
+                            </div>
+                            <div class="grid grid-cols-7 gap-1 text-center text-sm">
+                                <div></div><div></div><div></div><div></div>
+                                <div class="p-1 bg-red-100 text-red-700 rounded font-medium cursor-pointer hover:bg-red-200" title="วันแรงงาน">1</div>
+                                <div class="p-1">2</div><div class="p-1 bg-gray-100 text-gray-400 rounded">3</div>
+                                <div class="p-1 bg-red-100 text-red-700 rounded font-medium cursor-pointer hover:bg-red-200" title="วันฉัตรมงคล">4</div>
+                                <div class="p-1 bg-red-100 text-red-700 rounded font-medium cursor-pointer hover:bg-red-200" title="ชดเชยวันฉัตรมงคล">5</div>
+                                <div class="p-1">6</div><div class="p-1">7</div><div class="p-1">8</div><div class="p-1">9</div><div class="p-1 bg-gray-100 text-gray-400 rounded">10</div>
+                                <div class="p-1 bg-red-100 text-red-700 rounded font-medium cursor-pointer hover:bg-red-200" title="วันวิสาขบูชา">11</div>
+                                <div class="p-1 bg-red-100 text-red-700 rounded font-medium cursor-pointer hover:bg-red-200" title="ชดเชยวันวิสาขบูชา">12</div>
+                                <div class="p-1">13</div><div class="p-1">14</div><div class="p-1">15</div><div class="p-1">16</div><div class="p-1 bg-gray-100 text-gray-400 rounded">17</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">18</div><div class="p-1">19</div><div class="p-1">20</div><div class="p-1">21</div><div class="p-1">22</div><div class="p-1">23</div><div class="p-1 bg-gray-100 text-gray-400 rounded">24</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">25</div><div class="p-1">26</div><div class="p-1">27</div><div class="p-1">28</div><div class="p-1">29</div><div class="p-1">30</div><div class="p-1 bg-gray-100 text-gray-400 rounded">31</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- June -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div class="bg-rose-600 text-white px-4 py-3">
+                            <h3 class="font-semibold text-center">มิถุนายน 2568</h3>
+                        </div>
+                        <div class="p-4">
+                            <div class="grid grid-cols-7 gap-1 text-center text-xs mb-2">
+                                <div class="text-red-500 font-medium">อา</div>
+                                <div class="text-gray-600 font-medium">จ</div>
+                                <div class="text-gray-600 font-medium">อ</div>
+                                <div class="text-gray-600 font-medium">พ</div>
+                                <div class="text-gray-600 font-medium">พฤ</div>
+                                <div class="text-gray-600 font-medium">ศ</div>
+                                <div class="text-gray-300 font-medium">ส</div>
+                            </div>
+                            <div class="grid grid-cols-7 gap-1 text-center text-sm">
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">1</div><div class="p-1">2</div>
+                                <div class="p-1 bg-red-100 text-red-700 rounded font-medium cursor-pointer hover:bg-red-200" title="วันเฉลิมฯ สมเด็จพระราชินี">3</div>
+                                <div class="p-1">4</div><div class="p-1">5</div><div class="p-1">6</div><div class="p-1 bg-gray-100 text-gray-400 rounded">7</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">8</div><div class="p-1">9</div><div class="p-1">10</div><div class="p-1">11</div><div class="p-1">12</div><div class="p-1">13</div><div class="p-1 bg-gray-100 text-gray-400 rounded">14</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">15</div><div class="p-1">16</div><div class="p-1">17</div><div class="p-1">18</div><div class="p-1">19</div><div class="p-1">20</div><div class="p-1 bg-gray-100 text-gray-400 rounded">21</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">22</div><div class="p-1">23</div><div class="p-1">24</div><div class="p-1">25</div><div class="p-1">26</div><div class="p-1">27</div><div class="p-1 bg-gray-100 text-gray-400 rounded">28</div>
+                                <div class="p-1 bg-gray-100 text-gray-400 rounded">29</div><div class="p-1">30</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Holiday List -->
+                <div class="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                        <h3 class="text-lg font-semibold text-gray-800">รายการวันหยุด พ.ศ. 2568</h3>
+                        <button class="text-rose-600 hover:text-rose-700 text-sm font-medium flex items-center gap-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                            </svg>
+                            Export Excel
+                        </button>
+                    </div>
+                    <table class="w-full">
+                        <thead class="bg-gray-50 border-b border-gray-200">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Date</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Holiday Name</th>
+                                <th class="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Type</th>
+                                <th class="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-3 text-sm text-gray-900">1 มกราคม 2568</td>
+                                <td class="px-6 py-3 text-sm text-gray-900">วันขึ้นปีใหม่</td>
+                                <td class="px-6 py-3 text-center">
+                                    <span class="px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full">วันหยุดราชการ</span>
+                                </td>
+                                <td class="px-6 py-3 text-center">
+                                    <button class="p-1 text-gray-400 hover:text-gray-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg></button>
+                                    <button class="p-1 text-gray-400 hover:text-red-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                                </td>
+                            </tr>
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-3 text-sm text-gray-900">12 กุมภาพันธ์ 2568</td>
+                                <td class="px-6 py-3 text-sm text-gray-900">วันมาฆบูชา</td>
+                                <td class="px-6 py-3 text-center">
+                                    <span class="px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full">วันหยุดราชการ</span>
+                                </td>
+                                <td class="px-6 py-3 text-center">
+                                    <button class="p-1 text-gray-400 hover:text-gray-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg></button>
+                                    <button class="p-1 text-gray-400 hover:text-red-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                                </td>
+                            </tr>
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-3 text-sm text-gray-900">6 เมษายน 2568</td>
+                                <td class="px-6 py-3 text-sm text-gray-900">วันจักรี</td>
+                                <td class="px-6 py-3 text-center">
+                                    <span class="px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full">วันหยุดราชการ</span>
+                                </td>
+                                <td class="px-6 py-3 text-center">
+                                    <button class="p-1 text-gray-400 hover:text-gray-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg></button>
+                                    <button class="p-1 text-gray-400 hover:text-red-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                                </td>
+                            </tr>
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-3 text-sm text-gray-900">13-15 เมษายน 2568</td>
+                                <td class="px-6 py-3 text-sm text-gray-900">วันสงกรานต์</td>
+                                <td class="px-6 py-3 text-center">
+                                    <span class="px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full">วันหยุดราชการ</span>
+                                </td>
+                                <td class="px-6 py-3 text-center">
+                                    <button class="p-1 text-gray-400 hover:text-gray-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg></button>
+                                    <button class="p-1 text-gray-400 hover:text-red-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                                </td>
+                            </tr>
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-3 text-sm text-gray-900">1 พฤษภาคม 2568</td>
+                                <td class="px-6 py-3 text-sm text-gray-900">วันแรงงานแห่งชาติ</td>
+                                <td class="px-6 py-3 text-center">
+                                    <span class="px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full">วันหยุดราชการ</span>
+                                </td>
+                                <td class="px-6 py-3 text-center">
+                                    <button class="p-1 text-gray-400 hover:text-gray-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg></button>
+                                    <button class="p-1 text-gray-400 hover:text-red-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                                </td>
+                            </tr>
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-3 text-sm text-gray-900">4 พฤษภาคม 2568</td>
+                                <td class="px-6 py-3 text-sm text-gray-900">วันฉัตรมงคล</td>
+                                <td class="px-6 py-3 text-center">
+                                    <span class="px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full">วันหยุดราชการ</span>
+                                </td>
+                                <td class="px-6 py-3 text-center">
+                                    <button class="p-1 text-gray-400 hover:text-gray-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg></button>
+                                    <button class="p-1 text-gray-400 hover:text-red-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                                </td>
+                            </tr>
+                            <tr class="hover:bg-gray-50 bg-purple-50">
+                                <td class="px-6 py-3 text-sm text-gray-900">30 มิถุนายน 2568</td>
+                                <td class="px-6 py-3 text-sm text-gray-900">วันหยุดบริษัท (Mid-Year)</td>
+                                <td class="px-6 py-3 text-center">
+                                    <span class="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">วันหยุดบริษัท</span>
+                                </td>
+                                <td class="px-6 py-3 text-center">
+                                    <button class="p-1 text-gray-400 hover:text-gray-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg></button>
+                                    <button class="p-1 text-gray-400 hover:text-red-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="px-6 py-3 border-t border-gray-200 text-center">
+                        <button class="text-rose-600 hover:text-rose-700 text-sm font-medium">แสดงทั้งหมด (22 รายการ)</button>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Add Holiday Modal -->
+    <div id="holidayModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
+            <div class="p-6 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-gray-900">Add Holiday</h3>
+                    <button onclick="closeHolidayModal()" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Date <span class="text-red-500">*</span></label>
+                    <input type="date" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Holiday Name <span class="text-red-500">*</span></label>
+                    <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500" placeholder="e.g. วันหยุดชดเชย">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Type</label>
+                    <select class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500">
+                        <option value="government">วันหยุดราชการ</option>
+                        <option value="company">วันหยุดบริษัท</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="flex items-center gap-2">
+                        <input type="checkbox" class="w-4 h-4 text-rose-600 border-gray-300 rounded focus:ring-rose-500">
+                        <span class="text-sm text-gray-700">Repeat every year</span>
+                    </label>
+                </div>
+            </div>
+            <div class="p-6 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end gap-3">
+                <button onclick="closeHolidayModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
+                    Cancel
+                </button>
+                <button class="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors">
+                    Add Holiday
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openHolidayModal() {
+            document.getElementById('holidayModal').classList.remove('hidden');
+            document.getElementById('holidayModal').classList.add('flex');
+        }
+
+        function closeHolidayModal() {
+            document.getElementById('holidayModal').classList.add('hidden');
+            document.getElementById('holidayModal').classList.remove('flex');
+        }
+    </script>
+</body>
+</html>

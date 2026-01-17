@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create DJ - DJ System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Sarabun', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-rose-900 text-white flex flex-col">
+            <div class="p-4 border-b border-rose-800">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center">
+                        <svg class="w-6 h-6 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg">DJ System</h1>
+                        <p class="text-xs text-rose-300">Design Job Management</p>
+                    </div>
+                </div>
+            </div>
+
+            <nav class="flex-1 p-4 space-y-1">
+                <a href="01-dashboard.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
+                    </svg>
+                    <span>Dashboard</span>
+                </a>
+                <a href="02-create-dj.html" class="flex items-center gap-3 px-4 py-3 rounded-lg bg-rose-800 text-white">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    <span>Create DJ</span>
+                </a>
+                <a href="03-dj-list.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                    </svg>
+                    <span>DJ List</span>
+                </a>
+                <a href="05-approvals-queue.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <span>Approvals Queue</span>
+                </a>
+
+                <div class="pt-4 mt-4 border-t border-rose-800">
+                    <p class="px-4 text-xs text-rose-400 uppercase tracking-wider mb-2">Admin</p>
+                    <a href="06-admin-job-type-sla.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <span>Job Type & SLA</span>
+                    </a>
+                    <a href="07-admin-holiday.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                        <span>Holiday Calendar</span>
+                    </a>
+                    <a href="08-admin-approval-flow.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                        </svg>
+                        <span>Approval Flow</span>
+                    </a>
+                    <a href="09-reports.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                        <span>Reports</span>
+                    </a>
+                </div>
+            </nav>
+
+            <div class="p-4 border-t border-rose-800">
+                <a href="../index.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"></path>
+                    </svg>
+                    <span>Back to Home</span>
+                </a>
+            </div>
+
+            <div class="p-4 border-t border-slate-700">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-rose-500 rounded-full flex items-center justify-center text-sm font-medium">ส</div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium truncate">สมหญิง Marketing</p>
+                        <p class="text-xs text-slate-400">Marketing Team</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <!-- Top Bar -->
+            <header class="bg-white border-b border-gray-200 px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <a href="01-dashboard.html" class="text-gray-500 hover:text-gray-700">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                            </svg>
+                        </a>
+                        <div>
+                            <h1 class="text-xl font-bold text-gray-900">Create Design Job</h1>
+                            <p class="text-sm text-gray-500">เปิดงานออกแบบใหม่</p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-4">
+                        <select class="text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white">
+                            <option selected>Marketing (Requester)</option>
+                            <option>Approver (Head)</option>
+                            <option>Assignee (Graphic)</option>
+                            <option>Admin</option>
+                        </select>
+                        <button class="relative p-2 text-gray-500 hover:text-gray-700">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                            </svg>
+                            <span class="absolute top-0 right-0 w-5 h-5 bg-rose-500 text-white text-xs rounded-full flex items-center justify-center">8</span>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Content Area -->
+            <main class="flex-1 overflow-y-auto p-6">
+                <!-- Validation Summary Banner -->
+                <div class="mb-6 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <div class="flex items-start gap-3">
+                        <svg class="w-5 h-5 text-amber-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                        </svg>
+                        <div>
+                            <h3 class="font-medium text-amber-800">ยังขาดข้อมูล 3 รายการ</h3>
+                            <ul class="text-sm text-amber-700 mt-1 space-y-1">
+                                <li>- Objective ต้องมีอย่างน้อย 200 ตัวอักษร (ขาด 85 ตัว)</li>
+                                <li>- ยังไม่มีไฟล์แนบ CI Guideline</li>
+                                <li>- ยังไม่มีไฟล์แนบ Project Key Message</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Main Form -->
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- Section A: Job Info -->
+                        <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-xl">
+                                <h2 class="font-semibold text-gray-900 flex items-center gap-2">
+                                    <span class="w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center text-sm">A</span>
+                                    Job Info
+                                </h2>
+                            </div>
+                            <div class="p-6 space-y-4">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Project <span class="text-red-500">*</span></label>
+                                        <select class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-rose-500 focus:border-rose-500">
+                                            <option value="">-- เลือก Project --</option>
+                                            <option selected>Sena Park Grand Ratchayothin</option>
+                                            <option>Sena Villa Ratchapruek</option>
+                                            <option>Sena Ecotown Rangsit</option>
+                                            <option>Sena Villa Pinklao</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">BUD <span class="text-red-500">*</span></label>
+                                        <select class="w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-50" disabled>
+                                            <option selected>BUD 1 - สายงานขาย</option>
+                                        </select>
+                                        <p class="text-xs text-gray-400 mt-1">Auto จาก Project</p>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Job Type <span class="text-red-500">*</span></label>
+                                    <select class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-rose-500 focus:border-rose-500">
+                                        <option value="">-- เลือก Job Type --</option>
+                                        <option selected>Online Artwork</option>
+                                        <option>Print Artwork</option>
+                                        <option>Video Production</option>
+                                        <option>Social Media Content</option>
+                                        <option>Website Banner</option>
+                                        <option>Event Material</option>
+                                    </select>
+                                    <div class="mt-2 p-3 bg-rose-50 border border-rose-100 rounded-lg">
+                                        <p class="text-sm text-rose-700"><strong>SLA:</strong> 7 Working Days</p>
+                                        <p class="text-xs text-rose-600 mt-1">งาน Artwork สำหรับสื่อออนไลน์ เช่น Facebook, LINE, IG, Website</p>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Subject <span class="text-red-500">*</span></label>
+                                    <input type="text" value="Banner Facebook Q1 Campaign 2025" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-rose-500 focus:border-rose-500">
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                                        <select class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-rose-500 focus:border-rose-500">
+                                            <option>Low</option>
+                                            <option selected>Normal</option>
+                                            <option>Urgent</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Requested Start</label>
+                                        <input type="text" value="5 ม.ค. 2568 09:30" class="w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-50" disabled>
+                                        <p class="text-xs text-gray-400 mt-1">Auto = Now</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section B: Brief -->
+                        <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-xl">
+                                <h2 class="font-semibold text-gray-900 flex items-center gap-2">
+                                    <span class="w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center text-sm">B</span>
+                                    Brief (Mandatory)
+                                </h2>
+                            </div>
+                            <div class="p-6 space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                                        Objective & Details <span class="text-red-500">*</span>
+                                        <span class="text-xs text-gray-400 ml-2">(ขั้นต่ำ 200 ตัวอักษร)</span>
+                                    </label>
+                                    <textarea rows="4" class="w-full border border-red-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-rose-500 focus:border-rose-500" placeholder="อธิบายรายละเอียดงาน วัตถุประสงค์ และความต้องการ...">ต้องการ Banner สำหรับ Facebook Ad Campaign Q1 2025 เน้นโปรโมชั่นลดราคาพิเศษ ต้องการสื่อสารถึงกลุ่มเป้าหมายวัยทำงาน อายุ 28-40 ปี ที่กำลังมองหา...</textarea>
+                                    <div class="flex justify-between items-center mt-1">
+                                        <span class="text-xs text-red-500">ขาดอีก 85 ตัวอักษร</span>
+                                        <span class="text-xs text-gray-400">115 / 200</span>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Headline <span class="text-red-500">*</span></label>
+                                        <input type="text" value="โปรสุดคุ้ม! ลดสูงสุด 500,000 บาท" class="w-full border border-green-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-rose-500 focus:border-rose-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Sub-headline</label>
+                                        <input type="text" value="เฉพาะ Q1/2025 เท่านั้น" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-rose-500 focus:border-rose-500">
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Selling Points</label>
+                                    <div class="flex flex-wrap gap-2 mb-2">
+                                        <span class="px-3 py-1 bg-rose-100 text-rose-700 rounded-full text-sm flex items-center gap-1">
+                                            ฟรีค่าโอน
+                                            <button class="hover:text-rose-900">&times;</button>
+                                        </span>
+                                        <span class="px-3 py-1 bg-rose-100 text-rose-700 rounded-full text-sm flex items-center gap-1">
+                                            ฟรีค่าจดจำนอง
+                                            <button class="hover:text-rose-900">&times;</button>
+                                        </span>
+                                        <span class="px-3 py-1 bg-rose-100 text-rose-700 rounded-full text-sm flex items-center gap-1">
+                                            ดอกเบี้ย 0% 2 ปี
+                                            <button class="hover:text-rose-900">&times;</button>
+                                        </span>
+                                    </div>
+                                    <input type="text" placeholder="พิมพ์แล้วกด Enter เพื่อเพิ่ม..." class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-rose-500 focus:border-rose-500">
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Price</label>
+                                    <input type="text" value="เริ่มต้น 2.99 ล้านบาท" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-rose-500 focus:border-rose-500">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section C: Attachments -->
+                        <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-xl">
+                                <h2 class="font-semibold text-gray-900 flex items-center gap-2">
+                                    <span class="w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center text-sm">C</span>
+                                    Attachments
+                                </h2>
+                            </div>
+                            <div class="p-6 space-y-4">
+                                <!-- Required Attachments Checklist -->
+                                <div class="bg-gray-50 rounded-lg p-4">
+                                    <h3 class="text-sm font-medium text-gray-700 mb-3">Required for Online Artwork:</h3>
+                                    <div class="space-y-2">
+                                        <div class="flex items-center gap-2">
+                                            <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                            </svg>
+                                            <span class="text-sm text-red-600">CI Guideline</span>
+                                            <span class="text-xs text-red-500">(ต้องการ)</span>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                            </svg>
+                                            <span class="text-sm text-red-600">Project Key Message</span>
+                                            <span class="text-xs text-red-500">(ต้องการ)</span>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                            </svg>
+                                            <span class="text-sm text-green-600">Logo Pack</span>
+                                            <span class="text-xs text-green-500">(อัพโหลดแล้ว)</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Upload Area -->
+                                <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-rose-400 transition-colors cursor-pointer">
+                                    <svg class="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                                    </svg>
+                                    <p class="text-gray-600 mb-1">ลากไฟล์มาวางที่นี่ หรือ คลิกเพื่อเลือกไฟล์</p>
+                                    <p class="text-xs text-gray-400">รองรับไฟล์ขนาดไม่เกิน 100 MB</p>
+                                </div>
+
+                                <!-- Uploaded Files -->
+                                <div class="space-y-2">
+                                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                                <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                                </svg>
+                                            </div>
+                                            <div>
+                                                <p class="text-sm font-medium text-gray-900">logo-pack-sena.zip</p>
+                                                <p class="text-xs text-gray-400">2.5 MB - Logo Pack</p>
+                                            </div>
+                                        </div>
+                                        <button class="text-gray-400 hover:text-red-500">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Reference URL</label>
+                                    <input type="url" placeholder="https://..." class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-rose-500 focus:border-rose-500">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Panel -->
+                    <div class="space-y-6">
+                        <!-- Section D: SLA Preview -->
+                        <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-xl">
+                                <h2 class="font-semibold text-gray-900 flex items-center gap-2">
+                                    <span class="w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center text-sm">D</span>
+                                    SLA Preview
+                                </h2>
+                            </div>
+                            <div class="p-6 space-y-4">
+                                <div class="text-center p-4 bg-rose-50 rounded-lg">
+                                    <p class="text-sm text-gray-600">Calculated Deadline</p>
+                                    <p class="text-2xl font-bold text-rose-600 mt-1">14 ม.ค. 2568</p>
+                                    <p class="text-xs text-gray-500 mt-1">7 Working Days</p>
+                                </div>
+
+                                <div class="space-y-2 text-sm">
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-500">Submit Date:</span>
+                                        <span class="font-medium">5 ม.ค. 68 09:30</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-500">SLA Days:</span>
+                                        <span class="font-medium">7 Working Days</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-500">Holidays Excluded:</span>
+                                        <span class="font-medium text-orange-600">1 วัน (ส-อา)</span>
+                                    </div>
+                                </div>
+
+                                <!-- Mini Calendar -->
+                                <div class="border border-gray-200 rounded-lg p-3">
+                                    <p class="text-xs text-gray-500 mb-2 text-center">มกราคม 2568</p>
+                                    <div class="grid grid-cols-7 gap-1 text-center text-xs">
+                                        <span class="text-gray-400">อา</span>
+                                        <span class="text-gray-400">จ</span>
+                                        <span class="text-gray-400">อ</span>
+                                        <span class="text-gray-400">พ</span>
+                                        <span class="text-gray-400">พฤ</span>
+                                        <span class="text-gray-400">ศ</span>
+                                        <span class="text-gray-400">ส</span>
+
+                                        <span class="text-gray-300">-</span>
+                                        <span class="text-gray-300">-</span>
+                                        <span class="text-gray-300">-</span>
+                                        <span class="p-1">1</span>
+                                        <span class="p-1">2</span>
+                                        <span class="p-1">3</span>
+                                        <span class="text-gray-300 p-1">4</span>
+
+                                        <span class="text-gray-300 p-1">5</span>
+                                        <span class="p-1 bg-green-100 text-green-700 rounded font-medium">6</span>
+                                        <span class="p-1 bg-green-100 text-green-700 rounded">7</span>
+                                        <span class="p-1 bg-green-100 text-green-700 rounded">8</span>
+                                        <span class="p-1 bg-green-100 text-green-700 rounded">9</span>
+                                        <span class="p-1 bg-green-100 text-green-700 rounded">10</span>
+                                        <span class="text-gray-300 p-1">11</span>
+
+                                        <span class="text-gray-300 p-1">12</span>
+                                        <span class="p-1 bg-green-100 text-green-700 rounded">13</span>
+                                        <span class="p-1 bg-rose-500 text-white rounded font-bold">14</span>
+                                        <span class="p-1">15</span>
+                                        <span class="p-1">16</span>
+                                        <span class="p-1">17</span>
+                                        <span class="text-gray-300 p-1">18</span>
+                                    </div>
+                                    <div class="flex gap-4 mt-3 text-xs justify-center">
+                                        <span class="flex items-center gap-1">
+                                            <span class="w-3 h-3 bg-green-100 rounded"></span> Working
+                                        </span>
+                                        <span class="flex items-center gap-1">
+                                            <span class="w-3 h-3 bg-rose-500 rounded"></span> Deadline
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section E: Approval Flow -->
+                        <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-xl flex items-center justify-between">
+                                <h2 class="font-semibold text-gray-900 flex items-center gap-2">
+                                    <span class="w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center text-sm">E</span>
+                                    Approval Flow
+                                </h2>
+                                <button class="text-rose-600 text-sm hover:underline">แก้ไข</button>
+                            </div>
+                            <div class="p-6">
+                                <div class="space-y-4">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white text-sm font-medium">1</div>
+                                        <div>
+                                            <p class="text-sm font-medium">หัวหน้าทีม Marketing</p>
+                                            <p class="text-xs text-gray-500">คุณวิภา ผู้จัดการ</p>
+                                        </div>
+                                    </div>
+                                    <div class="ml-4 border-l-2 border-gray-200 h-4"></div>
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 text-sm font-medium">2</div>
+                                        <div>
+                                            <p class="text-sm font-medium">BUD Head</p>
+                                            <p class="text-xs text-gray-500">คุณสมชาย ผู้อำนวยการ</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Completion Checklist -->
+                        <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
+                            <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-xl">
+                                <h2 class="font-semibold text-gray-900">Completion Checklist</h2>
+                            </div>
+                            <div class="p-6">
+                                <div class="space-y-3">
+                                    <div class="flex items-center gap-2">
+                                        <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                        </svg>
+                                        <span class="text-sm text-gray-600">Project selected</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                        </svg>
+                                        <span class="text-sm text-gray-600">Job Type selected</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                        </svg>
+                                        <span class="text-sm text-gray-600">Subject filled</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                        </svg>
+                                        <span class="text-sm text-red-600">Objective >= 200 chars</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                        </svg>
+                                        <span class="text-sm text-gray-600">Headline filled</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                        </svg>
+                                        <span class="text-sm text-red-600">Required files (2/3)</span>
+                                    </div>
+                                </div>
+
+                                <div class="mt-4 pt-4 border-t border-gray-200">
+                                    <div class="flex items-center gap-2">
+                                        <div class="flex-1 bg-gray-200 rounded-full h-2">
+                                            <div class="bg-rose-500 rounded-full h-2" style="width: 66%"></div>
+                                        </div>
+                                        <span class="text-sm font-medium text-gray-700">66%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="space-y-3">
+                            <button class="w-full py-3 bg-rose-500 text-white rounded-lg font-medium hover:bg-rose-600 transition-colors flex items-center justify-center gap-2 opacity-50 cursor-not-allowed" disabled>
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                                </svg>
+                                Assign Job Now
+                            </button>
+                            <button class="w-full py-3 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors">
+                                Save as Draft
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Time Restriction Modal (Hidden by default - shown when submit outside working hours) -->
+    <div class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50" id="timeModal">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
+            <div class="p-6 bg-amber-50 border-b border-amber-100">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
+                        <svg class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-900">ไม่สามารถส่งงานตอนนี้</h3>
+                </div>
+            </div>
+            <div class="p-6">
+                <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                    <p class="text-sm text-gray-600"><strong>เหตุผล:</strong> นอกเวลาทำการ (22:00 - 05:00)</p>
+                    <p class="text-xs text-gray-500 mt-1">ระบบเปิดให้ส่งงานได้ระหว่าง 05:00 - 22:00 น. ในวันทำการ</p>
+                </div>
+
+                <div class="space-y-3">
+                    <label class="flex items-start gap-3 p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+                        <input type="radio" name="submitOption" class="mt-1" checked>
+                        <div>
+                            <p class="font-medium text-gray-900">Save & Auto-submit next working day 08:00</p>
+                            <p class="text-2xl font-bold text-rose-600 mt-1">6 ม.ค. 2568 08:00 น.</p>
+                            <p class="text-xs text-gray-500">งานจะถูกส่งโดยอัตโนมัติ</p>
+                        </div>
+                    </label>
+                    <label class="flex items-start gap-3 p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+                        <input type="radio" name="submitOption" class="mt-1">
+                        <div>
+                            <p class="font-medium text-gray-900">Save as Draft</p>
+                            <p class="text-xs text-gray-500">บันทึกเป็น Draft เพื่อแก้ไขภายหลัง</p>
+                        </div>
+                    </label>
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex gap-3">
+                <button class="flex-1 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-white">ยกเลิก</button>
+                <button class="flex-1 py-2 bg-rose-500 text-white rounded-lg font-medium hover:bg-rose-600">ยืนยัน</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

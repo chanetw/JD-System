@@ -1,0 +1,323 @@
+{
+    "designJobs": [
+        {
+            "id": 1,
+            "djId": "DJ-2024-0156",
+            "projectId": 1,
+            "jobTypeId": 1,
+            "subject": "Banner Facebook Q1 Campaign",
+            "priority": "urgent",
+            "status": "in_progress",
+            "requesterId": 2,
+            "assigneeId": 5,
+            "createdAt": "2024-12-27T14:00:00Z",
+            "submittedAt": "2024-12-27T14:30:00Z",
+            "deadline": "2025-01-03T17:00:00Z",
+            "slaWorkingDays": 7,
+            "isOverdue": true,
+            "overdueDays": 2,
+            "brief": {
+                "objective": "ต้องการ Banner สำหรับ Facebook Ad Campaign Q1 2025 เน้นโปรโมชั่นลดราคาพิเศษ ต้องการสื่อสารถึงกลุ่มเป้าหมายวัยทำงาน อายุ 28-40 ปี ที่กำลังมองหาบ้านใกล้รถไฟฟ้า",
+                "headline": "โปรสุดคุ้ม! ลดสูงสุด 500,000 บาท",
+                "subHeadline": "เฉพาะ Q1/2025 เท่านั้น",
+                "sellingPoints": [
+                    "ฟรีค่าโอน",
+                    "ฟรีค่าจดจำนอง",
+                    "ดอกเบี้ย 0% 2 ปี"
+                ],
+                "price": "เริ่มต้น 2.99 ล้านบาท"
+            }
+        },
+        {
+            "id": 2,
+            "djId": "DJ-2024-0157",
+            "projectId": 1,
+            "jobTypeId": 4,
+            "subject": "IG Story เปิดตัวโปรโมชั่น",
+            "priority": "normal",
+            "status": "pending_approval",
+            "requesterId": 2,
+            "assigneeId": null,
+            "createdAt": "2025-01-04T09:00:00Z",
+            "submittedAt": "2025-01-04T09:30:00Z",
+            "deadline": "2025-01-09T17:00:00Z",
+            "slaWorkingDays": 3,
+            "isOverdue": false,
+            "overdueDays": 0,
+            "brief": {
+                "objective": "สร้าง IG Story สำหรับเปิดตัวโปรโมชั่นใหม่ Q1 2025",
+                "headline": "New Year New Home",
+                "subHeadline": "ต้อนรับปีใหม่กับบ้านใหม่",
+                "sellingPoints": [
+                    "ส่วนลดพิเศษ",
+                    "ของแถมเพียบ"
+                ],
+                "price": "เริ่มต้น 2.99 ล้านบาท"
+            }
+        },
+        {
+            "id": 3,
+            "djId": "DJ-2024-0158",
+            "projectId": 2,
+            "jobTypeId": 3,
+            "subject": "VDO Walkthrough 30sec",
+            "priority": "normal",
+            "status": "completed",
+            "requesterId": 3,
+            "assigneeId": 6,
+            "createdAt": "2024-12-20T10:00:00Z",
+            "submittedAt": "2024-12-20T10:30:00Z",
+            "deadline": "2025-01-10T17:00:00Z",
+            "completedAt": "2025-01-08T16:00:00Z",
+            "slaWorkingDays": 15,
+            "isOverdue": false,
+            "overdueDays": 0,
+            "brief": {
+                "objective": "สร้างวิดีโอ Walkthrough โครงการ ความยาว 30 วินาที สำหรับ Social Media",
+                "headline": "Sena Villa Ratchapruek",
+                "subHeadline": "บ้านเดี่ยวในฝันใกล้รถไฟฟ้า",
+                "sellingPoints": [
+                    "ใกล้รถไฟฟ้า MRT",
+                    "พื้นที่กว้างขวาง",
+                    "ดีไซน์ทันสมัย"
+                ],
+                "price": "เริ่มต้น 5.99 ล้านบาท"
+            }
+        },
+        {
+            "id": 4,
+            "djId": "DJ-2024-0155",
+            "projectId": 1,
+            "jobTypeId": 1,
+            "subject": "Facebook Carousel Ads",
+            "priority": "normal",
+            "status": "rework",
+            "requesterId": 2,
+            "assigneeId": 5,
+            "createdAt": "2024-12-26T11:00:00Z",
+            "submittedAt": "2024-12-26T11:30:00Z",
+            "deadline": "2025-01-06T17:00:00Z",
+            "slaWorkingDays": 7,
+            "isOverdue": false,
+            "overdueDays": 0,
+            "brief": {
+                "objective": "สร้าง Carousel Ads 5 ภาพ สำหรับ Facebook Ads",
+                "headline": "บ้านเดี่ยว Sena Park Grand",
+                "subHeadline": "ใกล้รถไฟฟ้า ราคาเริ่มต้น",
+                "sellingPoints": [
+                    "ฟังก์ชันครบ",
+                    "ส่วนกลางครบครัน",
+                    "จอดรถ 2 คัน"
+                ],
+                "price": "เริ่มต้น 2.99 ล้านบาท"
+            }
+        },
+        {
+            "id": 5,
+            "djId": "DJ-2024-0154",
+            "projectId": 3,
+            "jobTypeId": 2,
+            "subject": "Brochure เปิดตัวโครงการใหม่",
+            "priority": "normal",
+            "status": "assigned",
+            "requesterId": 3,
+            "assigneeId": 5,
+            "createdAt": "2024-12-28T09:00:00Z",
+            "submittedAt": "2024-12-28T09:30:00Z",
+            "deadline": "2025-01-13T17:00:00Z",
+            "slaWorkingDays": 10,
+            "isOverdue": false,
+            "overdueDays": 0,
+            "brief": {
+                "objective": "สร้าง Brochure 8 หน้า สำหรับโครงการ Sena Ecotown Rangsit",
+                "headline": "Sena Ecotown Rangsit",
+                "subHeadline": "ทาวน์โฮมใกล้เมือง ราคาจับต้องได้",
+                "sellingPoints": [
+                    "ใกล้ฟิวเจอร์ พาร์ค",
+                    "ไม่ไกลจากกรุงเทพ",
+                    "ราคาเริ่มต้นไม่เกิน 3 ล้าน"
+                ],
+                "price": "เริ่มต้น 2.49 ล้านบาท"
+            }
+        },
+        {
+            "id": 6,
+            "djId": "DJ-2024-0153",
+            "projectId": 1,
+            "jobTypeId": 1,
+            "subject": "LINE Banner โปรปีใหม่",
+            "priority": "low",
+            "status": "draft",
+            "requesterId": 2,
+            "assigneeId": null,
+            "createdAt": "2025-01-05T10:00:00Z",
+            "submittedAt": null,
+            "deadline": null,
+            "slaWorkingDays": 7,
+            "isOverdue": false,
+            "overdueDays": 0,
+            "brief": {
+                "objective": "สร้าง Rich Menu และ Banner สำหรับ LINE OA",
+                "headline": "โปรปีใหม่ Sena",
+                "subHeadline": null,
+                "sellingPoints": [],
+                "price": null
+            }
+        },
+        {
+            "id": 7,
+            "djId": "DJ-2024-0152",
+            "projectId": 4,
+            "jobTypeId": 6,
+            "subject": "Grand Opening Backdrop",
+            "priority": "urgent",
+            "status": "scheduled",
+            "requesterId": 3,
+            "assigneeId": null,
+            "createdAt": "2025-01-05T22:30:00Z",
+            "submittedAt": null,
+            "scheduledSubmitAt": "2025-01-06T08:00:00Z",
+            "deadline": null,
+            "slaWorkingDays": 7,
+            "isOverdue": false,
+            "overdueDays": 0,
+            "brief": {
+                "objective": "สร้าง Backdrop สำหรับงาน Grand Opening โครงการ Sena Villa Pinklao",
+                "headline": "Grand Opening Sena Villa Pinklao",
+                "subHeadline": "เปิดจองวันแรก ส่วนลดพิเศษ",
+                "sellingPoints": [
+                    "ลดสูงสุด 500,000",
+                    "ฟรีค่าจดจำนอง"
+                ],
+                "price": "เริ่มต้น 4.99 ล้านบาท"
+            }
+        },
+        {
+            "id": 8,
+            "djId": "DJ-2024-0151",
+            "projectId": 1,
+            "jobTypeId": 4,
+            "subject": "LINE Rich Menu Q1",
+            "priority": "normal",
+            "status": "completed",
+            "requesterId": 2,
+            "assigneeId": 5,
+            "createdAt": "2024-12-25T14:00:00Z",
+            "submittedAt": "2024-12-25T14:30:00Z",
+            "deadline": "2024-12-30T17:00:00Z",
+            "completedAt": "2024-12-30T15:00:00Z",
+            "slaWorkingDays": 3,
+            "isOverdue": false,
+            "overdueDays": 0,
+            "brief": {
+                "objective": "สร้าง Rich Menu สำหรับ LINE OA โครงการ",
+                "headline": "Sena Park Grand",
+                "subHeadline": null,
+                "sellingPoints": [],
+                "price": null
+            }
+        },
+        {
+            "id": 9,
+            "djId": "DJ-2024-0150",
+            "projectId": 2,
+            "jobTypeId": 1,
+            "subject": "IG Story Template",
+            "priority": "normal",
+            "status": "completed",
+            "requesterId": 3,
+            "assigneeId": 5,
+            "createdAt": "2024-12-24T10:00:00Z",
+            "submittedAt": "2024-12-24T10:30:00Z",
+            "deadline": "2025-01-02T17:00:00Z",
+            "completedAt": "2024-12-31T16:00:00Z",
+            "slaWorkingDays": 7,
+            "isOverdue": false,
+            "overdueDays": 0,
+            "brief": {
+                "objective": "สร้าง Template สำหรับ IG Story 3 แบบ",
+                "headline": "Villa Ratchapruek",
+                "subHeadline": null,
+                "sellingPoints": [],
+                "price": null
+            }
+        },
+        {
+            "id": 10,
+            "djId": "DJ-2024-0149",
+            "projectId": 1,
+            "jobTypeId": 4,
+            "subject": "FB Carousel Set 1",
+            "priority": "normal",
+            "status": "completed",
+            "requesterId": 2,
+            "assigneeId": 5,
+            "createdAt": "2024-12-23T11:00:00Z",
+            "submittedAt": "2024-12-23T11:30:00Z",
+            "deadline": "2024-12-26T17:00:00Z",
+            "completedAt": "2024-12-26T14:00:00Z",
+            "slaWorkingDays": 3,
+            "isOverdue": false,
+            "overdueDays": 0,
+            "brief": {
+                "objective": "สร้าง Carousel 5 ภาพสำหรับ Facebook",
+                "headline": "Park Grand Promo",
+                "subHeadline": null,
+                "sellingPoints": [],
+                "price": null
+            }
+        },
+        {
+            "id": 11,
+            "djId": "DJ-2024-0148",
+            "projectId": 1,
+            "jobTypeId": 1,
+            "subject": "Banner FB Q1 Final",
+            "priority": "normal",
+            "status": "completed",
+            "requesterId": 2,
+            "assigneeId": 5,
+            "createdAt": "2024-12-22T09:00:00Z",
+            "submittedAt": "2024-12-22T09:30:00Z",
+            "deadline": "2025-01-02T17:00:00Z",
+            "completedAt": "2025-01-02T15:00:00Z",
+            "slaWorkingDays": 7,
+            "isOverdue": false,
+            "overdueDays": 0,
+            "brief": {
+                "objective": "สร้าง Banner สำหรับ Facebook Ads ขนาด 1200x628",
+                "headline": "Q1 Campaign",
+                "subHeadline": null,
+                "sellingPoints": [],
+                "price": null
+            }
+        },
+        {
+            "id": 12,
+            "djId": "DJ-2024-0147",
+            "projectId": 3,
+            "jobTypeId": 6,
+            "subject": "Grand Opening Backdrop Ecotown",
+            "priority": "urgent",
+            "status": "completed",
+            "requesterId": 3,
+            "assigneeId": 6,
+            "createdAt": "2024-12-15T10:00:00Z",
+            "submittedAt": "2024-12-15T10:30:00Z",
+            "deadline": "2024-12-24T17:00:00Z",
+            "completedAt": "2024-12-24T12:00:00Z",
+            "slaWorkingDays": 7,
+            "isOverdue": false,
+            "overdueDays": 0,
+            "brief": {
+                "objective": "สร้าง Backdrop สำหรับงาน Grand Opening",
+                "headline": "Ecotown Rangsit Grand Opening",
+                "subHeadline": "เปิดจองวันแรก",
+                "sellingPoints": [
+                    "ส่วนลดพิเศษ"
+                ],
+                "price": "เริ่มต้น 2.49 ล้านบาท"
+            }
+        }
+    ]
+}

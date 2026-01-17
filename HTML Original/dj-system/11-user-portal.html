@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DJ System - Self-Service Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Sarabun', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+    <!-- Top Navigation -->
+    <nav class="bg-white shadow-sm border-b border-slate-200 fixed top-0 left-0 right-0 z-10">
+        <div class="max-w-6xl mx-auto px-6">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-rose-600 rounded-lg flex items-center justify-center">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg text-slate-800">DJ Request Portal</h1>
+                        <p class="text-xs text-slate-500">Design Job Self-Service</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <a href="03-dj-list.html" class="text-slate-600 hover:text-rose-600 text-sm font-medium">My Jobs</a>
+                    <a href="10-media-portal.html" class="text-slate-600 hover:text-rose-600 text-sm font-medium">Media Portal</a>
+                    <div class="flex items-center gap-2 pl-4 border-l border-slate-200">
+                        <div class="w-8 h-8 bg-rose-100 rounded-full flex items-center justify-center">
+                            <span class="text-rose-700 text-sm font-medium">ส</span>
+                        </div>
+                        <span class="text-sm text-slate-700">สมชาย Marketing</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="pt-24 pb-12">
+        <!-- Hero Section -->
+        <div class="bg-gradient-to-r from-rose-600 to-rose-800 py-16">
+            <div class="max-w-6xl mx-auto px-6 text-center">
+                <h2 class="text-3xl font-bold text-white mb-4">ต้องการงาน Design อะไรวันนี้?</h2>
+                <p class="text-rose-100 mb-8">ค้นหางานเดิมหรือสร้าง Design Job ใหม่</p>
+                <div class="max-w-2xl mx-auto relative">
+                    <svg class="w-6 h-6 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                    <input type="text" placeholder="ค้นหา DJ ID หรือชื่องาน..." class="w-full pl-14 pr-4 py-4 rounded-xl text-lg focus:outline-none focus:ring-4 focus:ring-rose-300 shadow-lg">
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="max-w-6xl mx-auto px-6 -mt-8">
+            <div class="grid grid-cols-4 gap-4">
+                <a href="02-create-dj.html" class="bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition text-center group">
+                    <div class="w-14 h-14 bg-rose-100 rounded-xl mx-auto mb-3 flex items-center justify-center group-hover:bg-rose-200 transition">
+                        <svg class="w-7 h-7 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold text-slate-800 mb-1">สร้าง DJ ใหม่</h3>
+                    <p class="text-sm text-slate-500">เปิดงาน Design Job</p>
+                </a>
+                <a href="03-dj-list.html" class="bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition text-center group">
+                    <div class="w-14 h-14 bg-indigo-100 rounded-xl mx-auto mb-3 flex items-center justify-center group-hover:bg-indigo-200 transition">
+                        <svg class="w-7 h-7 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold text-slate-800 mb-1">งานของฉัน</h3>
+                    <p class="text-sm text-slate-500">ดูสถานะงานทั้งหมด</p>
+                </a>
+                <a href="06-admin-job-type-sla.html" class="bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition text-center group">
+                    <div class="w-14 h-14 bg-amber-100 rounded-xl mx-auto mb-3 flex items-center justify-center group-hover:bg-amber-200 transition">
+                        <svg class="w-7 h-7 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold text-slate-800 mb-1">SLA & ประเภทงาน</h3>
+                    <p class="text-sm text-slate-500">ดูเวลาดำเนินการ</p>
+                </a>
+                <a href="10-media-portal.html" class="bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition text-center group">
+                    <div class="w-14 h-14 bg-emerald-100 rounded-xl mx-auto mb-3 flex items-center justify-center group-hover:bg-emerald-200 transition">
+                        <svg class="w-7 h-7 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                    </div>
+                    <h3 class="font-semibold text-slate-800 mb-1">Media Portal</h3>
+                    <p class="text-sm text-slate-500">คลังไฟล์งาน Design</p>
+                </a>
+            </div>
+        </div>
+
+        <div class="max-w-6xl mx-auto px-6 mt-12">
+            <div class="grid grid-cols-3 gap-8">
+                <!-- My Recent Jobs -->
+                <div class="col-span-2">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-semibold text-slate-800 text-lg">งานล่าสุดของฉัน</h3>
+                        <a href="03-dj-list.html" class="text-rose-600 hover:underline text-sm">ดูทั้งหมด</a>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                        <table class="w-full">
+                            <thead class="bg-slate-50 border-b border-slate-200">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">DJ ID</th>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">ชื่องาน</th>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">สถานะ</th>
+                                    <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">อัปเดตล่าสุด</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <tr class="hover:bg-slate-50 cursor-pointer">
+                                    <td class="px-4 py-3">
+                                        <a href="04-dj-detail.html" class="text-sm font-medium text-rose-600">DJ-2024-0156</a>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <p class="text-sm text-slate-800">Banner Facebook Q1 Campaign</p>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <span class="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">In Progress</span>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <span class="text-sm text-slate-600">2 ชม. ที่แล้ว</span>
+                                    </td>
+                                </tr>
+                                <tr class="hover:bg-slate-50 cursor-pointer">
+                                    <td class="px-4 py-3">
+                                        <a href="04-dj-detail.html" class="text-sm font-medium text-rose-600">DJ-2024-0157</a>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <p class="text-sm text-slate-800">IG Story เปิดตัวโปรโมชั่น</p>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <span class="px-2 py-1 bg-amber-100 text-amber-700 text-xs rounded">Pending Approval</span>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <span class="text-sm text-slate-600">เมื่อวาน</span>
+                                    </td>
+                                </tr>
+                                <tr class="hover:bg-slate-50 cursor-pointer">
+                                    <td class="px-4 py-3">
+                                        <a href="04-dj-detail.html" class="text-sm font-medium text-rose-600">DJ-2024-0158</a>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <p class="text-sm text-slate-800">VDO Walkthrough 30sec</p>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <span class="px-2 py-1 bg-emerald-100 text-emerald-700 text-xs rounded">Completed</span>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <span class="text-sm text-slate-600">3 วันที่แล้ว</span>
+                                    </td>
+                                </tr>
+                                <tr class="hover:bg-slate-50 cursor-pointer">
+                                    <td class="px-4 py-3">
+                                        <a href="04-dj-detail.html" class="text-sm font-medium text-rose-600">DJ-2024-0155</a>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <p class="text-sm text-slate-800">Facebook Carousel Ads</p>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <span class="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded">Rework</span>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <span class="text-sm text-slate-600">1 ชม. ที่แล้ว</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- SLA Info & Tips -->
+                <div>
+                    <h3 class="font-semibold text-slate-800 text-lg mb-4">ระยะเวลาดำเนินการ (SLA)</h3>
+                    <div class="bg-white rounded-xl shadow-sm p-4 space-y-4">
+                        <a href="#" class="block p-3 hover:bg-slate-50 rounded-lg transition">
+                            <div class="flex items-start gap-3">
+                                <div class="w-8 h-8 bg-rose-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                    <svg class="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium text-slate-800">Online Artwork</p>
+                                    <p class="text-xs text-slate-500">7 วันทำการ</p>
+                                </div>
+                            </div>
+                        </a>
+                        <a href="#" class="block p-3 hover:bg-slate-50 rounded-lg transition">
+                            <div class="flex items-start gap-3">
+                                <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                    <svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium text-slate-800">Print Artwork</p>
+                                    <p class="text-xs text-slate-500">10 วันทำการ</p>
+                                </div>
+                            </div>
+                        </a>
+                        <a href="#" class="block p-3 hover:bg-slate-50 rounded-lg transition">
+                            <div class="flex items-start gap-3">
+                                <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                    <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium text-slate-800">Video Production</p>
+                                    <p class="text-xs text-slate-500">15 วันทำการ</p>
+                                </div>
+                            </div>
+                        </a>
+                        <a href="#" class="block p-3 hover:bg-slate-50 rounded-lg transition">
+                            <div class="flex items-start gap-3">
+                                <div class="w-8 h-8 bg-cyan-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                    <svg class="w-4 h-4 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m4 0H3m2 0v14a2 2 0 002 2h10a2 2 0 002-2V4M9 9h6m-6 4h6"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium text-slate-800">Social Media Content</p>
+                                    <p class="text-xs text-slate-500">3 วันทำการ</p>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+
+                    <!-- Contact Info -->
+                    <div class="mt-6 bg-rose-50 border border-rose-100 rounded-xl p-6">
+                        <h4 class="font-semibold text-rose-800 mb-3">ต้องการความช่วยเหลือ?</h4>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex items-center gap-2 text-rose-700">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
+                                </svg>
+                                <span>Creative Team: 2345</span>
+                            </div>
+                            <div class="flex items-center gap-2 text-rose-700">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                                </svg>
+                                <span>creative@sena.co.th</span>
+                            </div>
+                            <div class="flex items-center gap-2 text-rose-700">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                <span>จ-ศ, 8:30 - 17:30</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- My Project Media -->
+        <div class="max-w-6xl mx-auto px-6 mt-12">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 class="font-semibold text-slate-800 text-lg">Media โครงการของฉัน</h3>
+                    <p class="text-sm text-slate-500">ไฟล์งานล่าสุดจากโครงการที่คุณดูแล</p>
+                </div>
+                <a href="10-media-portal.html" class="text-rose-600 hover:underline text-sm flex items-center gap-1">
+                    ดูทั้งหมด
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                </a>
+            </div>
+
+            <!-- Project Tabs -->
+            <div class="flex gap-2 mb-4">
+                <button class="px-4 py-2 bg-rose-500 text-white rounded-lg text-sm font-medium">Sena Park Grand</button>
+                <button class="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm hover:bg-slate-50">Sena Villa Ratchapruek</button>
+                <button class="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm hover:bg-slate-50">Sena Ecotown</button>
+            </div>
+
+            <!-- Media Grid -->
+            <div class="grid grid-cols-5 gap-4">
+                <!-- File Card 1 -->
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden group">
+                    <div class="relative h-32 bg-slate-100">
+                        <div class="w-full h-full bg-gradient-to-br from-orange-200 to-rose-300 flex items-center justify-center">
+                            <svg class="w-10 h-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                        </div>
+                        <div class="absolute top-2 right-2">
+                            <span class="px-2 py-0.5 bg-orange-500 text-white text-xs rounded font-medium">JPG</span>
+                        </div>
+                        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
+                            <button class="p-2 bg-white rounded-full hover:bg-slate-100" title="ดูตัวอย่าง">
+                                <svg class="w-4 h-4 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                </svg>
+                            </button>
+                            <button class="p-2 bg-rose-500 rounded-full hover:bg-rose-600" title="ดาวน์โหลด">
+                                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-3">
+                        <p class="text-sm font-medium text-slate-800 truncate">Banner_FB_Q1_Final.jpg</p>
+                        <p class="text-xs text-slate-500 mt-1">DJ-2024-0148 | 2.4 MB</p>
+                    </div>
+                </div>
+
+                <!-- File Card 2 -->
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden group">
+                    <div class="relative h-32 bg-slate-100">
+                        <div class="w-full h-full bg-gradient-to-br from-purple-200 to-purple-400 flex items-center justify-center">
+                            <svg class="w-10 h-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                        <div class="absolute top-2 right-2">
+                            <span class="px-2 py-0.5 bg-purple-500 text-white text-xs rounded font-medium">MP4</span>
+                        </div>
+                        <div class="absolute bottom-2 left-2">
+                            <span class="px-2 py-0.5 bg-black/70 text-white text-xs rounded">00:30</span>
+                        </div>
+                        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
+                            <button class="p-2 bg-white rounded-full hover:bg-slate-100" title="ดูตัวอย่าง">
+                                <svg class="w-4 h-4 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                            </button>
+                            <button class="p-2 bg-rose-500 rounded-full hover:bg-rose-600" title="ดาวน์โหลด">
+                                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-3">
+                        <p class="text-sm font-medium text-slate-800 truncate">Walkthrough_30sec.mp4</p>
+                        <p class="text-xs text-slate-500 mt-1">DJ-2024-0142 | 156 MB</p>
+                    </div>
+                </div>
+
+                <!-- File Card 3 -->
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden group">
+                    <div class="relative h-32 bg-slate-100">
+                        <div class="w-full h-full bg-gradient-to-br from-red-200 to-red-400 flex items-center justify-center">
+                            <svg class="w-10 h-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                            </svg>
+                        </div>
+                        <div class="absolute top-2 right-2">
+                            <span class="px-2 py-0.5 bg-red-500 text-white text-xs rounded font-medium">PDF</span>
+                        </div>
+                        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
+                            <button class="p-2 bg-white rounded-full hover:bg-slate-100" title="ดูตัวอย่าง">
+                                <svg class="w-4 h-4 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                </svg>
+                            </button>
+                            <button class="p-2 bg-rose-500 rounded-full hover:bg-rose-600" title="ดาวน์โหลด">
+                                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-3">
+                        <p class="text-sm font-medium text-slate-800 truncate">Brochure_2024.pdf</p>
+                        <p class="text-xs text-slate-500 mt-1">DJ-2024-0145 | 8.7 MB</p>
+                    </div>
+                </div>
+
+                <!-- File Card 4 -->
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden group">
+                    <div class="relative h-32 bg-slate-100">
+                        <div class="w-full h-full bg-gradient-to-br from-cyan-200 to-cyan-400 flex items-center justify-center">
+                            <svg class="w-10 h-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                        </div>
+                        <div class="absolute top-2 right-2">
+                            <span class="px-2 py-0.5 bg-cyan-500 text-white text-xs rounded font-medium">PNG</span>
+                        </div>
+                        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
+                            <button class="p-2 bg-white rounded-full hover:bg-slate-100" title="ดูตัวอย่าง">
+                                <svg class="w-4 h-4 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                </svg>
+                            </button>
+                            <button class="p-2 bg-rose-500 rounded-full hover:bg-rose-600" title="ดาวน์โหลด">
+                                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-3">
+                        <p class="text-sm font-medium text-slate-800 truncate">LINE_Richmenu.png</p>
+                        <p class="text-xs text-slate-500 mt-1">DJ-2024-0151 | 1.8 MB</p>
+                    </div>
+                </div>
+
+                <!-- File Card 5 -->
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden group">
+                    <div class="relative h-32 bg-slate-100">
+                        <div class="w-full h-full bg-gradient-to-br from-pink-200 to-pink-400 flex items-center justify-center">
+                            <svg class="w-10 h-10 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                        </div>
+                        <div class="absolute top-2 right-2">
+                            <span class="px-2 py-0.5 bg-pink-500 text-white text-xs rounded font-medium">PNG</span>
+                        </div>
+                        <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
+                            <button class="p-2 bg-white rounded-full hover:bg-slate-100" title="ดูตัวอย่าง">
+                                <svg class="w-4 h-4 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                </svg>
+                            </button>
+                            <button class="p-2 bg-rose-500 rounded-full hover:bg-rose-600" title="ดาวน์โหลด">
+                                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-3">
+                        <p class="text-sm font-medium text-slate-800 truncate">FB_Carousel_Set1.png</p>
+                        <p class="text-xs text-slate-500 mt-1">DJ-2024-0149 | 3.1 MB</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Stats -->
+            <div class="mt-4 flex items-center gap-6 text-sm text-slate-500">
+                <span class="flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                    </svg>
+                    รวม 245 ไฟล์
+                </span>
+                <span class="flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    งานส่งมอบแล้ว 189 ชิ้น
+                </span>
+                <span class="flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    ดาวน์โหลด 1,247 ครั้ง
+                </span>
+            </div>
+        </div>
+
+        <!-- Job Type Categories -->
+        <div class="max-w-6xl mx-auto px-6 mt-12">
+            <h3 class="font-semibold text-slate-800 text-lg mb-4">เลือกประเภทงาน</h3>
+            <div class="grid grid-cols-6 gap-4">
+                <a href="02-create-dj.html?type=online" class="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition text-center">
+                    <div class="w-12 h-12 bg-rose-100 rounded-xl mx-auto mb-2 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                    </div>
+                    <p class="text-sm font-medium text-slate-700">Online Artwork</p>
+                </a>
+                <a href="02-create-dj.html?type=print" class="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition text-center">
+                    <div class="w-12 h-12 bg-purple-100 rounded-xl mx-auto mb-2 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                        </svg>
+                    </div>
+                    <p class="text-sm font-medium text-slate-700">Print Artwork</p>
+                </a>
+                <a href="02-create-dj.html?type=video" class="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition text-center">
+                    <div class="w-12 h-12 bg-blue-100 rounded-xl mx-auto mb-2 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                        </svg>
+                    </div>
+                    <p class="text-sm font-medium text-slate-700">Video Production</p>
+                </a>
+                <a href="02-create-dj.html?type=social" class="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition text-center">
+                    <div class="w-12 h-12 bg-cyan-100 rounded-xl mx-auto mb-2 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/>
+                        </svg>
+                    </div>
+                    <p class="text-sm font-medium text-slate-700">Social Media</p>
+                </a>
+                <a href="02-create-dj.html?type=banner" class="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition text-center">
+                    <div class="w-12 h-12 bg-amber-100 rounded-xl mx-auto mb-2 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                        </svg>
+                    </div>
+                    <p class="text-sm font-medium text-slate-700">Website Banner</p>
+                </a>
+                <a href="02-create-dj.html?type=event" class="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition text-center">
+                    <div class="w-12 h-12 bg-emerald-100 rounded-xl mx-auto mb-2 flex items-center justify-center">
+                        <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                    </div>
+                    <p class="text-sm font-medium text-slate-700">Event Material</p>
+                </a>
+            </div>
+        </div>
+
+        <!-- Tips Section -->
+        <div class="max-w-6xl mx-auto px-6 mt-12">
+            <div class="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl p-8 text-white">
+                <h3 class="text-xl font-bold mb-4">เคล็ดลับการเปิดงาน DJ</h3>
+                <div class="grid grid-cols-3 gap-6">
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 bg-rose-500 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span class="font-bold">1</span>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold mb-1">Brief ให้ชัดเจน</h4>
+                            <p class="text-sm text-slate-300">ระบุ Objective, Target Audience และ Key Message ให้ครบถ้วน</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 bg-rose-500 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span class="font-bold">2</span>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold mb-1">แนบ Reference</h4>
+                            <p class="text-sm text-slate-300">ใส่ตัวอย่างงานที่ต้องการ หรือ Link ภาพอ้างอิงเพื่อให้ทีมเข้าใจ</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 bg-rose-500 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span class="font-bold">3</span>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold mb-1">วางแผนล่วงหน้า</h4>
+                            <p class="text-sm text-slate-300">เปิดงานก่อน Deadline จริงอย่างน้อย 2-3 วันสำหรับการแก้ไข</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-6">
+        <div class="max-w-6xl mx-auto px-6 flex items-center justify-between">
+            <p class="text-sm text-slate-500">DJ System v2.0 | SENA Development PCL</p>
+            <a href="01-dashboard.html" class="text-sm text-rose-600 hover:underline flex items-center gap-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Staff Dashboard
+            </a>
+        </div>
+    </footer>
+</body>
+</html>

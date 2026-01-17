@@ -1,0 +1,84 @@
+{
+    "notifications": [
+        {
+            "id": 1,
+            "userId": 2,
+            "type": "job_overdue",
+            "title": "DJ-2024-0156 เลยกำหนด SLA",
+            "message": "งาน Banner Facebook Q1 Campaign เลยกำหนด 2 วัน",
+            "link": "/jobs/1",
+            "isRead": false,
+            "createdAt": "2025-01-05T09:00:00Z"
+        },
+        {
+            "id": 2,
+            "userId": 5,
+            "type": "job_assigned",
+            "title": "ได้รับมอบหมายงาน DJ-2024-0154",
+            "message": "คุณได้รับมอบหมายงาน Brochure เปิดตัวโครงการใหม่",
+            "link": "/jobs/5",
+            "isRead": false,
+            "createdAt": "2025-01-04T10:00:00Z"
+        },
+        {
+            "id": 3,
+            "userId": 4,
+            "type": "pending_approval",
+            "title": "รออนุมัติ DJ-2024-0157",
+            "message": "งาน IG Story เปิดตัวโปรโมชั่น รออนุมัติจากคุณ",
+            "link": "/jobs/2",
+            "isRead": false,
+            "createdAt": "2025-01-04T09:30:00Z"
+        },
+        {
+            "id": 4,
+            "userId": 2,
+            "type": "comment_added",
+            "title": "มีข้อความใหม่ใน DJ-2024-0156",
+            "message": "กานต์: ส่งตัวอย่างแก้ไขตาม comment ครับ",
+            "link": "/jobs/1",
+            "isRead": true,
+            "createdAt": "2025-01-05T10:30:00Z"
+        },
+        {
+            "id": 5,
+            "userId": 5,
+            "type": "revision_request",
+            "title": "ขอแก้ไข DJ-2024-0155",
+            "message": "สมหญิง ขอให้แก้ไขงาน Facebook Carousel Ads",
+            "link": "/jobs/4",
+            "isRead": false,
+            "createdAt": "2025-01-05T08:00:00Z"
+        },
+        {
+            "id": 6,
+            "userId": 2,
+            "type": "job_completed",
+            "title": "DJ-2024-0158 เสร็จสมบูรณ์",
+            "message": "งาน VDO Walkthrough 30sec เสร็จสิ้นแล้ว",
+            "link": "/jobs/3",
+            "isRead": true,
+            "createdAt": "2025-01-04T16:00:00Z"
+        },
+        {
+            "id": 7,
+            "userId": 3,
+            "type": "job_scheduled",
+            "title": "DJ-2024-0152 จะส่งอัตโนมัติ",
+            "message": "งาน Grand Opening Backdrop จะส่งอัตโนมัติวันที่ 6 ม.ค. 08:00",
+            "link": "/jobs/7",
+            "isRead": false,
+            "createdAt": "2025-01-05T22:35:00Z"
+        },
+        {
+            "id": 8,
+            "userId": 2,
+            "type": "due_tomorrow",
+            "title": "DJ-2024-0155 ครบกำหนดพรุ่งนี้",
+            "message": "งาน Facebook Carousel Ads จะครบกำหนด SLA พรุ่งนี้",
+            "link": "/jobs/4",
+            "isRead": false,
+            "createdAt": "2025-01-05T08:00:00Z"
+        }
+    ]
+}

@@ -1,0 +1,61 @@
+{
+    "tenants": [
+        {
+            "id": 1,
+            "name": "SENA Development PCL",
+            "code": "SENA",
+            "subdomain": "sena",
+            "isActive": true
+        }
+    ],
+    "buds": [
+        {
+            "id": 1,
+            "tenantId": 1,
+            "name": "BUD 1 - สายงานขาย",
+            "code": "BUD1",
+            "isActive": true
+        },
+        {
+            "id": 2,
+            "tenantId": 1,
+            "name": "BUD 2 - สายงานก่อสร้าง",
+            "code": "BUD2",
+            "isActive": true
+        }
+    ],
+    "projects": [
+        {
+            "id": 1,
+            "tenantId": 1,
+            "budId": 1,
+            "name": "Sena Park Grand Ratchayothin",
+            "code": "SPG-RY",
+            "isActive": true
+        },
+        {
+            "id": 2,
+            "tenantId": 1,
+            "budId": 1,
+            "name": "Sena Villa Ratchapruek",
+            "code": "SVR",
+            "isActive": true
+        },
+        {
+            "id": 3,
+            "tenantId": 1,
+            "budId": 2,
+            "name": "Sena Ecotown Rangsit",
+            "code": "SET-RS",
+            "isActive": true
+        },
+        {
+            "id": 4,
+            "tenantId": 1,
+            "budId": 1,
+            "name": "Sena Villa Pinklao",
+            "code": "SVP",
+            "isActive": true
+        }
+    ]
+}

@@ -1,0 +1,70 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "email": "admin@sena.co.th",
+      "firstName": "แอดมิน",
+      "lastName": "ระบบ",
+      "displayName": "แอดมิน Admin",
+      "roles": ["admin"],
+      "avatarUrl": null,
+      "isActive": true
+    },
+    {
+      "id": 2,
+      "email": "somying@sena.co.th",
+      "firstName": "สมหญิง",
+      "lastName": "ใจดี",
+      "displayName": "สมหญิง Marketing",
+      "roles": ["marketing"],
+      "avatarUrl": null,
+      "isActive": true
+    },
+    {
+      "id": 3,
+      "email": "somchai@sena.co.th",
+      "firstName": "สมชาย",
+      "lastName": "มานะ",
+      "displayName": "สมชาย Marketing",
+      "roles": ["marketing"],
+      "avatarUrl": null,
+      "isActive": true
+    },
+    {
+      "id": 4,
+      "email": "wipa@sena.co.th",
+      "firstName": "วิภา",
+      "lastName": "อนุมัติ",
+      "displayName": "คุณวิภา Approver",
+      "roles": ["approver"],
+      "avatarUrl": null,
+      "isActive": true
+    },
+    {
+      "id": 5,
+      "email": "karn@sena.co.th",
+      "firstName": "กานต์",
+      "lastName": "กราฟิก",
+      "displayName": "กานต์ Graphic",
+      "roles": ["assignee"],
+      "avatarUrl": null,
+      "isActive": true
+    },
+    {
+      "id": 6,
+      "email": "pim@sena.co.th",
+      "firstName": "พิม",
+      "lastName": "เว็บ",
+      "displayName": "พิม Web",
+      "roles": ["assignee"],
+      "avatarUrl": null,
+      "isActive": true
+    }
+  ],
+  "roles": [
+    { "id": 1, "name": "marketing", "displayName": "Marketing (Requester)" },
+    { "id": 2, "name": "approver", "displayName": "Approver (Head/Manager)" },
+    { "id": 3, "name": "assignee", "displayName": "Assignee (Graphic/Web)" },
+    { "id": 4, "name": "admin", "displayName": "Admin" }
+  ]
+}

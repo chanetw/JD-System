@@ -1,0 +1,132 @@
+{
+    "approvals": [
+        {
+            "id": 1,
+            "jobId": 1,
+            "stepNumber": 1,
+            "approverId": 4,
+            "status": "approved",
+            "comment": "อนุมัติ",
+            "approvedAt": "2024-12-28T09:30:00Z",
+            "createdAt": "2024-12-27T14:30:00Z"
+        },
+        {
+            "id": 2,
+            "jobId": 2,
+            "stepNumber": 1,
+            "approverId": 4,
+            "status": "pending",
+            "comment": null,
+            "approvedAt": null,
+            "createdAt": "2025-01-04T09:30:00Z"
+        },
+        {
+            "id": 3,
+            "jobId": 3,
+            "stepNumber": 1,
+            "approverId": 4,
+            "status": "approved",
+            "comment": "OK",
+            "approvedAt": "2024-12-21T10:00:00Z",
+            "createdAt": "2024-12-20T10:30:00Z"
+        },
+        {
+            "id": 4,
+            "jobId": 4,
+            "stepNumber": 1,
+            "approverId": 4,
+            "status": "approved",
+            "comment": "อนุมัติ รีบดำเนินการ",
+            "approvedAt": "2024-12-27T08:00:00Z",
+            "createdAt": "2024-12-26T11:30:00Z"
+        },
+        {
+            "id": 5,
+            "jobId": 5,
+            "stepNumber": 1,
+            "approverId": 4,
+            "status": "approved",
+            "comment": "อนุมัติ",
+            "approvedAt": "2024-12-28T14:00:00Z",
+            "createdAt": "2024-12-28T09:30:00Z"
+        }
+    ],
+    "activities": [
+        {
+            "id": 1,
+            "jobId": 1,
+            "userId": 2,
+            "activityType": "created",
+            "description": "สร้างโดย สมหญิง",
+            "createdAt": "2024-12-27T14:00:00Z"
+        },
+        {
+            "id": 2,
+            "jobId": 1,
+            "userId": 2,
+            "activityType": "submitted",
+            "description": "ส่งเพื่ออนุมัติ",
+            "createdAt": "2024-12-27T14:30:00Z"
+        },
+        {
+            "id": 3,
+            "jobId": 1,
+            "userId": 4,
+            "activityType": "approved",
+            "description": "อนุมัติโดย คุณวิภา",
+            "createdAt": "2024-12-28T09:30:00Z"
+        },
+        {
+            "id": 4,
+            "jobId": 1,
+            "userId": null,
+            "activityType": "assigned",
+            "description": "มอบหมายให้ กานต์",
+            "createdAt": "2024-12-28T10:00:00Z"
+        },
+        {
+            "id": 5,
+            "jobId": 1,
+            "userId": 5,
+            "activityType": "uploaded",
+            "description": "กานต์ อัพโหลดไฟล์ v1",
+            "createdAt": "2025-01-04T16:00:00Z"
+        },
+        {
+            "id": 6,
+            "jobId": 1,
+            "userId": 2,
+            "activityType": "revision_request",
+            "description": "สมหญิง ขอ revision",
+            "createdAt": "2025-01-05T09:30:00Z"
+        },
+        {
+            "id": 7,
+            "jobId": 1,
+            "userId": 5,
+            "activityType": "uploaded",
+            "description": "กานต์ อัพโหลดไฟล์ v2",
+            "createdAt": "2025-01-05T10:30:00Z"
+        }
+    ],
+    "comments": [
+        {
+            "id": 1,
+            "jobId": 1,
+            "userId": 2,
+            "comment": "ขอให้ปรับสีโทนให้สว่างขึ้น และเพิ่ม CTA button ด้วยครับ ขอบคุณครับ",
+            "mentions": [
+                5
+            ],
+            "createdAt": "2025-01-05T09:30:00Z"
+        },
+        {
+            "id": 2,
+            "jobId": 1,
+            "userId": 5,
+            "comment": "ส่งตัวอย่างแก้ไขตาม comment ครับ ปรับสีสว่างขึ้นและเพิ่ม CTA button แล้ว",
+            "mentions": [],
+            "createdAt": "2025-01-05T10:30:00Z"
+        }
+    ]
+}

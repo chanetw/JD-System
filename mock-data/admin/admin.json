@@ -1,0 +1,248 @@
+{
+    "jobTypes": [
+        {
+            "id": 1,
+            "name": "Social Media Post",
+            "icon": "social",
+            "sla": 3,
+            "description": "โพสต์สำหรับ Facebook, Instagram, LINE OA",
+            "requiredAttachments": [
+                "Logo",
+                "Product Image"
+            ],
+            "status": "active"
+        },
+        {
+            "id": 2,
+            "name": "Banner Web",
+            "icon": "banner",
+            "sla": 3,
+            "description": "แบนเนอร์สำหรับเว็บไซต์ Homepage, Landing Page",
+            "requiredAttachments": [
+                "Logo",
+                "Product Image",
+                "Size Spec"
+            ],
+            "status": "active"
+        },
+        {
+            "id": 3,
+            "name": "Print Ad",
+            "icon": "print",
+            "sla": 5,
+            "description": "สื่อสิ่งพิมพ์ Billboard, Brochure, Poster, Flyer",
+            "requiredAttachments": [
+                "Logo",
+                "Product Image",
+                "Size Spec",
+                "Print Spec"
+            ],
+            "status": "active"
+        },
+        {
+            "id": 4,
+            "name": "EDM",
+            "icon": "edm",
+            "sla": 2,
+            "description": "Email Direct Marketing, Newsletter",
+            "requiredAttachments": [
+                "Logo",
+                "Product Image"
+            ],
+            "status": "active"
+        },
+        {
+            "id": 5,
+            "name": "Video Clip",
+            "icon": "video",
+            "sla": 7,
+            "description": "TVC, Motion Graphic, Social Video",
+            "requiredAttachments": [
+                "Logo",
+                "Script",
+                "Storyboard",
+                "Music Ref"
+            ],
+            "status": "active"
+        },
+        {
+            "id": 6,
+            "name": "Key Visual",
+            "icon": "key_visual",
+            "sla": 5,
+            "description": "ภาพหลักสำหรับ Campaign, Launch",
+            "requiredAttachments": [
+                "Logo",
+                "Product Image",
+                "Mood & Tone",
+                "Reference"
+            ],
+            "status": "active"
+        }
+    ],
+    "holidays": [
+        {
+            "id": 1,
+            "name": "วันขึ้นปีใหม่",
+            "date": "2025-01-01",
+            "isRecurring": true
+        },
+        {
+            "id": 2,
+            "name": "วันมาฆบูชา",
+            "date": "2025-02-12",
+            "isRecurring": false
+        },
+        {
+            "id": 3,
+            "name": "วันจักรี",
+            "date": "2025-04-06",
+            "isRecurring": true
+        },
+        {
+            "id": 4,
+            "name": "วันสงกรานต์",
+            "date": "2025-04-13",
+            "isRecurring": true
+        },
+        {
+            "id": 5,
+            "name": "วันสงกรานต์",
+            "date": "2025-04-14",
+            "isRecurring": true
+        },
+        {
+            "id": 6,
+            "name": "วันสงกรานต์",
+            "date": "2025-04-15",
+            "isRecurring": true
+        },
+        {
+            "id": 7,
+            "name": "วันแรงงานแห่งชาติ",
+            "date": "2025-05-01",
+            "isRecurring": true
+        },
+        {
+            "id": 8,
+            "name": "วันวิสาขบูชา",
+            "date": "2025-05-12",
+            "isRecurring": false
+        },
+        {
+            "id": 9,
+            "name": "วันเฉลิมพระชนมพรรษา ร.10",
+            "date": "2025-07-28",
+            "isRecurring": true
+        },
+        {
+            "id": 10,
+            "name": "วันแม่แห่งชาติ",
+            "date": "2025-08-12",
+            "isRecurring": true
+        },
+        {
+            "id": 11,
+            "name": "วันพ่อแห่งชาติ",
+            "date": "2025-12-05",
+            "isRecurring": true
+        },
+        {
+            "id": 12,
+            "name": "วันรัฐธรรมนูญ",
+            "date": "2025-12-10",
+            "isRecurring": true
+        },
+        {
+            "id": 13,
+            "name": "วันสิ้นปี",
+            "date": "2025-12-31",
+            "isRecurring": true
+        }
+    ],
+    "approvalFlows": [
+        {
+            "id": "flow_001",
+            "projectId": 1,
+            "projectName": "Sena Park Grand Ratchayothin",
+            "status": "active",
+            "levels": [
+                {
+                    "level": 1,
+                    "userId": "user_004",
+                    "name": "สมชาย กรุงเทพ",
+                    "role": "Head of Marketing",
+                    "canSkip": false
+                },
+                {
+                    "level": 2,
+                    "userId": "user_005",
+                    "name": "ประวิทย์ วงศ์ใหญ่",
+                    "role": "Marketing Manager",
+                    "canSkip": false
+                }
+            ],
+            "defaultAssignee": {
+                "userId": "user_006",
+                "name": "สมศักดิ์ กราฟิก",
+                "role": "Sr. Graphic Designer"
+            },
+            "createdAt": "2026-01-15T00:00:00Z",
+            "updatedAt": "2026-01-20T00:00:00Z"
+        },
+        {
+            "id": "flow_002",
+            "projectId": 2,
+            "projectName": "Sena Villa Ratchapruek",
+            "status": "active",
+            "levels": [
+                {
+                    "level": 1,
+                    "userId": "user_007",
+                    "name": "วันดี ประเสริฐ",
+                    "role": "Marketing Supervisor",
+                    "canSkip": false
+                }
+            ],
+            "defaultAssignee": {
+                "userId": "user_008",
+                "name": "นารี เว็บดี",
+                "role": "Web Designer"
+            },
+            "createdAt": "2026-01-16T00:00:00Z",
+            "updatedAt": "2026-01-16T00:00:00Z"
+        },
+        {
+            "id": "flow_003",
+            "projectId": 3,
+            "projectName": "Sena Ecotown Rangsit",
+            "status": "active",
+            "levels": [
+                {
+                    "level": 1,
+                    "userId": "user_004",
+                    "name": "สมชาย กรุงเทพ",
+                    "role": "Head of Marketing",
+                    "canSkip": false
+                }
+            ],
+            "defaultAssignee": {
+                "userId": "user_009",
+                "name": "ปรีชา มโหรี",
+                "role": "Motion Graphic Designer"
+            },
+            "createdAt": "2026-01-17T00:00:00Z",
+            "updatedAt": "2026-01-17T00:00:00Z"
+        },
+        {
+            "id": "flow_004",
+            "projectId": 4,
+            "projectName": "Sena Villa Pinklao",
+            "status": "draft",
+            "levels": [],
+            "defaultAssignee": null,
+            "createdAt": "2026-01-17T00:00:00Z",
+            "updatedAt": "2026-01-17T00:00:00Z"
+        }
+    ]
+}

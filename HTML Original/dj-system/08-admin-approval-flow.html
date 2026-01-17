@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin: Approval Flow - DJ System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Sarabun', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-rose-900 text-white flex flex-col">
+            <div class="p-4 border-b border-rose-800">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center">
+                        <svg class="w-6 h-6 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg">DJ System</h1>
+                        <p class="text-xs text-rose-300">Design Job Management</p>
+                    </div>
+                </div>
+            </div>
+
+            <nav class="flex-1 p-4 space-y-1">
+                <a href="01-dashboard.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
+                    </svg>
+                    <span>Dashboard</span>
+                </a>
+                <a href="02-create-dj.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    <span>Create DJ</span>
+                </a>
+                <a href="03-dj-list.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                    </svg>
+                    <span>DJ List</span>
+                </a>
+                <a href="05-approvals-queue.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <span>Approvals Queue</span>
+                </a>
+
+                <div class="pt-4 mt-4 border-t border-rose-800">
+                    <p class="px-4 text-xs text-rose-400 uppercase tracking-wider mb-2">Admin</p>
+                    <a href="06-admin-job-type-sla.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <span>Job Type & SLA</span>
+                    </a>
+                    <a href="07-admin-holiday.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                        <span>Holiday Calendar</span>
+                    </a>
+                    <a href="08-admin-approval-flow.html" class="flex items-center gap-3 px-4 py-3 rounded-lg bg-rose-800 text-white">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                        </svg>
+                        <span>Approval Flow</span>
+                    </a>
+                    <a href="09-reports.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                        <span>Reports</span>
+                    </a>
+                </div>
+            </nav>
+
+            <div class="p-4 border-t border-rose-800">
+                <a href="../index.html" class="flex items-center gap-3 px-4 py-3 rounded-lg text-rose-200 hover:bg-rose-800 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 15l-3-3m0 0l3-3m-3 3h8M3 12a9 9 0 1118 0 9 9 0 01-18 0z"></path>
+                    </svg>
+                    <span>Back to Home</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <!-- Top Bar -->
+            <header class="bg-white border-b border-gray-200 px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-800">Approval Flow Configuration</h2>
+                        <p class="text-sm text-gray-500">ตั้งค่าผู้อนุมัติและลำดับการอนุมัติตามโครงการ</p>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <button onclick="openAddProjectModal()" class="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                            </svg>
+                            Add Project
+                        </button>
+                        <div class="flex items-center gap-3 pl-4 border-l border-gray-200">
+                            <div class="w-10 h-10 bg-rose-100 rounded-full flex items-center justify-center">
+                                <span class="text-rose-600 font-semibold">AD</span>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-gray-700">Admin User</p>
+                                <p class="text-xs text-gray-500">System Administrator</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Content - Master Detail Layout -->
+            <main class="flex-1 overflow-hidden flex">
+                <!-- Left Panel - Project List -->
+                <div class="w-80 bg-white border-r border-gray-200 flex flex-col">
+                    <!-- Search -->
+                    <div class="p-4 border-b border-gray-200">
+                        <div class="relative">
+                            <svg class="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                            </svg>
+                            <input type="text" placeholder="ค้นหาโครงการ..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 text-sm">
+                        </div>
+                    </div>
+
+                    <!-- Project List -->
+                    <div class="flex-1 overflow-y-auto">
+                        <!-- Project 1 - Selected -->
+                        <div onclick="selectProject(1)" id="project-1" class="project-item p-4 border-b border-gray-100 cursor-pointer bg-rose-50 border-l-4 border-l-rose-500">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 bg-gradient-to-br from-rose-500 to-pink-600 rounded-lg flex items-center justify-center">
+                                        <span class="text-white font-bold text-xs">SPG</span>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-semibold text-gray-900">SENA Park Grand</h4>
+                                        <p class="text-xs text-gray-500">BUD-2025-001</p>
+                                    </div>
+                                </div>
+                                <span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">Active</span>
+                            </div>
+                            <div class="mt-2 flex items-center gap-4 text-xs text-gray-500">
+                                <span class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    </svg>
+                                    2 Approvers
+                                </span>
+                                <span class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4z"></path>
+                                    </svg>
+                                    1 Assignee
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Project 2 -->
+                        <div onclick="selectProject(2)" id="project-2" class="project-item p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 border-l-4 border-l-transparent">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                                        <span class="text-white font-bold text-xs">SV</span>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-semibold text-gray-900">SENA Ville</h4>
+                                        <p class="text-xs text-gray-500">BUD-2025-003</p>
+                                    </div>
+                                </div>
+                                <span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">Active</span>
+                            </div>
+                            <div class="mt-2 flex items-center gap-4 text-xs text-gray-500">
+                                <span class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    </svg>
+                                    1 Approver
+                                </span>
+                                <span class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4z"></path>
+                                    </svg>
+                                    1 Assignee
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Project 3 -->
+                        <div onclick="selectProject(3)" id="project-3" class="project-item p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 border-l-4 border-l-transparent">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
+                                        <span class="text-white font-bold text-xs">SGH</span>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-semibold text-gray-900">SENA Grand Home</h4>
+                                        <p class="text-xs text-gray-500">BUD-2025-002</p>
+                                    </div>
+                                </div>
+                                <span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">Active</span>
+                            </div>
+                            <div class="mt-2 flex items-center gap-4 text-xs text-gray-500">
+                                <span class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    </svg>
+                                    1 Approver
+                                </span>
+                                <span class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4z"></path>
+                                    </svg>
+                                    1 Assignee
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Project 4 -->
+                        <div onclick="selectProject(4)" id="project-4" class="project-item p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 border-l-4 border-l-transparent">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-violet-600 rounded-lg flex items-center justify-center">
+                                        <span class="text-white font-bold text-xs">SE</span>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-semibold text-gray-900">SENA Ecotown</h4>
+                                        <p class="text-xs text-gray-500">BUD-2025-004</p>
+                                    </div>
+                                </div>
+                                <span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">Active</span>
+                            </div>
+                            <div class="mt-2 flex items-center gap-4 text-xs text-gray-500">
+                                <span class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    </svg>
+                                    1 Approver
+                                </span>
+                                <span class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4z"></path>
+                                    </svg>
+                                    1 Assignee
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Project 5 -->
+                        <div onclick="selectProject(5)" id="project-5" class="project-item p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 border-l-4 border-l-transparent">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-lg flex items-center justify-center">
+                                        <span class="text-white font-bold text-xs">SNV</span>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-semibold text-gray-900">SENA Nava</h4>
+                                        <p class="text-xs text-gray-500">BUD-2025-005</p>
+                                    </div>
+                                </div>
+                                <span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">Active</span>
+                            </div>
+                            <div class="mt-2 flex items-center gap-4 text-xs text-gray-500">
+                                <span class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    </svg>
+                                    2 Approvers
+                                </span>
+                                <span class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4z"></path>
+                                    </svg>
+                                    1 Assignee
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Project 6 -->
+                        <div onclick="selectProject(6)" id="project-6" class="project-item p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 border-l-4 border-l-transparent">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 bg-gradient-to-br from-cyan-500 to-teal-600 rounded-lg flex items-center justify-center">
+                                        <span class="text-white font-bold text-xs">SHV</span>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-semibold text-gray-900">SENA Haven</h4>
+                                        <p class="text-xs text-gray-500">BUD-2025-006</p>
+                                    </div>
+                                </div>
+                                <span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-medium rounded-full">Draft</span>
+                            </div>
+                            <div class="mt-2 flex items-center gap-4 text-xs text-gray-500">
+                                <span class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    </svg>
+                                    0 Approvers
+                                </span>
+                                <span class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4z"></path>
+                                    </svg>
+                                    Not set
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Project 7 -->
+                        <div onclick="selectProject(7)" id="project-7" class="project-item p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 border-l-4 border-l-transparent">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 bg-gradient-to-br from-red-500 to-rose-600 rounded-lg flex items-center justify-center">
+                                        <span class="text-white font-bold text-xs">SAR</span>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-semibold text-gray-900">SENA Aria</h4>
+                                        <p class="text-xs text-gray-500">BUD-2025-007</p>
+                                    </div>
+                                </div>
+                                <span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">Active</span>
+                            </div>
+                            <div class="mt-2 flex items-center gap-4 text-xs text-gray-500">
+                                <span class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    </svg>
+                                    1 Approver
+                                </span>
+                                <span class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4z"></path>
+                                    </svg>
+                                    1 Assignee
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Project 8 -->
+                        <div onclick="selectProject(8)" id="project-8" class="project-item p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 border-l-4 border-l-transparent">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 bg-gradient-to-br from-slate-500 to-gray-600 rounded-lg flex items-center justify-center">
+                                        <span class="text-white font-bold text-xs">SLX</span>
+                                    </div>
+                                    <div>
+                                        <h4 class="font-semibold text-gray-900">SENA Lux</h4>
+                                        <p class="text-xs text-gray-500">BUD-2025-008</p>
+                                    </div>
+                                </div>
+                                <span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">Active</span>
+                            </div>
+                            <div class="mt-2 flex items-center gap-4 text-xs text-gray-500">
+                                <span class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    </svg>
+                                    3 Approvers
+                                </span>
+                                <span class="flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4z"></path>
+                                    </svg>
+                                    2 Assignees
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Summary Footer -->
+                    <div class="p-4 border-t border-gray-200 bg-gray-50">
+                        <div class="grid grid-cols-2 gap-2 text-center">
+                            <div class="bg-white rounded-lg p-2">
+                                <p class="text-lg font-bold text-gray-900">8</p>
+                                <p class="text-xs text-gray-500">Projects</p>
+                            </div>
+                            <div class="bg-white rounded-lg p-2">
+                                <p class="text-lg font-bold text-gray-900">7</p>
+                                <p class="text-xs text-gray-500">Active</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Panel - Flow Detail -->
+                <div class="flex-1 overflow-y-auto p-6 bg-gray-50">
+                    <!-- Flow Detail for Project 1 (Default) -->
+                    <div id="flow-detail">
+                        <!-- Project Header -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
+                            <div class="p-6 bg-gradient-to-r from-rose-500 to-pink-600 rounded-t-xl">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-4">
+                                        <div class="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center">
+                                            <span class="text-white font-bold text-lg">SPG</span>
+                                        </div>
+                                        <div>
+                                            <h3 class="text-xl font-bold text-white">SENA Park Grand</h3>
+                                            <p class="text-rose-100">BUD-2025-001</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="px-3 py-1 bg-white/20 text-white text-sm font-medium rounded-full">Active</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="p-4 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+                                <div class="flex items-center gap-6 text-sm text-gray-600">
+                                    <span class="flex items-center gap-2">
+                                        <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                        </svg>
+                                        สร้างเมื่อ: 15 ม.ค. 2568
+                                    </span>
+                                    <span class="flex items-center gap-2">
+                                        <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                        </svg>
+                                        แก้ไขล่าสุด: 20 ม.ค. 2568
+                                    </span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button onclick="toggleEditMode()" id="editBtn" class="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors flex items-center gap-2">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                        </svg>
+                                        Edit Flow
+                                    </button>
+                                    <button class="p-2 text-gray-400 hover:text-red-600 transition-colors" title="Delete Flow">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Visual Flow Diagram -->
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+                            <h4 class="font-semibold text-gray-900 mb-6 flex items-center gap-2">
+                                <svg class="w-5 h-5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"></path>
+                                </svg>
+                                Approval Flow Diagram
+                            </h4>
+
+                            <!-- Horizontal Flow -->
+                            <div class="flex items-center justify-center gap-4 overflow-x-auto py-8">
+                                <!-- Start Node -->
+                                <div class="flex flex-col items-center">
+                                    <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center border-2 border-gray-300">
+                                        <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                                        </svg>
+                                    </div>
+                                    <p class="mt-2 text-xs text-gray-500">สร้าง DJ</p>
+                                </div>
+
+                                <!-- Arrow -->
+                                <div class="flex items-center">
+                                    <div class="w-12 h-0.5 bg-gray-300"></div>
+                                    <svg class="w-4 h-4 text-gray-400 -ml-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                    </svg>
+                                </div>
+
+                                <!-- Approver Level 1 -->
+                                <div class="flex flex-col items-center" id="approver-step-1">
+                                    <div class="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 min-w-[160px] hover:border-blue-400 transition-colors cursor-pointer group">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                                                <span class="text-blue-600 text-sm font-bold">SK</span>
+                                            </div>
+                                            <div>
+                                                <p class="text-sm font-medium text-gray-900">สมชาย กรุงเทพ</p>
+                                                <p class="text-xs text-gray-500">Head of Marketing</p>
+                                            </div>
+                                        </div>
+                                        <div class="mt-2 pt-2 border-t border-blue-100">
+                                            <span class="text-xs text-blue-600 font-medium">Level 1 Approver</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Arrow -->
+                                <div class="flex items-center">
+                                    <div class="w-12 h-0.5 bg-gray-300"></div>
+                                    <svg class="w-4 h-4 text-gray-400 -ml-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                    </svg>
+                                </div>
+
+                                <!-- Approver Level 2 -->
+                                <div class="flex flex-col items-center" id="approver-step-2">
+                                    <div class="bg-purple-50 border-2 border-purple-200 rounded-xl p-4 min-w-[160px] hover:border-purple-400 transition-colors cursor-pointer group">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center group-hover:bg-purple-200 transition-colors">
+                                                <span class="text-purple-600 text-sm font-bold">PW</span>
+                                            </div>
+                                            <div>
+                                                <p class="text-sm font-medium text-gray-900">ประวิทย์ วงศ์ใหญ่</p>
+                                                <p class="text-xs text-gray-500">Marketing Manager</p>
+                                            </div>
+                                        </div>
+                                        <div class="mt-2 pt-2 border-t border-purple-100">
+                                            <span class="text-xs text-purple-600 font-medium">Level 2 Approver</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Arrow -->
+                                <div class="flex items-center">
+                                    <div class="w-12 h-0.5 bg-gray-300"></div>
+                                    <svg class="w-4 h-4 text-gray-400 -ml-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                    </svg>
+                                </div>
+
+                                <!-- Assignee -->
+                                <div class="flex flex-col items-center" id="assignee-step">
+                                    <div class="bg-orange-50 border-2 border-orange-200 rounded-xl p-4 min-w-[160px] hover:border-orange-400 transition-colors cursor-pointer group">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center group-hover:bg-orange-200 transition-colors">
+                                                <span class="text-orange-600 text-sm font-bold">SG</span>
+                                            </div>
+                                            <div>
+                                                <p class="text-sm font-medium text-gray-900">สมศักดิ์ กราฟิก</p>
+                                                <p class="text-xs text-gray-500">Sr. Graphic Designer</p>
+                                            </div>
+                                        </div>
+                                        <div class="mt-2 pt-2 border-t border-orange-100">
+                                            <span class="text-xs text-orange-600 font-medium">Default Assignee</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Arrow -->
+                                <div class="flex items-center">
+                                    <div class="w-12 h-0.5 bg-gray-300"></div>
+                                    <svg class="w-4 h-4 text-gray-400 -ml-1" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                    </svg>
+                                </div>
+
+                                <!-- End Node -->
+                                <div class="flex flex-col items-center">
+                                    <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center border-2 border-green-300">
+                                        <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                        </svg>
+                                    </div>
+                                    <p class="mt-2 text-xs text-gray-500">เสร็จสิ้น</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Edit Mode Panel (Hidden by default) -->
+                        <div id="editPanel" class="bg-white rounded-xl shadow-sm border border-gray-200 mb-6 hidden">
+                            <div class="p-4 border-b border-gray-200 bg-amber-50">
+                                <div class="flex items-center gap-2 text-amber-700">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                    </svg>
+                                    <span class="font-medium">Edit Mode - แก้ไข Approval Flow</span>
+                                </div>
+                            </div>
+                            <div class="p-6 space-y-4">
+                                <!-- Approver Level 1 -->
+                                <div class="bg-gray-50 rounded-lg p-4">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <span class="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                            <span class="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-xs font-bold">1</span>
+                                            Approver Level 1
+                                        </span>
+                                        <button class="text-red-500 hover:text-red-700 p-1">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <select class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500">
+                                        <option value="1" selected>สมชาย กรุงเทพ (Head of Marketing)</option>
+                                        <option value="2">ประวิทย์ วงศ์ใหญ่ (Marketing Manager)</option>
+                                        <option value="3">วันดี ประเสริฐ (Marketing Supervisor)</option>
+                                        <option value="4">กมลา ธนาคาร (Project Marketing Manager)</option>
+                                        <option value="5">รัตนา ทองคำ (Brand Manager)</option>
+                                    </select>
+                                </div>
+
+                                <!-- Approver Level 2 -->
+                                <div class="bg-gray-50 rounded-lg p-4">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <span class="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                            <span class="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 text-xs font-bold">2</span>
+                                            Approver Level 2
+                                        </span>
+                                        <button class="text-red-500 hover:text-red-700 p-1">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <select class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500">
+                                        <option value="1">สมชาย กรุงเทพ (Head of Marketing)</option>
+                                        <option value="2" selected>ประวิทย์ วงศ์ใหญ่ (Marketing Manager)</option>
+                                        <option value="3">วันดี ประเสริฐ (Marketing Supervisor)</option>
+                                        <option value="4">กมลา ธนาคาร (Project Marketing Manager)</option>
+                                        <option value="5">รัตนา ทองคำ (Brand Manager)</option>
+                                    </select>
+                                </div>
+
+                                <!-- Add Level Button -->
+                                <button class="w-full px-4 py-3 border-2 border-dashed border-gray-300 text-gray-500 rounded-lg hover:border-rose-500 hover:text-rose-500 transition-colors flex items-center justify-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                                    </svg>
+                                    Add Approver Level
+                                </button>
+
+                                <!-- Default Assignee -->
+                                <div class="border-t border-gray-200 pt-4 mt-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                                        <span class="w-6 h-6 bg-orange-100 rounded-full flex items-center justify-center">
+                                            <svg class="w-3.5 h-3.5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4z"></path>
+                                            </svg>
+                                        </span>
+                                        Default Assignee <span class="text-red-500">*</span>
+                                    </label>
+                                    <select class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500">
+                                        <option value="1" selected>สมศักดิ์ กราฟิก (Senior Graphic Designer)</option>
+                                        <option value="2">นารี เว็บดี (Web Designer)</option>
+                                        <option value="3">ปรีชา มโหรี (Motion Graphic Designer)</option>
+                                        <option value="4">อารยา ดีไซน์ (Junior Graphic Designer)</option>
+                                    </select>
+                                </div>
+
+                                <!-- Action Buttons -->
+                                <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                                    <button onclick="toggleEditMode()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
+                                        Cancel
+                                    </button>
+                                    <button onclick="saveFlow()" class="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors flex items-center gap-2">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                        </svg>
+                                        Save Changes
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Flow Stats -->
+                        <div class="grid grid-cols-3 gap-4 mb-6">
+                            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                        <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <p class="text-2xl font-bold text-gray-900">2</p>
+                                        <p class="text-sm text-gray-500">Approval Levels</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                                        <svg class="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4z"></path>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <p class="text-2xl font-bold text-gray-900">1</p>
+                                        <p class="text-sm text-gray-500">Default Assignee</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                                        <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <p class="text-2xl font-bold text-gray-900">45</p>
+                                        <p class="text-sm text-gray-500">DJ Processed</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Info Box -->
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <div class="flex items-start gap-3">
+                                <svg class="w-5 h-5 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                <div>
+                                    <h4 class="font-medium text-blue-800">Approval Flow Rules</h4>
+                                    <ul class="mt-2 text-sm text-blue-700 space-y-1">
+                                        <li>• DJ ต้องผ่านการอนุมัติจาก Approver ทุกระดับตามลำดับก่อนส่งให้ Assignee</li>
+                                        <li>• หาก Approver ระดับใดระดับหนึ่งปฏิเสธ DJ จะถูกส่งกลับไปยัง Requester</li>
+                                        <li>• Default Assignee จะถูกกำหนดอัตโนมัติเมื่อ DJ ผ่านการอนุมัติครบ</li>
+                                        <li>• สามารถเปลี่ยน Assignee ได้หลังจาก DJ ถูก Approved แล้ว</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Add Project Modal -->
+    <div id="addProjectModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div class="p-6 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-gray-900">Add New Project</h3>
+                    <button onclick="closeAddProjectModal()" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Project Name <span class="text-red-500">*</span></label>
+                    <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500" placeholder="Enter project name">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">BUD Code <span class="text-red-500">*</span></label>
+                    <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500" placeholder="BUD-2025-XXX">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                    <select class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500">
+                        <option value="draft">Draft</option>
+                        <option value="active">Active</option>
+                    </select>
+                </div>
+            </div>
+            <div class="p-6 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end gap-3">
+                <button onclick="closeAddProjectModal()" class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
+                    Cancel
+                </button>
+                <button class="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors">
+                    Add Project
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg hidden flex items-center gap-2">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+        </svg>
+        <span>Flow saved successfully!</span>
+    </div>
+
+    <script>
+        let isEditMode = false;
+        let selectedProject = 1;
+
+        function selectProject(id) {
+            // Remove selection from all projects
+            document.querySelectorAll('.project-item').forEach(item => {
+                item.classList.remove('bg-rose-50', 'border-l-rose-500');
+                item.classList.add('hover:bg-gray-50', 'border-l-transparent');
+            });
+
+            // Add selection to clicked project
+            const selectedItem = document.getElementById('project-' + id);
+            selectedItem.classList.add('bg-rose-50', 'border-l-rose-500');
+            selectedItem.classList.remove('hover:bg-gray-50', 'border-l-transparent');
+
+            selectedProject = id;
+
+            // Here you would typically load the flow details for the selected project
+            // For demo purposes, we'll just update the visual
+            console.log('Selected project:', id);
+        }
+
+        function toggleEditMode() {
+            isEditMode = !isEditMode;
+            const editPanel = document.getElementById('editPanel');
+            const editBtn = document.getElementById('editBtn');
+
+            if (isEditMode) {
+                editPanel.classList.remove('hidden');
+                editBtn.innerHTML = `
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                    Cancel Edit
+                `;
+                editBtn.classList.remove('bg-rose-600', 'hover:bg-rose-700');
+                editBtn.classList.add('bg-gray-600', 'hover:bg-gray-700');
+            } else {
+                editPanel.classList.add('hidden');
+                editBtn.innerHTML = `
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                    </svg>
+                    Edit Flow
+                `;
+                editBtn.classList.add('bg-rose-600', 'hover:bg-rose-700');
+                editBtn.classList.remove('bg-gray-600', 'hover:bg-gray-700');
+            }
+        }
+
+        function saveFlow() {
+            // Show toast
+            const toast = document.getElementById('toast');
+            toast.classList.remove('hidden');
+
+            // Hide toast after 3 seconds
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 3000);
+
+            // Exit edit mode
+            toggleEditMode();
+        }
+
+        function openAddProjectModal() {
+            document.getElementById('addProjectModal').classList.remove('hidden');
+            document.getElementById('addProjectModal').classList.add('flex');
+        }
+
+        function closeAddProjectModal() {
+            document.getElementById('addProjectModal').classList.add('hidden');
+            document.getElementById('addProjectModal').classList.remove('flex');
+        }
+    </script>
+</body>
+</html>
