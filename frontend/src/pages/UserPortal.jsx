@@ -1,31 +1,130 @@
 /**
  * @file UserPortal.jsx
- * @description หน้า User Portal (Self-Service)
+ * @description หน้า User Portal (Self-Service) - V1 MVP ตาม Original 100%
  * 
- * Senior Programmer Notes:
- * - หน้า Landing สำหรับ Users ทั่วไป (Requesters)
- * - Layout แยกต่างหากจาก Admin Dashboard (Top Nav, No Sidebar)
- * - เน้น Quick Actions และ Search
+ * ฟีเจอร์:
+ * - Hero + Search Bar
+ * - Quick Actions (4 การ์ด)
+ * - งานล่าสุด (โหลดจาก API)
+ * - SLA Info + Contact
+ * - Media โครงการ (Grid + Tabs)
+ * - เลือกประเภทงาน (6 การ์ด)
+ * - เคล็ดลับ (Dark Background)
  */
 
-import React from 'react';
-import { Link } from 'react-router-dom';
-import Button from '@/components/common/Button';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import Badge from '@/components/common/Badge';
+import { useAuthStore } from '@/store/authStore';
+import { getJobs } from '@/services/mockApi';
 
 // Icons
 import {
     MagnifyingGlassIcon,
     PlusIcon,
-    ListBulletIcon,
+    ClipboardDocumentListIcon,
     ClockIcon,
     PhotoIcon,
     QuestionMarkCircleIcon,
-    UserIcon,
     PhoneIcon,
-    EnvelopeIcon
+    EnvelopeIcon,
+    ArrowDownTrayIcon,
+    EyeIcon,
+    ChevronRightIcon,
+    VideoCameraIcon,
+    PrinterIcon,
+    ShareIcon,
+    ComputerDesktopIcon,
+    CalendarDaysIcon,
+    DocumentIcon,
+    ArchiveBoxIcon,
+    ArrowRightIcon
 } from '@heroicons/react/24/outline';
 
 export default function UserPortal() {
+    const navigate = useNavigate();
+    const { user } = useAuthStore();
+    const [recentJobs, setRecentJobs] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [activeProject, setActiveProject] = useState(0);
+
+    // โหลดงานล่าสุด
+    useEffect(() => {
+        const loadJobs = async () => {
+            try {
+                const jobs = await getJobs();
+                // Filter ตาม role
+                const role = user?.roles?.[0] || 'marketing';
+                let filtered = jobs;
+
+                if (role === 'marketing') {
+                    // เห็นงานที่ตัวเองสร้าง (สมมติ requesterName = Demo User)
+                    filtered = jobs.filter(j => j.requesterName === 'สมหญิง' || j.requesterId === user?.id);
+                } else if (role === 'assignee') {
+                    // เห็นงานที่ถูกมอบหมาย
+                    filtered = jobs.filter(j => j.assigneeName === 'กานต์' || j.assigneeId === user?.id);
+                }
+                // Approver/Admin เห็นทั้งหมด
+
+                setRecentJobs(filtered.slice(0, 4));
+            } catch (err) {
+                console.error('Error loading jobs:', err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadJobs();
+    }, [user]);
+
+    // ค้นหา
+    const handleSearch = (e) => {
+        if (e.key === 'Enter' && searchQuery.trim()) {
+            navigate(`/jobs?search=${encodeURIComponent(searchQuery)}`);
+        }
+    };
+
+    // Mock Projects
+    const projects = [
+        { name: 'Sena Park Grand', files: 85 },
+        { name: 'Sena Villa Ratchapruek', files: 62 },
+        { name: 'Sena Ecotown', files: 98 },
+    ];
+
+    // Mock Media Files
+    const mediaFiles = [
+        { name: 'Banner_FB_Q1_Final.jpg', type: 'JPG', size: '2.4 MB', djId: 'DJ-2024-0148', color: 'orange' },
+        { name: 'Walkthrough_30sec.mp4', type: 'MP4', size: '156 MB', djId: 'DJ-2024-0142', color: 'purple', duration: '00:30' },
+        { name: 'Brochure_2024.pdf', type: 'PDF', size: '8.7 MB', djId: 'DJ-2024-0145', color: 'red' },
+        { name: 'LINE_Richmenu.png', type: 'PNG', size: '1.8 MB', djId: 'DJ-2024-0151', color: 'cyan' },
+        { name: 'FB_Carousel_Set1.png', type: 'PNG', size: '3.1 MB', djId: 'DJ-2024-0149', color: 'pink' },
+    ];
+
+    // Job Types
+    const jobTypes = [
+        { id: 'online', name: 'Online Artwork', icon: PhotoIcon, color: 'rose' },
+        { id: 'print', name: 'Print Artwork', icon: PrinterIcon, color: 'purple' },
+        { id: 'video', name: 'Video Production', icon: VideoCameraIcon, color: 'blue' },
+        { id: 'social', name: 'Social Media', icon: ShareIcon, color: 'cyan' },
+        { id: 'banner', name: 'Website Banner', icon: ComputerDesktopIcon, color: 'amber' },
+        { id: 'event', name: 'Event Material', icon: CalendarDaysIcon, color: 'emerald' },
+    ];
+
+    // ฟังก์ชันหา relative time
+    const getRelativeTime = (dateStr) => {
+        if (!dateStr) return '-';
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+        if (diffHours < 1) return 'เมื่อสักครู่';
+        if (diffHours < 24) return `${diffHours} ชม. ที่แล้ว`;
+        if (diffDays === 1) return 'เมื่อวาน';
+        return `${diffDays} วันที่แล้ว`;
+    };
+
     return (
         <div className="bg-slate-50 min-h-screen font-sans">
             {/* ============================================
@@ -48,9 +147,11 @@ export default function UserPortal() {
                             <Link to="/media-portal" className="text-slate-600 hover:text-rose-600 text-sm font-medium">Media Portal</Link>
                             <div className="flex items-center gap-2 pl-4 border-l border-slate-200">
                                 <div className="w-8 h-8 bg-rose-100 rounded-full flex items-center justify-center text-rose-700 text-sm font-medium">
-                                    ส
+                                    {user?.displayName?.[0] || 'ส'}
                                 </div>
-                                <span className="text-sm text-slate-700 hidden sm:inline">สมชาย Marketing</span>
+                                <span className="text-sm text-slate-700 hidden sm:inline">
+                                    {user?.displayName || 'สมชาย'} {user?.roles?.[0] || 'Marketing'}
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -73,7 +174,10 @@ export default function UserPortal() {
                             <input
                                 type="text"
                                 placeholder="ค้นหา DJ ID หรือชื่องาน..."
-                                className="w-full pl-14 pr-4 py-4 rounded-xl text-lg focus:outline-none focus:ring-4 focus:ring-rose-300 shadow-lg text-slate-800"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                onKeyPress={handleSearch}
+                                className="w-full pl-14 pr-4 py-4 rounded-xl text-lg focus:outline-none focus:ring-4 focus:ring-rose-300 shadow-lg bg-white"
                             />
                         </div>
                     </div>
@@ -91,7 +195,7 @@ export default function UserPortal() {
                         />
                         <QuickActionCard
                             to="/jobs"
-                            icon={<ListBulletIcon className="w-7 h-7 text-indigo-600" />}
+                            icon={<ClipboardDocumentListIcon className="w-7 h-7 text-indigo-600" />}
                             bgColor="bg-indigo-100 group-hover:bg-indigo-200"
                             title="งานของฉัน"
                             desc="ดูสถานะงานทั้งหมด"
@@ -131,28 +235,59 @@ export default function UserPortal() {
                                             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">DJ ID</th>
                                             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">ชื่องาน</th>
                                             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">สถานะ</th>
-                                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">อัปเดต</th>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">อัปเดตล่าสุด</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        <JobRow id="DJ-2024-0156" title="Banner Facebook Q1 Campaign" status="In Progress" statusColor="bg-blue-100 text-blue-700" time="2 ชม. ที่แล้ว" />
-                                        <JobRow id="DJ-2024-0157" title="IG Story เปิดตัวโปรโมชั่น" status="Pending Approval" statusColor="bg-amber-100 text-amber-700" time="เมื่อวาน" />
-                                        <JobRow id="DJ-2024-0158" title="VDO Walkthrough 30sec" status="Completed" statusColor="bg-emerald-100 text-emerald-700" time="3 วันที่แล้ว" />
-                                        <JobRow id="DJ-2024-0155" title="Facebook Carousel Ads" status="Rework" statusColor="bg-yellow-100 text-yellow-700" time="1 ชม. ที่แล้ว" />
+                                        {isLoading ? (
+                                            <tr>
+                                                <td colSpan="4" className="px-4 py-8 text-center text-slate-500">
+                                                    <div className="animate-spin w-6 h-6 border-2 border-rose-500 border-t-transparent rounded-full mx-auto"></div>
+                                                </td>
+                                            </tr>
+                                        ) : recentJobs.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="4" className="px-4 py-8 text-center text-slate-500">
+                                                    ไม่มีงาน
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            recentJobs.map((job) => (
+                                                <tr
+                                                    key={job.id}
+                                                    onClick={() => navigate(`/jobs/${job.id}`)}
+                                                    className="hover:bg-slate-50 cursor-pointer transition-colors"
+                                                >
+                                                    <td className="px-4 py-3">
+                                                        <span className="text-sm font-medium text-rose-600">{job.djId || `DJ-${job.id}`}</span>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <p className="text-sm text-slate-800">{job.subject}</p>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <Badge status={job.status} />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className="text-sm text-slate-600">{getRelativeTime(job.updatedAt || job.createdAt)}</span>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
                                     </tbody>
                                 </table>
                             </div>
                         </div>
 
                         {/* Right: Info & Contact */}
-                        <div className="space-y-8">
+                        <div className="space-y-6">
                             {/* SLA Info */}
                             <div>
                                 <h3 className="font-semibold text-slate-800 text-lg mb-4">ระยะเวลาดำเนินการ (SLA)</h3>
-                                <div className="bg-white rounded-xl shadow-sm p-4 space-y-4 border border-slate-200">
-                                    <SLAItem iconColor="bg-rose-100 text-rose-600" title="Online Artwork" days="7 Days" />
-                                    <SLAItem iconColor="bg-purple-100 text-purple-600" title="Print Artwork" days="10 Days" />
-                                    <SLAItem iconColor="bg-blue-100 text-blue-600" title="Video Production" days="15 Days" />
+                                <div className="bg-white rounded-xl shadow-sm p-4 space-y-3 border border-slate-200">
+                                    <SLAItem icon={PhotoIcon} iconColor="bg-rose-100 text-rose-600" title="Online Artwork" days="7 วันทำการ" />
+                                    <SLAItem icon={PrinterIcon} iconColor="bg-purple-100 text-purple-600" title="Print Artwork" days="10 วันทำการ" />
+                                    <SLAItem icon={VideoCameraIcon} iconColor="bg-blue-100 text-blue-600" title="Video Production" days="15 วันทำการ" />
+                                    <SLAItem icon={ShareIcon} iconColor="bg-cyan-100 text-cyan-600" title="Social Media Content" days="3 วันทำการ" />
                                 </div>
                             </div>
 
@@ -180,7 +315,85 @@ export default function UserPortal() {
                     </div>
                 </div>
 
-                {/* Tips Section */}
+                {/* ============================================
+              Media โครงการของฉัน
+              ============================================ */}
+                <div className="max-w-6xl mx-auto px-6 mt-12">
+                    <div className="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 className="font-semibold text-slate-800 text-lg">Media โครงการของฉัน</h3>
+                            <p className="text-sm text-slate-500">ไฟล์งานล่าสุดจากโครงการที่คุณดูแล</p>
+                        </div>
+                        <Link to="/media-portal" className="text-rose-600 hover:underline text-sm flex items-center gap-1">
+                            ดูทั้งหมด
+                            <ChevronRightIcon className="w-4 h-4" />
+                        </Link>
+                    </div>
+
+                    {/* Project Tabs */}
+                    <div className="flex gap-2 mb-4">
+                        {projects.map((project, idx) => (
+                            <button
+                                key={idx}
+                                onClick={() => setActiveProject(idx)}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeProject === idx
+                                    ? 'bg-rose-500 text-white'
+                                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                                    }`}
+                            >
+                                {project.name}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Media Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                        {mediaFiles.map((file, idx) => (
+                            <MediaCard key={idx} file={file} />
+                        ))}
+                    </div>
+
+                    {/* Quick Stats */}
+                    <div className="mt-4 flex items-center gap-6 text-sm text-slate-500">
+                        <span className="flex items-center gap-1">
+                            <ArchiveBoxIcon className="w-4 h-4" />
+                            รวม 245 ไฟล์
+                        </span>
+                        <span className="flex items-center gap-1">
+                            <DocumentIcon className="w-4 h-4" />
+                            งานส่งมอบแล้ว 189 ชิ้น
+                        </span>
+                        <span className="flex items-center gap-1">
+                            <ArrowDownTrayIcon className="w-4 h-4" />
+                            ดาวน์โหลด 1,247 ครั้ง
+                        </span>
+                    </div>
+                </div>
+
+                {/* ============================================
+              เลือกประเภทงาน
+              ============================================ */}
+                <div className="max-w-6xl mx-auto px-6 mt-12">
+                    <h3 className="font-semibold text-slate-800 text-lg mb-4">เลือกประเภทงาน</h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
+                        {jobTypes.map((type) => (
+                            <Link
+                                key={type.id}
+                                to={`/create?type=${type.id}`}
+                                className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition text-center group border border-slate-100"
+                            >
+                                <div className={`w-12 h-12 bg-${type.color}-100 rounded-xl mx-auto mb-2 flex items-center justify-center group-hover:bg-${type.color}-200 transition`}>
+                                    <type.icon className={`w-6 h-6 text-${type.color}-600`} />
+                                </div>
+                                <p className="text-sm font-medium text-slate-700">{type.name}</p>
+                            </Link>
+                        ))}
+                    </div>
+                </div>
+
+                {/* ============================================
+              เคล็ดลับการเปิดงาน DJ
+              ============================================ */}
                 <div className="max-w-6xl mx-auto px-6 mt-12 pb-8">
                     <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl p-8 text-white shadow-lg">
                         <h3 className="text-xl font-bold mb-6">เคล็ดลับการเปิดงาน DJ</h3>
@@ -199,7 +412,7 @@ export default function UserPortal() {
                 <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
                     <p className="text-sm text-slate-500">DJ System v2.0 | SENA Development PCL</p>
                     <Link to="/" className="text-sm text-rose-600 hover:underline flex items-center gap-1">
-                        <UserIcon className="w-4 h-4" />
+                        <ArrowRightIcon className="w-4 h-4" />
                         Staff Dashboard
                     </Link>
                 </div>
@@ -208,7 +421,10 @@ export default function UserPortal() {
     );
 }
 
-// Helpers
+// ============================================
+// Helper Components
+// ============================================
+
 function QuickActionCard({ to, icon, bgColor, title, desc }) {
     return (
         <Link to={to} className="bg-white rounded-xl p-6 shadow-md hover:shadow-lg transition text-center group border border-slate-100">
@@ -221,34 +437,71 @@ function QuickActionCard({ to, icon, bgColor, title, desc }) {
     );
 }
 
-function JobRow({ id, title, status, statusColor, time }) {
-    return (
-        <tr className="hover:bg-slate-50 cursor-pointer transition-colors">
-            <td className="px-4 py-3">
-                <span className="text-sm font-medium text-rose-600">{id}</span>
-            </td>
-            <td className="px-4 py-3">
-                <p className="text-sm text-slate-800">{title}</p>
-            </td>
-            <td className="px-4 py-3">
-                <span className={`px-2 py-1 text-xs rounded-full ${statusColor}`}>{status}</span>
-            </td>
-            <td className="px-4 py-3">
-                <span className="text-sm text-slate-600">{time}</span>
-            </td>
-        </tr>
-    );
-}
-
-function SLAItem({ iconColor, title, days }) {
+function SLAItem({ icon: Icon, iconColor, title, days }) {
     return (
         <div className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${iconColor}`}>
-                <ClockIcon className="w-5 h-5" />
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${iconColor}`}>
+                <Icon className="w-4 h-4" />
             </div>
             <div>
                 <p className="text-sm font-medium text-slate-800">{title}</p>
-                <p className="text-xs text-slate-500">{days} working days</p>
+                <p className="text-xs text-slate-500">{days}</p>
+            </div>
+        </div>
+    );
+}
+
+function MediaCard({ file }) {
+    const colorMap = {
+        orange: 'from-orange-200 to-rose-300',
+        purple: 'from-purple-200 to-purple-400',
+        red: 'from-red-200 to-red-400',
+        cyan: 'from-cyan-200 to-cyan-400',
+        pink: 'from-pink-200 to-pink-400',
+    };
+
+    const badgeColorMap = {
+        orange: 'bg-orange-500',
+        purple: 'bg-purple-500',
+        red: 'bg-red-500',
+        cyan: 'bg-cyan-500',
+        pink: 'bg-pink-500',
+    };
+
+    return (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden group">
+            <div className="relative h-32 bg-slate-100">
+                <div className={`w-full h-full bg-gradient-to-br ${colorMap[file.color] || colorMap.cyan} flex items-center justify-center`}>
+                    {file.type === 'MP4' ? (
+                        <VideoCameraIcon className="w-10 h-10 text-white/80" />
+                    ) : file.type === 'PDF' ? (
+                        <DocumentIcon className="w-10 h-10 text-white/80" />
+                    ) : (
+                        <PhotoIcon className="w-10 h-10 text-white/80" />
+                    )}
+                </div>
+                <div className="absolute top-2 right-2">
+                    <span className={`px-2 py-0.5 ${badgeColorMap[file.color] || 'bg-cyan-500'} text-white text-xs rounded font-medium`}>
+                        {file.type}
+                    </span>
+                </div>
+                {file.duration && (
+                    <div className="absolute bottom-2 left-2">
+                        <span className="px-2 py-0.5 bg-black/70 text-white text-xs rounded">{file.duration}</span>
+                    </div>
+                )}
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
+                    <button className="p-2 bg-white rounded-full hover:bg-slate-100" title="ดูตัวอย่าง">
+                        <EyeIcon className="w-4 h-4 text-slate-700" />
+                    </button>
+                    <button className="p-2 bg-rose-500 rounded-full hover:bg-rose-600" title="ดาวน์โหลด">
+                        <ArrowDownTrayIcon className="w-4 h-4 text-white" />
+                    </button>
+                </div>
+            </div>
+            <div className="p-3">
+                <p className="text-sm font-medium text-slate-800 truncate">{file.name}</p>
+                <p className="text-xs text-slate-500 mt-1">{file.djId} | {file.size}</p>
             </div>
         </div>
     );

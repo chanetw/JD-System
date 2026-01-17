@@ -7,9 +7,11 @@
  * - Notifications แสดงจำนวนที่ยังไม่ได้อ่าน
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { resetMockData } from '@/services/mockStorage';
+import { useNotificationStore } from '@/store/notificationStore';
 
 /**
  * @component Header
@@ -18,10 +20,17 @@ import { resetMockData } from '@/services/mockStorage';
 export default function Header() {
     // ดึง state และ actions จาก authStore
     const { user, switchRole, logout } = useAuthStore();
+    const { notifications, unreadCount, fetchNotifications, markAsRead, markAllAsRead, isLoading } = useNotificationStore();
 
     // State สำหรับแสดง/ซ่อน dropdown
     const [showRoleMenu, setShowRoleMenu] = useState(false);
     const [showProfileMenu, setShowProfileMenu] = useState(false);
+    const [showNoti, setShowNoti] = useState(false);
+
+    // Auto fetch on mount
+    useEffect(() => {
+        fetchNotifications();
+    }, [user, fetchNotifications]);
 
     /**
      * @function handleSwitchRole
@@ -122,13 +131,73 @@ export default function Header() {
                 {/* ============================================
             Notifications - การแจ้งเตือน
             ============================================ */}
-                <button className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg">
-                    <BellIcon className="w-6 h-6" />
-                    {/* Badge แสดงจำนวนแจ้งเตือนที่ยังไม่อ่าน */}
-                    <span className="absolute top-1 right-1 w-5 h-5 bg-rose-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
-                        8
-                    </span>
-                </button>
+                {/* ============================================
+            Notifications - การแจ้งเตือน
+            ============================================ */}
+                <div className="relative">
+                    <button
+                        onClick={() => {
+                            setShowNoti(!showNoti);
+                            if (!showNoti) fetchNotifications();
+                        }}
+                        className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+                    >
+                        <BellIcon className="w-6 h-6" />
+                        {/* Badge แสดงจำนวนแจ้งเตือนที่ยังไม่อ่าน */}
+                        {unreadCount > 0 && (
+                            <span className="absolute top-1 right-1 w-5 h-5 bg-rose-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                                {unreadCount}
+                            </span>
+                        )}
+                    </button>
+
+                    {/* Notification Dropdown */}
+                    {showNoti && (
+                        <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-slate-100 py-2 z-20">
+                            <div className="px-4 py-2 border-b border-slate-50 flex justify-between items-center">
+                                <h3 className="font-bold text-slate-800">Notifications</h3>
+                                {unreadCount > 0 && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); markAllAsRead(); }}
+                                        className="text-xs text-rose-600 hover:text-rose-700 font-medium"
+                                    >
+                                        Mark all read
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="max-h-96 overflow-y-auto">
+                                {isLoading ? (
+                                    <div className="p-4 text-center text-slate-400 text-sm">Loading...</div>
+                                ) : notifications.length === 0 ? (
+                                    <div className="p-4 text-center text-slate-400 text-sm">No notifications</div>
+                                ) : (
+                                    notifications.map(noti => (
+                                        <Link
+                                            key={noti.id}
+                                            to={noti.link}
+                                            onClick={() => { markAsRead(noti.id); setShowNoti(false); }}
+                                            className={`block px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 ${!noti.isRead ? 'bg-rose-50/30' : ''}`}
+                                        >
+                                            <div className="flex gap-3">
+                                                <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${!noti.isRead ? 'bg-rose-500' : 'bg-transparent'}`}></div>
+                                                <div>
+                                                    <p className={`text-sm ${!noti.isRead ? 'font-bold text-slate-800' : 'text-slate-600'}`}>
+                                                        {noti.title}
+                                                    </p>
+                                                    <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{noti.message}</p>
+                                                    <p className="text-[10px] text-slate-400 mt-1">
+                                                        {new Date(noti.createdAt).toLocaleDateString()}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </Link>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
 
                 {/* ============================================
             Profile Menu - เมนูผู้ใช้

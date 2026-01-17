@@ -56,13 +56,20 @@ export const useAuthStore = create(
              * 
              * @param {string} email - อีเมลของผู้ใช้
              */
-            login: async (email) => {
+            login: async (emailOrUser) => {
                 // ตั้งสถานะ loading เป็น true
                 set({ isLoading: true, error: null });
 
                 try {
-                    // เรียก API เพื่อ login
-                    const user = await api.login(email);
+                    let user;
+
+                    // ถ้าส่ง object มาโดยตรง (Mock Login)
+                    if (typeof emailOrUser === 'object') {
+                        user = emailOrUser;
+                    } else {
+                        // เรียก API เพื่อ login ด้วย email
+                        user = await api.login(emailOrUser);
+                    }
 
                     // ถ้าสำเร็จ ให้อัปเดต state
                     set({

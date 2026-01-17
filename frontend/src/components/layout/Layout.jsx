@@ -29,24 +29,11 @@ export default function Layout() {
     useEffect(() => {
         // เริ่มต้นโหลด Mock Data
         initMockData();
-
-        // ถ้ายังไม่ได้ login ให้ auto login เป็น Marketing (สำหรับ Demo)
-        if (!isAuthenticated) {
-            switchRole('marketing');
-        }
     }, []);
 
-    // ถ้ายังไม่ได้ login ให้แสดง loading
-    // (ในกรณีจริงควรแสดงหน้า Login)
+    // ถ้ายังไม่ได้ login ให้ Redirect ไป Login
     if (!isAuthenticated) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50">
-                <div className="text-center">
-                    <div className="w-12 h-12 border-4 border-rose-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-gray-600">กำลังโหลด...</p>
-                </div>
-            </div>
-        );
+        return <Navigate to="/login" replace />;
     }
 
     return (

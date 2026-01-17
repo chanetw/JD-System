@@ -6,6 +6,7 @@
  * - ใช้ React Router v6 สำหรับ routing
  * - Layout เป็น wrapper ที่มี Sidebar และ Header สำหรับ Admin/Staff pages
  * - UserPortal แยกออกมาอยู่นอก Layout หลัก เพื่อให้มี Design หน้าบ้านของตัวเอง
+ * - V2 Portals: แยกตาม Role (marketing, approver, assignee, admin)
  */
 
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
@@ -22,6 +23,15 @@ import OrganizationManagement from '@/pages/admin/OrganizationManagement';
 import UserManagement from '@/pages/admin/UserManagement';
 import MediaPortal from '@/pages/MediaPortal';
 import UserPortal from '@/pages/UserPortal';
+import Login from '@/pages/Login';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
+
+// V2 Portals (Role-based)
+import PortalRouter from '@/pages/portals/PortalRouter';
+import MarketingPortal from '@/pages/portals/MarketingPortal';
+import ApproverPortal from '@/pages/portals/ApproverPortal';
+import AssigneePortal from '@/pages/portals/AssigneePortal';
+import AdminPortal from '@/pages/portals/AdminPortal';
 
 /**
  * @component App
@@ -33,11 +43,29 @@ function App() {
     <BrowserRouter>
       <Routes>
 
-        {/* Route สำหรับ User Portal (แยก Layout) */}
-        <Route path="/user-portal" element={<UserPortal />} />
+        {/* Login Page */}
+        <Route path="/login" element={<Login />} />
+
+        {/* V1 User Portal (แยก Layout) */}
+        <Route path="/user-portal" element={
+          <ProtectedRoute>
+            <UserPortal />
+          </ProtectedRoute>
+        } />
+
+        {/* V2 Portals (Role-based, แยก Layout) */}
+        <Route path="/portal" element={<ProtectedRoute><PortalRouter /></ProtectedRoute>} />
+        <Route path="/portal/marketing" element={<ProtectedRoute><MarketingPortal /></ProtectedRoute>} />
+        <Route path="/portal/approver" element={<ProtectedRoute><ApproverPortal /></ProtectedRoute>} />
+        <Route path="/portal/assignee" element={<ProtectedRoute><AssigneePortal /></ProtectedRoute>} />
+        <Route path="/portal/admin" element={<ProtectedRoute><AdminPortal /></ProtectedRoute>} />
 
         {/* Layout เป็น parent route ที่ wrap ทุก pages ของ Admin/Staff */}
-        <Route path="/" element={<Layout />}>
+        <Route path="/" element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }>
           {/* index = default child route (เมื่อเข้า /) */}
           <Route index element={<Dashboard />} />
 

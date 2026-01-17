@@ -4,6 +4,20 @@
 
 ---
 
+## 📅 2026-01-18
+
+### 13. Notification System & Chat Alert
+🔴 **Request:** ทำให้กระดิ่ง Noti ใช้งานได้จริง และแจ้งเตือนเรื่อง Chat
+✅ **Action:**
+*   **Notification Store:** สร้าง `notificationStore` จัดการ state การแจ้งเตือน (unread count, mark read)
+*   **UI Components:**
+    *   **PortalNav:** เพิ่มกระดิ่งแจ้งเตือน + Dropdown List สำหรับ User Portal
+    *   **Header:** เพิ่มกระดิ่งแจ้งเตือน + Dropdown List สำหรับ Admin/Staff Dashboard
+    *   **Badge:** แสดงจุดแดงนับจำนวนเตือนที่ยังไม่อ่าน
+*   **Notification Types:** รองรับ job_completed, job_assigned, request_approval, และ **comment (Chat Alert)** 💬
+*   **Mock Data:** สร้างชุดข้อมูล `notifications.json` ที่สมจริง รองรับ Role-based (Marketing เห็นงานเสร็จ, Approver เห็นงานรออนุมัติ)
+📂 **Files:** `notificationStore.js`, `PortalNav.jsx`, `Header.jsx`, `notifications.json`
+
 ## 📅 2026-01-17
 
 ### 12. Thai Descriptions on Action Buttons
