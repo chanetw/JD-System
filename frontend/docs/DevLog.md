@@ -4,6 +4,45 @@
 
 ---
 
+## 📅 2026-01-19
+
+### 22. System Rules & Git Init
+🔴 **Request:** กำหนดมาตรฐานโปรเจกต์ และเริ่มใช้งาน Git
+✅ **Action:**
+*   สร้างกฎ 4 ข้อใน `.agent/rules/` (UI/UX, Arch, Business, Data)
+*   ระบุ Reference HTML Original ใน UI/UX standard
+*   Init Git Repository และ Commit code ทั้งหมด
+📂 **Files:** `.agent/rules/*`, `.gitignore`
+
+### 21. BUD Approver Logic
+🔴 **Request:** Approver ระดับ BUD สร้างงานได้เฉพาะ Project ใน BUD ตนเอง
+✅ **Action:**
+*   เพิ่ม field `level` และ `budId` ใน User Mock Data
+*   เพิ่ม Logic กรอง Dropdown Project ในหน้า Create DJ
+📂 **Files:** `CreateDJ.jsx`, `users.json`
+
+### 20. System Cleanup (Remove V2)
+🔴 **Request:** ลบ Portal V2 ที่ไม่ได้ใช้งาน
+✅ **Action:**
+*   ลบ Route modules เก่าออกจาก `App.jsx`
+*   ปรับ Sidebar ลบเมนู V2 และ Rename V1
+📂 **Files:** `App.jsx`, `Sidebar.jsx`
+
+### 19. User Management Enhancements
+🔴 **Request:** ปรับ Validation และการแสดงผล Project List
+✅ **Action:**
+*   เพิ่ม Modal Custom แทน Alert
+*   Validate Role Marketing/Assignee ต้องเลือก Project
+*   เพิ่ม Tooltip แสดงรายชื่อ Project ทั้งหมดในตาราง
+📂 **Files:** `UserManagement.jsx`, `Modal.jsx`
+
+### 18. Consolidate DevLogs
+🔴 **Request:** รวม Log เข้าไฟล์หลัก
+✅ **Action:**
+*   ย้ายข้อมูลจาก Daily Log เข้าสู่ `DevLog.md`
+*   ลบไฟล์ Daily Log ที่ซ้ำซ้อน
+📂 **Files:** `DevLog.md`
+
 ## 📅 2026-01-18
 
 ### 17. Approver Portal Widget Upgrade
