@@ -3,9 +3,9 @@
     {
       "id": 1,
       "email": "admin@sena.co.th",
-      "firstName": "แอดมิน",
-      "lastName": "ระบบ",
-      "displayName": "แอดมิน Admin",
+      "firstName": "Admin",
+      "lastName": "System",
+      "displayName": "System Admin",
       "roles": [
         "admin"
       ],
@@ -17,7 +17,7 @@
       "email": "somying@sena.co.th",
       "firstName": "สมหญิง",
       "lastName": "ใจดี",
-      "displayName": "สมหญิง Marketing",
+      "displayName": "สมหญิง ใจดี (Marketing)",
       "roles": [
         "marketing"
       ],
@@ -29,7 +29,7 @@
       "email": "somchai@sena.co.th",
       "firstName": "สมชาย",
       "lastName": "มานะ",
-      "displayName": "สมชาย Marketing",
+      "displayName": "สมชาย มานะ (Marketing)",
       "roles": [
         "marketing"
       ],
@@ -41,19 +41,21 @@
       "email": "wipa@sena.co.th",
       "firstName": "วิภา",
       "lastName": "อนุมัติ",
-      "displayName": "คุณวิภา Approver",
+      "displayName": "วิภา อนุมัติ (Approver)",
       "roles": [
         "approver"
       ],
       "avatarUrl": null,
-      "isActive": true
+      "isActive": true,
+      "level": "BUD",
+      "budId": 1
     },
     {
       "id": 5,
       "email": "karn@sena.co.th",
       "firstName": "กานต์",
-      "lastName": "กราฟิก",
-      "displayName": "กานต์ Graphic",
+      "lastName": "ดีไซน์",
+      "displayName": "กานต์ ดีไซน์ (Graphic)",
       "roles": [
         "assignee"
       ],
@@ -65,7 +67,7 @@
       "email": "pim@sena.co.th",
       "firstName": "พิม",
       "lastName": "เว็บ",
-      "displayName": "พิม Web",
+      "displayName": "พิม เว็บ (Web)",
       "roles": [
         "assignee"
       ],
@@ -77,7 +79,7 @@
       "email": "nattaya@sena.co.th",
       "firstName": "ณัฐยา",
       "lastName": "สุขใจ",
-      "displayName": "ณัฐยา Marketing",
+      "displayName": "ณัฐยา สุขใจ (Marketing)",
       "roles": [
         "marketing"
       ],
@@ -89,7 +91,7 @@
       "email": "prasit@sena.co.th",
       "firstName": "ประสิทธิ์",
       "lastName": "พัฒนา",
-      "displayName": "ประสิทธิ์ Manager",
+      "displayName": "ประสิทธิ์ พัฒนา (Manager)",
       "roles": [
         "approver"
       ],
@@ -101,7 +103,7 @@
       "email": "apinya@sena.co.th",
       "firstName": "อภิญญา",
       "lastName": "สร้างสรรค์",
-      "displayName": "อภิญญา Design",
+      "displayName": "อภิญญา สร้างสรรค์ (Design)",
       "roles": [
         "assignee"
       ],
@@ -113,7 +115,7 @@
       "email": "thanakorn@sena.co.th",
       "firstName": "ธนากร",
       "lastName": "วิดีโอ",
-      "displayName": "ธนากร Video",
+      "displayName": "ธนากร วิดีโอ (Video)",
       "roles": [
         "assignee"
       ],
@@ -125,7 +127,7 @@
       "email": "waraporn@sena.co.th",
       "firstName": "วราภรณ์",
       "lastName": "ตลาด",
-      "displayName": "วราภรณ์ Marketing",
+      "displayName": "วราภรณ์ ตลาด (Marketing)",
       "roles": [
         "marketing"
       ],

@@ -17,7 +17,7 @@ import PortalNav from './shared/PortalNav';
 import PortalHero from './shared/PortalHero';
 import QuickActions from './shared/QuickActions';
 import JobsTable from './shared/JobsTable';
-import SLAWidget from './shared/SLAWidget';
+import ApprovalStatsWidget from './shared/ApprovalStatsWidget';
 import PortalFooter from './shared/PortalFooter';
 
 // Icons
@@ -138,7 +138,7 @@ export default function ApproverPortal() {
                             />
                         </div>
                         <div>
-                            <SLAWidget showContact={true} />
+                            <ApprovalStatsWidget />
                         </div>
                     </div>
                 </div>

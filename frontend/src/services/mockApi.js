@@ -31,7 +31,8 @@ export const getJobs = async () => {
 export const getJobById = async (id) => {
     await delay(300);
     const jobs = loadMockData('jobs');
-    return jobs.find(j => j.id === id);
+    // แปลง ID เป็น string เพื่อเปรียบเทียบ (รองรับทั้ง string และ number)
+    return jobs.find(j => String(j.id) === String(id));
 };
 
 export const createJob = async (jobData) => {
@@ -91,7 +92,8 @@ export const createJob = async (jobData) => {
 export const updateJob = async (id, updateData) => {
     await delay(500);
     const jobs = loadMockData('jobs');
-    const index = jobs.findIndex(j => j.id === id);
+    // แปลง ID เป็น string เพื่อเปรียบเทียบ (รองรับทั้ง string และ number)
+    const index = jobs.findIndex(j => String(j.id) === String(id));
 
     if (index === -1) throw new Error('Job not found');
 

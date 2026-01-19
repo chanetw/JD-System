@@ -57,6 +57,7 @@ export default function AdminApprovalFlow() {
     const [currentFlow, setCurrentFlow] = useState(null);
     const [isEditMode, setIsEditMode] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [flowFilter, setFlowFilter] = useState('all'); // 'all', 'hasFlow', 'noFlow'
 
     // State: Edit Form
     const [editLevels, setEditLevels] = useState([]);
@@ -262,10 +263,19 @@ export default function AdminApprovalFlow() {
     // ============================================
     // Filter
     // ============================================
-    const filteredProjects = projects.filter(p =>
-        p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.code?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredProjects = projects.filter(p => {
+        // Text search
+        const matchText = p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            p.code?.toLowerCase().includes(searchTerm.toLowerCase());
+
+        // Flow status filter
+        const hasFlow = approvalFlows.some(f => f.projectId === p.id);
+        const matchFlow = flowFilter === 'all' ? true :
+            flowFilter === 'hasFlow' ? hasFlow :
+                flowFilter === 'noFlow' ? !hasFlow : true;
+
+        return matchText && matchFlow;
+    });
 
     // ============================================
     // Render
@@ -297,9 +307,9 @@ export default function AdminApprovalFlow() {
             </div>
 
             <div className="flex flex-1 overflow-hidden bg-white rounded-xl border border-gray-200 shadow-sm">
-                {/* Left Panel: Project List */}
-                <div className="w-80 border-r border-gray-200 flex flex-col">
-                    <div className="p-4 border-b border-gray-200">
+                <div className="w-96 border-r border-gray-200 flex flex-col">
+                    <div className="p-4 border-b border-gray-200 space-y-3">
+                        {/* Search Input */}
                         <div className="relative">
                             <MagnifyingGlassIcon className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
                             <input
@@ -309,6 +319,36 @@ export default function AdminApprovalFlow() {
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 text-sm"
                             />
+                        </div>
+                        {/* Flow Status Filter - Pill Style */}
+                        <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
+                            <button
+                                onClick={() => setFlowFilter('all')}
+                                className={`flex-1 px-3 py-2 text-xs font-medium rounded-md transition-all ${flowFilter === 'all'
+                                        ? 'bg-white text-gray-900 shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                            >
+                                All ({projects.length})
+                            </button>
+                            <button
+                                onClick={() => setFlowFilter('hasFlow')}
+                                className={`flex-1 px-3 py-2 text-xs font-medium rounded-md transition-all ${flowFilter === 'hasFlow'
+                                        ? 'bg-white text-green-700 shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                            >
+                                Active ({projects.filter(p => approvalFlows.some(f => f.projectId === p.id)).length})
+                            </button>
+                            <button
+                                onClick={() => setFlowFilter('noFlow')}
+                                className={`flex-1 px-3 py-2 text-xs font-medium rounded-md transition-all ${flowFilter === 'noFlow'
+                                        ? 'bg-white text-red-700 shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                            >
+                                Inactive ({projects.filter(p => !approvalFlows.some(f => f.projectId === p.id)).length})
+                            </button>
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto">
@@ -337,11 +377,16 @@ export default function AdminApprovalFlow() {
                                                 <p className="text-xs text-gray-500">ID: {project.id}</p>
                                             </div>
                                         </div>
-                                        <Badge
-                                            status={flow?.status === 'active' ? 'success' : 'warning'}
-                                            label={flow?.status || 'No Flow'}
-                                            className="text-[10px] px-1.5 py-0.5"
-                                        />
+                                        {/* Flow Status Badge */}
+                                        {flow ? (
+                                            <span className="px-2.5 py-1 text-[11px] font-medium rounded-md bg-green-50 text-green-700">
+                                                Active
+                                            </span>
+                                        ) : (
+                                            <span className="px-2.5 py-1 text-[11px] font-medium rounded-md bg-gray-100 text-gray-500">
+                                                Inactive
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
                                         <span className="flex items-center gap-1">

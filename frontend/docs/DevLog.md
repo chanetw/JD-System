@@ -6,6 +6,39 @@
 
 ## 📅 2026-01-18
 
+### 17. Approver Portal Widget Upgrade
+🔴 **Request:** SLA Widget ไม่เหมาะกับ Approver Portal - ต้องการแสดงสถิติการอนุมัติแทน
+✅ **Action:**
+*   สร้าง `ApprovalStatsWidget.jsx` แสดงสถิติ: รอดำเนินการ, อนุมัติแล้ว, ปฏิเสธ
+*   เพิ่ม **อัตราการอนุมัติ (%)** พร้อม Progress Bar
+*   แทนที่ SLAWidget ด้วย ApprovalStatsWidget ใน ApproverPortal
+📂 **Files:** `ApprovalStatsWidget.jsx`, `ApproverPortal.jsx`
+
+### 16. Multi-Flow Analysis Document
+🔴 **Request:** วิเคราะห์ความเป็นไปได้หาก 1 โครงการมีหลาย Flow
+✅ **Action:**
+*   สร้างเอกสารวิเคราะห์ 3 Options: Condition-Based, Named Flows, Template Override
+*   แนะนำ Option 1 (Condition-Based) พร้อมโครงสร้างข้อมูลตัวอย่าง
+*   ระบุผลกระทบต่อระบบและขั้นตอนการพัฒนา
+📂 **Files:** `docs/Multi-Flow-Per-Project-Analysis.md`
+
+### 15. Approval Flow UI Improvements
+🔴 **Request:** Badge แยกสี Active/Inactive + Filter ตามสถานะ Flow + ขยาย Column
+✅ **Action:**
+*   เปลี่ยน Badge เป็น Active (เขียว) / Inactive (เทา)
+*   เพิ่ม Filter Pill Style: All | Active | Inactive
+*   ขยาย Column โครงการจาก w-80 เป็น w-96
+📂 **Files:** `ApprovalFlow.jsx`
+
+### 14. Mock Data & Bug Fixes
+🔴 **Request:** เพิ่มโครงการใหม่ใน Mock Data + แก้ไข Import Error
+✅ **Action:**
+*   เพิ่ม 3 โครงการใหม่: Sena Haus Sukhumvit, Sena Festive CM, Sena Kith PH
+*   แก้ไข Status Badge ใน Organization Management (normal → Active)
+*   แก้ไข heroicons import path ใน MediaPortal.jsx
+*   สร้าง Mock Jobs 20 รายการ ครอบคลุมทุกสถานะ
+📂 **Files:** `projects.json`, `jobs.json`, `OrganizationManagement.jsx`, `MediaPortal.jsx`
+
 ### 13. Notification System & Chat Alert
 🔴 **Request:** ทำให้กระดิ่ง Noti ใช้งานได้จริง และแจ้งเตือนเรื่อง Chat
 ✅ **Action:**

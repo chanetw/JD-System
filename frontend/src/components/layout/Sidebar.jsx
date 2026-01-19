@@ -75,12 +75,10 @@ export default function Sidebar() {
                 </SidebarLink>
 
                 <SidebarLink to="/user-portal" icon={UserIcon}>
-                    User Portal (V1)
+                    User Portal
                 </SidebarLink>
 
-                <SidebarLink to="/portal" icon={PortalIcon}>
-                    User Portal (V2)
-                </SidebarLink>
+
 
                 {/* ============================================
             Admin Menu - เมนู Admin (แสดงเฉพาะ Admin)

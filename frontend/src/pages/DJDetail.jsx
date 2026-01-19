@@ -17,7 +17,9 @@ import { Card, CardHeader, CardBody } from '@/components/common/Card';
 import Badge from '@/components/common/Badge';
 import Button from '@/components/common/Button';
 import { useAuthStore } from '@/store/authStore';
+import { useNotificationStore } from '@/store/notificationStore';
 import { getJobById, approveJob, rejectJob, getJobs } from '@/services/mockApi';
+import { loadMockData, saveMockData } from '@/services/mockStorage';
 
 // Heroicons
 import {
@@ -126,10 +128,68 @@ export default function DJDetail() {
         alert('ส่งคำขอแก้ไขแล้ว');
     };
 
-    const handleSendChat = () => {
+    /**
+     * @function handleSendChat
+     * @description บันทึกข้อความแชทลง Activity และส่ง Notification
+     */
+    const handleSendChat = async () => {
         if (!chatMessage.trim()) return;
-        // TODO: Implement chat
-        alert(`ส่งข้อความ: ${chatMessage}`);
+
+        const newActivity = {
+            type: 'chat',
+            user: user?.displayName || 'Unknown',
+            message: chatMessage,
+            time: new Date().toLocaleString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }),
+            initial: user?.displayName?.[0] || 'U',
+            color: currentRole === 'marketing' ? 'rose' : currentRole === 'assignee' ? 'purple' : 'blue',
+            createdAt: new Date().toISOString()
+        };
+
+        // Update job with new activity
+        const allJobs = loadMockData('jobs');
+        const jobIndex = allJobs.findIndex(j => j.id === job.id);
+        if (jobIndex !== -1) {
+            if (!allJobs[jobIndex].activities) {
+                allJobs[jobIndex].activities = [];
+            }
+            allJobs[jobIndex].activities.unshift(newActivity);
+            saveMockData('jobs', allJobs);
+
+            // Update local state
+            setJob({ ...job, activities: allJobs[jobIndex].activities });
+        }
+
+        // Send notification to relevant parties
+        const { addNotification } = useNotificationStore.getState();
+
+        // Notify assignee if current user is marketing/approver
+        if (currentRole !== 'assignee' && job.assigneeId) {
+            addNotification({
+                id: Date.now(),
+                recipientId: job.assigneeId,
+                type: 'comment',
+                title: 'คอมเมนต์ใหม่',
+                message: `${user?.displayName}: "${chatMessage.substring(0, 50)}${chatMessage.length > 50 ? '...' : ''}"`,
+                link: `/jobs/${job.id}`,
+                isRead: false,
+                createdAt: new Date().toISOString()
+            });
+        }
+
+        // Notify requester if current user is assignee/approver
+        if (currentRole !== 'marketing' && job.requesterId) {
+            addNotification({
+                id: Date.now() + 1,
+                recipientId: job.requesterId,
+                type: 'comment',
+                title: 'คอมเมนต์ใหม่',
+                message: `${user?.displayName}: "${chatMessage.substring(0, 50)}${chatMessage.length > 50 ? '...' : ''}"`,
+                link: `/jobs/${job.id}`,
+                isRead: false,
+                createdAt: new Date().toISOString()
+            });
+        }
+
         setChatMessage('');
     };
 
@@ -210,16 +270,10 @@ export default function DJDetail() {
 
     const slaDisplay = getSlaDisplay();
 
-    // Mock Activity Data
-    const activities = [
-        { type: 'upload', user: 'กานต์', action: 'อัพโหลดไฟล์ v2', time: '5 ม.ค. 68 10:30', color: 'blue' },
-        { type: 'chat', user: 'กานต์', message: 'ส่งตัวอย่างแก้ไขตาม comment ครับ ปรับสีสว่างขึ้นและเพิ่ม CTA button แล้ว', time: '5 ม.ค. 68 10:30', initial: 'ก', color: 'purple' },
-        { type: 'revision', user: 'สมหญิง', action: 'ขอ revision', time: '5 ม.ค. 68 09:30', color: 'amber' },
-        { type: 'chat', user: 'สมหญิง', message: 'ขอให้ปรับสีโทนให้สว่างขึ้น และเพิ่ม CTA button ด้วยครับ', time: '5 ม.ค. 68 09:30', initial: 'ส', color: 'rose' },
-        { type: 'upload', user: 'กานต์', action: 'อัพโหลดไฟล์ v1', time: '4 ม.ค. 68 16:00', color: 'blue' },
-        { type: 'assign', user: 'กานต์', action: 'ถูกมอบหมายงาน', time: '28 ธ.ค. 67 10:00', color: 'cyan' },
-        { type: 'approve', user: 'คุณวิภา', action: 'อนุมัติ', time: '28 ธ.ค. 67 09:30', color: 'green' },
-        { type: 'create', user: job.requesterName || 'สมหญิง', action: 'สร้างงาน', time: new Date(job.createdAt).toLocaleDateString('th-TH'), color: 'gray' },
+    // Load activities from job data (or use defaults)
+    const activities = job.activities || [
+        { type: 'assign', user: job.assigneeName || 'Unassigned', action: 'ถูกมอบหมายงาน', time: new Date(job.createdAt).toLocaleDateString('th-TH'), color: 'cyan' },
+        { type: 'create', user: job.requesterName || 'Unknown', action: 'สร้างงาน', time: new Date(job.createdAt).toLocaleDateString('th-TH'), color: 'gray' },
     ];
 
     // Mock Deliverables / Versions

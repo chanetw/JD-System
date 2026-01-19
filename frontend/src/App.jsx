@@ -14,7 +14,7 @@ import Layout from '@/components/layout/Layout';
 import Dashboard from '@/pages/Dashboard';
 import CreateDJ from '@/pages/CreateDJ';
 import DJList from '@/pages/DJList';
-import DJDetail from '@/pages/DJDetail';
+import JobDetail from '@/pages/JobDetail';
 import ApprovalsQueue from '@/pages/ApprovalsQueue';
 import JobTypeSLA from '@/pages/admin/JobTypeSLA';
 import HolidayCalendar from '@/pages/admin/HolidayCalendar';
@@ -26,12 +26,8 @@ import UserPortal from '@/pages/UserPortal';
 import Login from '@/pages/Login';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
-// V2 Portals (Role-based)
-import PortalRouter from '@/pages/portals/PortalRouter';
-import MarketingPortal from '@/pages/portals/MarketingPortal';
-import ApproverPortal from '@/pages/portals/ApproverPortal';
-import AssigneePortal from '@/pages/portals/AssigneePortal';
-import AdminPortal from '@/pages/portals/AdminPortal';
+
+import ReportsDashboard from '@/pages/admin/ReportsDashboard';
 
 /**
  * @component App
@@ -53,12 +49,7 @@ function App() {
           </ProtectedRoute>
         } />
 
-        {/* V2 Portals (Role-based, แยก Layout) */}
-        <Route path="/portal" element={<ProtectedRoute><PortalRouter /></ProtectedRoute>} />
-        <Route path="/portal/marketing" element={<ProtectedRoute><MarketingPortal /></ProtectedRoute>} />
-        <Route path="/portal/approver" element={<ProtectedRoute><ApproverPortal /></ProtectedRoute>} />
-        <Route path="/portal/assignee" element={<ProtectedRoute><AssigneePortal /></ProtectedRoute>} />
-        <Route path="/portal/admin" element={<ProtectedRoute><AdminPortal /></ProtectedRoute>} />
+
 
         {/* Layout เป็น parent route ที่ wrap ทุก pages ของ Admin/Staff */}
         <Route path="/" element={
@@ -71,13 +62,15 @@ function App() {
 
           <Route path="create" element={<CreateDJ />} />
           <Route path="jobs" element={<DJList />} />
-          <Route path="jobs/:id" element={<DJDetail />} />
+          <Route path="jobs/:id" element={<JobDetail />} />
           <Route path="approvals" element={<ApprovalsQueue />} />
 
           {/* Admin routes */}
           <Route path="admin/users" element={<UserManagement />} />
           <Route path="admin/job-types" element={<JobTypeSLA />} />
           <Route path="admin/organization" element={<OrganizationManagement />} />
+          <Route path="admin/reports" element={<ReportsDashboard />} />
+          <Route path="media-portal" element={<MediaPortal />} />
           <Route path="admin/holidays" element={<HolidayCalendar />} />
           <Route path="admin/approval-flow" element={<ApprovalFlow />} />
 

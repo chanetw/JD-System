@@ -11,11 +11,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
-import { createJob, getMasterData, getHolidays, getApprovalFlowByProject } from '@/services/mockApi';
+import { createJob, getMasterData, getHolidays, getApprovalFlowByProject, getJobs } from '@/services/mockApi';
 import { Card, CardHeader, CardBody } from '@/components/common/Card';
 import { FormInput, FormSelect, FormTextarea } from '@/components/common/FormInput';
 import Button from '@/components/common/Button';
+import Modal from '@/components/common/Modal';
 import { calculateDueDate, formatDateToThai } from '@/utils/slaCalculator';
+import { XMarkIcon, ClockIcon } from '@heroicons/react/24/outline';
 
 export default function CreateDJ() {
     const navigate = useNavigate();
@@ -58,6 +60,19 @@ export default function CreateDJ() {
     // Validation State
     const [errors, setErrors] = useState([]);
 
+    // Blocking Modal State
+    const [showBlockModal, setShowBlockModal] = useState(false);
+    const [blockReason, setBlockReason] = useState('');
+    const [canSchedule, setCanSchedule] = useState(false);
+
+    // Success/Error Modal State
+    const [showResultModal, setShowResultModal] = useState(false);
+    const [resultModalConfig, setResultModalConfig] = useState({
+        type: 'success',
+        title: '',
+        message: ''
+    });
+
     // ============================================
     // Load Master Data
     // ============================================
@@ -66,6 +81,12 @@ export default function CreateDJ() {
             setIsLoading(true);
             try {
                 const data = await getMasterData();
+
+                // Logic: ถ้าเป็น Approver ระดับ BUD ให้เห็นเฉพาะโครงการใน BUD ตัวเอง
+                if (user?.roles?.includes('approver') && user?.level === 'BUD' && user?.budId) {
+                    data.projects = data.projects.filter(p => p.budId === user.budId);
+                }
+
                 setMasterData(data);
                 // โหลดวันหยุดสำหรับ SLA calculation
                 const holidaysData = await getHolidays();
@@ -161,12 +182,72 @@ export default function CreateDJ() {
     };
 
     // ============================================
-    // Validation & Submit
+    // Business Rules Validation
     // ============================================
+
+    /**
+     * @function checkSubmissionAllowed
+     * @description ตรวจสอบว่าสามารถส่งงานได้หรือไม่ ตามกฎธุรกิจ
+     * @returns {object} { allowed: boolean, reason: string }
+     */
+    const checkSubmissionAllowed = async () => {
+        const now = new Date();
+        const hour = now.getHours();
+        const day = now.getDay(); // 0 = Sunday, 6 = Saturday
+
+        // Rule 1: Time Blocking (22:00 - 05:00)
+        if (hour >= 22 || hour < 5) {
+            return {
+                allowed: false,
+                reason: 'ไม่สามารถส่งงานได้ในช่วงเวลา 22:00 - 05:00 น.',
+                canSchedule: true
+            };
+        }
+
+        // Rule 2: Weekend Blocking
+        if (day === 0 || day === 6) {
+            return {
+                allowed: false,
+                reason: 'ไม่สามารถส่งงานได้ในวันเสาร์-อาทิตย์',
+                canSchedule: true
+            };
+        }
+
+        // Rule 3: Holiday Blocking
+        const todayStr = now.toISOString().split('T')[0];
+        const isHoliday = holidays.some(h => h.date === todayStr);
+        if (isHoliday) {
+            return {
+                allowed: false,
+                reason: 'ไม่สามารถส่งงานได้ในวันหยุดนักขัตฤกษ์',
+                canSchedule: true
+            };
+        }
+
+        // Rule 4: Daily Quota (10 jobs/project/day)
+        if (formData.project) {
+            const jobs = await getJobs();
+            const todayJobs = jobs.filter(j => {
+                const jobDate = new Date(j.createdAt).toISOString().split('T')[0];
+                return j.project === formData.project && jobDate === todayStr;
+            });
+
+            if (todayJobs.length >= 10) {
+                return {
+                    allowed: false,
+                    reason: `โครงการ "${formData.project}" มีงานครบโควต้าแล้ว (10 งาน/วัน)`,
+                    canSchedule: false
+                };
+            }
+        }
+
+        return { allowed: true, reason: '', canSchedule: false };
+    };
 
     const validateForm = () => {
         const newErrors = [];
         if (!formData.project) newErrors.push("กรุณาเลือก Project");
+        if (!formData.jobType) newErrors.push("กรุณาเลือก Job Type");
         if (!formData.subject) newErrors.push("กรุณาระบุ Subject");
         if (!formData.objective || formData.objective.length < 20) newErrors.push("Objective ต้องมีอย่างน้อย 20 ตัวอักษร");
         if (!formData.headline) newErrors.push("กรุณาระบุ Headline");
@@ -177,35 +258,75 @@ export default function CreateDJ() {
     };
 
     const handleSubmit = async (e) => {
-        e.preventDefault(); // กัน form submit ปกติ
+        e.preventDefault();
 
+        // Validate form first
         if (!validateForm()) {
             window.scrollTo({ top: 0, behavior: 'smooth' });
             return;
         }
 
+        // Check business rules
+        const validation = await checkSubmissionAllowed();
+        if (!validation.allowed) {
+            setBlockReason(validation.reason);
+            setCanSchedule(validation.canSchedule);
+            setShowBlockModal(true);
+            return;
+        }
+
+        // Proceed with submission
+        await submitJob('submitted');
+    };
+
+    /**
+     * @function submitJob
+     * @description ส่งงานจริง (สามารถเป็น 'submitted' หรือ 'scheduled')
+     */
+    const submitJob = async (status = 'submitted') => {
         setIsSubmitting(true);
         try {
             await createJob({
                 ...formData,
                 requesterName: user?.displayName || 'Unknown User',
-                flowSnapshot: approvalFlow
+                flowSnapshot: approvalFlow,
+                status: status
             });
 
-            // Success Notification (Mock with alert for now)
-            alert('สร้างงาน DJ สำเร็จ! กำลังไปที่หน้ารายการงาน...');
-            navigate('/jobs');
+            const message = status === 'scheduled'
+                ? 'บันทึกงานและตั้งเวลาส่งอัตโนมัติสำเร็จ!'
+                : 'สร้างงาน DJ สำเร็จ!';
+
+            // แสดง Success Modal
+            setResultModalConfig({
+                type: 'success',
+                title: message,
+                message: 'กำลังไปที่หน้ารายการงาน...'
+            });
+            setShowResultModal(true);
+
+            // Redirect หลังจาก 1.5 วินาที
+            setTimeout(() => {
+                navigate('/jobs');
+            }, 1500);
 
         } catch (error) {
-            alert('เกิดข้อผิดพลาด: ' + error.message);
+            // แสดง Error Modal
+            setResultModalConfig({
+                type: 'error',
+                title: 'เกิดข้อผิดพลาด',
+                message: error.message || 'ไม่สามารถสร้างงานได้ กรุณาลองใหม่อีกครั้ง'
+            });
+            setShowResultModal(true);
         } finally {
             setIsSubmitting(false);
+            setShowBlockModal(false);
         }
     };
 
     // Calculate Completion %
     const calculateCompletion = () => {
-        const fields = ['project', 'jobType', 'subject', 'objective', 'headline', 'price'];
+        const fields = ['project', 'jobType', 'subject', 'objective', 'headline'];
         const filled = fields.filter(f => formData[f]).length;
         const hasFiles = formData.attachments.length > 0 ? 1 : 0;
         return Math.round(((filled + hasFiles) / (fields.length + 1)) * 100);
@@ -518,7 +639,7 @@ export default function CreateDJ() {
 
                     {/* Actions Panel */}
                     <div className="sticky top-20 space-y-3">
-                        <Button className="w-full h-12 text-lg shadow-lg" disabled={isSubmitting}>
+                        <Button type="submit" className="w-full h-12 text-lg shadow-lg" disabled={isSubmitting}>
                             {isSubmitting ? (
                                 <span className="flex items-center gap-2">
                                     <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -538,6 +659,61 @@ export default function CreateDJ() {
 
                 </div>
             </div>
+
+            {/* ============================================
+          Block Modal - แสดงเมื่อไม่สามารถส่งงานได้
+          ============================================ */}
+            {showBlockModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden">
+                        <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+                            <h3 className="text-lg font-semibold text-gray-900">ไม่สามารถส่งงานได้</h3>
+                            <button onClick={() => setShowBlockModal(false)} className="text-gray-400 hover:text-gray-600">
+                                <XMarkIcon className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                    <ClockIcon className="w-6 h-6 text-amber-600" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-gray-900">{blockReason}</p>
+                                </div>
+                            </div>
+
+                            {canSchedule && (
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                    <p className="text-sm text-blue-700">
+                                        <strong>💡 ทางเลือก:</strong> คุณสามารถบันทึกงานและตั้งเวลาส่งอัตโนมัติ ในเวลา <strong>08:00 น. ของวันทำการถัดไป</strong>
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                        <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                            <Button variant="secondary" onClick={() => setShowBlockModal(false)}>ยกเลิก</Button>
+                            {canSchedule && (
+                                <Button onClick={() => submitJob('scheduled')} className="bg-blue-500 hover:bg-blue-600">
+                                    <ClockIcon className="w-4 h-4 mr-2" />
+                                    บันทึกและส่งอัตโนมัติ
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ============================================
+          Success/Error Modal - แสดงผลลัพธ์การสร้างงาน
+          ============================================ */}
+            <Modal
+                isOpen={showResultModal}
+                onClose={() => setShowResultModal(false)}
+                type={resultModalConfig.type}
+                title={resultModalConfig.title}
+                message={resultModalConfig.message}
+                confirmText="ตกลง"
+            />
         </form>
     );
 }

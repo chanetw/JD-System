@@ -103,8 +103,28 @@ export default function UserManagement() {
     };
 
     const handleSave = async () => {
-        if (!formData.name || !formData.email || formData.roles.length === 0 || !formData.scopeId) {
-            showAlert('error', 'กรุณากรอกข้อมูลให้ครบถ้วน (ชื่อ, อีเมล, บทบาท, สังกัด)');
+        // Basic validation
+        if (!formData.name || !formData.email || formData.roles.length === 0) {
+            showAlert('error', 'กรุณากรอกข้อมูลให้ครบถ้วน (ชื่อ, อีเมล, บทบาท)');
+            return;
+        }
+
+        // Validate scopeId for non-marketing and non-assignee roles
+        const needsScopeId = !formData.roles.includes('marketing') && !formData.roles.includes('assignee');
+        if (needsScopeId && !formData.scopeId) {
+            showAlert('error', 'กรุณาเลือกสังกัด (Assigned To)');
+            return;
+        }
+
+        // Validate project selection for marketing role
+        if (formData.roles.includes('marketing') && formData.allowedProjects.length === 0) {
+            showAlert('error', 'กรุณาเลือกโครงการที่สร้าง DJ ได้อย่างน้อย 1 โครงการ');
+            return;
+        }
+
+        // Validate project selection for assignee role
+        if (formData.roles.includes('assignee') && formData.assignedProjects.length === 0) {
+            showAlert('error', 'กรุณาเลือกโครงการที่รับผิดชอบอย่างน้อย 1 โครงการ');
             return;
         }
 
@@ -191,6 +211,27 @@ export default function UserManagement() {
         return '-';
     };
 
+    // Helper to get Project Names for Marketing/Assignee (Multi-project)
+    const getProjectNames = (user) => {
+        // For Marketing role - show allowedProjects
+        if (user.roles?.includes('marketing') && user.allowedProjects?.length > 0) {
+            const projectNames = user.allowedProjects
+                .map(projectId => masters.projects?.find(p => p.id === projectId)?.name)
+                .filter(Boolean);
+            return projectNames.length > 0 ? projectNames : ['ไม่มีโครงการ'];
+        }
+
+        // For Assignee role - show assignedProjects
+        if (user.roles?.includes('assignee') && user.assignedProjects?.length > 0) {
+            const projectNames = user.assignedProjects
+                .map(projectId => masters.projects?.find(p => p.id === projectId)?.name)
+                .filter(Boolean);
+            return projectNames.length > 0 ? projectNames : ['ไม่มีโครงการ'];
+        }
+
+        return [];
+    };
+
     return (
         <div className="p-6 max-w-7xl mx-auto space-y-6">
             {/* Header */}
@@ -257,13 +298,65 @@ export default function UserManagement() {
                                     </div>
                                 </td>
                                 <td className="px-6 py-4">
-                                    <div className="text-sm text-gray-900 font-medium">
-                                        {user.scopeLevel === 'Tenant' && '🏢 '}
-                                        {user.scopeLevel === 'BUD' && '📑 '}
-                                        {user.scopeLevel === 'Project' && '🏗️ '}
-                                        {getScopeName(user)}
-                                    </div>
-                                    <div className="text-xs text-gray-500">Level: {user.scopeLevel}</div>
+                                    {/* แสดง Scope สำหรับ Admin/Approver */}
+                                    {!user.roles?.includes('marketing') && !user.roles?.includes('assignee') ? (
+                                        <>
+                                            <div className="text-sm text-gray-900 font-medium">
+                                                {user.scopeLevel === 'Tenant' && '🏢 '}
+                                                {user.scopeLevel === 'BUD' && '📑 '}
+                                                {user.scopeLevel === 'Project' && '🏗️ '}
+                                                {getScopeName(user)}
+                                            </div>
+                                            <div className="text-xs text-gray-500">Level: {user.scopeLevel}</div>
+                                        </>
+                                    ) : (
+                                        /* แสดงโครงการสำหรับ Marketing/Assignee */
+                                        <>
+                                            {getProjectNames(user).length > 0 ? (
+                                                <div className="space-y-1">
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {getProjectNames(user).slice(0, 3).map((projectName, idx) => (
+                                                            <span
+                                                                key={idx}
+                                                                className={`px-2 py-0.5 rounded-full text-xs font-medium ${user.roles?.includes('marketing')
+                                                                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                                                    : 'bg-orange-50 text-orange-700 border border-orange-200'
+                                                                    }`}
+                                                            >
+                                                                🏗️ {projectName}
+                                                            </span>
+                                                        ))}
+                                                        {getProjectNames(user).length > 3 && (
+                                                            <div className="relative group inline-block">
+                                                                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 cursor-help border border-gray-300 hover:bg-gray-200 transition-colors">
+                                                                    +{getProjectNames(user).length - 3} อื่นๆ
+                                                                </span>
+                                                                {/* Tooltip */}
+                                                                <div className="absolute left-0 top-full mt-1 w-64 bg-gray-900 text-white text-xs rounded-lg shadow-xl p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                                                                    <div className="font-semibold mb-2 text-gray-300">โครงการที่เหลือ ({getProjectNames(user).length - 3}):</div>
+                                                                    <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
+                                                                        {getProjectNames(user).slice(3).map((projectName, idx) => (
+                                                                            <div key={idx} className="flex items-center gap-2 py-1">
+                                                                                <span className="text-gray-400">{idx + 4}.</span>
+                                                                                <span className="text-white">{projectName}</span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                    {/* Arrow */}
+                                                                    <div className="absolute -top-1 left-4 w-2 h-2 bg-gray-900 transform rotate-45"></div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-xs text-gray-500">
+                                                        Level: Project ({getProjectNames(user).length} โครงการ)
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="text-sm text-gray-400">-</div>
+                                            )}
+                                        </>
+                                    )}
                                 </td>
                                 <td className="px-6 py-4 text-center">
                                     <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
