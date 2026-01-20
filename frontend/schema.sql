@@ -147,6 +147,18 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 11. Approval Flows (ลำดับการอนุมัติ)
+CREATE TABLE IF NOT EXISTS approval_flows (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER REFERENCES projects(id),
+    job_type_id INTEGER REFERENCES job_types(id), -- Optional: if different flows per job type
+    level INTEGER NOT NULL,
+    approver_id INTEGER REFERENCES users(id),
+    role VARCHAR(50), -- fallback e.g. 'manager', 'director'
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- ==========================================
 -- Security (Row Level Security)
 -- ==========================================

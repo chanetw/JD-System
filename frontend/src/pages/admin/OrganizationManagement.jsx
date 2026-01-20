@@ -21,8 +21,8 @@ import {
  */
 const TABS = [
     { id: 'projects', label: 'โครงการ (Projects)', icon: FolderIcon },
-    { id: 'buds', label: 'สายงาน (BUDs)', icon: BuildingOfficeIcon },
     { id: 'departments', label: 'แผนก (Departments)', icon: UserGroupIcon },
+    { id: 'buds', label: 'ฝ่าย (Business Unit)', icon: BuildingOfficeIcon },
     { id: 'tenants', label: 'บริษัท (Tenants)', icon: BuildingLibraryIcon },
 ];
 
@@ -208,9 +208,10 @@ export default function OrganizationManagement() {
                             <td className="px-6 py-4 text-sm font-mono text-gray-600">{item.code || '-'}</td>
                             <td className="px-6 py-4 text-sm text-gray-600">{bud.name || item.bud?.name || '-'}</td>
                             <td className="px-6 py-4 text-center">
-                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${item.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                    {item.status || 'Unknown'}
-                                </span>
+                                <StatusBadge
+                                    isActive={item.status === 'Active'}
+                                    onClick={() => handleToggleStatus(item.id, item)}
+                                />
                             </td>
                             <td className="px-6 py-4 text-center">
                                 <Actions id={item.id} item={item} />
@@ -247,7 +248,10 @@ export default function OrganizationManagement() {
                             <td className="px-6 py-4 text-sm font-mono text-gray-600">{item.code}</td>
                             <td className="px-6 py-4 text-sm text-gray-600">{tenant.name || '-'}</td>
                             <td className="px-6 py-4 text-center">
-                                <StatusBadge isActive={item.isActive} />
+                                <StatusBadge
+                                    isActive={item.isActive}
+                                    onClick={() => handleToggleStatus(item.id, item)}
+                                />
                             </td>
                             <td className="px-6 py-4 text-center">
                                 <Actions id={item.id} item={item} />
@@ -290,7 +294,10 @@ export default function OrganizationManagement() {
                             <td className="px-6 py-4 text-sm font-mono text-gray-600">{item.code || '-'}</td>
                             <td className="px-6 py-4 text-sm text-gray-600">{bud.name || '-'}</td>
                             <td className="px-6 py-4 text-center">
-                                <StatusBadge isActive={item.isActive} />
+                                <StatusBadge
+                                    isActive={item.isActive}
+                                    onClick={() => handleToggleStatus(item.id, item)}
+                                />
                             </td>
                             <td className="px-6 py-4 text-center">
                                 <Actions id={item.id} item={item} />
@@ -324,7 +331,10 @@ export default function OrganizationManagement() {
                         <td className="px-6 py-4 text-sm font-mono text-gray-600">{item.code}</td>
                         <td className="px-6 py-4 text-sm text-gray-500">{item.subdomain}</td>
                         <td className="px-6 py-4 text-center">
-                            <StatusBadge isActive={item.isActive} />
+                            <StatusBadge
+                                isActive={item.isActive}
+                                onClick={() => handleToggleStatus(item.id, item)}
+                            />
                         </td>
                         <td className="px-6 py-4 text-center">
                             <Actions id={item.id} item={item} />
@@ -353,14 +363,45 @@ export default function OrganizationManagement() {
     );
 
     /**
+     * เปลี่ยนสถานะใช้งาน (Toggle Status)
+     * @param {string|number} id - ID ของไอเทม
+     * @param {Object} item - ข้อมูลไอเทมปัจจุบัน
+     */
+    const handleToggleStatus = async (id, item) => {
+        try {
+            if (activeTab === 'projects') {
+                const newStatus = item.status === 'Active' ? 'Inactive' : 'Active';
+                await api.updateProject(id, { ...item, status: newStatus });
+            } else if (activeTab === 'buds') {
+                await api.updateBud(id, { ...item, isActive: !item.isActive });
+            } else if (activeTab === 'departments') {
+                await api.updateDepartment(id, { ...item, isActive: !item.isActive });
+            } else if (activeTab === 'tenants') {
+                await api.updateTenant(id, { ...item, isActive: !item.isActive });
+            }
+            fetchData();
+        } catch (error) {
+            alert('เกิดข้อผิดพลาดในการเปลี่ยนสถานะ: ' + error.message);
+        }
+    };
+
+    /**
      * คอมโพเน็นต์แสดงสถานะ (Status Badge)
      * @param {Object} props
      * @param {boolean} props.isActive - สถานะใช้งานอยู่หรือไม่
+     * @param {Function} props.onClick - ฟังก์ชันจัดการเมื่อคลิก
      */
-    const StatusBadge = ({ isActive }) => (
-        <span className={`px-2 py-1 rounded-full text-xs font-medium ${isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-            {isActive ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
-        </span>
+    const StatusBadge = ({ isActive, onClick }) => (
+        <button
+            onClick={onClick}
+            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer ${isActive
+                ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200'
+                : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                }`}
+            title="คลิกเพื่อเปลี่ยนสถานะ"
+        >
+            {isActive ? 'เปิดใช้งาน (Active)' : 'ปิดใช้งาน (Inactive)'}
+        </button>
     );
 
     return (

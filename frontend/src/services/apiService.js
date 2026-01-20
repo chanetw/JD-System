@@ -8,7 +8,7 @@
  * - สามารถสลับกลับเป็น Mock ได้ (เผื่อ Dev Offline)
  */
 
-import { mockApi } from './mockApi';
+import { mockApiService as mockApi } from './mockApi';
 import apiDatabase from './apiDatabase';
 
 // ============================================

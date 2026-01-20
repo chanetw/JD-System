@@ -27,30 +27,84 @@ const apiDatabase = {
         console.log("Database Service Initialized");
     },
 
+    // --- Master Data (รวมข้อมูลหลักทั้งหมดสำหรับหน้า Organization) ---
+    getMasterData: async () => {
+        // ดึงข้อมูล Tenants, BUDs, Projects พร้อมกัน (เอา Inactive มาด้วย เพื่อให้ Admin จัดการได้)
+        const [tenantsRes, budsRes, projectsRes] = await Promise.all([
+            supabase.from('tenants').select('*').order('id'),
+            supabase.from('buds').select('*').order('id'),
+            supabase.from('projects').select(`*, bud:buds(name)`).order('id')
+        ]);
+
+        // Transform Tenants
+        const tenants = (tenantsRes.data || []).map(t => ({
+            ...t,
+            isActive: t.is_active
+        }));
+
+        // Transform BUDs
+        const buds = (budsRes.data || []).map(b => ({
+            ...b,
+            tenantId: b.tenant_id,
+            isActive: b.is_active
+        }));
+
+        // Transform Projects
+        const projects = (projectsRes.data || []).map(p => ({
+            id: p.id,
+            name: p.name,
+            code: p.code,
+            budId: p.bud_id,
+            budName: p.bud?.name,
+            status: p.is_active ? 'Active' : 'Inactive', // Map to standard status string used in Frontend
+            isActive: p.is_active
+        }));
+
+        return {
+            tenants,
+            buds,
+            projects
+        };
+    },
+
     // --- Tenants & Organization ---
     getTenants: async () => {
-        return handleResponse(await supabase.from('tenants').select('*').eq('is_active', true).order('id'));
+        // For dropdowns, we might still want ONLY active ones. 
+        // But OrganizationManagement uses getMasterData.
+        // Let's keep this generic or assume it's for general usage (dropdowns).
+        // If getting ALL for admin, they usually use getMasterData.
+        // Let's stick to returning Active for dropdown usage safety, or make it return mapped data.
+        // Context: CreateDJ uses this for dropdowns.
+        const { data, error } = await supabase.from('tenants').select('*').eq('is_active', true).order('id');
+        if (error) throw error;
+        return data.map(t => ({ ...t, isActive: t.is_active }));
     },
 
     getBUDs: async () => {
-        return handleResponse(await supabase.from('buds').select('*').eq('is_active', true).order('id'));
+        const { data, error } = await supabase.from('buds').select('*').eq('is_active', true).order('id');
+        if (error) throw error;
+        return data.map(b => ({ ...b, tenantId: b.tenant_id, isActive: b.is_active }));
     },
 
     getDepartments: async () => {
         // Fetch with relations
-        const data = handleResponse(
-            await supabase.from('departments')
-                .select(`
+        // Used in OrganizationManagement independently
+        const { data, error } = await supabase.from('departments')
+            .select(`
           *,
           bud:buds(name, code),
           manager:users!fk_manager(display_name)
         `)
-                .eq('is_active', true)
-                .order('id')
-        );
-        // Transform to match generic object structure if needed, or keeping Supabase structure is fine
-        // Supabase returns nested objects: { ..., bud: { name: '...' } }
-        return data;
+            .order('id'); // Admin might want to see Inactive departments too? Assume yes.
+
+        if (error) throw error;
+
+        return data.map(d => ({
+            ...d,
+            budId: d.bud_id,
+            managerId: d.manager_id,
+            isActive: d.is_active
+        }));
     },
 
     // --- Projects ---
@@ -136,6 +190,95 @@ const apiDatabase = {
                 isRequired: i.is_required
             }))
         }));
+    },
+
+    // --- Approval Flows ---
+    getApprovalFlows: async () => {
+        // Fetch raw flows
+        const { data: flows, error } = await supabase.from('approval_flows')
+            .select(`*, approver:users(*)`)
+            .order('level');
+
+        if (error) throw error;
+
+        // Group by Project ID to match frontend structure
+        // Frontend Expects: Array of { projectId, levels: [ { level: 1, approverId: X, approver: {...} } ] }
+        const grouped = {};
+
+        flows.forEach(f => {
+            if (!grouped[f.project_id]) {
+                grouped[f.project_id] = {
+                    projectId: f.project_id,
+                    levels: [],
+                    updatedAt: f.updated_at
+                };
+            }
+
+            // Push level info
+            // Note: Frontend supports multi-approvers per level now (array 'approvers')
+            // But Schema might simple. Let's adapt.
+            // If schema is 1 row per approver rule:
+
+            // Check if level already exists in group
+            let lvl = grouped[f.project_id].levels.find(l => l.level === f.level);
+            if (!lvl) {
+                lvl = {
+                    level: f.level,
+                    approvers: [], // List of approvers
+                    logic: 'any' // Default logic
+                };
+                grouped[f.project_id].levels.push(lvl);
+            }
+
+            if (f.approver) {
+                lvl.approvers.push({
+                    id: f.approver.id,
+                    name: f.approver.display_name,
+                    role: f.approver.role,
+                    avatar: f.approver.avatar_url
+                });
+            }
+        });
+
+        return Object.values(grouped);
+    },
+
+    saveApprovalFlow: async (projectId, flowData) => {
+        // flowData = { levels: [ { level: 1, approvers: [id, id] } ], defaultAssignee: ... }
+
+        // 1. Delete existing flows for this project (Full replace strategy)
+        const { error: delErr } = await supabase.from('approval_flows').delete().eq('project_id', projectId);
+        if (delErr) throw delErr;
+
+        // 2. Insert new flows
+        const rowsToInsert = [];
+        flowData.levels.forEach(lvl => {
+            lvl.approvers.forEach(appr => {
+                rowsToInsert.push({
+                    project_id: projectId,
+                    level: lvl.level,
+                    approver_id: appr.id // Assuming appr object has ID
+                });
+            });
+        });
+
+        if (rowsToInsert.length > 0) {
+            const { error: insErr } = await supabase.from('approval_flows').insert(rowsToInsert);
+            if (insErr) throw insErr;
+        }
+
+        return { success: true };
+    },
+
+    // Alias สำหรับ Update (เรียกใช้ saveApprovalFlow เหมือนกัน)
+    updateApprovalFlow: async (flowId, flowData) => {
+        // flowData.projectId เป็น source ที่ถูกต้อง (Frontend ส่งมาให้)
+        return apiDatabase.saveApprovalFlow(flowData.projectId, flowData);
+    },
+
+    // Alias สำหรับ Create (เรียกใช้ saveApprovalFlow เหมือนกัน)
+    createApprovalFlow: async (flowData) => {
+        return apiDatabase.saveApprovalFlow(flowData.projectId, flowData);
     },
 
     // --- Jobs ---
@@ -259,6 +402,200 @@ const apiDatabase = {
             message: comment || 'Job approved'
         }]);
 
+        return { success: true };
+    },
+
+    // --- Job Types CRUD ---
+    createJobType: async (jobTypeData) => {
+        const payload = {
+            tenant_id: 1,
+            name: jobTypeData.name,
+            description: jobTypeData.description,
+            sla_days: jobTypeData.sla || 3,
+            is_active: true
+        };
+        const { data, error } = await supabase.from('job_types').insert([payload]).select().single();
+        if (error) throw error;
+        return data;
+    },
+
+    updateJobType: async (id, jobTypeData) => {
+        const payload = {
+            name: jobTypeData.name,
+            description: jobTypeData.description,
+            sla_days: jobTypeData.sla
+        };
+        const { data, error } = await supabase.from('job_types').update(payload).eq('id', id).select().single();
+        if (error) throw error;
+        return data;
+    },
+
+    deleteJobType: async (id) => {
+        // Soft delete by setting is_active to false
+        const { error } = await supabase.from('job_types').update({ is_active: false }).eq('id', id);
+        if (error) throw error;
+        return { success: true };
+    },
+
+    // --- Users CRUD ---
+    createUser: async (userData) => {
+        const payload = {
+            tenant_id: userData.tenantId || 1,
+            email: userData.email,
+            first_name: userData.firstName,
+            last_name: userData.lastName,
+            display_name: userData.displayName || `${userData.firstName} ${userData.lastName}`,
+            role: userData.role,
+            is_active: true
+        };
+        const { data, error } = await supabase.from('users').insert([payload]).select().single();
+        if (error) throw error;
+        return data;
+    },
+
+    updateUser: async (id, userData) => {
+        const payload = {
+            email: userData.email,
+            first_name: userData.firstName,
+            last_name: userData.lastName,
+            display_name: userData.displayName,
+            role: userData.role
+        };
+        const { data, error } = await supabase.from('users').update(payload).eq('id', id).select().single();
+        if (error) throw error;
+        return data;
+    },
+
+    deleteUser: async (id) => {
+        const { error } = await supabase.from('users').update({ is_active: false }).eq('id', id);
+        if (error) throw error;
+        return { success: true };
+    },
+
+    // --- Projects CRUD ---
+    createProject: async (projectData) => {
+        const payload = {
+            tenant_id: projectData.tenantId || 1,
+            bud_id: projectData.budId,
+            name: projectData.name,
+            code: projectData.code,
+            is_active: true
+        };
+        const { data, error } = await supabase.from('projects').insert([payload]).select().single();
+        if (error) throw error;
+        return data;
+    },
+
+    updateProject: async (id, projectData) => {
+        const payload = {
+            name: projectData.name,
+            code: projectData.code,
+            bud_id: projectData.budId,
+            is_active: projectData.status === 'Active' // Map Frontend 'Active'/'Inactive' to Boolean
+        };
+        const { data, error } = await supabase.from('projects').update(payload).eq('id', id).select().single();
+        if (error) throw error;
+        return data;
+    },
+
+    deleteProject: async (id) => {
+        const { error } = await supabase.from('projects').update({ is_active: false }).eq('id', id);
+        if (error) throw error;
+        return { success: true };
+    },
+
+    // --- Tenants CRUD ---
+    createTenant: async (tenantData) => {
+        const payload = {
+            name: tenantData.name,
+            code: tenantData.code,
+            subdomain: tenantData.subdomain,
+            is_active: true
+        };
+        const { data, error } = await supabase.from('tenants').insert([payload]).select().single();
+        if (error) throw error;
+        return data;
+    },
+
+    updateTenant: async (id, tenantData) => {
+        const payload = {
+            name: tenantData.name,
+            code: tenantData.code,
+            subdomain: tenantData.subdomain,
+            is_active: tenantData.isActive
+        };
+        const { data, error } = await supabase.from('tenants').update(payload).eq('id', id).select().single();
+        if (error) throw error;
+        return data;
+    },
+
+    deleteTenant: async (id) => {
+        const { error } = await supabase.from('tenants').update({ is_active: false }).eq('id', id);
+        if (error) throw error;
+        return { success: true };
+    },
+
+    // --- BUDs CRUD ---
+    createBUD: async (budData) => {
+        const payload = {
+            tenant_id: budData.tenantId || 1,
+            name: budData.name,
+            code: budData.code,
+            is_active: true
+        };
+        const { data, error } = await supabase.from('buds').insert([payload]).select().single();
+        if (error) throw error;
+        return data;
+    },
+
+    updateBUD: async (id, budData) => {
+        const payload = {
+            name: budData.name,
+            code: budData.code,
+            is_active: budData.isActive
+        };
+        const { data, error } = await supabase.from('buds').update(payload).eq('id', id).select().single();
+        if (error) throw error;
+        return data;
+    },
+
+    deleteBUD: async (id) => {
+        const { error } = await supabase.from('buds').update({ is_active: false }).eq('id', id);
+        if (error) throw error;
+        return { success: true };
+    },
+
+    // --- Departments CRUD ---
+    createDepartment: async (deptData) => {
+        const payload = {
+            tenant_id: 1, // Default or derive
+            bud_id: deptData.budId,
+            name: deptData.name,
+            code: deptData.code,
+            manager_id: deptData.managerId || null,
+            is_active: true
+        };
+        const { data, error } = await supabase.from('departments').insert([payload]).select().single();
+        if (error) throw error;
+        return data;
+    },
+
+    updateDepartment: async (id, deptData) => {
+        const payload = {
+            name: deptData.name,
+            code: deptData.code,
+            bud_id: deptData.budId,
+            manager_id: deptData.managerId || null,
+            is_active: deptData.isActive
+        };
+        const { data, error } = await supabase.from('departments').update(payload).eq('id', id).select().single();
+        if (error) throw error;
+        return data;
+    },
+
+    deleteDepartment: async (id) => {
+        const { error } = await supabase.from('departments').update({ is_active: false }).eq('id', id);
+        if (error) throw error;
         return { success: true };
     }
 

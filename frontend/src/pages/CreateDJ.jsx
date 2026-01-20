@@ -105,6 +105,11 @@ export default function CreateDJ() {
             try {
                 const data = await getMasterData();
 
+                // Business Rule: User ทั่วไปควรเห็นเฉพาะข้อมูลที่ Active เท่านั้น (กรอง Inactive ออก)
+                data.projects = data.projects?.filter(p => p.isActive) || [];
+                data.jobTypes = data.jobTypes?.filter(jt => jt.isActive) || [];
+                data.buds = data.buds?.filter(b => b.isActive) || [];
+
                 // Logic: ถ้าเป็นผู้อนุมัติระดับสายงาน (BUD) ให้คัดกรองเฉพาะโครงการภายใต้ BUD ตนเองเท่านั้น
                 if (user?.roles?.includes('approver') && user?.level === 'BUD' && user?.budId) {
                     data.projects = data.projects.filter(p => p.budId === user.budId);

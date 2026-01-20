@@ -149,9 +149,9 @@ export default function AdminApprovalFlow() {
         if (selectedProject && allUsers.length > 0) {
             const projectId = selectedProject.id;
 
-            // คัดกรองผู้ขอเพลง (Requesters/Marketing) ที่มีสิทธิ์ในโครงการนี้
+            // คัดกรองผู้สั่งงาน (Requesters) ที่มีสิทธิ์ในโครงการนี้
             const reqs = allUsers.filter(u =>
-                u.roles?.includes('marketing') &&
+                (u.roles?.includes('marketing') || u.roles?.includes('requester')) &&
                 (u.allowedProjects?.includes(projectId) || (u.scopeLevel === 'Project' && u.scopeId === projectId))
             );
 
@@ -170,9 +170,11 @@ export default function AdminApprovalFlow() {
                 return true;
             });
 
-            // คัดกรองผู้รับงาน (Assignees) ที่รับผิดชอบโครงการนี้โดยตรง
+            // คัดกรองผู้รับงาน (Assignees)
+            // ปัจจุบัน: แสดงทุกคนที่มี Role 'assignee' เพราะ DB ไม่มี assignedProjects field
+            // TODO: ในอนาคตอาจเพิ่ม assignedProjects ใน DB และ Filter ตาม Project
             const asgs = allUsers.filter(u =>
-                u.roles?.includes('assignee') && u.assignedProjects?.includes(projectId)
+                u.roles?.includes('assignee')
             );
 
             setResponsibleTeam({
