@@ -16,18 +16,8 @@ import Badge from '@/components/common/Badge';
 import Button from '@/components/common/Button';
 import { FormInput, FormSelect } from '@/components/common/FormInput';
 
-import {
-    PlusIcon,
-    MagnifyingGlassIcon,
-    PencilIcon,
-    TrashIcon,
-    CheckCircleIcon,
-    UserGroupIcon,
-    BriefcaseIcon,
-    ArrowRightIcon,
-    XMarkIcon,
-    ExclamationCircleIcon
-} from '@heroicons/react/24/outline';
+import { PlusIcon, TrashIcon, UserGroupIcon, UserIcon, ArrowLongRightIcon, BriefcaseIcon, CheckCircleIcon, ExclamationCircleIcon, MagnifyingGlassIcon, PencilIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import AssignmentMatrix from './AssignmentMatrix'; // Import Matrix Component
 
 /**
  * จานสีสำหรับใช้แสดงสัญลักษณ์โครงการ (Project Badges)
@@ -78,6 +68,9 @@ export default function AdminApprovalFlow() {
     const [searchTerm, setSearchTerm] = useState('');
     /** ตัวกรองสถานะ Flow: 'all' (ทั้งหมด), 'hasFlow' (ระบุแล้ว), 'noFlow' (ยังไม่ระบุ) */
     const [flowFilter, setFlowFilter] = useState('all');
+
+    // === สถานะแท็บ (UI State) ===
+    const [activeTab, setActiveTab] = useState('flow'); // 'flow' | 'matrix'
 
     // === สถานะฟอร์มแก้ไข (States: Edit Form) ===
     /** รายการลำดับการอนุมัติที่กำลังแก้ไข */
@@ -669,163 +662,204 @@ export default function AdminApprovalFlow() {
                             {isEditMode && (
                                 <div className="mb-6 bg-white rounded-xl shadow-lg border border-indigo-100 overflow-hidden animate-fadeIn">
                                     {/* ส่วนหัวของฟอร์ม (Header) */}
-                                    <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-4 flex items-center justify-between">
-                                        <h3 className="text-white font-bold flex items-center gap-2">
-                                            <PencilIcon className="w-5 h-5" /> ตั้งค่าขั้นตอนการอนุมัติ (Config Approval Flow)
-                                        </h3>
-                                        <button onClick={() => setIsEditMode(false)} className="text-white/80 hover:text-white transition-colors">
+                                    <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gray-50/50 sticky top-0 z-30 backdrop-blur-sm">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700">
+                                                <PencilIcon className="w-5 h-5" />
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-gray-900">แก้ไขการตั้งค่าโครงการ (Project Settings)</h3>
+                                                <p className="text-xs text-gray-500">Project ID: {selectedProject.id}</p>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => setIsEditMode(false)} className="p-2 hover:bg-gray-200 rounded-full text-gray-500 transition-colors">
                                             <XMarkIcon className="w-5 h-5" />
                                         </button>
                                     </div>
 
+                                    {/* Tabs Selector */}
+                                    <div className="flex border-b border-gray-200 bg-white sticky top-[73px] z-20">
+                                        <button
+                                            onClick={() => setActiveTab('flow')}
+                                            className={`flex-1 py-3 text-sm font-medium text-center border-b-2 transition-colors ${activeTab === 'flow'
+                                                ? 'border-indigo-500 text-indigo-600 bg-indigo-50/30'
+                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                                                }`}
+                                        >
+                                            <span className="flex items-center justify-center gap-2">
+                                                <UserGroupIcon className="w-4 h-4" /> ลำดับการอนุมัติ (Approval Flow)
+                                            </span>
+                                        </button>
+                                        <button
+                                            onClick={() => setActiveTab('matrix')}
+                                            className={`flex-1 py-3 text-sm font-medium text-center border-b-2 transition-colors ${activeTab === 'matrix'
+                                                ? 'border-indigo-500 text-indigo-600 bg-indigo-50/30'
+                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                                                }`}
+                                        >
+                                            <span className="flex items-center justify-center gap-2">
+                                                <BriefcaseIcon className="w-4 h-4" /> กำหนดผู้รับงานอัตโนมัติ (Auto-Assign)
+                                            </span>
+                                        </button>
+                                    </div>
+
                                     <div className="p-6">
-                                        {/* Timeline Container */}
-                                        <div className="relative pl-8 border-l-2 border-indigo-100 space-y-8 mb-8 ml-2">
+                                        {activeTab === 'flow' ? (
+                                            <>
+                                                {/* Timeline Container */}
+                                                <div className="relative pl-8 border-l-2 border-indigo-100 space-y-8 mb-8 ml-2">
 
-                                            {/* Empty State */}
-                                            {editLevels.length === 0 && (
-                                                <div className="relative">
-                                                    <div className="absolute -left-[2.45rem] top-0 w-4 h-4 rounded-full border-2 border-gray-300 bg-white"></div>
-                                                    <p className="text-gray-400 text-sm italic">ยังไม่มีขั้นตอนการอนุมัติ</p>
-                                                </div>
-                                            )}
+                                                    {/* Empty State */}
+                                                    {editLevels.length === 0 && (
+                                                        <div className="relative">
+                                                            <div className="absolute -left-[2.45rem] top-0 w-4 h-4 rounded-full border-2 border-gray-300 bg-white"></div>
+                                                            <p className="text-gray-400 text-sm italic">ยังไม่มีขั้นตอนการอนุมัติ</p>
+                                                        </div>
+                                                    )}
 
-                                            {/* Approver Levels */}
-                                            {editLevels.map((level, index) => (
-                                                <div key={index} className="relative group">
-                                                    {/* Timeline Dot */}
-                                                    <div className={`absolute -left-[2.55rem] top-3 w-5 h-5 rounded-full border-2 bg-white flex items-center justify-center
+                                                    {/* Approver Levels */}
+                                                    {editLevels.map((level, index) => (
+                                                        <div key={index} className="relative group">
+                                                            {/* Timeline Dot */}
+                                                            <div className={`absolute -left-[2.55rem] top-3 w-5 h-5 rounded-full border-2 bg-white flex items-center justify-center
                                                         ${index === 0 ? 'border-blue-500 text-blue-500' :
-                                                            index === 1 ? 'border-purple-500 text-purple-500' :
-                                                                'border-teal-500 text-teal-500'}`}>
-                                                        <span className="text-[10px] font-bold">{level.level}</span>
-                                                    </div>
+                                                                    index === 1 ? 'border-purple-500 text-purple-500' :
+                                                                        'border-teal-500 text-teal-500'}`}>
+                                                                <span className="text-[10px] font-bold">{level.level}</span>
+                                                            </div>
 
-                                                    <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm group-hover:shadow-md transition-shadow">
-                                                        <div className="flex items-center justify-between mb-4">
-                                                            <div>
-                                                                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">
-                                                                    ลำดับการอนุมัติที่ {level.level} (Approver Step)
-                                                                </label>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="text-xs font-medium text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
-                                                                        มีสิทธิ์อนุมัติทั้งหมด {level.approvers.length} คน
-                                                                    </span>
-                                                                    <span className="text-[10px] text-gray-400 flex items-center gap-1">
-                                                                        <CheckCircleIcon className="w-3 h-3" />
-                                                                        {level.logic === 'any' ? 'ใครคนหนึ่งพ้น' : 'ต้องอนุมัติทุกคน'}
-                                                                    </span>
+                                                            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm group-hover:shadow-md transition-shadow">
+                                                                <div className="flex items-center justify-between mb-4">
+                                                                    <div>
+                                                                        <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">
+                                                                            ลำดับการอนุมัติที่ {level.level} (Approver Step)
+                                                                        </label>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-xs font-medium text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                                                                                มีสิทธิ์อนุมัติทั้งหมด {level.approvers.length} คน
+                                                                            </span>
+                                                                            <span className="text-[10px] text-gray-400 flex items-center gap-1">
+                                                                                <CheckCircleIcon className="w-3 h-3" />
+                                                                                {level.logic === 'any' ? 'ใครคนหนึ่งพ้น' : 'ต้องอนุมัติทุกคน'}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <Button variant="ghost" size="sm" className="text-gray-300 hover:text-red-500" onClick={() => handleRemoveLevel(index)}>
+                                                                        <TrashIcon className="w-4 h-4" />
+                                                                    </Button>
+                                                                </div>
+
+                                                                {/* รายการผู้อนุมัติ (Approvers List - Chips) */}
+                                                                <div className="flex flex-wrap gap-2 mb-4 bg-gray-50/50 p-3 rounded-lg border border-dashed border-gray-200">
+                                                                    {level.approvers.length === 0 ? (
+                                                                        <p className="text-xs text-gray-400 italic">ยังไม่ได้เพิ่มผู้อนุมัติ กรุณาเลือกจากรายการด้านล่าง</p>
+                                                                    ) : (
+                                                                        level.approvers.map(app => (
+                                                                            <div key={app.userId} className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border border-gray-200 shadow-sm animate-fadeIn">
+                                                                                <div className="w-5 h-5 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-600">
+                                                                                    {app.name.substring(0, 1)}
+                                                                                </div>
+                                                                                <span className="text-xs font-semibold text-gray-700">{app.name}</span>
+                                                                                <button onClick={() => handleRemoveApproverFromLevel(index, app.userId)} className="text-gray-400 hover:text-red-500">
+                                                                                    <XMarkIcon className="w-3.5 h-3.5" />
+                                                                                </button>
+                                                                            </div>
+                                                                        ))
+                                                                    )}
+                                                                </div>
+
+                                                                {/* User Selector Dropdown */}
+                                                                <div className="flex gap-2">
+                                                                    <div className="flex-1">
+                                                                        <FormSelect
+                                                                            className="text-sm bg-white"
+                                                                            onChange={(e) => handleAddApproverToLevel(index, e.target.value)}
+                                                                            value=""
+                                                                        >
+                                                                            <option value="">+ เพิ่มผู้อนุมัติในกลุ่มนี้ (Add Approver to Pool)...</option>
+                                                                            {responsibleTeam.approvers.map(u => (
+                                                                                <option key={u.id} value={u.id}>
+                                                                                    {[u.prefix, u.firstName || u.name, u.lastName].filter(Boolean).join(' ')}
+                                                                                </option>
+                                                                            ))}
+                                                                        </FormSelect>
+                                                                    </div>
                                                                 </div>
                                                             </div>
-                                                            <Button variant="ghost" size="sm" className="text-gray-300 hover:text-red-500" onClick={() => handleRemoveLevel(index)}>
-                                                                <TrashIcon className="w-4 h-4" />
-                                                            </Button>
                                                         </div>
+                                                    ))}
 
-                                                        {/* รายการผู้อนุมัติ (Approvers List - Chips) */}
-                                                        <div className="flex flex-wrap gap-2 mb-4 bg-gray-50/50 p-3 rounded-lg border border-dashed border-gray-200">
-                                                            {level.approvers.length === 0 ? (
-                                                                <p className="text-xs text-gray-400 italic">ยังไม่ได้เพิ่มผู้อนุมัติ กรุณาเลือกจากรายการด้านล่าง</p>
-                                                            ) : (
-                                                                level.approvers.map(app => (
-                                                                    <div key={app.userId} className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border border-gray-200 shadow-sm animate-fadeIn">
-                                                                        <div className="w-5 h-5 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-600">
-                                                                            {app.name.substring(0, 1)}
-                                                                        </div>
-                                                                        <span className="text-xs font-semibold text-gray-700">{app.name}</span>
-                                                                        <button onClick={() => handleRemoveApproverFromLevel(index, app.userId)} className="text-gray-400 hover:text-red-500">
-                                                                            <XMarkIcon className="w-3.5 h-3.5" />
-                                                                        </button>
-                                                                    </div>
-                                                                ))
-                                                            )}
-                                                        </div>
-
-                                                        {/* User Selector Dropdown */}
-                                                        <div className="flex gap-2">
-                                                            <div className="flex-1">
-                                                                <FormSelect
-                                                                    className="text-sm bg-white"
-                                                                    onChange={(e) => handleAddApproverToLevel(index, e.target.value)}
-                                                                    value=""
-                                                                >
-                                                                    <option value="">+ เพิ่มผู้อนุมัติในกลุ่มนี้ (Add Approver to Pool)...</option>
-                                                                    {responsibleTeam.approvers.map(u => (
-                                                                        <option key={u.id} value={u.id}>
-                                                                            {[u.prefix, u.firstName || u.name, u.lastName].filter(Boolean).join(' ')}
-                                                                        </option>
-                                                                    ))}
-                                                                </FormSelect>
-                                                            </div>
-                                                        </div>
+                                                    {/* Add Button */}
+                                                    <div className="relative pt-2">
+                                                        <div className="absolute -left-[2.45rem] top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-indigo-200 bg-indigo-50"></div>
+                                                        <Button variant="outline" size="sm" onClick={handleAddLevel} className="border-dashed border-indigo-300 text-indigo-600 hover:bg-indigo-50 w-full justify-center py-3">
+                                                            <PlusIcon className="w-4 h-4" /> เพิ่มระดับอนุมัติ (Add Level)
+                                                        </Button>
                                                     </div>
                                                 </div>
-                                            ))}
 
-                                            {/* Add Button */}
-                                            <div className="relative pt-2">
-                                                <div className="absolute -left-[2.45rem] top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-indigo-200 bg-indigo-50"></div>
-                                                <Button variant="outline" size="sm" onClick={handleAddLevel} className="border-dashed border-indigo-300 text-indigo-600 hover:bg-indigo-50 w-full justify-center py-3">
-                                                    <PlusIcon className="w-4 h-4" /> เพิ่มระดับอนุมัติ (Add Level)
-                                                </Button>
-                                            </div>
-                                        </div>
+                                                {/* Assignee Section */}
+                                                <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-5 border border-orange-100 relative overflow-hidden">
+                                                    <div className="absolute top-0 right-0 p-4 opacity-10">
+                                                        <BriefcaseIcon className="w-24 h-24 text-orange-500" />
+                                                    </div>
 
-                                        {/* Assignee Section */}
-                                        <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-5 border border-orange-100 relative overflow-hidden">
-                                            <div className="absolute top-0 right-0 p-4 opacity-10">
-                                                <BriefcaseIcon className="w-24 h-24 text-orange-500" />
-                                            </div>
+                                                    <div className="relative z-10">
+                                                        <h5 className="font-bold text-orange-800 mb-4 flex items-center gap-2">
+                                                            <BriefcaseIcon className="w-5 h-5" /> ผู้รับงานดำเนินงานต่อ (Assignee)
+                                                            <span className="text-xs font-normal text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">ขั้นตอนสุดท้าย (Final Step)</span>
+                                                        </h5>
 
-                                            <div className="relative z-10">
-                                                <h5 className="font-bold text-orange-800 mb-4 flex items-center gap-2">
-                                                    <BriefcaseIcon className="w-5 h-5" /> ผู้รับงานดำเนินงานต่อ (Assignee)
-                                                    <span className="text-xs font-normal text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">ขั้นตอนสุดท้าย (Final Step)</span>
-                                                </h5>
+                                                        {/* Assignee Logic */}
+                                                        {(() => {
+                                                            return (
+                                                                <>
+                                                                    {responsibleTeam.assignees.length === 0 && (
+                                                                        <div className="bg-white/80 backdrop-blur border border-yellow-200 rounded-lg p-3 text-sm text-yellow-700 mb-4 flex items-center gap-2">
+                                                                            <ExclamationCircleIcon className="w-5 h-5" />
+                                                                            ยังไม่มี Assignee ในโครงการนี้
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="bg-white p-3 rounded-lg border border-orange-200/50 shadow-sm">
+                                                                        <FormSelect
+                                                                            label="เลือกผู้รับงาน Default"
+                                                                            value={editAssignee?.userId || ''}
+                                                                            onChange={(e) => handleAssigneeChange(e.target.value)}
+                                                                        >
+                                                                            <option value="">-- ไม่ระบุ (Unassigned) --</option>
+                                                                            {responsibleTeam.assignees.map(u => (
+                                                                                <option key={u.id} value={u.id}>
+                                                                                    {[u.prefix, u.name, u.lastName].filter(Boolean).join(' ')}
+                                                                                </option>
+                                                                            ))}
+                                                                        </FormSelect>
+                                                                    </div>
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </div>
+                                                </div>
 
-                                                {/* Assignee Logic */}
-                                                {(() => {
-                                                    return (
-                                                        <>
-                                                            {responsibleTeam.assignees.length === 0 && (
-                                                                <div className="bg-white/80 backdrop-blur border border-yellow-200 rounded-lg p-3 text-sm text-yellow-700 mb-4 flex items-center gap-2">
-                                                                    <ExclamationCircleIcon className="w-5 h-5" />
-                                                                    ยังไม่มี Assignee ในโครงการนี้
-                                                                </div>
-                                                            )}
-                                                            <div className="bg-white p-3 rounded-lg border border-orange-200/50 shadow-sm">
-                                                                <FormSelect
-                                                                    label="เลือกผู้รับงาน Default"
-                                                                    value={editAssignee?.userId || ''}
-                                                                    onChange={(e) => handleAssigneeChange(e.target.value)}
-                                                                >
-                                                                    <option value="">-- ไม่ระบุ (Unassigned) --</option>
-                                                                    {responsibleTeam.assignees.map(u => (
-                                                                        <option key={u.id} value={u.id}>
-                                                                            {[u.prefix, u.name, u.lastName].filter(Boolean).join(' ')}
-                                                                        </option>
-                                                                    ))}
-                                                                </FormSelect>
-                                                            </div>
-                                                        </>
-                                                    );
-                                                })()}
-                                            </div>
-                                        </div>
-
-                                        {/* Actions Footer */}
-                                        <div className="mt-8 flex items-center justify-between border-t border-gray-100 pt-6">
-                                            <div className="flex flex-col gap-1">
-                                                <span className="text-xs font-bold text-gray-500">หมายเหตุ:</span>
-                                                <span className="text-xs text-gray-400">ลำดับการอนุมัติที่แก้ไขจะมีผลเฉพาะกับใบงาน DJ ที่สร้างขึ้นใหม่เท่านั้น</span>
-                                            </div>
-                                            <div className="flex gap-3">
-                                                <Button variant="ghost" onClick={() => setIsEditMode(false)}>ยกเลิก (Cancel)</Button>
-                                                <Button variant="primary" onClick={handleSaveFlow} className="bg-indigo-600 hover:bg-indigo-700 px-6 shadow-lg shadow-indigo-200">
-                                                    <CheckCircleIcon className="w-4 h-4" /> บันทึกขั้นตอน (Save Flow)
-                                                </Button>
-                                            </div>
-                                        </div>
+                                                {/* Actions Footer */}
+                                                <div className="mt-8 flex items-center justify-between border-t border-gray-100 pt-6">
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="text-xs font-bold text-gray-500">หมายเหตุ:</span>
+                                                        <span className="text-xs text-gray-400">ลำดับการอนุมัติที่แก้ไขจะมีผลเฉพาะกับใบงาน DJ ที่สร้างขึ้นใหม่เท่านั้น</span>
+                                                    </div>
+                                                    <div className="flex gap-3">
+                                                        <Button variant="ghost" onClick={() => setIsEditMode(false)}>ยกเลิก (Cancel)</Button>
+                                                        <Button variant="primary" onClick={handleSaveFlow} className="bg-indigo-600 hover:bg-indigo-700 px-6 shadow-lg shadow-indigo-200">
+                                                            <CheckCircleIcon className="w-4 h-4" /> บันทึกขั้นตอน (Save Flow)
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <AssignmentMatrix
+                                                projectId={selectedProject.id}
+                                                assignees={responsibleTeam.assignees}
+                                            />
+                                        )}
                                     </div>
                                 </div>
                             )}

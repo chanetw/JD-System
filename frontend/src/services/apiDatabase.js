@@ -597,6 +597,101 @@ const apiDatabase = {
         const { error } = await supabase.from('departments').update({ is_active: false }).eq('id', id);
         if (error) throw error;
         return { success: true };
+    },
+
+    // --- Assignment Matrix (Project + JobType -> Assignee) ---
+
+    /**
+     * ดึงข้อมูล Assignment Matrix ของโครงการที่ระบุ
+     * ใช้สำหรับแสดงในหน้า Admin (Approval Flow Tab)
+     * 
+     * @param {number} projectId - ID ของโครงการ
+     * @returns {Array} รายการคู่ JobType-Assignee ที่ตั้งค่าไว้
+     */
+    getAssignmentMatrix: async (projectId) => {
+        const { data, error } = await supabase
+            .from('project_job_assignments')
+            .select(`
+                id,
+                project_id,
+                job_type_id,
+                assignee_id,
+                job_types ( id, name ),
+                users:assignee_id ( id, first_name, last_name, prefix )
+            `)
+            .eq('project_id', projectId);
+
+        if (error) {
+            console.error('Error fetching assignment matrix:', error);
+            return [];
+        }
+
+        // Transform Data ให้ใช้งานง่ายฝั่ง Frontend
+        return data.map(item => ({
+            id: item.id,
+            jobTypeId: item.job_type_id,
+            jobTypeName: item.job_types?.name || 'N/A',
+            assigneeId: item.assignee_id,
+            assigneeName: item.users ?
+                [item.users.prefix, item.users.first_name, item.users.last_name].filter(Boolean).join(' ') :
+                'ไม่ระบุ'
+        }));
+    },
+
+    /**
+     * ดึง Assignee สำหรับคู่ Project + JobType ที่ระบุ
+     * ใช้สำหรับ Auto-fill ในหน้า CreateDJ เมื่อ User เลือก Project และ Job Type
+     * 
+     * @param {number} projectId - ID ของโครงการ
+     * @param {number} jobTypeId - ID ของประเภทงาน
+     * @returns {Object|null} ข้อมูล Assignee หรือ null ถ้าไม่พบ
+     */
+    getAssigneeByProjectAndJobType: async (projectId, jobTypeId) => {
+        const { data, error } = await supabase
+            .from('project_job_assignments')
+            .select(`
+                assignee_id,
+                users:assignee_id ( id, first_name, last_name, prefix )
+            `)
+            .eq('project_id', projectId)
+            .eq('job_type_id', jobTypeId)
+            .single();
+
+        if (error || !data) return null;
+
+        return {
+            id: data.assignee_id,
+            name: data.users ?
+                [data.users.prefix, data.users.first_name, data.users.last_name].filter(Boolean).join(' ') :
+                null
+        };
+    },
+
+    /**
+     * บันทึก/อัปเดต Assignment Matrix (Upsert Strategy)
+     * รับมาเป็น Array ของคู่ { jobTypeId, assigneeId }
+     * 
+     * @param {number} projectId - ID ของโครงการ
+     * @param {Array} assignments - รายการ [{ jobTypeId, assigneeId }, ...]
+     * @returns {Object} ผลลัพธ์การบันทึก { success: true }
+     */
+    saveAssignmentMatrix: async (projectId, assignments) => {
+        const upsertData = assignments.map(a => ({
+            project_id: projectId,
+            job_type_id: a.jobTypeId,
+            assignee_id: a.assigneeId || null,
+            updated_at: new Date().toISOString()
+        }));
+
+        const { error } = await supabase
+            .from('project_job_assignments')
+            .upsert(upsertData, {
+                onConflict: 'project_id,job_type_id',
+                ignoreDuplicates: false
+            });
+
+        if (error) throw error;
+        return { success: true };
     }
 
 };

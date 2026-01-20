@@ -13,6 +13,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { createJob, getMasterData, getHolidays, getApprovalFlowByProject, getJobs, getJobTypeItems } from '@/services/mockApi';
+import api from '@/services/apiService'; // สำหรับ Auto-fill Assignee
 import { Card, CardHeader, CardBody } from '@/components/common/Card';
 import { FormInput, FormSelect, FormTextarea } from '@/components/common/FormInput';
 import Button from '@/components/common/Button';
@@ -173,6 +174,41 @@ export default function CreateDJ() {
                     setJobTypeItems(items || []);
                 }).catch(() => setJobTypeItems([]));
             }
+        }
+
+        // === Auto-fill Assignee ตาม Project + Job Type ===
+        // เมื่อเลือก Project หรือ Job Type เสร็จ ให้ตรวจสอบว่าทั้งคู่ถูกเลือกแล้วหรือยัง
+        // ถ้าครบ ให้เรียก API ดึง Assignee ที่ตั้งค่าไว้มา Auto-fill
+        if (name === 'project' || name === 'jobType') {
+            setTimeout(async () => {
+                const currentProject = name === 'project'
+                    ? masterData.projects.find(p => p.name === value)
+                    : masterData.projects.find(p => p.name === formData.project);
+                const currentJobType = name === 'jobType'
+                    ? masterData.jobTypes.find(t => t.name === value)
+                    : masterData.jobTypes.find(t => t.name === formData.jobType);
+
+                if (currentProject?.id && currentJobType?.id) {
+                    try {
+                        const assignee = await api.getAssigneeByProjectAndJobType(
+                            currentProject.id,
+                            currentJobType.id
+                        );
+                        if (assignee?.id) {
+                            // พบ Assignee ที่ตั้งค่าไว้ -> Auto-fill
+                            setFormData(prev => ({
+                                ...prev,
+                                assigneeId: assignee.id,
+                                assigneeName: assignee.name
+                            }));
+                            console.log('Auto-assigned:', assignee.name);
+                        }
+                    } catch (err) {
+                        // ไม่พบ Assignee ที่ตั้งค่าไว้ -> ปล่อยให้ User เลือกเอง
+                        console.log('No pre-configured assignee for this project+jobType');
+                    }
+                }
+            }, 100);
         }
     };
 

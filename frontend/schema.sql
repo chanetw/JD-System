@@ -208,3 +208,15 @@ CREATE TRIGGER set_dj_id
   BEFORE INSERT ON jobs
   FOR EACH ROW
   EXECUTE PROCEDURE generate_dj_id();
+
+-- 12. Project Job Assignments (กำหนดผู้รับงานอัตโนมัติ)
+CREATE TABLE IF NOT EXISTS project_job_assignments (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+    job_type_id INTEGER REFERENCES job_types(id) ON DELETE CASCADE,
+    assignee_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(project_id, job_type_id) -- 1 คู่ Project+JobType มี Assignee ได้คนเดียว
+);
