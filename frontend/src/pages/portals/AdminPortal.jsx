@@ -1,9 +1,12 @@
 /**
  * @file AdminPortal.jsx
- * @description Portal สำหรับ Admin
+ * @description หน้าจอหลักสำหรับผู้ดูแลระบบ (Admin Portal)
  * 
- * Quick Actions: จัดการ User, Reports, ตั้งค่า, Media
- * Sections: Jobs Table (ทั้งหมด), SLA, Media Grid, Job Types
+ * วัตถุประสงค์หลัก:
+ * - แสดงภาพรวมของระบบ (Dashboard) สำหรับผู้ดูแลระบบ
+ * - ให้ทางลัด (Quick Actions) ไปยังส่วนการจัดการต่าง ๆ เช่น User, Job Types, Media
+ * - แสดงรายการงานล่าสุดทั้งระบบเพื่อให้ตรวจสอบสถานะได้ทันที
+ * - แสดงการแจ้งเตือนกรณีมีงานที่เกินกำหนด (Overdue Alert)
  */
 
 import React, { useState, useEffect } from 'react';
@@ -31,49 +34,54 @@ import {
 
 export default function AdminPortal() {
     const navigate = useNavigate();
+    /** ข้อมูลผู้ใช้งานปัจจุบันจาก store */
     const { user } = useAuthStore();
-    const [allJobs, setAllJobs] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [stats, setStats] = useState({ total: 0, overdue: 0 });
+
+    // === สถานะข้อมูล (Data States) ===
+    const [allJobs, setAllJobs] = useState([]);      // รายการงานล่าสุด 6 รายการ
+    const [isLoading, setIsLoading] = useState(true); // สถานะการโหลดข้อมูล
+    const [searchQuery, setSearchQuery] = useState(''); // คำค้นหาในหน้า Dashboard
+    const [stats, setStats] = useState({ total: 0, overdue: 0 }); // สถิติภาพรวม
 
     // Quick Actions สำหรับ Admin
+    /** รายการทางลัดการจัดการ (Quick Action Cards) */
     const actions = [
         {
             to: '/admin/users',
             icon: <UsersIcon className="w-7 h-7 text-indigo-600" />,
             bgColor: 'bg-indigo-100 group-hover:bg-indigo-200',
-            title: 'จัดการ User',
-            desc: 'เพิ่ม/แก้ไขผู้ใช้งาน'
+            title: 'จัดการผู้ใช้งาน',
+            desc: 'เพิ่มหรือแก้ไขข้อมูลผู้ใช้งานในระบบ'
         },
         {
             to: '/',
             icon: <ChartBarIcon className="w-7 h-7 text-emerald-600" />,
             bgColor: 'bg-emerald-100 group-hover:bg-emerald-200',
-            title: 'Dashboard',
-            desc: 'ภาพรวมระบบ'
+            title: 'แดชบอร์ดภาพรวม',
+            desc: 'สรุปสถิติการใช้ระบบทั้งหมด'
         },
         {
             to: '/admin/job-types',
             icon: <Cog6ToothIcon className="w-7 h-7 text-amber-600" />,
             bgColor: 'bg-amber-100 group-hover:bg-amber-200',
-            title: 'ตั้งค่าระบบ',
-            desc: 'SLA, วันหยุด, Approval'
+            title: 'ตั้งค่าระบบงาน',
+            desc: 'SLA, วันหยุด และลำดับการอนุมัติ'
         },
         {
             to: '/media-portal',
             icon: <PhotoIcon className="w-7 h-7 text-rose-600" />,
             bgColor: 'bg-rose-100 group-hover:bg-rose-200',
-            title: 'Media Portal',
-            desc: 'คลังไฟล์งาน'
+            title: 'ศูนย์จัดการสื่อ',
+            desc: 'คลังไฟล์งานและภาพที่ส่งมอบ'
         }
     ];
 
-    // โหลดงานทั้งหมด
+    /** โหลดข้อมูลงานและสถิติภาพรวมเมื่อเปิดหน้าจอ */
     useEffect(() => {
         const loadData = async () => {
             try {
                 const jobs = await getJobs();
+                // เลือกมาแสดงเพียง 6 รายการล่าสุดในหน้าแรก
                 setAllJobs(jobs.slice(0, 6));
 
                 const dashStats = await getDashboardStats();
@@ -82,7 +90,7 @@ export default function AdminPortal() {
                     overdue: dashStats.overdue || 0
                 });
             } catch (err) {
-                console.error('Error loading data:', err);
+                console.error('เกิดข้อผิดพลาดในการโหลดข้อมูล:', err);
             } finally {
                 setIsLoading(false);
             }
@@ -90,7 +98,7 @@ export default function AdminPortal() {
         loadData();
     }, [user]);
 
-    // ค้นหา
+    /** จัดการการค้นหางาน (จะนำไปยังหน้า Job List พร้อม Filter) */
     const handleSearch = (query) => {
         if (query.trim()) {
             navigate(`/jobs?search=${encodeURIComponent(query)}`);
@@ -103,9 +111,9 @@ export default function AdminPortal() {
 
             <main className="pt-16 pb-12">
                 <PortalHero
-                    title="Admin Dashboard"
-                    subtitle="จัดการระบบและดูภาพรวมทั้งหมด"
-                    searchPlaceholder="ค้นหางานทั้งระบบ..."
+                    title="ศูนย์จัดการระบบ (Admin Dashboard)"
+                    subtitle="จัดการระบบและตรวจสอบภาพรวมงานทั้งหมด"
+                    searchPlaceholder="ค้นหาเลขงานหรือหัวข้อ..."
                     searchValue={searchQuery}
                     onSearchChange={setSearchQuery}
                     onSearchSubmit={handleSearch}
@@ -161,7 +169,13 @@ export default function AdminPortal() {
     );
 }
 
-// Helper Component
+/**
+ * StatCard: การ์ดแสดงผลตัวเลขสถิติประกอบไอคอน
+ * @param {object} props
+ * @param {string} props.label - หัวข้อสถิติ
+ * @param {string|number} props.value - ตัวเลขหรือข้อความที่แสดง
+ * @param {string} props.color - คลาสสีพื้นหลังของไอคอน
+ */
 function StatCard({ label, value, color }) {
     return (
         <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200">

@@ -1,12 +1,11 @@
 /**
  * @file mockStorage.js
- * @description ฟังก์ชันจัดการ localStorage สำหรับเก็บข้อมูล Mock
- * ใช้เป็น Temporary Storage ในระหว่าง Demo
+ * @description เลเยอร์จัดการข้อมูลสำรองในเครื่อง (Local Storage Manager)
  * 
- * Senior Programmer Notes:
- * - ใช้ localStorage เก็บข้อมูลบน Browser (จะหายเมื่อล้าง Browser Data)
- * - มี Prefix "dj_system_" เพื่อแยกข้อมูลจากเว็บอื่น
- * - สามารถ Reset กลับเป็น Mock เริ่มต้นได้
+ * วัตถุประสงค์หลัก:
+ * - จัดการการอ่านและเขียนข้อมูลจำลอง (Mock Data) ลงในเบราว์เซอร์ (localStorage)
+ * - ใช้เป็นช่องทางเก็บข้อมูลหลักสำหรับการทดสอบตัวอย่าง (Demo) ในฝั่ง Frontend
+ * - มีระบบจัดการ Prefix และการรีเซ็ตข้อมูลเดิมให้เป็นค่าเริ่มต้น
  */
 
 // ============================================
@@ -37,7 +36,7 @@ import mediaData from '@mock-data/media/media.json';
 
 /**
  * @constant MOCK_DATA_MAP
- * @description Map ของ key ไปยังข้อมูล Mock เริ่มต้น
+ * @description ออบเจกต์ที่เชื่อมโยง Key ข้อมูลไปยังไฟล์ JSON ของข้อมูลเริ่มต้น
  */
 const MOCK_DATA_MAP = {
     users: usersData.users,
@@ -62,15 +61,9 @@ const MOCK_DATA_MAP = {
 // ============================================
 
 /**
- * @function loadMockData
- * @description โหลดข้อมูลจาก localStorage หรือถ้าไม่มีให้ใช้ Mock เริ่มต้น
- * 
- * @param {string} key - ชื่อข้อมูลที่ต้องการโหลด (เช่น 'users', 'jobs')
- * @returns {Array|Object} - ข้อมูลที่โหลดได้
- * 
- * @example
- * // โหลดรายการงานทั้งหมด
- * const jobs = loadMockData('jobs');
+ * โหลดข้อมูลตาม Key ที่ระบุ หากไม่พบในเครื่องจะดึงจากข้อมูลเริ่มต้น (Mock Data)
+ * @param {string} key - ชื่อชุดข้อมูลที่ต้องการ (e.g., 'users', 'jobs')
+ * @returns {Array|Object} ข้อมูลที่โหลดได้ (จะถูกแปลงจาก String เป็น JavaScript Object)
  */
 export const loadMockData = (key) => {
     // สร้าง key เต็มสำหรับ localStorage
@@ -95,15 +88,9 @@ export const loadMockData = (key) => {
 };
 
 /**
- * @function saveMockData
- * @description บันทึกข้อมูลลง localStorage
- * 
- * @param {string} key - ชื่อข้อมูล
- * @param {Array|Object} data - ข้อมูลที่ต้องการบันทึก
- * 
- * @example
- * // บันทึกรายการงานใหม่
- * saveMockData('jobs', updatedJobs);
+ * บันทึกข้อมูลลงในพื้นที่เก็บข้อมูลของเบราว์เซอร์ (localStorage)
+ * @param {string} key - ชื่อชุดข้อมูลที่ต้องการบันทึก
+ * @param {Array|Object} data - ข้อมูลที่ต้องการบันทึก (จะถูกแปลงเป็น JSON String)
  */
 export const saveMockData = (key, data) => {
     const storageKey = STORAGE_PREFIX + key;
@@ -113,13 +100,8 @@ export const saveMockData = (key, data) => {
 };
 
 /**
- * @function resetMockData
- * @description ล้างข้อมูลทั้งหมดและโหลด Mock เริ่มต้นใหม่
- * ใช้เมื่อต้องการ Reset Demo
- * 
- * @example
- * // Reset Demo กลับเป็นข้อมูลเริ่มต้น
- * resetMockData();
+ * ล้างข้อมูลที่ถูกบันทึกไว้ทั้งหมดและเปลี่ยนกลับเป็นค่าเริ่มต้นจากชุดข้อมูล Mock
+ * (ใช้สำหรับฟังก์ชัน Reset Demo)
  */
 export const resetMockData = () => {
     // ดึง keys ทั้งหมดใน localStorage

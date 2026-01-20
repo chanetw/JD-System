@@ -1,19 +1,34 @@
 /**
  * @file DJDetail.jsx
- * @description หน้ารายละเอียดงาน DJ (DJ Job Detail) - Complete Implementation
+ * @description หน้าจอแสดงรายละเอียดงาน DJ (DJ Job Detail)
  * 
- * ฟังก์ชันหลัก:
- * - โหลดข้อมูล Job จาก API ตาม ID
- * - แสดง Action Buttons ตาม Role (Marketing, Approver, Assignee, Admin)
- * - Modals สำหรับ Approve/Reject/Revision
- * - Activity Timeline + Chat
- * - SLA Widget พร้อมนับถอยหลัง
- * - Version Control สำหรับ Deliverables
+ * วัตถุประสงค์หลัก:
+ * - แสดงรายละเอียด Brief ของงาน, ไฟล์แนบ, และความคืบหน้า (Activity Timeline)
+ * - คำนวณและแสดงผลสถานะ SLA และวันกำหนดส่งงาน (Deadline)
+ * - มีระบบจัดการ Actions ตามบทบาทของผู้ใช้งาน (Role-based Actions) เช่น การอนุมัติ, การขอแก้ไข, หรือการส่งงาน
+ * - รองรับระบบแชทและแจ้งเตือนภายในหน้างาน เพื่อการสื่อสารที่สะดวกรวดเร็ว
+ * - จัดการเวอร์ชันของงานออกแบบ (Deliverables Versioning)
  */
 
+/**
+ * @module React
+ * @description นำเข้าไลบรารี React สำหรับสร้างคอมโพเนนต์และจัดการสถานะ
+ */
 import React, { useState, useEffect } from 'react';
+/**
+ * @module ReactRouterDom
+ * @description นำเข้า Hook จาก react-router-dom สำหรับการนำทางและเข้าถึงพารามิเตอร์ URL
+ */
 import { Link, useParams, useNavigate } from 'react-router-dom';
+/**
+ * @module CommonComponents/Card
+ * @description นำเข้าคอมโพเนนต์ Card, CardHeader, CardBody สำหรับการจัดโครงสร้าง UI
+ */
 import { Card, CardHeader, CardBody } from '@/components/common/Card';
+/**
+ * @module CommonComponents/Badge
+ * @description นำเข้าคอมโพเนนต์ Badge สำหรับแสดงสถานะหรือข้อมูลขนาดเล็ก
+ */
 import Badge from '@/components/common/Badge';
 import Button from '@/components/common/Button';
 import { useAuthStore } from '@/store/authStore';
@@ -40,35 +55,51 @@ import {
     ArchiveBoxIcon
 } from '@heroicons/react/24/outline';
 
+/**
+ * DJDetail Component
+ * หน้าจอแสดงรายละเอียดงานและการจัดการสถานะงานแต่ละรายการ
+ */
 export default function DJDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuthStore();
 
-    // State
+    // === สถานะข้อมูล (States: Data) ===
+    /** ข้อมูลงานที่ดึงมาจาก API */
     const [job, setJob] = useState(null);
+    /** สถานะกำลังโหลดข้อมูล */
     const [isLoading, setIsLoading] = useState(true);
+    /** ข้อความแจ้งข้อผิดพลาด */
     const [error, setError] = useState(null);
+    /** ข้อความในกล่องแชท */
     const [chatMessage, setChatMessage] = useState('');
+    /** เวอร์ชันของงานที่เลือกแสดงผลพรีวิว */
     const [selectedVersion, setSelectedVersion] = useState(0);
 
-    // Modal States
+    // === สถานะหน้าต่างแจ้งเตือน (States: Modals) ===
+    /** แสดงหน้าต่างยืนยันการอนุมัติ */
     const [showApproveModal, setShowApproveModal] = useState(false);
+    /** แสดงหน้าต่างระบุเหตุผลการปฏิเสธหรือตีกลับ */
     const [showRejectModal, setShowRejectModal] = useState(false);
+    /** แสดงหน้าต่างระบุรายละเอียดการขอแก้ไขงาน (Revision) */
     const [showRevisionModal, setShowRevisionModal] = useState(false);
+    /** ประเภทหรือเหตุผลของการปฏิเสธ */
     const [rejectReason, setRejectReason] = useState('incomplete');
+    /** ความคิดเห็นเพิ่มเติมเมื่อมีการปฏิเสธ */
     const [rejectComment, setRejectComment] = useState('');
+    /** ความคิดเห็นหรือสิ่งที่ต้องการให้แก้ไข */
     const [revisionComment, setRevisionComment] = useState('');
 
-    // โหลดข้อมูล Job
+    // === การโหลดข้อมูลงาน (Data Fetching) ===
     useEffect(() => {
+        /** ดึงข้อมูลรายละเอียดงานตาม ID จาก API หรือฐานข้อมูลจำลอง */
         const loadJob = async () => {
             if (!id) return;
 
             setIsLoading(true);
             try {
-                // ถ้ามี getJobById ใช้มัน ไม่งั้นค้นจาก getJobs
                 const jobs = await getJobs();
+                // ค้นหางานที่ตรงกับ ID (รองรับทั้งตัวเลขและรหัส DJ-ID)
                 const foundJob = jobs.find(j =>
                     j.id === parseInt(id) ||
                     j.id === id ||
@@ -78,11 +109,11 @@ export default function DJDetail() {
                 if (foundJob) {
                     setJob(foundJob);
                 } else {
-                    setError('ไม่พบงาน');
+                    setError('ไม่พบข้อมูลงานที่ระบุในระบบ');
                 }
             } catch (err) {
-                console.error('Error loading job:', err);
-                setError('เกิดข้อผิดพลาดในการโหลดข้อมูล');
+                console.error('เกิดข้อผิดพลาดในการโหลดข้อมูลงาน:', err);
+                setError('เกิดข้อผิดพลาดทางเทคนิคในการโหลดข้อมูล กรุณาลองใหม่อีกครั้ง');
             } finally {
                 setIsLoading(false);
             }
@@ -91,46 +122,58 @@ export default function DJDetail() {
         loadJob();
     }, [id]);
 
-    // หา role ปัจจุบัน
-    const currentRole = user?.roles?.[0] || 'marketing';
+    // === ส่วนจัดการเหตุการณ์ (Event Handlers) ===
 
-    // Handlers
+    /**
+     * ดำเนินการอนุมัติงาน (Approve)
+     * @async
+     */
     const handleApprove = async () => {
         try {
             await approveJob(job.id, user?.displayName || 'User');
             setShowApproveModal(false);
-            // Reload
+            // โหลดข้อมูลงานใหม่เพื่ออัปเดตสถานะบนหน้าจอ
             const jobs = await getJobs();
             const updatedJob = jobs.find(j => j.id === job.id);
             if (updatedJob) setJob(updatedJob);
         } catch (err) {
-            alert('Error: ' + err.message);
+            alert('เกิดข้อผิดพลาดในการอนุมัติ: ' + err.message);
         }
-    };
-
-    const handleReject = async () => {
-        try {
-            const type = document.querySelector('input[name="rejectType"]:checked')?.value === 'reject' ? 'reject' : 'return';
-            await rejectJob(job.id, rejectReason, type, user?.displayName || 'User');
-            setShowRejectModal(false);
-            // Reload
-            const jobs = await getJobs();
-            const updatedJob = jobs.find(j => j.id === job.id);
-            if (updatedJob) setJob(updatedJob);
-        } catch (err) {
-            alert('Error: ' + err.message);
-        }
-    };
-
-    const handleRequestRevision = () => {
-        // TODO: Implement revision request
-        setShowRevisionModal(false);
-        alert('ส่งคำขอแก้ไขแล้ว');
     };
 
     /**
-     * @function handleSendChat
-     * @description บันทึกข้อความแชทลง Activity และส่ง Notification
+     * ดำเนินการปฏิเสธงานหรือตีกลับ (Reject / Return)
+     * นำค่าจากฟอร์มใน Modal มาประมวลผล
+     * @async
+     */
+    const handleReject = async () => {
+        try {
+            // ตรวจสอบประเภทการจัดการ: Reject (สั่งจบทันที) หรือ Return (ตีกลับไปแก้ไข)
+            const type = document.querySelector('input[name="rejectType"]:checked')?.value === 'reject' ? 'reject' : 'return';
+            await rejectJob(job.id, rejectReason, type, user?.displayName || 'User');
+            setShowRejectModal(false);
+            // โหลดข้อมูลใหม่เพื่อแสดงสถานะล่าสุด
+            const jobs = await getJobs();
+            const updatedJob = jobs.find(j => j.id === job.id);
+            if (updatedJob) setJob(updatedJob);
+        } catch (err) {
+            alert('เกิดข้อผิดพลาดในการส่งข้อมูล: ' + err.message);
+        }
+    };
+
+    /**
+     * ส่งคำขอแก้ไขงาน (Request Revision) จากฝั่งคนสั่งงาน (Marketing)
+     */
+    const handleRequestRevision = () => {
+        // ในระบบจริงจะมีการเรียก API เพื่อเปลี่ยนสถานะเป็น 'rework'
+        setShowRevisionModal(false);
+        alert('ส่งคำขอแก้ไขงานเรียบร้อยแล้ว');
+    };
+
+    /**
+     * จัดการการเพิ่มข้อความแชทและอัปเดต Activity Timeline
+     * รวมถึงการส่งการแจ้งเตือน (Notifications) ให้ผู้เกี่ยวข้อง
+     * @async
      */
     const handleSendChat = async () => {
         if (!chatMessage.trim()) return;
@@ -145,7 +188,7 @@ export default function DJDetail() {
             createdAt: new Date().toISOString()
         };
 
-        // Update job with new activity
+        // บันทึก Activity ใหม่ลงในระบบ Mock Storage
         const allJobs = loadMockData('jobs');
         const jobIndex = allJobs.findIndex(j => j.id === job.id);
         if (jobIndex !== -1) {
@@ -155,20 +198,20 @@ export default function DJDetail() {
             allJobs[jobIndex].activities.unshift(newActivity);
             saveMockData('jobs', allJobs);
 
-            // Update local state
+            // อัปเดตสถานะในหน้าประกอบ
             setJob({ ...job, activities: allJobs[jobIndex].activities });
         }
 
-        // Send notification to relevant parties
+        // --- ระบบการแจ้งเตือน (Notification Logic) ---
         const { addNotification } = useNotificationStore.getState();
 
-        // Notify assignee if current user is marketing/approver
+        // แจ้งเตือนไปยังผู้ออกแบบ (Assignee) หากผู้พิมพ์ไม่ใช่ผู้ออกแบบ
         if (currentRole !== 'assignee' && job.assigneeId) {
             addNotification({
                 id: Date.now(),
                 recipientId: job.assigneeId,
                 type: 'comment',
-                title: 'คอมเมนต์ใหม่',
+                title: 'มีความคิดเห็นใหม่ในงานของคุณ',
                 message: `${user?.displayName}: "${chatMessage.substring(0, 50)}${chatMessage.length > 50 ? '...' : ''}"`,
                 link: `/jobs/${job.id}`,
                 isRead: false,
@@ -176,13 +219,13 @@ export default function DJDetail() {
             });
         }
 
-        // Notify requester if current user is assignee/approver
+        // แจ้งเตือนไปยังผู้สั่งงาน (Requester) หากผู้พิมพ์ไม่ใช่ผู้สั่งงาน
         if (currentRole !== 'marketing' && job.requesterId) {
             addNotification({
                 id: Date.now() + 1,
                 recipientId: job.requesterId,
                 type: 'comment',
-                title: 'คอมเมนต์ใหม่',
+                title: 'มีการตอบกลับในใบงานของคุณ',
                 message: `${user?.displayName}: "${chatMessage.substring(0, 50)}${chatMessage.length > 50 ? '...' : ''}"`,
                 link: `/jobs/${job.id}`,
                 isRead: false,
@@ -215,11 +258,15 @@ export default function DJDetail() {
         );
     }
 
-    // คำนวณ SLA Display
+    /**
+     * คำนวณการแสดงผลของ SLA และ Deadline
+     * @returns {object} ข้อมูลสำหรับการแสดงผล Badge (ข้อความ, สี, คลาส CSS)
+     */
     const getSlaDisplay = () => {
+        // กรณีงานเกินกำหนด (Overdue)
         if (job.isOverdue) {
             return {
-                text: `Overdue +${job.overdueDays || 1} Days`,
+                text: `เกินกำหนด +${job.overdueDays || 1} วัน`,
                 subText: `Deadline: ${new Date(job.deadline).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}`,
                 color: 'red',
                 bgColor: 'bg-red-50 border-red-200',
@@ -227,9 +274,11 @@ export default function DJDetail() {
             };
         }
 
+        // กรณีมีวันกำหนดส่ง (Deadline) และยังไม่เกินกำหนด
         if (job.deadline) {
             const deadline = new Date(job.deadline);
             const today = new Date();
+            // คำนวณจำนวนวันคงเหลือ
             const diffDays = Math.ceil((deadline - today) / (1000 * 60 * 60 * 24));
 
             if (diffDays <= 0) {
@@ -242,7 +291,7 @@ export default function DJDetail() {
                 };
             } else if (diffDays <= 2) {
                 return {
-                    text: `อีก ${diffDays} วัน`,
+                    text: `เหลือน้อยกว่า ${diffDays} วัน`,
                     subText: `Deadline: ${deadline.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}`,
                     color: 'amber',
                     bgColor: 'bg-amber-50 border-amber-200',
@@ -250,7 +299,7 @@ export default function DJDetail() {
                 };
             } else {
                 return {
-                    text: `อีก ${diffDays} วัน`,
+                    text: `เหลืออีก ${diffDays} วัน`,
                     subText: `Deadline: ${deadline.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}`,
                     color: 'green',
                     bgColor: 'bg-green-50 border-green-200',
@@ -259,6 +308,7 @@ export default function DJDetail() {
             }
         }
 
+        // กรณีพื้นฐาน (Default) แสดงจำนวนวัน SLA ของประเภทงาน
         return {
             text: `SLA: ${job.slaWorkingDays || 7} วันทำการ`,
             subText: '',
@@ -338,22 +388,22 @@ export default function DJDetail() {
             ============================================ */}
                 <div className="lg:col-span-2 space-y-6">
 
-                    {/* Preview Card */}
+                    {/* การแสดงตัวอย่างงาน (Deliverables) */}
                     <Card>
-                        <CardHeader title="Preview / Deliverables">
+                        <CardHeader title="ตัวอย่างงาน / ไฟล์ที่ส่งมอบ (Deliverables)">
                             <div className="flex items-center gap-2">
                                 <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                                    Version {versions[selectedVersion]?.version || 1}
+                                    เวอร์ชัน {versions[selectedVersion]?.version || 1}
                                 </span>
-                                <Button variant="link">Download All</Button>
+                                <Button variant="link">ดาวน์โหลดทั้งหมด</Button>
                             </div>
                         </CardHeader>
                         <CardBody>
-                            {/* Main Preview Area */}
+                            {/* ส่วนแสดงตัวอย่างหลัก (Main Preview) */}
                             <div className="bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl aspect-video flex items-center justify-center mb-4 border-2 border-dashed border-gray-300">
                                 <div className="text-center">
                                     <DocumentIcon className="w-20 h-20 text-gray-400 mx-auto mb-3" />
-                                    <p className="font-medium text-gray-600">{versions[selectedVersion]?.name || 'No File'}</p>
+                                    <p className="font-medium text-gray-600">{versions[selectedVersion]?.name || 'ไม่พบไฟล์'}</p>
                                     <p className="text-sm text-gray-400">
                                         {versions[selectedVersion]?.dimensions} • {versions[selectedVersion]?.size}
                                     </p>
@@ -386,13 +436,13 @@ export default function DJDetail() {
                         </CardBody>
                     </Card>
 
-                    {/* Action Buttons - ตาม Role */}
+                    {/* ปุ่มดำเนินการ (Action Buttons) - คัดกรองตาม Role */}
                     <Card>
                         <CardBody>
-                            <h2 className="font-semibold text-gray-900 mb-4">Actions</h2>
+                            <h2 className="font-semibold text-gray-900 mb-4">การดำเนินการ (Actions)</h2>
                             <div className="flex flex-wrap gap-3">
 
-                                {/* Marketing Actions */}
+                                {/* สำหรับผู้สั่งงาน (Marketing) */}
                                 {currentRole === 'marketing' && (
                                     <>
                                         <Button
@@ -425,7 +475,7 @@ export default function DJDetail() {
                                     </>
                                 )}
 
-                                {/* Approver Actions */}
+                                {/* สำหรับผู้อนุมัติ (Approver) */}
                                 {currentRole === 'approver' && (
                                     <>
                                         <Button
@@ -451,7 +501,7 @@ export default function DJDetail() {
                                     </>
                                 )}
 
-                                {/* Assignee Actions */}
+                                {/* สำหรับผู้ออกแบบ (Assignee) */}
                                 {currentRole === 'assignee' && (
                                     <>
                                         <Button className="flex-1 bg-blue-500 hover:bg-blue-600 flex-col py-3">
@@ -515,10 +565,10 @@ export default function DJDetail() {
                         </CardBody>
                     </Card>
 
-                    {/* Activity Timeline */}
+                    {/* ส่วนกิจกรรมและการสนทนา */}
                     <Card>
-                        <CardHeader title="Activity & Chat">
-                            <span className="text-xs text-gray-500">{activities.length} activities</span>
+                        <CardHeader title="กิจกรรมย้อนหลังและแชท (Activity & Chat)">
+                            <span className="text-xs text-gray-500">{activities.length} รายการ</span>
                         </CardHeader>
                         <CardBody>
                             <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
@@ -564,22 +614,22 @@ export default function DJDetail() {
                 </div>
 
                 {/* ============================================
-            Right Column: Job Details
-            ============================================ */}
+               คอลัมน์ขวา: รายละเอียดข้อมูลงาน (Job Info)
+               ============================================ */}
                 <div className="space-y-6">
-                    {/* Job Info Card */}
+                    {/* ข้อมูลพื้นฐาน */}
                     <Card>
-                        <CardHeader title="Job Details" />
+                        <CardHeader title="ข้อมูลงาน (Job Details)" />
                         <CardBody className="space-y-4">
-                            <InfoRow label="Project" value={job.project || '-'} />
-                            <InfoRow label="BUD" value={job.bud || '-'} />
-                            <InfoRow label="Job Type" value={job.jobType || '-'} sub={`SLA: ${job.slaWorkingDays || 7} Working Days`} />
+                            <InfoRow label="โครงการ (Project)" value={job.project || '-'} />
+                            <InfoRow label="หน่วยงาน (BUD)" value={job.bud || '-'} />
+                            <InfoRow label="ประเภทงาน (Job Type)" value={job.jobType || '-'} sub={`SLA: ${job.slaWorkingDays || 7} วันทำการ`} />
                             <div>
-                                <p className="text-xs text-gray-500 mb-1">Priority</p>
+                                <p className="text-xs text-gray-500 mb-1">ความสำคัญ (Priority)</p>
                                 <Badge status={job.priority?.toLowerCase() || 'normal'} />
                             </div>
                             <div>
-                                <p className="text-xs text-gray-500 mb-1">Requester</p>
+                                <p className="text-xs text-gray-500 mb-1">ผู้สั่งงาน (Requester)</p>
                                 <div className="flex items-center gap-2 mt-1">
                                     <div className="w-8 h-8 bg-rose-500 rounded-full flex items-center justify-center text-white text-sm">
                                         {job.requesterName?.[0] || 'U'}
@@ -589,7 +639,7 @@ export default function DJDetail() {
                             </div>
                             {job.assigneeName && (
                                 <div>
-                                    <p className="text-xs text-gray-500 mb-1">Assignee</p>
+                                    <p className="text-xs text-gray-500 mb-1">ผู้ออกแบบ (Assignee)</p>
                                     <div className="flex items-center gap-2 mt-1">
                                         <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center text-white text-sm">
                                             {job.assigneeName?.[0] || 'A'}
@@ -601,16 +651,16 @@ export default function DJDetail() {
                         </CardBody>
                     </Card>
 
-                    {/* Brief Card */}
+                    {/* รายละเอียดเนื้อหางาน (Brief) */}
                     <Card>
-                        <CardHeader title="Brief" />
+                        <CardHeader title="รายละเอียดงาน (Brief)" />
                         <CardBody className="space-y-4">
-                            <InfoRow label="Objective" value={job.brief?.objective || 'ไม่ระบุ'} />
-                            <InfoRow label="Headline" value={job.brief?.headline || '-'} />
-                            <InfoRow label="Sub-headline" value={job.brief?.subHeadline || '-'} />
+                            <InfoRow label="วัตถุประสงค์ (Objective)" value={job.brief?.objective || 'ไม่ระบุ'} />
+                            <InfoRow label="พาดหัวหลัก (Headline)" value={job.brief?.headline || '-'} />
+                            <InfoRow label="พาดหัวรอง (Sub-headline)" value={job.brief?.subHeadline || '-'} />
                             {job.brief?.sellingPoints?.length > 0 && (
                                 <div>
-                                    <p className="text-xs text-gray-500 mb-1">Selling Points</p>
+                                    <p className="text-xs text-gray-500 mb-1">จุดเด่น/ข้อมูลประกอบ (Selling Points)</p>
                                     <div className="flex flex-wrap gap-1 mt-1">
                                         {job.brief.sellingPoints.map((point, idx) => (
                                             <span key={idx} className="px-2 py-1 bg-gray-100 text-gray-700 rounded-lg text-xs">
@@ -620,18 +670,18 @@ export default function DJDetail() {
                                     </div>
                                 </div>
                             )}
-                            <InfoRow label="Price" value={job.brief?.price || '-'} />
+                            <InfoRow label="ราคา/โปรโมชั่น (Price)" value={job.brief?.price || '-'} />
                         </CardBody>
                     </Card>
 
-                    {/* Attachments Card */}
+                    {/* ไฟล์แนบอ้างอิง */}
                     <Card>
-                        <CardHeader title="Attachments" />
+                        <CardHeader title="ไฟล์แนบ (Attachments)" />
                         <CardBody className="space-y-3">
                             <FileItem name="CI-guideline.pdf" size="2.1 MB" color="red" />
                             <FileItem name="logo-pack.zip" size="5.4 MB" color="yellow" />
                             <p className="text-xs text-gray-400 mt-2">
-                                Last updated: {new Date(job.updatedAt || job.createdAt).toLocaleDateString('th-TH')}
+                                อัปเดตล่าสุดเมื่อ: {new Date(job.updatedAt || job.createdAt).toLocaleDateString('th-TH')}
                             </p>
                         </CardBody>
                     </Card>
@@ -678,36 +728,36 @@ export default function DJDetail() {
             )}
 
             {/* ============================================
-          Reject Modal
-          ============================================ */}
+           Reject Modal - หน้าต่างระบุเหตุผลการปฏิเสธ
+           ============================================ */}
             {showRejectModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-xl max-w-lg w-full overflow-hidden">
                         <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-                            <h3 className="text-lg font-semibold text-gray-900">Reject / Return DJ</h3>
+                            <h3 className="text-lg font-semibold text-gray-900">ปฏิเสธหรือส่งคืนแก้ไข (Reject / Return)</h3>
                             <button onClick={() => setShowRejectModal(false)} className="text-gray-400 hover:text-gray-600">
                                 <XMarkIcon className="w-6 h-6" />
                             </button>
                         </div>
                         <div className="p-6 space-y-4">
-                            <p className="text-sm text-gray-600">DJ Reference: <span className="font-medium text-gray-900">{job.djId}</span></p>
+                            <p className="text-sm text-gray-600">อ้างอิง DJ-ID: <span className="font-medium text-gray-900">{job.djId}</span></p>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Action Type</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">ประเภทการดำเนินการ</label>
                                 <div className="flex gap-4">
                                     <label className="flex items-center gap-2 cursor-pointer">
                                         <input type="radio" name="rejectType" value="return" defaultChecked className="text-rose-600 focus:ring-rose-500" />
-                                        <span className="text-sm text-gray-700">Return for Revision</span>
+                                        <span className="text-sm text-gray-700">ส่งคืนให้แก้ไข (Return for Revision)</span>
                                     </label>
                                     <label className="flex items-center gap-2 cursor-pointer">
                                         <input type="radio" name="rejectType" value="reject" className="text-rose-600 focus:ring-rose-500" />
-                                        <span className="text-sm text-gray-700">Reject</span>
+                                        <span className="text-sm text-gray-700">ปฏิเสธงาน (Reject)</span>
                                     </label>
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Reason <span className="text-red-500">*</span></label>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">สาเหตุประกอบ <span className="text-red-500">*</span></label>
                                 <select
                                     value={rejectReason}
                                     onChange={(e) => setRejectReason(e.target.value)}
@@ -721,7 +771,7 @@ export default function DJDetail() {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Additional Comments</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">ความคิดเห็นเพิ่มเติม</label>
                                 <textarea
                                     rows="3"
                                     value={rejectComment}
@@ -732,21 +782,21 @@ export default function DJDetail() {
                             </div>
                         </div>
                         <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
-                            <Button variant="secondary" onClick={() => setShowRejectModal(false)}>Cancel</Button>
-                            <Button onClick={handleReject} className="bg-red-500 hover:bg-red-600">Confirm</Button>
+                            <Button variant="secondary" onClick={() => setShowRejectModal(false)}>ยกเลิก</Button>
+                            <Button onClick={handleReject} className="bg-red-500 hover:bg-red-600">ยืนยัน</Button>
                         </div>
                     </div>
                 </div>
             )}
 
             {/* ============================================
-          Revision Modal
-          ============================================ */}
+           Revision Modal - หน้าต่างการขอแก้ไขงาน
+           ============================================ */}
             {showRevisionModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-xl max-w-lg w-full overflow-hidden">
                         <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-                            <h3 className="text-lg font-semibold text-gray-900">Request Revision</h3>
+                            <h3 className="text-lg font-semibold text-gray-900">ขอให้แก้ไขงาน (Request Revision)</h3>
                             <button onClick={() => setShowRevisionModal(false)} className="text-gray-400 hover:text-gray-600">
                                 <XMarkIcon className="w-6 h-6" />
                             </button>
@@ -788,9 +838,17 @@ export default function DJDetail() {
 }
 
 // ============================================
-// Sub-components
+// คอมโพเนนต์ย่อย (Sub-components)
 // ============================================
 
+/**
+ * InfoRow Component
+ * แสดงข้อมูลแบบแถว มีหัวข้อและรายละเอียด
+ * @param {object} props
+ * @param {string} props.label - ชื่อหัวข้อ
+ * @param {string} props.value - ค่าของข้อมูล
+ * @param {string} [props.sub] - ข้อมูลเสริมขนาดเล็ก
+ */
 function InfoRow({ label, value, sub }) {
     return (
         <div>
@@ -801,6 +859,14 @@ function InfoRow({ label, value, sub }) {
     );
 }
 
+/**
+ * FileItem Component
+ * แสดงรายการไฟล์แนบพร้อมไอคอนตามประเภทและปุ่มดาวน์โหลด
+ * @param {object} props
+ * @param {string} props.name - ชื่อไฟล์
+ * @param {string} props.size - ขนาดไฟล์
+ * @param {string} props.color - ธีมสีของไอคอน (red, yellow, blue)
+ */
 function FileItem({ name, size, color }) {
     const colors = {
         red: "bg-red-100 text-red-500",
@@ -818,13 +884,23 @@ function FileItem({ name, size, color }) {
                     <p className="text-xs text-gray-400">{size}</p>
                 </div>
             </div>
-            <button className="p-2 text-gray-400 hover:text-rose-600 rounded-lg hover:bg-white">
+            <button title="ดาวน์โหลด" className="p-2 text-gray-400 hover:text-rose-600 rounded-lg hover:bg-white">
                 <ArrowDownTrayIcon className="w-5 h-5" />
             </button>
         </div>
     );
 }
 
+/**
+ * TimelineItem Component
+ * แสดงรายการความคืบหน้าใน Activity Timeline พร้อมไอคอน
+ * @param {object} props
+ * @param {string} props.user - ชื่อผู้ดำเนินการ
+ * @param {string} props.action - การกระทำที่เกิดขึ้น
+ * @param {string} props.time - เวลาที่เกิดรายการ
+ * @param {string} props.type - ประเภทรายการเพื่อเลือกไอคอน (upload, revision, approve, assign, create)
+ * @param {string} props.color - สีพื้นหลังไอคอน
+ */
 function TimelineItem({ user, action, time, type, color }) {
     const colorClasses = {
         blue: "bg-blue-100 text-blue-600",
@@ -855,6 +931,16 @@ function TimelineItem({ user, action, time, type, color }) {
     );
 }
 
+/**
+ * ChatMessage Component
+ * แสดงกล่องข้อความแชทของผู้ใช้งาน
+ * @param {object} props
+ * @param {string} props.user - ชื่อผู้ส่ง
+ * @param {string} props.message - ข้อความ
+ * @param {string} props.time - เวลาที่ส่ง
+ * @param {string} props.initial - ตัวอักษรย่อสำหรับ Avatar
+ * @param {string} props.color - ธีมสีของกล่องข้อความ
+ */
 function ChatMessage({ user, message, time, initial, color }) {
     const bgColors = {
         purple: 'bg-purple-50',
@@ -874,7 +960,7 @@ function ChatMessage({ user, message, time, initial, color }) {
             </div>
             <div className={`flex-1 ${bgColors[color] || 'bg-gray-50'} rounded-xl p-4`}>
                 <p className="text-sm text-gray-700">{message}</p>
-                <p className="text-xs text-gray-400 mt-2">{time}</p>
+                <p className="text-xs text-gray-400 mt-2">{user} • {time}</p>
             </div>
         </div>
     );

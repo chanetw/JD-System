@@ -2,6 +2,7 @@
     "notifications": [
         {
             "id": 1,
+            "tenantId": 1,
             "recipientId": 2,
             "type": "job_completed",
             "title": "งานเสร็จแล้ว",
@@ -12,6 +13,7 @@
         },
         {
             "id": 2,
+            "tenantId": 1,
             "recipientId": 2,
             "type": "comment",
             "title": "คอมเมนต์ใหม่",
@@ -22,6 +24,7 @@
         },
         {
             "id": 3,
+            "tenantId": 1,
             "recipientId": 4,
             "type": "request_approval",
             "title": "คำอนุมัติใหม่",
@@ -32,6 +35,7 @@
         },
         {
             "id": 4,
+            "tenantId": 1,
             "recipientId": 5,
             "type": "job_assigned",
             "title": "ได้รับมอบหมายงาน",
@@ -42,6 +46,7 @@
         },
         {
             "id": 5,
+            "tenantId": 1,
             "recipientId": 2,
             "type": "job_rejected",
             "title": "งานถูกส่งกลับแก้ไข",
@@ -52,6 +57,7 @@
         },
         {
             "id": 6,
+            "tenantId": 1,
             "recipientId": 5,
             "type": "comment",
             "title": "คอมเมนต์ใหม่",
@@ -62,6 +68,7 @@
         },
         {
             "id": 7,
+            "tenantId": 1,
             "recipientId": 3,
             "type": "deadline_warning",
             "title": "ใกล้ถึงกำหนดส่ง",
@@ -72,6 +79,7 @@
         },
         {
             "id": 8,
+            "tenantId": 1,
             "recipientId": 1,
             "type": "system_alert",
             "title": "ระบบพร้อมใช้งาน",

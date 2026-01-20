@@ -1,10 +1,12 @@
 /**
- * @file AdminJobTypeSLA.jsx
- * @description หน้าจัดการประเภทงานและ SLA (Admin: Job Type & SLA) - Logic Integrated
+ * @file JobTypeSLA.jsx
+ * @description หน้าจอจัดการประเภทงาน (Job Types) และเป้าหมายระยะเวลาทำงาน (SLA)
  * 
- * Senior Programmer Notes:
- * - เชื่อมต่อกับ mockApi สำหรับ CRUD (Create, Read, Update, Delete)
- * - มี Loading State และ Interaction จริง
+ * วัตถุประสงค์หลัก:
+ * - กำหนดประเภทงานต่างๆ ที่มีในระบบ (เช่น Social Media, Banner, Video)
+ * - ตั้งค่าระยะเวลา SLA (จำนวนวันทำงาน) สำหรับงานแต่ละประเภท
+ * - กำหนดรายการเอกสารแนบที่จำเป็นสำหรับงานแต่ละประเภท
+ * - เลือกไอคอนและสีประจำประเภทงานเพื่อความสวยงามในระบบ
  */
 
 import React, { useState, useEffect } from 'react';
@@ -24,7 +26,10 @@ import {
     DocumentDuplicateIcon
 } from '@heroicons/react/24/outline';
 
-// Custom Icons from Design
+/**
+ * การตั้งค่าสีและไอคอนสำหรับประเภทงานต่างๆ
+ * ใช้สำหรับแสดงผลในตารางและส่วนสรุปสถิติ
+ */
 const JOB_ICONS = {
     social: {
         label: "Social Media",
@@ -76,35 +81,53 @@ const JOB_ICONS = {
     }
 };
 
+/**
+ * รายการเอกสารแนบที่ระบบรองรับให้เลือก (Standard Attachment Types)
+ */
 const AVAILABLE_ATTACHMENTS = ['Logo', 'Product Image', 'Size Spec', 'Print Spec', 'Script', 'Storyboard', 'Music Ref', 'Mood & Tone', 'Reference'];
 
+/**
+ * AdminJobTypeSLA Component
+ * คอมโพเน็นต์สำหรับการจัดการประเภทงานและ SLA ในระบบหลังบ้าน
+ */
 export default function AdminJobTypeSLA() {
+    // === สถานะของข้อมูล (States: Data) ===
+    /** รายการประเภทงานทั้งหมด */
     const [jobTypes, setJobTypes] = useState([]);
+    /** สถานะการกำลังโหลดข้อมูล */
     const [isLoading, setIsLoading] = useState(false);
 
-    // Modal State
+    // === สถานะของหน้าต่างจัดการ (States: Modal) ===
+    /** ควบคุมการเปิด/ปิด Modal */
     const [showModal, setShowModal] = useState(false);
+    /** โหมดของ Modal: 'add' (เพิ่มใหม่) หรือ 'edit' (แก้ไข) */
     const [modalMode, setModalMode] = useState('add');
+    /** ID ของรายการที่กำลังเลือกแก้ไข */
     const [selectedId, setSelectedId] = useState(null);
+    /** ข้อมูลในฟอร์ม */
     const [formData, setFormData] = useState({
-        name: '',
-        description: '',
-        sla: 3,
-        attachments: [],
-        icon: 'social',
-        status: 'active'
+        name: '',           // ชื่อประเภทงาน
+        description: '',    // รายละเอียด
+        sla: 3,             // ระยะเวลา SLA (วัน)
+        attachments: [],    // รายการเอกสารแนบที่ต้องใช้
+        icon: 'social',     // ไอคอนที่เลือก
+        status: 'active'    // สถานะ: active, inactive
     });
 
     // ============================================
     // Load Data
     // ============================================
+    /**
+     * ดึงข้อมูลประเภทงานทั้งหมดจาก API
+     * @async
+     */
     const fetchData = async () => {
         setIsLoading(true);
         try {
             const data = await api.getJobTypes();
             setJobTypes(data || []);
         } catch (error) {
-            console.error("Failed to fetch job types", error);
+            console.error("เกิดข้อผิดพลาดในการดึงข้อมูลประเภทงาน:", error);
         } finally {
             setIsLoading(false);
         }
@@ -117,6 +140,11 @@ export default function AdminJobTypeSLA() {
     // ============================================
     // Actions
     // ============================================
+    /**
+     * เปิด Modal สำหรับเพิ่มหรือแก้ไขข้อมูล
+     * @param {('add'|'edit')} mode - โหมดการใช้งาน
+     * @param {Object} [item] - ข้อมูลที่ต้องการแก้ไข (กรณี mode เป็น 'edit')
+     */
     const handleOpenModal = (mode, item = null) => {
         setModalMode(mode);
         if (mode === 'edit' && item) {
@@ -126,11 +154,11 @@ export default function AdminJobTypeSLA() {
                 description: item.description || '',
                 sla: item.sla,
                 attachments: item.attachments || [],
-                icon: item.icon || 'social', // Map old icons if necessary later, or assume updated data
+                icon: item.icon || 'social',
                 status: item.status || 'active'
             });
         } else {
-            // Reset for Add
+            // ล้างข้อมูลฟอร์มสำหรับการเพิ่มใหม่ (Reset for Add)
             setSelectedId(null);
             setFormData({
                 name: '',
@@ -144,6 +172,7 @@ export default function AdminJobTypeSLA() {
         setShowModal(true);
     };
 
+    /** บันทึกข้อมูลประเภทงานลงในฐานข้อมูล */
     const handleSave = async () => {
         try {
             if (modalMode === 'add') {
@@ -152,24 +181,31 @@ export default function AdminJobTypeSLA() {
                 await api.updateJobType(selectedId, formData);
             }
             setShowModal(false);
-            fetchData(); // Reload
+            fetchData(); // โหลดข้อมูลใหม่หลังจากบันทึก
         } catch (error) {
-            alert('Error saving: ' + error.message);
+            alert('เกิดข้อผิดพลาดในการบันทึก: ' + error.message);
         }
     };
 
+    /**
+     * ลบประเภทงาน
+     * @param {string|number} id - ID ของประเภทงานที่ต้องการลบ
+     */
     const handleDelete = async (id) => {
-        if (confirm('Are you sure you want to delete this Job Type?')) {
+        if (confirm('คุณแน่ใจหรือไม่ว่าต้องการลบประเภทงานนี้? การกระทำนี้ไม่สามารถเรียกคืนได้')) {
             try {
                 await api.deleteJobType(id);
                 fetchData();
             } catch (error) {
-                alert('Error deleting: ' + error.message);
+                alert('เกิดข้อผิดพลาดในการลบ: ' + error.message);
             }
         }
     };
 
-    // Form Handlers
+    /**
+     * จัดการการเลือกเอกสารแนบที่จำเป็น (Toggle Selection)
+     * @param {string} item - ชื่อประเภทเอกสารแนบ
+     */
     const handleAttachmentChange = (item) => {
         setFormData(prev => {
             if (prev.attachments.includes(item)) {
@@ -192,32 +228,50 @@ export default function AdminJobTypeSLA() {
                     <h1 className="text-2xl font-bold text-gray-900">Job Type & SLA Management</h1>
                     <p className="text-gray-500">จัดการประเภทงานและระยะเวลา SLA</p>
                 </div>
-                <Button onClick={() => handleOpenModal('add')}>
-                    <PlusIcon className="w-5 h-5" /> Add Job Type
-                </Button>
+                <div className="flex items-center gap-3">
+                    {/* ปุ่มโหลดข้อมูลใหม่ (สำหรับ Debug เมื่อข้อมูลหาย) */}
+                    {jobTypes.length === 0 && !isLoading && (
+                        <Button
+                            variant="secondary"
+                            onClick={() => {
+                                localStorage.removeItem('dj_system_jobTypes');
+                                window.location.reload();
+                            }}
+                            className="bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                            โหลดข้อมูลใหม่
+                        </Button>
+                    )}
+                    <Button onClick={() => handleOpenModal('add')}>
+                        <PlusIcon className="w-5 h-5" /> Add Job Type
+                    </Button>
+                </div>
             </div>
 
-            {/* Stats */}
+            {/* ส่วนสรุปสถิติ (Stats Overview) */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <AdminStatCard label="Total Job Types" value={jobTypes.length} icon={<BriefcaseIcon className="w-5 h-5 text-rose-600" />} color="rose" />
-                <AdminStatCard label="Active" value={activeCount} icon={<CheckCircleIcon className="w-5 h-5 text-green-600" />} color="green" />
-                <AdminStatCard label="Avg SLA (Days)" value={avgSLA} icon={<ClockIcon className="w-5 h-5 text-blue-600" />} color="blue" />
-                <AdminStatCard label="Total DJs This Month" value="156" icon={<DocumentDuplicateIcon className="w-5 h-5 text-purple-600" />} color="purple" />
+                <AdminStatCard label="ประเภทงานทั้งหมด" value={jobTypes.length} icon={<BriefcaseIcon className="w-5 h-5 text-rose-600" />} color="rose" />
+                <AdminStatCard label="เปิดการใช้งาน (Active)" value={activeCount} icon={<CheckCircleIcon className="w-5 h-5 text-green-600" />} color="green" />
+                <AdminStatCard label="SLA เฉลี่ย (วัน)" value={avgSLA} icon={<ClockIcon className="w-5 h-5 text-blue-600" />} color="blue" />
+                <AdminStatCard label="DJ ที่เกิดขึ้นเดือนนี้" value="156" icon={<DocumentDuplicateIcon className="w-5 h-5 text-purple-600" />} color="purple" />
             </div>
 
-            {/* Table */}
-            <Card className="overflow-hidden">
-                <CardHeader title="Job Types Configuration" />
+            {/* ตารางแสดงข้อมูล (Job Types Table) */}
+            <Card className="overflow-hidden shadow-sm border border-gray-100">
+                <CardHeader title="กำหนดค่าประเภทงานและ SLA (Job Types Configuration)" />
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead className="bg-gray-50 border-b border-gray-200">
                             <tr>
-                                <Th>Job Type</Th>
-                                <Th>Description</Th>
-                                <Th className="text-center">SLA (Days)</Th>
-                                <Th>Required Attachments</Th>
-                                <Th className="text-center">Status</Th>
-                                <Th className="text-center">Actions</Th>
+                                <Th>ประเภทงาน (Job Type)</Th>
+                                <Th>รายละเอียด (Description)</Th>
+                                <Th className="text-center">SLA (วันทำงาน)</Th>
+                                <Th>เอกสารแนบที่ต้องใช้ (Attachments)</Th>
+                                <Th className="text-center">สถานะ</Th>
+                                <Th className="text-center">จัดการ</Th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
@@ -269,69 +323,79 @@ export default function AdminJobTypeSLA() {
                 </div>
             </Card>
 
-            {/* Modal */}
+            {/* หน้าต่างเพิ่ม/แก้ไข (Add/Edit Modal) */}
             {showModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                        <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-                            <h3 className="text-lg font-semibold text-gray-900">{modalMode === 'add' ? 'Add New Job Type' : 'Edit Job Type'}</h3>
-                            <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
-                                <XMarkIcon className="w-6 h-6" />
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-100">
+                        <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50/50">
+                            <h3 className="text-lg font-bold text-gray-900">{modalMode === 'add' ? 'เพิ่มประเภทงานใหม่' : 'แก้ไขข้อมูลประเภทงาน'}</h3>
+                            <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 bg-white p-1 rounded-full shadow-sm transition-transform hover:rotate-90">
+                                <XMarkIcon className="w-5 h-5" />
                             </button>
                         </div>
 
-                        <div className="p-6 space-y-4">
-                            <FormInput
-                                label="Job Type Name"
-                                required
-                                value={formData.name}
-                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                            />
+                        <div className="p-6 space-y-6 overflow-y-auto">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <FormInput
+                                    label="ชื่อประเภทงาน"
+                                    required
+                                    placeholder="เช่น Social Media Design"
+                                    value={formData.name}
+                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                />
+                                <FormSelect
+                                    label="สถานะการใช้งาน"
+                                    value={formData.status}
+                                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                                >
+                                    <option value="active">เปิดใช้งาน (Active)</option>
+                                    <option value="inactive">ปิดใช้งาน (Inactive)</option>
+                                </FormSelect>
+                            </div>
+
                             <FormTextarea
-                                label="Description"
+                                label="รายละเอียดประเภทงาน"
                                 rows="2"
+                                placeholder="ระบุขอบเขตของงานโดยสังเขป..."
                                 value={formData.description}
                                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                             />
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-rose-50 p-4 rounded-xl border border-rose-100">
                                 <FormInput
-                                    label="SLA (Working Days)"
+                                    label="เป้าหมายระยะเวลาทำงาน (SLA) - จำนวนวันทำงาน"
                                     type="number"
                                     required
+                                    min="1"
                                     value={formData.sla}
                                     onChange={(e) => setFormData({ ...formData, sla: e.target.value })}
                                 />
-                                <FormSelect
-                                    label="Status"
-                                    value={formData.status}
-                                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                                >
-                                    <option value="active">Active</option>
-                                    <option value="inactive">Inactive</option>
-                                </FormSelect>
+                                <p className="mt-2 text-xs text-rose-600 italic">* ระบบจะใช้ค่านี้ในการคำนวณวันครบกำหนดส่งงานโดยนับเฉพาะวันทำงาน</p>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Required Attachments</label>
-                                <div className="grid grid-cols-3 gap-2">
+                                <label className="block text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                                    เอกสารแนบที่จำเป็น (Required Attachments)
+                                    <span className="text-[10px] font-normal bg-gray-100 px-2 py-0.5 rounded-full text-gray-500 uppercase">Select Multiple</span>
+                                </label>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                     {AVAILABLE_ATTACHMENTS.map(item => (
-                                        <label key={item} className="flex items-center gap-2 p-2 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+                                        <label key={item} className={`flex items-center gap-2 p-2.5 border rounded-lg cursor-pointer transition-all ${formData.attachments.includes(item) ? 'bg-rose-50 border-rose-200 ring-1 ring-rose-200' : 'bg-white border-gray-200 hover:border-gray-300'}`}>
                                             <input
                                                 type="checkbox"
-                                                className="rounded border-gray-300 text-rose-600 focus:ring-rose-500"
+                                                className="w-4 h-4 rounded border-gray-300 text-rose-600 focus:ring-rose-500"
                                                 checked={formData.attachments.includes(item)}
                                                 onChange={() => handleAttachmentChange(item)}
                                             />
-                                            <span className="text-sm text-gray-700">{item}</span>
+                                            <span className={`text-sm ${formData.attachments.includes(item) ? 'text-rose-700 font-bold' : 'text-gray-600'}`}>{item}</span>
                                         </label>
                                     ))}
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Icon</label>
-                                <div className="flex gap-2">
+                                <label className="block text-sm font-bold text-gray-700 mb-3">เลือกไอคอนแสดงผล (Display Icon)</label>
+                                <div className="flex flex-wrap gap-3">
                                     {Object.keys(JOB_ICONS).map(iconName => {
                                         const iconConfig = JOB_ICONS[iconName];
                                         const isSelected = formData.icon === iconName;
@@ -339,9 +403,10 @@ export default function AdminJobTypeSLA() {
                                             <div
                                                 key={iconName}
                                                 onClick={() => setFormData({ ...formData, icon: iconName })}
-                                                className={`w-10 h-10 rounded-lg flex items-center justify-center border-2 cursor-pointer transition-all ${isSelected ? `${iconConfig.bg} ${iconConfig.border} ${iconConfig.text}` : 'bg-gray-50 border-transparent hover:border-gray-300 text-gray-400'}`}
+                                                title={iconConfig.label}
+                                                className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 cursor-pointer transition-all transform hover:scale-105 ${isSelected ? `${iconConfig.bg} ${iconConfig.border} ${iconConfig.text} shadow-md` : 'bg-gray-50 border-transparent hover:border-gray-300 text-gray-400'}`}
                                             >
-                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     {iconConfig.path}
                                                 </svg>
                                             </div>
@@ -352,8 +417,10 @@ export default function AdminJobTypeSLA() {
                         </div>
 
                         <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
-                            <Button variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
-                            <Button variant="primary" onClick={handleSave}>Save Job Type</Button>
+                            <Button variant="ghost" onClick={() => setShowModal(false)}>ยกเลิก (Cancel)</Button>
+                            <Button variant="primary" onClick={handleSave} className="bg-rose-600 hover:bg-rose-700 shadow-md transform active:scale-95 transition-all min-w-[140px]">
+                                {modalMode === 'add' ? 'เพิ่มประเภทงาน' : 'บันทึกการแก้ไข'}
+                            </Button>
                         </div>
                     </div>
                 </div>
@@ -362,7 +429,10 @@ export default function AdminJobTypeSLA() {
     );
 }
 
-// Helpers
+/**
+ * การ์ดแสดงผลสถิติในหน้า Admin
+ * @component
+ */
 function AdminStatCard({ label, value, icon, color }) {
     const colors = {
         rose: "bg-rose-100",
@@ -371,18 +441,19 @@ function AdminStatCard({ label, value, icon, color }) {
         purple: "bg-purple-100"
     };
     return (
-        <div className="bg-white rounded-lg border border-gray-200 p-4 flex items-center gap-3 shadow-sm">
-            <div className={`w-10 h-10 ${colors[color]} rounded-lg flex items-center justify-center`}>
+        <div className="bg-white rounded-xl border border-gray-200 p-5 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
+            <div className={`w-12 h-12 ${colors[color]} rounded-xl flex items-center justify-center shadow-inner`}>
                 {icon}
             </div>
             <div>
-                <p className="text-2xl font-bold text-gray-900">{value}</p>
-                <p className="text-sm text-gray-500">{label}</p>
+                <p className="text-2xl font-black text-gray-900 tracking-tight">{value}</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest leading-tight">{label}</p>
             </div>
         </div>
     );
 }
 
+/** ส่วนหัวตารางป้ายกำกับขนาดจิ๋ว */
 function Th({ children, className = "text-left" }) {
-    return <th className={`px-6 py-3 text-xs font-semibold text-gray-600 uppercase ${className}`}>{children}</th>;
+    return <th className={`px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest ${className}`}>{children}</th>;
 }

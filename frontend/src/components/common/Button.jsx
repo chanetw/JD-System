@@ -1,6 +1,13 @@
 /**
- * @file Button.jsx
- * @description ปุ่มกดมาตรฐาน (Standard Button)
+ * Button: คอมโพเน็นต์ปุ่มกดที่ใช้ซ้ำกันทั่วทั้งแอปพลิเคชัน
+ * รองรับหลายรูปแบบ (Variant) เช่น Primary, Secondary, Danger
+ * 
+ * @param {object} props
+ * @param {React.ReactNode} props.children - ข้อความหรือเนื้อหาภายในปุ่ม
+ * @param {'primary'|'secondary'|'danger'|'ghost'|'link'} [props.variant='primary'] - รูปแบบของปุ่ม
+ * @param {string} [props.className] - คลาสเพิ่มเติมสำหรับ Tailwind CSS
+ * @param {React.ElementType} [props.icon] - ไอคอนเสริมที่จะแสดงข้างข้อความ
+ * @param {boolean} [props.disabled=false] - สถานะปิดการใช้งานปุ่ม
  */
 
 import React from 'react';

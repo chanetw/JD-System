@@ -1,10 +1,11 @@
 /**
  * @file ApproverPortal.jsx
- * @description Portal สำหรับ Approver (Head/Manager)
+ * @description หน้าจอหลักสำหรับผู้อนุมัติ (Approver Portal)
  * 
- * Quick Actions: รออนุมัติ, ประวัติ, SLA, Media
- * Sections: Jobs Table (รออนุมัติ), SLA
- * ไม่แสดง: Media Grid, Job Types, Tips (ไม่จำเป็นสำหรับ Approver)
+ * วัตถุประสงค์หลัก:
+ * - แสดงรายการงานที่รอการตรวจสอบและอนุมัติ (Pending Approvals)
+ * - ให้ทางลัดไปยังประวัติการอนุมัติและคลังสื่อ
+ * - สรุปสถิติการอนุมัติงานและสถานะ SLA ของงานที่รออยู่
  */
 
 import React, { useState, useEffect } from 'react';
@@ -31,20 +32,24 @@ import {
 
 export default function ApproverPortal() {
     const navigate = useNavigate();
+    /** ข้อมูลผู้ใช้งานปัจจุบันจาก store */
     const { user } = useAuthStore();
-    const [pendingJobs, setPendingJobs] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [pendingCount, setPendingCount] = useState(0);
+
+    // === สถานะข้อมูล (Data States) ===
+    const [pendingJobs, setPendingJobs] = useState([]);    // รายการงานที่รออนุมัติ (5 รายการล่าสุด)
+    const [isLoading, setIsLoading] = useState(true);     // สถานะการโหลดข้อมูล
+    const [searchQuery, setSearchQuery] = useState('');   // คำค้นหา
+    const [pendingCount, setPendingCount] = useState(0);   // จำนวนงานที่รออนุมัติทั้งหมด
 
     // Quick Actions สำหรับ Approver
+    /** รายการทางลัดการทำงาน (Quick Action Cards) */
     const actions = [
         {
             to: '/approvals',
             icon: <ClockIcon className="w-7 h-7 text-amber-600" />,
             bgColor: 'bg-amber-100 group-hover:bg-amber-200',
             title: 'รออนุมัติ',
-            desc: 'งานที่รอการอนุมัติ',
+            desc: 'งานที่รอยืนยันจากคุณ',
             badge: pendingCount > 0 ? `${pendingCount}` : null
         },
         {
@@ -52,37 +57,38 @@ export default function ApproverPortal() {
             icon: <DocumentCheckIcon className="w-7 h-7 text-emerald-600" />,
             bgColor: 'bg-emerald-100 group-hover:bg-emerald-200',
             title: 'ประวัติการอนุมัติ',
-            desc: 'ดูงานที่อนุมัติแล้ว'
+            desc: 'ดูรายการงานที่อนุมัติไปแล้ว'
         },
         {
             to: '/admin/job-types',
             icon: <ClipboardDocumentCheckIcon className="w-7 h-7 text-indigo-600" />,
             bgColor: 'bg-indigo-100 group-hover:bg-indigo-200',
             title: 'SLA & ประเภทงาน',
-            desc: 'ดูเวลาดำเนินการ'
+            desc: 'ข้อมูลเป้าหมายเวลาตามประเภทงาน'
         },
         {
             to: '/media-portal',
             icon: <PhotoIcon className="w-7 h-7 text-rose-600" />,
             bgColor: 'bg-rose-100 group-hover:bg-rose-200',
-            title: 'Media Portal',
-            desc: 'คลังไฟล์งาน'
+            title: 'ศูนย์จัดการสื่อ',
+            desc: 'คลังไฟล์งานออกแบบที่เสร็จสิ้น'
         }
     ];
 
-    // โหลดงานรออนุมัติ
+    /** โหลดรายการงานที่รอการอนุมัติ */
     useEffect(() => {
         const loadJobs = async () => {
             try {
                 const jobs = await getJobs();
-                // งานที่รออนุมัติ
+                // คัดกรองเฉพาะงานที่มีสถานะรอการอนุมัติ
                 const pending = jobs.filter(j =>
                     j.status === 'pending_approval' || j.status === 'waiting_approval'
                 );
+                // แสดง 5 รายการล่าสุดบนหน้าแรกของ Portal
                 setPendingJobs(pending.slice(0, 5));
                 setPendingCount(pending.length);
             } catch (err) {
-                console.error('Error loading jobs:', err);
+                console.error('เกิดข้อผิดพลาดในการโหลดข้อมูล:', err);
             } finally {
                 setIsLoading(false);
             }
@@ -90,7 +96,7 @@ export default function ApproverPortal() {
         loadJobs();
     }, [user]);
 
-    // ค้นหา
+    /** จัดการการค้นหางาน (นำไปยังหน้าคิวอนุมัติพร้อมระบุเลข DJ ID) */
     const handleSearch = (query) => {
         if (query.trim()) {
             navigate(`/approvals?search=${encodeURIComponent(query)}`);

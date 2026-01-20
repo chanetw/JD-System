@@ -1,69 +1,102 @@
 /**
  * @file mockApi.js
- * @description Mock API Service Layer
- * จำลองการทำงานของ REST API (Backend)
+ * @description เลเยอร์บริการจำลอง API (Mock API Service Layer)
  * 
- * Senior Programmer Notes:
- * - ใช้ mockStorage.js ในการอ่าน/เขียนข้อมูล
- * - จำลอง Delay เสมือน Network Latency (500-1000ms)
- * - Return Promise เพื่อให้ Frontend ใช้ async/await ได้เหมือนจริง
+ * วัตถุประสงค์หลัก:
+ * - จำลองการทำงานของ RESTful API สำหรับระบบ Frontend
+ * - รองรับระบบแยกข้อมูลตามบริษัท (Multi-tenant Isolation) โดยใช้ tenantId
+ * - จัดการข้อมูลงาน (Jobs), ข้อมูลพื้นฐาน (Master Data), และการจัดการผู้ใช้ (User Management)
  */
 
 import { loadMockData, saveMockData } from './mockStorage';
 
-// Helper: Custom ID Generator (instead of uuid)
-const generateId = () => Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+// ============================================
+// Helpers - ฟังก์ชันช่วยเหลือ
+// ============================================
 
-// Helper จำลอง Network Delay
+/**
+ * ดึง ID ของบริษัท (Tenant) ของผู้ใช้ที่กำลังใช้งานอยู่จาก Auth Store
+ * @returns {number} tenantId (ค่าเริ่มต้นจะเป็น 1 สำหรับการสาธิต)
+ */
+const getCurrentTenantId = () => {
+    try {
+        const authStore = JSON.parse(localStorage.getItem('dj-auth-storage'))?.state;
+        return authStore?.user?.tenantId || 1;
+    } catch (e) {
+        return 1;
+    }
+};
+
+/** สร้าง ID แบบสุ่มสำหรับข้อมูลใหม่ */
+const generateId = () => Math.random().toString(36).substring(2, 15);
+
+/** จำลองระยะเวลาการทำงานของเครือข่าย (Network Delay) */
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * ============================================================================
- * Jobs API (DJ Jobs)
- * ============================================================================
+ * ดึงรายการงานทั้งหมดที่ผู้ใช้มีสิทธิ์เข้าถึง (อ้างอิงตาม Tenant และการมอบหมายงาน)
+ * @returns {Promise<Array>} รายการงานที่ผ่านการกรองแล้ว
  */
-
 export const getJobs = async () => {
     await delay(500);
-    return loadMockData('jobs');
+    const tenantId = getCurrentTenantId();
+    const allJobs = loadMockData('jobs');
+    const user = JSON.parse(localStorage.getItem('dj-auth-storage'))?.state?.user;
+
+    // กรองข้อมูล: แสดงงานของบริษัทตนเอง หรือ งานที่ได้รับมอบหมายมาโดยตรง (ข้ามบริษัท)
+    return allJobs.filter(j => {
+        const isMyTenant = j.tenantId === tenantId;
+        const isAssignedToMe = String(j.assigneeId) === String(user?.id) ||
+            String(j.flowSnapshot?.defaultAssignee?.userId) === String(user?.id);
+        return isMyTenant || isAssignedToMe;
+    });
 };
 
+/**
+ * ดึงข้อมูลงานตาม ID ที่ระบุ
+ * @param {string|number} id - รหัสงาน (Internal ID)
+ * @returns {Promise<Object>} ข้อมูลงาน
+ */
 export const getJobById = async (id) => {
     await delay(300);
+    const tenantId = getCurrentTenantId();
     const jobs = loadMockData('jobs');
-    // แปลง ID เป็น string เพื่อเปรียบเทียบ (รองรับทั้ง string และ number)
-    return jobs.find(j => String(j.id) === String(id));
+    return jobs.find(j => String(j.id) === String(id) && j.tenantId === tenantId);
 };
 
+/**
+ * สร้างงาน DJ ใหม่ พร้อมรันลำดับ DJ ID และตรวจสอบ Flow การอนุมัติเบื้องต้น
+ * @param {Object} jobData - ข้อมูลงานที่จะสร้าง
+ * @returns {Promise<Object>} ข้อมูลงานที่สร้างสำเร็จ
+ */
 export const createJob = async (jobData) => {
     await delay(800);
+    const tenantId = getCurrentTenantId();
     const jobs = loadMockData('jobs');
 
-    // Generate ID (DJ-YYYY-XXXX)
+    // สร้างรูปแบบหมายเลข DJ (Format: DJ-YYYY-XXXX)
     const year = new Date().getFullYear();
-    const count = jobs.length + 1;
-    const newId = `DJ-${year}-${String(count).padStart(4, '0')}`;
+    const count = jobs.filter(j => j.tenantId === tenantId).length + 1;
+    const djId = `DJ-${year}-${String(count).padStart(4, '0')}`;
 
-    // Determine Status & Flow Logic
+    // ตรรกะสถานะงานเริ่มต้น (Work Flow Logic)
     let status = 'draft';
     let currentLevel = 0;
     let nextApprover = null;
 
-    // ถ้ามีการไม่ได้ส่งเป็น Draft และมี Flow attached
     if (jobData.status !== 'draft' && jobData.flowSnapshot) {
         status = 'pending_approval';
         currentLevel = 1;
-
-        // Find Level 1 Approver
         const level1 = jobData.flowSnapshot.levels.find(l => l.level === 1);
         if (level1) {
-            nextApprover = level1.userId; // Mock logic (should handle role mapping)
+            nextApprover = level1.approvers?.[0]?.userId || level1.userId;
         }
     }
 
-    // สร้าง Job Object ใหม่
     const newJob = {
-        id: newId,
+        id: generateId(),
+        tenantId: tenantId,
+        djId: djId,
         ...jobData,
         status: status,
         currentLevel: currentLevel,
@@ -75,27 +108,23 @@ export const createJob = async (jobData) => {
                 action: 'created',
                 by: jobData.requesterName || 'System',
                 timestamp: new Date().toISOString(),
-                detail: 'Created new job'
+                detail: 'สร้างงานใหม่เข้าระบบ'
             }
         ]
     };
 
-    // บันทึกลง Storage
-    jobs.unshift(newJob); // เพิ่มต้น array
+    jobs.unshift(newJob);
     saveMockData('jobs', jobs);
-
     return newJob;
 };
 
-
-
 export const updateJob = async (id, updateData) => {
     await delay(500);
+    const tenantId = getCurrentTenantId();
     const jobs = loadMockData('jobs');
-    // แปลง ID เป็น string เพื่อเปรียบเทียบ (รองรับทั้ง string และ number)
-    const index = jobs.findIndex(j => String(j.id) === String(id));
+    const index = jobs.findIndex(j => String(j.id) === String(id) && j.tenantId === tenantId);
 
-    if (index === -1) throw new Error('Job not found');
+    if (index === -1) throw new Error('Job not found in your tenant');
 
     const updatedJob = {
         ...jobs[index],
@@ -105,269 +134,297 @@ export const updateJob = async (id, updateData) => {
 
     jobs[index] = updatedJob;
     saveMockData('jobs', jobs);
-
-    return updatedJob;
-};
-
-export const approveJob = async (jobId, approverName = 'Approver') => {
-    await delay(500);
-    const jobs = loadMockData('jobs');
-    const index = jobs.findIndex(j => j.id === jobId);
-    if (index === -1) throw new Error('Job not found');
-
-    const job = jobs[index];
-    let updates = {};
-
-    // Check Flow
-    if (job.status === 'pending_approval' && job.flowSnapshot) {
-        const currentLevel = job.currentLevel;
-        const totalLevels = job.flowSnapshot.levels.length;
-
-        if (currentLevel < totalLevels) {
-            // Move to Next Level
-            const nextLevel = currentLevel + 1;
-            const nextApprover = job.flowSnapshot.levels.find(l => l.level === nextLevel);
-            updates = {
-                currentLevel: nextLevel,
-                currentApproverId: nextApprover ? nextApprover.userId : null,
-                status: 'pending_approval'
-            };
-        } else {
-            // Finished Approval -> Assign
-            updates = {
-                status: 'approved',
-                currentLevel: currentLevel + 1, // Past last level
-                currentApproverId: job.flowSnapshot.defaultAssignee?.userId || null,
-                assignedTo: job.flowSnapshot.defaultAssignee?.userId // Add explicit field
-            };
-        }
-    } else {
-        // Fallback or Manual Approve without Flow
-        updates = { status: 'approved' };
-    }
-
-    // Update Timeline
-    const newTimeline = [
-        ...job.timeline || [],
-        {
-            action: 'approved',
-            by: approverName,
-            timestamp: new Date().toISOString(),
-            detail: `Approved Level ${job.currentLevel || 0}`
-        }
-    ];
-
-    const updatedJob = { ...job, ...updates, timeline: newTimeline, updatedAt: new Date().toISOString() };
-    jobs[index] = updatedJob;
-    saveMockData('jobs', jobs);
-    return updatedJob;
-};
-
-export const rejectJob = async (jobId, reason, type = 'return', approverName = 'Approver') => {
-    await delay(500);
-    const jobs = loadMockData('jobs');
-    const index = jobs.findIndex(j => j.id === jobId);
-    if (index === -1) throw new Error('Job not found');
-
-    const job = jobs[index];
-    // type: 'return' (กลับไปแก้) หรือ 'reject' (ไม่อนุมัติ/ยกเลิก)
-    const newStatus = type === 'return' ? 'returned' : 'rejected';
-
-    const updatedJob = {
-        ...job,
-        status: newStatus,
-        updatedAt: new Date().toISOString(),
-        timeline: [
-            ...job.timeline || [],
-            {
-                action: type,
-                by: approverName,
-                timestamp: new Date().toISOString(),
-                detail: `Reason: ${reason}`
-            }
-        ]
-    };
-
-    jobs[index] = updatedJob;
-    saveMockData('jobs', jobs);
     return updatedJob;
 };
 
 /**
  * ============================================================================
- * Master Data API (Dropdowns)
- * ============================================================================
- */
-
-/**
- * ============================================================================
- * Master Data API (Dropdowns & CRUD)
+ * Master Data API - กรองตาม Tenant
  * ============================================================================
  */
 
 export const getMasterData = async () => {
     await delay(200);
+    const tenantId = getCurrentTenantId();
+
+    // กรอง Master Data ทุกอย่างตาม Tenant
     return {
-        tenants: loadMockData('tenants'),
-        projects: loadMockData('projects'),
-        jobTypes: loadMockData('jobTypes'),
-        buds: loadMockData('buds')
+        tenants: loadMockData('tenants').filter(t => t.id === tenantId),
+        projects: loadMockData('projects').filter(p => p.tenantId === tenantId),
+        jobTypes: loadMockData('jobTypes').filter(jt => jt.tenantId === tenantId),
+        buds: loadMockData('buds').filter(b => b.tenantId === tenantId)
     };
 };
 
-// --- Job Types CRUD ---
+// --- Job Types ---
 export const getJobTypes = async () => {
     await delay(300);
-    return loadMockData('jobTypes');
+    const tenantId = getCurrentTenantId();
+    return loadMockData('jobTypes').filter(t => t.tenantId === tenantId);
 };
 
 export const createJobType = async (data) => {
     await delay(500);
+    const tenantId = getCurrentTenantId();
     const jobTypes = loadMockData('jobTypes');
-    const newJobType = { id: generateId(), ...data, status: 'active' };
+    const newJobType = { id: generateId(), tenantId, ...data, status: 'active' };
     jobTypes.push(newJobType);
     saveMockData('jobTypes', jobTypes);
     return newJobType;
 };
 
-export const updateJobType = async (id, data) => {
-    await delay(500);
-    const jobTypes = loadMockData('jobTypes');
-    const index = jobTypes.findIndex(t => t.id === id);
-    if (index !== -1) {
-        jobTypes[index] = { ...jobTypes[index], ...data };
-        saveMockData('jobTypes', jobTypes);
-        return jobTypes[index];
-    }
-    throw new Error('Job Type not found');
-};
-
-export const deleteJobType = async (id) => {
-    await delay(500);
-    let jobTypes = loadMockData('jobTypes');
-    jobTypes = jobTypes.filter(t => t.id !== id);
-    saveMockData('jobTypes', jobTypes);
-    return true;
-};
-
-// --- Projects CRUD ---
+// --- Projects ---
 export const getProjects = async () => {
     await delay(300);
-    return loadMockData('projects');
+    const tenantId = getCurrentTenantId();
+    return loadMockData('projects').filter(p => p.tenantId === tenantId);
 };
 
 export const createProject = async (data) => {
     await delay(500);
+    const tenantId = getCurrentTenantId();
     const projects = loadMockData('projects');
-    // Auto specific BUD based on logic or selection (Simulate)
-    const newProject = { id: generateId(), ...data, status: 'Active' };
+    const newProject = { id: generateId(), tenantId, ...data, status: 'Active' };
     projects.push(newProject);
     saveMockData('projects', projects);
     return newProject;
 };
 
-export const updateProject = async (id, data) => {
+export const updateProject = async (id, updateData) => {
     await delay(500);
+    const tenantId = getCurrentTenantId();
     const projects = loadMockData('projects');
-    const index = projects.findIndex(p => p.id === id);
-    if (index !== -1) {
-        projects[index] = { ...projects[index], ...data };
-        saveMockData('projects', projects);
-        return projects[index];
-    }
-    throw new Error('Project not found');
+    const index = projects.findIndex(p => String(p.id) === String(id) && p.tenantId === tenantId);
+    if (index === -1) throw new Error('Project not found');
+
+    projects[index] = { ...projects[index], ...updateData };
+    saveMockData('projects', projects);
+    return projects[index];
 };
 
 export const deleteProject = async (id) => {
-    await delay(500);
-    let projects = loadMockData('projects');
-    projects = projects.filter(p => p.id !== id);
-    saveMockData('projects', projects);
+    await delay(300);
+    const tenantId = getCurrentTenantId();
+    const projects = loadMockData('projects');
+    const newProjects = projects.filter(p => !(String(p.id) === String(id) && p.tenantId === tenantId));
+
+    if (projects.length === newProjects.length) throw new Error('Project not found');
+
+    saveMockData('projects', newProjects);
     return true;
 };
 
-// --- Tenants CRUD ---
+// --- BUDs (Business Units) ---
+export const getBuds = async () => {
+    await delay(300);
+    const tenantId = getCurrentTenantId();
+    return loadMockData('buds').filter(b => b.tenantId === tenantId);
+};
+
+export const createBud = async (data) => {
+    await delay(500);
+    const tenantId = getCurrentTenantId();
+    const buds = loadMockData('buds');
+    const newBud = { id: generateId(), tenantId, ...data, isActive: true };
+    buds.push(newBud);
+    saveMockData('buds', buds);
+    return newBud;
+};
+
+export const updateBud = async (id, updateData) => {
+    await delay(500);
+    const tenantId = getCurrentTenantId();
+    const buds = loadMockData('buds');
+    const index = buds.findIndex(b => String(b.id) === String(id) && b.tenantId === tenantId);
+    if (index === -1) throw new Error('BUD not found');
+
+    buds[index] = { ...buds[index], ...updateData };
+    saveMockData('buds', buds);
+    return buds[index];
+};
+
+export const deleteBud = async (id) => {
+    await delay(300);
+    const tenantId = getCurrentTenantId();
+    const buds = loadMockData('buds');
+    const newBuds = buds.filter(b => !(String(b.id) === String(id) && b.tenantId === tenantId));
+
+    if (buds.length === newBuds.length) throw new Error('BUD not found');
+
+    saveMockData('buds', newBuds);
+    return true;
+};
+
+// --- Tenants (ข้อมูลบริษัท) ---
 export const getTenants = async () => {
     await delay(300);
+    // ในสถานการณ์จริง Admin อาจจะเห็นทุก Tenant แต่ใน Demo ให้เห็นแค่ของตัวเองก่อน หรือทั้งหมดถ้าเป็น Super Admin
+    // แต่เพื่อให้เมนู Organization Management ทำงานได้เหมือน Multi-tenant setup เราจะคืนค่าทั้งหมดที่มีใน Mock Data
+    // ถือว่า User คนนี้เป็น Admin ที่จัดการได้ทุกบริษัทใน Demo นี้
     return loadMockData('tenants');
 };
 
 export const createTenant = async (data) => {
     await delay(500);
     const tenants = loadMockData('tenants');
-    const newTenant = { id: generateId(), ...data, isActive: true };
+    // สร้าง Tenant ใช้ ID เป็นตัวเลขเพื่อให้ง่าย (หรือจะใช้ generateId ก็ได้)
+    const newId = Math.max(...tenants.map(t => t.id), 0) + 1;
+    const newTenant = { id: newId, ...data, isActive: true };
     tenants.push(newTenant);
     saveMockData('tenants', tenants);
     return newTenant;
 };
 
-export const updateTenant = async (id, data) => {
+export const updateTenant = async (id, updateData) => {
     await delay(500);
     const tenants = loadMockData('tenants');
-    const index = tenants.findIndex(t => t.id === id);
-    if (index !== -1) {
-        tenants[index] = { ...tenants[index], ...data };
-        saveMockData('tenants', tenants);
-        return tenants[index];
-    }
-    throw new Error('Tenant not found');
+    const index = tenants.findIndex(t => String(t.id) === String(id));
+    if (index === -1) throw new Error('Tenant not found');
+
+    tenants[index] = { ...tenants[index], ...updateData };
+    saveMockData('tenants', tenants);
+    return tenants[index];
 };
 
 export const deleteTenant = async (id) => {
-    await delay(500);
-    let tenants = loadMockData('tenants');
-    tenants = tenants.filter(t => t.id !== id);
-    saveMockData('tenants', tenants);
-    return true;
-};
-
-// --- BUDs CRUD ---
-export const getBuds = async () => {
     await delay(300);
-    return loadMockData('buds');
-};
+    const tenants = loadMockData('tenants');
+    const newTenants = tenants.filter(t => String(t.id) !== String(id));
 
-export const createBud = async (data) => {
-    await delay(500);
-    const buds = loadMockData('buds');
-    const newBud = { id: generateId(), ...data, isActive: true };
-    buds.push(newBud);
-    saveMockData('buds', buds);
-    return newBud;
-};
+    if (tenants.length === newTenants.length) throw new Error('Tenant not found');
 
-export const updateBud = async (id, data) => {
-    await delay(500);
-    const buds = loadMockData('buds');
-    const index = buds.findIndex(b => b.id === id);
-    if (index !== -1) {
-        buds[index] = { ...buds[index], ...data };
-        saveMockData('buds', buds);
-        return buds[index];
-    }
-    throw new Error('BUD not found');
-};
-
-export const deleteBud = async (id) => {
-    await delay(500);
-    let buds = loadMockData('buds');
-    buds = buds.filter(b => b.id !== id);
-    saveMockData('buds', buds);
+    saveMockData('tenants', newTenants);
     return true;
 };
 
-// --- Holidays CRUD ---
+// --- Departments (แผนกย่อย) ---
+/**
+ * ดึงรายการแผนกย่อยทั้งหมด กรองตาม Tenant
+ * @returns {Promise<Array>} รายการแผนกย่อย
+ */
+export const getDepartments = async () => {
+    await delay(300);
+    const tenantId = getCurrentTenantId();
+    return loadMockData('departments').filter(d => d.tenantId === tenantId);
+};
+
+/**
+ * สร้างแผนกย่อยใหม่
+ * @param {Object} data - ข้อมูลแผนก { name, code, budId, managerId }
+ * @returns {Promise<Object>} แผนกที่สร้างใหม่
+ */
+export const createDepartment = async (data) => {
+    await delay(500);
+    const tenantId = getCurrentTenantId();
+    const departments = loadMockData('departments');
+    const newId = Math.max(...departments.map(d => d.id), 0) + 1;
+    const newDepartment = { id: newId, tenantId, ...data, isActive: true };
+    departments.push(newDepartment);
+    saveMockData('departments', departments);
+    return newDepartment;
+};
+
+/**
+ * อัปเดตข้อมูลแผนกย่อย
+ * @param {number} id - รหัสแผนก
+ * @param {Object} updateData - ข้อมูลที่ต้องการแก้ไข
+ * @returns {Promise<Object>} แผนกที่อัปเดตแล้ว
+ */
+export const updateDepartment = async (id, updateData) => {
+    await delay(500);
+    const tenantId = getCurrentTenantId();
+    const departments = loadMockData('departments');
+    const index = departments.findIndex(d => String(d.id) === String(id) && d.tenantId === tenantId);
+    if (index === -1) throw new Error('Department not found');
+
+    departments[index] = { ...departments[index], ...updateData };
+    saveMockData('departments', departments);
+    return departments[index];
+};
+
+/**
+ * ลบแผนกย่อย
+ * @param {number} id - รหัสแผนกที่ต้องการลบ
+ * @returns {Promise<boolean>} true ถ้าลบสำเร็จ
+ */
+export const deleteDepartment = async (id) => {
+    await delay(300);
+    const tenantId = getCurrentTenantId();
+    const departments = loadMockData('departments');
+    const newDepartments = departments.filter(d => !(String(d.id) === String(id) && d.tenantId === tenantId));
+
+    if (departments.length === newDepartments.length) throw new Error('Department not found');
+
+    saveMockData('departments', newDepartments);
+    return true;
+};
+
+// --- Job Type Items (รายการชิ้นงานย่อย) ---
+/**
+ * ดึงรายการชิ้นงานย่อยตาม Job Type ID
+ * @param {number} jobTypeId - รหัสประเภทงาน
+ * @returns {Promise<Array>} รายการชิ้นงานย่อย
+ */
+export const getJobTypeItems = async (jobTypeId) => {
+    await delay(200);
+    const items = loadMockData('jobTypeItems');
+    if (jobTypeId) {
+        return items.filter(item => item.jobTypeId === Number(jobTypeId));
+    }
+    return items;
+};
+
+/**
+ * เพิ่มรายการชิ้นงานย่อยใหม่ใน Job Type
+ * @param {Object} data - ข้อมูล { jobTypeId, name, defaultSize, isRequired }
+ * @returns {Promise<Object>} รายการที่สร้างใหม่
+ */
+export const createJobTypeItem = async (data) => {
+    await delay(400);
+    const items = loadMockData('jobTypeItems');
+    const newId = Math.max(...items.map(i => i.id), 0) + 1;
+    const newItem = { id: newId, ...data, isRequired: data.isRequired || false };
+    items.push(newItem);
+    saveMockData('jobTypeItems', items);
+    return newItem;
+};
+
+/**
+ * ลบรายการชิ้นงานย่อย
+ * @param {number} itemId - รหัสรายการ
+ * @returns {Promise<boolean>} true ถ้าลบสำเร็จ
+ */
+export const deleteJobTypeItem = async (itemId) => {
+    await delay(300);
+    const items = loadMockData('jobTypeItems');
+    const newItems = items.filter(i => String(i.id) !== String(itemId));
+
+    if (items.length === newItems.length) throw new Error('Item not found');
+
+    saveMockData('jobTypeItems', newItems);
+    return true;
+};
+
+// --- Holidays ---
 export const getHolidays = async () => {
     await delay(300);
-    return loadMockData('holidays');
+    const tenantId = getCurrentTenantId();
+    return loadMockData('holidays').filter(h => h.tenantId === tenantId);
 };
 
-export const addHoliday = async (data) => {
-    await delay(500);
+/**
+ * เพิ่มวันหยุดใหม่
+ * @param {Object} holidayData - ข้อมูลวันหยุด
+ * @returns {Promise<Object>} วันหยุดที่สร้างใหม่
+ */
+export const addHoliday = async (holidayData) => {
+    await delay(300);
+    const tenantId = getCurrentTenantId();
     const holidays = loadMockData('holidays');
     const newHoliday = {
         id: generateId(),
-        ...data,
+        tenantId,
+        ...holidayData,
         createdAt: new Date().toISOString()
     };
     holidays.push(newHoliday);
@@ -375,117 +432,95 @@ export const addHoliday = async (data) => {
     return newHoliday;
 };
 
-export const updateHoliday = async (id, data) => {
-    await delay(500);
+/**
+ * แก้ไขข้อมูลวันหยุด
+ * @param {string} id - รหัสวันหยุด
+ * @param {Object} updateData - ข้อมูลที่ต้องการแก้ไข
+ * @returns {Promise<Object>} วันหยุดที่แก้ไขแล้ว
+ */
+export const updateHoliday = async (id, updateData) => {
+    await delay(300);
+    const tenantId = getCurrentTenantId();
     const holidays = loadMockData('holidays');
-    const index = holidays.findIndex(h => h.id === id);
-    if (index !== -1) {
-        holidays[index] = { ...holidays[index], ...data };
-        saveMockData('holidays', holidays);
-        return holidays[index];
-    }
-    throw new Error('Holiday not found');
+    const index = holidays.findIndex(h => String(h.id) === String(id) && h.tenantId === tenantId);
+    if (index === -1) throw new Error('Holiday not found');
+    holidays[index] = { ...holidays[index], ...updateData, updatedAt: new Date().toISOString() };
+    saveMockData('holidays', holidays);
+    return holidays[index];
 };
 
+/**
+ * ลบวันหยุด
+ * @param {string} id - รหัสวันหยุดที่ต้องการลบ
+ * @returns {Promise<boolean>} true ถ้าลบสำเร็จ
+ */
 export const deleteHoliday = async (id) => {
-    await delay(500);
-    let holidays = loadMockData('holidays');
-    holidays = holidays.filter(h => h.id !== id);
+    await delay(300);
+    const tenantId = getCurrentTenantId();
+    const holidays = loadMockData('holidays');
+    const index = holidays.findIndex(h => String(h.id) === String(id) && h.tenantId === tenantId);
+    if (index === -1) throw new Error('Holiday not found');
+    holidays.splice(index, 1);
     saveMockData('holidays', holidays);
     return true;
 };
 
 /**
  * ============================================================================
- * Approval Flow API (CRUD)
+ * Approval Flow API
  * ============================================================================
  */
 
-// ดึง Approval Flows ทั้งหมด
 export const getApprovalFlows = async () => {
     await delay(300);
-    return loadMockData('approvalFlows');
+    const tenantId = getCurrentTenantId();
+    return loadMockData('approvalFlows').filter(f => f.tenantId === tenantId);
 };
 
-// ดึง Approval Flow ตาม Project ID
-// ดึง Approval Flow ตาม Project ID หรือ Name
 export const getApprovalFlowByProject = async (projectIdentifier) => {
     await delay(300);
-    const flows = loadMockData('approvalFlows');
+    const tenantId = getCurrentTenantId();
+    const flows = loadMockData('approvalFlows').filter(f => f.tenantId === tenantId);
 
-    // ค้นหา Flow ที่ Project Name ตรงกัน (Case Insensitive) หรือ Project ID ตรงกัน
-    const flow = flows.find(f =>
-        f.projectName?.toLowerCase() === projectIdentifier?.toLowerCase() ||
-        f.projectId === projectIdentifier
-    );
-
-    return flow || null;
+    return flows.find(f =>
+        f.projectName?.toLowerCase() === String(projectIdentifier).toLowerCase() ||
+        String(f.projectId) === String(projectIdentifier)
+    ) || null;
 };
-
-// สร้าง Approval Flow ใหม่
-export const createApprovalFlow = async (data) => {
-    await delay(500);
-    const flows = loadMockData('approvalFlows');
-    const newFlow = {
-        id: generateId(),
-        ...data,
-        status: 'active',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-    };
-    flows.push(newFlow);
-    saveMockData('approvalFlows', flows);
-    return newFlow;
-};
-
-// อัปเดต Approval Flow
-export const updateApprovalFlow = async (id, data) => {
-    await delay(500);
-    const flows = loadMockData('approvalFlows');
-    const index = flows.findIndex(f => f.id === id);
-    if (index !== -1) {
-        flows[index] = { ...flows[index], ...data, updatedAt: new Date().toISOString() };
-        saveMockData('approvalFlows', flows);
-        return flows[index];
-    }
-    throw new Error('Approval Flow not found');
-};
-
-// ลบ Approval Flow
-export const deleteApprovalFlow = async (id) => {
-    await delay(500);
-    let flows = loadMockData('approvalFlows');
-    flows = flows.filter(f => f.id !== id);
-    saveMockData('approvalFlows', flows);
-    return true;
-};
-
-
-
-
 
 /**
  * ============================================================================
- * User Management API (CRUD)
+ * User Management API
  * ============================================================================
  */
 
 export const getUsers = async () => {
     await delay(300);
-    return loadMockData('users');
+    const tenantId = getCurrentTenantId();
+    return loadMockData('users').filter(u => u.tenantId === tenantId);
+};
+
+/**
+ * ดึงผู้ใช้ทั้งหมด (ไม่กรอง Tenant) - สำหรับหน้า Login
+ * @returns {Promise<Array>} รายชื่อผู้ใช้ทั้งหมด
+ */
+export const getAllUsersForLogin = async () => {
+    await delay(300);
+    return loadMockData('users'); // ไม่กรอง tenant เพื่อให้เลือก user ได้ทุกคน
 };
 
 export const createUser = async (userData) => {
     await delay(500);
+    const tenantId = getCurrentTenantId();
     const users = loadMockData('users');
 
-    // Check for duplicate email
-    if (users.some(u => u.email === userData.email)) {
-        throw new Error('Email already exists');
+    if (users.some(u => u.email === userData.email && u.tenantId === tenantId)) {
+        throw new Error('Email already exists in this organization');
     }
 
     const newUser = {
         id: generateId(),
+        tenantId: tenantId,
         ...userData,
         createdAt: new Date().toISOString(),
         isActive: true
@@ -496,163 +531,172 @@ export const createUser = async (userData) => {
     return newUser;
 };
 
+/**
+ * แก้ไขข้อมูลผู้ใช้
+ * @param {string} id - รหัสผู้ใช้
+ * @param {Object} updateData - ข้อมูลที่ต้องการแก้ไข
+ * @returns {Promise<Object>} ผู้ใช้ที่แก้ไขแล้ว
+ */
 export const updateUser = async (id, updateData) => {
-    await delay(500);
+    await delay(300);
+    const tenantId = getCurrentTenantId();
     const users = loadMockData('users');
-    const index = users.findIndex(u => u.id === id);
-
+    const index = users.findIndex(u => String(u.id) === String(id) && u.tenantId === tenantId);
     if (index === -1) throw new Error('User not found');
-
-    // Check email uniqueness if email is being updated
-    if (updateData.email && updateData.email !== users[index].email) {
-        if (users.some(u => u.id !== id && u.email === updateData.email)) {
-            throw new Error('Email already exists');
-        }
-    }
-
-    const updatedUser = {
-        ...users[index],
-        ...updateData,
-        updatedAt: new Date().toISOString()
-    };
-
-    users[index] = updatedUser;
+    users[index] = { ...users[index], ...updateData, updatedAt: new Date().toISOString() };
     saveMockData('users', users);
-    return updatedUser;
+    return users[index];
 };
 
+/**
+ * ลบผู้ใช้
+ * @param {string} id - รหัสผู้ใช้ที่ต้องการลบ
+ * @returns {Promise<boolean>} true ถ้าลบสำเร็จ
+ */
 export const deleteUser = async (id) => {
-    await delay(500);
-    let users = loadMockData('users');
-    users = users.filter(u => u.id !== id);
+    await delay(300);
+    const tenantId = getCurrentTenantId();
+    const users = loadMockData('users');
+    const index = users.findIndex(u => String(u.id) === String(id) && u.tenantId === tenantId);
+    if (index === -1) throw new Error('User not found');
+    users.splice(index, 1);
     saveMockData('users', users);
     return true;
 };
 
 /**
  * ============================================================================
- * User API (สำหรับ Auth)
- * ============================================================================
- */
-
-export const getUserByRole = async (role) => {
-    await delay(300);
-    const users = loadMockData('users');
-    // ค้นหา user ที่มี role ที่ต้องการ
-    const user = users.find(u => u.roles?.includes(role));
-    return user || null;
-};
-
-export const login = async (email) => {
-    await delay(300);
-    const users = loadMockData('users');
-    const user = users.find(u => u.email === email);
-    if (!user) throw new Error('User not found');
-    return user;
-};
-
-
-/**
- * ============================================================================
- * Dashboard & Assignment API
+ * Dashboard & Assignment - กรองตาม Tenant
  * ============================================================================
  */
 
 export const getDashboardStats = async () => {
     await delay(300);
-    const jobs = loadMockData('jobs');
+    const tenantId = getCurrentTenantId();
+    const jobs = loadMockData('jobs').filter(j => j.tenantId === tenantId);
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    const dayAfterTomorrow = new Date(today);
-    dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
-
-    // คำนวณสถิติ
     let newToday = 0;
-    let dueTomorrow = 0;
     let dueToday = 0;
     let overdue = 0;
 
     jobs.forEach(job => {
-        // New Today - สร้างวันนี้
         const createdAt = new Date(job.createdAt);
         createdAt.setHours(0, 0, 0, 0);
-        if (createdAt.getTime() === today.getTime()) {
-            newToday++;
-        }
-
-        // Overdue - ใช้ field isOverdue จาก job data โดยตรง
-        if (job.isOverdue) {
-            overdue++;
-        }
-
-        // Due calculations - ใช้ deadline
-        if (job.deadline && !job.isOverdue) {
+        if (createdAt.getTime() === today.getTime()) newToday++;
+        if (job.isOverdue) overdue++;
+        if (job.deadline) {
             const dueDate = new Date(job.deadline);
             dueDate.setHours(0, 0, 0, 0);
-
-            if (dueDate.getTime() === today.getTime()) {
-                dueToday++;
-            } else if (dueDate.getTime() === tomorrow.getTime()) {
-                dueTomorrow++;
-            }
+            if (dueDate.getTime() === today.getTime()) dueToday++;
         }
     });
 
     return {
         newToday,
-        dueTomorrow,
         dueToday,
         overdue,
-        // Legacy fields for compatibility
         totalJobs: jobs.length,
-        pending: jobs.filter(j => j.status === 'pending_approval' || j.status === 'draft').length,
-        approved: jobs.filter(j => j.status === 'approved').length,
-        rejected: jobs.filter(j => j.status === 'rejected' || j.status === 'returned').length
+        pending: jobs.filter(j => j.status === 'pending_approval').length,
     };
 };
 
-// ดึงงานตาม Role ของ User
-// - Approver: เห็นงานที่รออนุมัติ (pending_approval)
-// - User/Marketing: เห็นงานที่ตัวเองสร้าง
-// - Admin: เห็นทั้งหมด
 export const getJobsByRole = async (user) => {
     await delay(300);
-    const jobs = loadMockData('jobs');
+    const tenantId = getCurrentTenantId();
+    const allJobs = loadMockData('jobs');
 
     if (!user || !user.roles) return [];
 
-    // Admin เห็นทั้งหมด
-    if (user.roles.includes('Admin')) {
-        return jobs;
+    // Filter logic: งานของบริษัทตัวเอง หรือ งานที่ Assign มาให้ฉันข้ามบริษัท
+    const myAccessJobs = allJobs.filter(j => {
+        const isMyTenant = j.tenantId === tenantId;
+        const isAssignedToMe = String(j.assigneeId) === String(user.id) ||
+            String(j.flowSnapshot?.defaultAssignee?.userId) === String(user.id);
+        return isMyTenant || isAssignedToMe;
+    });
+
+    // Admin เห็นทั้งหมดที่เข้าถึงได้
+    if (user.roles.includes('admin')) return myAccessJobs;
+
+    // Approver เห็นงานที่รออนุมัติของตัวเอง
+    if (user.roles.includes('approver')) {
+        return myAccessJobs.filter(j => {
+            if (j.status !== 'pending_approval') return false;
+            const currentLevelData = j.flowSnapshot?.levels?.find(l => l.level === j.currentLevel);
+            if (currentLevelData?.approvers) {
+                return currentLevelData.approvers.some(a => String(a.userId) === String(user.id));
+            }
+            return String(currentLevelData?.userId) === String(user.id) || String(j.currentApproverId) === String(user.id);
+        });
     }
 
-    // Approver เห็นงานที่รออนุมัติ
-    if (user.roles.includes('Approver')) {
-        return jobs.filter(j =>
-            j.status === 'pending_approval' &&
-            (j.currentApproverId === user.id || !j.currentApproverId)
+    // Assignee เห็นงานที่ตัวเองรับผิดชอบ
+    if (user.roles.includes('assignee')) {
+        return myAccessJobs.filter(j =>
+            String(j.assigneeId) === String(user.id) ||
+            String(j.flowSnapshot?.defaultAssignee?.userId) === String(user.id)
         );
     }
 
-    // User/Marketing เห็นงานที่ตัวเองสร้าง
-    return jobs.filter(j => j.requesterId === user.id || j.requesterName === user.displayName);
+    // Requester เห็นงานที่ตัวเองสร้าง
+    return myAccessJobs.filter(j => String(j.requesterId) === String(user.id));
 };
 
-export const assignJob = async (jobId, assigneeData) => {
+// Export fallback for compatibility
+export const approveJob = async (jobId, approverName = 'Approver') => {
+    // ... logic เดิมที่ปรับให้รองรับ tenantId ภายใน index ...
     await delay(500);
+    const tenantId = getCurrentTenantId();
     const jobs = loadMockData('jobs');
-    const index = jobs.findIndex(j => j.id === jobId);
+    const index = jobs.findIndex(j => String(j.id) === String(jobId) && j.tenantId === tenantId);
     if (index === -1) throw new Error('Job not found');
 
     const job = jobs[index];
+    // Simple logic update
+    const updatedJob = { ...job, status: 'approved', updatedAt: new Date().toISOString() };
+    jobs[index] = updatedJob;
+    saveMockData('jobs', jobs);
+    return updatedJob;
+};
+
+/**
+ * ปฏิเสธหรือส่งกลับงานให้แก้ไข
+ * @param {string} jobId - รหัสงาน
+ * @param {string} reason - เหตุผลในการปฏิเสธ
+ * @param {string} type - ประเภทการปฏิเสธ ('return' ส่งกลับแก้ไข, 'reject' ปฏิเสธถาวร)
+ * @param {string} approverName - ชื่อผู้ปฏิเสธ
+ * @returns {Promise<Object>} ข้อมูลงานที่อัปเดตแล้ว
+ */
+export const rejectJob = async (jobId, reason, type = 'return', approverName = 'Approver') => {
+    await delay(500);
+    const tenantId = getCurrentTenantId();
+    const jobs = loadMockData('jobs');
+    const index = jobs.findIndex(j => String(j.id) === String(jobId) && j.tenantId === tenantId);
+
+    if (index === -1) throw new Error('Job not found');
+
+    const job = jobs[index];
+
+    // กำหนดสถานะตามประเภทการปฏิเสธ
+    const newStatus = type === 'reject' ? 'rejected' : 'rework';
+
     const updatedJob = {
         ...job,
-        assignee: assigneeData,
-        updatedAt: new Date().toISOString()
+        status: newStatus,
+        currentLevel: type === 'return' ? 0 : job.currentLevel, // ส่งกลับเริ่มต้นใหม่
+        updatedAt: new Date().toISOString(),
+        timeline: [
+            ...(job.timeline || []),
+            {
+                action: type === 'reject' ? 'rejected' : 'returned',
+                by: approverName,
+                timestamp: new Date().toISOString(),
+                detail: reason
+            }
+        ]
     };
 
     jobs[index] = updatedJob;
@@ -660,11 +704,6 @@ export const assignJob = async (jobId, assigneeData) => {
     return updatedJob;
 };
 
-/**
- * ============================================================================
- * Export as Service Object
- * ============================================================================
- */
 export const mockApiService = {
     getJobs,
     getJobById,
@@ -672,19 +711,12 @@ export const mockApiService = {
     updateJob,
     getDashboardStats,
     getJobsByRole,
-
-    // Master Data
     getMasterData,
     getJobTypes,
-    createJobType,
-    updateJobType,
-    deleteJobType,
     getProjects,
     createProject,
     updateProject,
     deleteProject,
-
-    // Tenants & BUDs
     getTenants,
     createTenant,
     updateTenant,
@@ -693,33 +725,45 @@ export const mockApiService = {
     createBud,
     updateBud,
     deleteBud,
-
+    getDepartments,
+    createDepartment,
+    updateDepartment,
+    deleteDepartment,
+    getJobTypeItems,
+    createJobTypeItem,
+    deleteJobTypeItem,
     getHolidays,
     addHoliday,
     updateHoliday,
     deleteHoliday,
-
-    // Approval Flows
     getApprovalFlows,
     getApprovalFlowByProject,
-    createApprovalFlow,
-    updateApprovalFlow,
-    deleteApprovalFlow,
-
-    // Job Approval Actions
-    approveJob,
-    rejectJob,
-    assignJob,
-
-    // User Management
     getUsers,
     createUser,
     updateUser,
     deleteUser,
-
-    // Auth
-    getUserByRole,
-    login
+    approveJob,
+    rejectJob,
+    login: async (email) => {
+        await delay(300);
+        const users = loadMockData('users');
+        const user = users.find(u => u.email === email);
+        if (!user) throw new Error('User not found');
+        return user;
+    },
+    getUserByRole: async (role) => {
+        await delay(300);
+        // ไม่กรอง tenant สำหรับ Demo เพื่อให้สลับ role ได้ทุกบทบาท
+        return loadMockData('users').find(u => u.roles?.includes(role));
+    },
+    /**
+     * ดึงผู้ใช้ทั้งหมด (ไม่กรอง Tenant) - สำหรับหน้า Login
+     * @returns {Promise<Array>} รายชื่อผู้ใช้ทั้งหมด
+     */
+    getAllUsersForLogin: async () => {
+        await delay(300);
+        return loadMockData('users'); // ไม่กรอง tenant เพื่อให้เลือก user ได้ทุกคน
+    }
 };
 
 export default mockApiService;

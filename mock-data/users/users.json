@@ -2,6 +2,7 @@
   "users": [
     {
       "id": 1,
+      "tenantId": 1,
       "email": "admin@sena.co.th",
       "firstName": "Admin",
       "lastName": "System",
@@ -9,11 +10,14 @@
       "roles": [
         "admin"
       ],
+      "scopeLevel": "Tenant",
+      "scopeId": 1,
       "avatarUrl": null,
       "isActive": true
     },
     {
       "id": 2,
+      "tenantId": 1,
       "email": "somying@sena.co.th",
       "firstName": "สมหญิง",
       "lastName": "ใจดี",
@@ -26,6 +30,7 @@
     },
     {
       "id": 3,
+      "tenantId": 1,
       "email": "somchai@sena.co.th",
       "firstName": "สมชาย",
       "lastName": "มานะ",
@@ -38,6 +43,7 @@
     },
     {
       "id": 4,
+      "tenantId": 1,
       "email": "wipa@sena.co.th",
       "firstName": "วิภา",
       "lastName": "อนุมัติ",
@@ -52,6 +58,7 @@
     },
     {
       "id": 5,
+      "tenantId": 1,
       "email": "karn@sena.co.th",
       "firstName": "กานต์",
       "lastName": "ดีไซน์",
@@ -64,6 +71,7 @@
     },
     {
       "id": 6,
+      "tenantId": 1,
       "email": "pim@sena.co.th",
       "firstName": "พิม",
       "lastName": "เว็บ",
@@ -76,6 +84,7 @@
     },
     {
       "id": 7,
+      "tenantId": 1,
       "email": "nattaya@sena.co.th",
       "firstName": "ณัฐยา",
       "lastName": "สุขใจ",
@@ -88,6 +97,7 @@
     },
     {
       "id": 8,
+      "tenantId": 1,
       "email": "prasit@sena.co.th",
       "firstName": "ประสิทธิ์",
       "lastName": "พัฒนา",
@@ -100,6 +110,7 @@
     },
     {
       "id": 9,
+      "tenantId": 1,
       "email": "apinya@sena.co.th",
       "firstName": "อภิญญา",
       "lastName": "สร้างสรรค์",
@@ -112,6 +123,7 @@
     },
     {
       "id": 10,
+      "tenantId": 1,
       "email": "thanakorn@sena.co.th",
       "firstName": "ธนากร",
       "lastName": "วิดีโอ",
@@ -124,6 +136,7 @@
     },
     {
       "id": 11,
+      "tenantId": 1,
       "email": "waraporn@sena.co.th",
       "firstName": "วราภรณ์",
       "lastName": "ตลาด",
@@ -133,26 +146,69 @@
       ],
       "avatarUrl": null,
       "isActive": true
+    },
+    {
+      "id": 12,
+      "tenantId": 2,
+      "email": "admin@senx.co.th",
+      "firstName": "Admin",
+      "lastName": "SENX",
+      "displayName": "Admin SENX",
+      "roles": [
+        "admin"
+      ],
+      "avatarUrl": null,
+      "isActive": true
+    },
+    {
+      "id": 13,
+      "tenantId": 2,
+      "email": "marketing@senx.co.th",
+      "firstName": "Marketing",
+      "lastName": "SENX",
+      "displayName": "Marketing SENX",
+      "roles": [
+        "marketing"
+      ],
+      "avatarUrl": null,
+      "isActive": true
+    },
+    {
+      "id": 14,
+      "tenantId": 2,
+      "email": "designer@senx.co.th",
+      "firstName": "Designer",
+      "lastName": "SENX",
+      "displayName": "Graphic SENX",
+      "roles": [
+        "assignee"
+      ],
+      "avatarUrl": null,
+      "isActive": true
     }
   ],
   "roles": [
     {
       "id": 1,
+      "tenantId": 1,
       "name": "marketing",
       "displayName": "Marketing (Requester)"
     },
     {
       "id": 2,
+      "tenantId": 1,
       "name": "approver",
       "displayName": "Approver (Head/Manager)"
     },
     {
       "id": 3,
+      "tenantId": 1,
       "name": "assignee",
       "displayName": "Assignee (Graphic/Web)"
     },
     {
       "id": 4,
+      "tenantId": 1,
       "name": "admin",
       "displayName": "Admin"
     }

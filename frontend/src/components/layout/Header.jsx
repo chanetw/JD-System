@@ -1,10 +1,12 @@
 /**
  * @file Header.jsx
- * @description Header Component - แถบด้านบนพร้อม Search, Notifications และ Role Switcher
+ * @description ส่วนหัวของแอปพลิเคชัน (Header Component)
  * 
- * Senior Programmer Notes:
- * - Role Switcher ใช้สำหรับ Demo เท่านั้น
- * - Notifications แสดงจำนวนที่ยังไม่ได้อ่าน
+ * วัตถุประสงค์หลัก:
+ * - แสดงแถบค้นหางาน (Search) ทั่วทั้งระบบ
+ * - แสดงระบบแจ้งเตือน (Notifications) พร้อมจำนวนรายการที่ยังไม่ได้อ่าน
+ * - แสดงส่วนสลับบทบาท (Role Switcher) สำหรับการสาธิต (Demo)
+ * - แสดงเมนูโปรไฟล์ผู้ใช้งานและการออกจากระบบ (Profile & Logout)
  */
 
 import { useState, useEffect } from 'react';
@@ -18,23 +20,23 @@ import { useNotificationStore } from '@/store/notificationStore';
  * @description แถบบนพร้อม Search, Role Switcher และ Notifications
  */
 export default function Header() {
-    // ดึง state และ actions จาก authStore
+    // ดึงสถานะและฟังก์ชันการจัดการจาก Store (Auth และ Notifications)
     const { user, switchRole, logout } = useAuthStore();
     const { notifications, unreadCount, fetchNotifications, markAsRead, markAllAsRead, isLoading } = useNotificationStore();
 
-    // State สำหรับแสดง/ซ่อน dropdown
-    const [showRoleMenu, setShowRoleMenu] = useState(false);
-    const [showProfileMenu, setShowProfileMenu] = useState(false);
-    const [showNoti, setShowNoti] = useState(false);
+    // === สถานะการแสดงผลเมนู Dropdown (UI States) ===
+    const [showRoleMenu, setShowRoleMenu] = useState(false);    // เมนูสลับบทบาท
+    const [showProfileMenu, setShowProfileMenu] = useState(false); // เมนูโปรไฟล์
+    const [showNoti, setShowNoti] = useState(false);               // เมนูแจ้งเตือน
 
-    // Auto fetch on mount
+    // โหลดข้อมูลแจ้งเตือนเมื่อคอมโพเน็นต์ถูกแสดง หรือเมื่อผู้ใช้เปลี่ยนไป
     useEffect(() => {
         fetchNotifications();
     }, [user, fetchNotifications]);
 
     /**
-     * @function handleSwitchRole
-     * @description เปลี่ยนบทบาทผู้ใช้ (สำหรับ Demo)
+     * เปลี่ยนบทบาทผู้ใช้งาน (สำหรับวัตถุประสงค์ในการสาธิตเท่านั้น)
+     * @param {string} role - ชื่อบทบาทที่ต้องการเปลี่ยนไป (e.g., 'admin', 'marketing')
      */
     const handleSwitchRole = async (role) => {
         await switchRole(role);
@@ -42,8 +44,7 @@ export default function Header() {
     };
 
     /**
-     * @function handleResetDemo
-     * @description Reset ข้อมูล Demo กลับเป็นค่าเริ่มต้น
+     * คืนค่าข้อมูลตัวอย่าง (Mock Data) กลับเป็นค่าเริ่มต้น
      */
     const handleResetDemo = () => {
         resetMockData();
@@ -151,26 +152,26 @@ export default function Header() {
                         )}
                     </button>
 
-                    {/* Notification Dropdown */}
+                    {/* รายการแจ้งเตือน Dropdown */}
                     {showNoti && (
                         <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-slate-100 py-2 z-20">
                             <div className="px-4 py-2 border-b border-slate-50 flex justify-between items-center">
-                                <h3 className="font-bold text-slate-800">Notifications</h3>
+                                <h3 className="font-bold text-slate-800">การแจ้งเตือน (Notifications)</h3>
                                 {unreadCount > 0 && (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); markAllAsRead(); }}
                                         className="text-xs text-rose-600 hover:text-rose-700 font-medium"
                                     >
-                                        Mark all read
+                                        อ่านทั้งหมด (Mark all read)
                                     </button>
                                 )}
                             </div>
 
                             <div className="max-h-96 overflow-y-auto">
                                 {isLoading ? (
-                                    <div className="p-4 text-center text-slate-400 text-sm">Loading...</div>
+                                    <div className="p-4 text-center text-slate-400 text-sm">กำลังโหลด...</div>
                                 ) : notifications.length === 0 ? (
-                                    <div className="p-4 text-center text-slate-400 text-sm">No notifications</div>
+                                    <div className="p-4 text-center text-slate-400 text-sm">ไม่มีรายการแจ้งเตือน</div>
                                 ) : (
                                     notifications.map(noti => (
                                         <Link

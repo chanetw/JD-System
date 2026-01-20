@@ -2,6 +2,7 @@
     "mediaFiles": [
         {
             "id": 1,
+            "tenantId": 1,
             "jobId": 11,
             "projectId": 1,
             "fileName": "Banner_FB_Q1_Final.jpg",
@@ -16,6 +17,7 @@
         },
         {
             "id": 2,
+            "tenantId": 1,
             "jobId": 12,
             "projectId": 3,
             "fileName": "Brochure_Ecotown_2024.pdf",
@@ -30,6 +32,7 @@
         },
         {
             "id": 3,
+            "tenantId": 1,
             "jobId": 3,
             "projectId": 2,
             "fileName": "Walkthrough_ParkGrand.mp4",
@@ -44,6 +47,7 @@
         },
         {
             "id": 4,
+            "tenantId": 1,
             "jobId": 9,
             "projectId": 2,
             "fileName": "IG_Story_Template.ai",
@@ -58,6 +62,7 @@
         },
         {
             "id": 5,
+            "tenantId": 1,
             "jobId": 8,
             "projectId": 1,
             "fileName": "LINE_Richmenu_v2.png",
@@ -72,6 +77,7 @@
         },
         {
             "id": 6,
+            "tenantId": 1,
             "jobId": 12,
             "projectId": 3,
             "fileName": "Backdrop_GrandOpening.jpg",
@@ -86,6 +92,7 @@
         },
         {
             "id": 7,
+            "tenantId": 1,
             "jobId": 10,
             "projectId": 1,
             "fileName": "FB_Carousel_Set1.png",
@@ -100,6 +107,7 @@
         },
         {
             "id": 8,
+            "tenantId": 1,
             "jobId": null,
             "projectId": 1,
             "fileName": "WebBanner_Hero.psd",
@@ -114,6 +122,7 @@
         },
         {
             "id": 9,
+            "tenantId": 1,
             "jobId": null,
             "projectId": 2,
             "fileName": "IG_Reels_Promo.mov",
@@ -128,6 +137,7 @@
         },
         {
             "id": 10,
+            "tenantId": 1,
             "jobId": null,
             "projectId": 1,
             "fileName": "Poster_NYPromo.jpg",

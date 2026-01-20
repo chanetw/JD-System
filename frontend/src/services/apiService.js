@@ -1,45 +1,36 @@
+
 /**
  * @file apiService.js
- * @description API Service Layer - ตัวกลางระหว่าง UI และ API
+ * @description API Service Layer - ตัวกลางระหว่าง UI และ API (Supabase Integration Updated)
  * 
  * Senior Programmer Notes:
- * - ไฟล์นี้ทำหน้าที่เป็น Abstraction Layer
- * - สามารถสลับระหว่าง Mock API และ Real API ได้
- * - เพียงแค่เปลี่ยน USE_MOCK เป็น false เมื่อต้องการใช้ Backend จริง
+ * - ปัจจุบัน: ใช้ Database จริง (Supabase) เป็นหลัก
+ * - สามารถสลับกลับเป็น Mock ได้ (เผื่อ Dev Offline)
  */
 
-import { mockApiService } from './mockApi';
-// import { realApiService } from './realApi'; // เปิดใช้เมื่อมี Backend จริง
+import { mockApi } from './mockApi';
+import apiDatabase from './apiDatabase';
 
 // ============================================
-// Configuration - การตั้งค่า
+// Configuration
 // ============================================
 
 /**
- * @constant USE_MOCK
- * @description กำหนดว่าจะใช้ Mock API หรือ Real API
- * 
- * - true = Demo Mode (ใช้ localStorage)
- * - false = Production Mode (ใช้ Backend จริง)
- * 
- * เมื่อต้องการเปลี่ยนเป็น Production เพียงแค่:
- * 1. เปลี่ยน USE_MOCK = false
- * 2. สร้าง realApi.js ที่มี function เหมือนกับ mockApi.js
+ * TOGGLE THIS FLAG
+ * true  = ใช้ Supabase Database จริง 🟢
+ * false = ใช้ Local Mock Data 🟡
  */
-const USE_MOCK = true;
+const USE_REAL_DB = true;
+// const USE_REAL_DB = false; 
 
 // ============================================
-// API Service Export
+// API Service Selection
 // ============================================
 
-/**
- * @constant api
- * @description API Service ที่ใช้งานจริง
- * 
- * เลือกระหว่าง:
- * - mockApiService: สำหรับ Demo (ใช้ localStorage)
- * - realApiService: สำหรับ Production (เรียก Backend)
- */
-export const api = USE_MOCK ? mockApiService : mockApiService; // เปลี่ยนเป็น realApiService เมื่อพร้อม
+console.log(`[API Service] Selected Mode: ${USE_REAL_DB ? 'REAL DB (Supabase)' : 'MOCK DATA'}`);
 
+// เลือก Service ตาม Config
+export const api = USE_REAL_DB ? apiDatabase : mockApi;
+
+// Export default เพื่อความสะดวกในการ import
 export default api;

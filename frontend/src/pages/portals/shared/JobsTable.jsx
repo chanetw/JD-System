@@ -1,23 +1,37 @@
 /**
  * @file JobsTable.jsx
- * @description Jobs Table Component (Shared)
- * โหลดข้อมูลจาก props, clickable rows
+ * @description ตารางแสดงรายการงานออกแบบ (Jobs Table Component)
+ * ใช้สำหรับแสดงรายการงานในพอร์ทัลต่างๆ รองรับการคลิกเพื่อดูรายละเอียด
  */
 
 import React from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import Badge from '@/components/common/Badge';
 
+/**
+ * JobsTable: คอมโพเน็นต์ตารางสำหรับแสดงรายการงานออกแบบแบบสรุป
+ * @param {object} props - คุณสมบัติ (props) ที่ส่งเข้ามายังคอมโพเน็นต์
+ * @param {string} [props.title="งานล่าสุดของฉัน"] - หัวข้อที่จะแสดงด้านบนของตาราง เช่น "งานล่าสุดของฉัน" หรือ "งานทั้งหมด"
+ * @param {Array<object>} props.jobs - อาร์เรย์ของวัตถุข้อมูลงานที่จะนำมาแสดงในตาราง แต่ละวัตถุควรมีคุณสมบัติเช่น `id`, `djId`, `subject`, `status`, `updatedAt`, `createdAt`
+ * @param {boolean} [props.isLoading=false] - สถานะการโหลดข้อมูล หากเป็น `true` จะแสดง Spinner แทนข้อมูล
+ * @param {boolean} [props.showViewAll=true] - กำหนดว่าจะแสดงลิงก์ "ดูทั้งหมด" ที่มุมขวาบนของตารางหรือไม่
+ * @param {string} [props.viewAllLink="/jobs"] - เส้นทาง URL สำหรับลิงก์ "ดูทั้งหมด" เมื่อคลิกจะนำไปยังหน้ารายการงานทั้งหมด
+ */
 export default function JobsTable({
     title = "งานล่าสุดของฉัน",
-    jobs = [],
+    jobs,
     isLoading = false,
     showViewAll = true,
-    viewAllLink = "/jobs"
+    viewAllLink = "/jobs",
 }) {
+    // Hook สำหรับการนำทางไปยังหน้าอื่น ๆ ในแอปพลิเคชัน
     const navigate = useNavigate();
 
-    // ฟังก์ชันหา relative time
+    /**
+     * คำนวณเวลาที่ผ่านไปจากปัจจุบัน (Relative Time)
+     * @param {string} dateStr - วันที่ในรูปแบบ String ISO
+     * @returns {string} ข้อความบอกเวลาที่ผ่านไป (เช่น "2 ชม. ที่แล้ว")
+     */
     const getRelativeTime = (dateStr) => {
         if (!dateStr) return '-';
         const date = new Date(dateStr);

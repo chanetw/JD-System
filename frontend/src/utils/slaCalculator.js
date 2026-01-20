@@ -1,26 +1,19 @@
 /**
  * @file slaCalculator.js
- * @description ฟังก์ชันคำนวณ SLA (Service Level Agreement) Due Date
- * คำนวณวันกำหนดส่งโดยนับเฉพาะวันทำการ (จันทร์-ศุกร์) และข้ามวันหยุดราชการ
+ * @description เครื่องมือคำนวณวันกำหนดส่งตามข้อตกลงระดับบริการ (SLA Due Date Calculator)
  * 
- * Senior Programmer Notes:
- * - Input: วันเริ่มต้น, จำนวนวันทำการ (SLA Days), รายการวันหยุด
- * - Output: วันที่กำหนดส่ง (Due Date)
- * - ข้ามวันเสาร์-อาทิตย์ และวันหยุดนักขัตฤกษ์
+ * วัตถุประสงค์หลัก:
+ * - คำนวณวันส่งมอบงาน (Due Date) โดยนับเฉพาะวันทำการ (จันทร์-ศุกร์)
+ * - รองรับการข้ามวันหยุดนักขัตฤกษ์ตามประกาศของบริษัท (Holidays)
+ * - ให้บริการฟังก์ชันเสริมสำหรับการจัดการรูปแบบวันที่ภาษาไทย
  */
 
 /**
- * @function calculateDueDate
- * @description คำนวณวันกำหนดส่งโดยนับเฉพาะวันทำการ
- * 
- * @param {Date|string} startDate - วันที่เริ่มต้น (Date object หรือ ISO string)
- * @param {number} slaDays - จำนวนวันทำการ (เช่น 3, 5, 7)
- * @param {Array} holidays - รายการวันหยุด [{date: '2026-01-01', name: 'ปีใหม่'}, ...]
- * @returns {Date} - วันที่กำหนดส่ง
- * 
- * @example
- * const dueDate = calculateDueDate(new Date(), 3, holidays);
- * // วันนี้ = วันศุกร์ → Due Date = วันพุธหน้า (ข้ามเสาร์-อาทิตย์)
+ * คำนวณวันกำหนดส่งงานโดยเริ่มนับจากวันที่ระบุไปตามจำนวนวันทำการที่กำหนด
+ * @param {Date|string} startDate - วันที่เริ่มต้นนับ (Date object หรือ ISO string)
+ * @param {number} slaDays - จำนวนวันทำการ (SLA) ที่อนุญาต (เช่น 3 วัน, 5 วัน)
+ * @param {Array} holidays - รายการวันหยุดนักขัตฤกษ์ (Array ของ Object ที่มีฟิลด์ date หรือ Day)
+ * @returns {Date} วันกำหนดส่งส่ง (Due Date) ที่คำนวณแล้ว
  */
 export const calculateDueDate = (startDate, slaDays, holidays = []) => {
     // แปลง startDate เป็น Date object
@@ -56,10 +49,9 @@ export const calculateDueDate = (startDate, slaDays, holidays = []) => {
 };
 
 /**
- * @function isWeekendDay
- * @description ตรวจสอบว่าเป็นวันเสาร์หรืออาทิตย์หรือไม่
+ * ตรวจสอบว่าเป็นวันเสาร์หรืออาทิตย์หรือไม่
  * @param {Date} date - วันที่ต้องการตรวจสอบ
- * @returns {boolean} - true ถ้าเป็นวันเสาร์หรืออาทิตย์
+ * @returns {boolean} true หากเป็นวันหยุดสุดสัปดาห์
  */
 const isWeekendDay = (date) => {
     const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
@@ -67,10 +59,9 @@ const isWeekendDay = (date) => {
 };
 
 /**
- * @function formatDateToString
- * @description แปลง Date object เป็น string รูปแบบ YYYY-MM-DD
- * @param {Date} date - Date object
- * @returns {string} - วันที่ในรูปแบบ YYYY-MM-DD
+ * แปลงออบเจกต์ Date ให้เป็นข้อความรูปแบบ YYYY-MM-DD สำหรับการเปรียบเทียบข้อมูล
+ * @param {Date} date - วันที่
+ * @returns {string} วันที่ในรูปแบบข้อความ (เช่น "2026-01-20")
  */
 const formatDateToString = (date) => {
     const year = date.getFullYear();
@@ -80,10 +71,9 @@ const formatDateToString = (date) => {
 };
 
 /**
- * @function formatDateToThai
- * @description แปลงวันที่เป็นรูปแบบภาษาไทย (DD เดือน YYYY)
- * @param {Date} date - Date object
- * @returns {string} - วันที่ภาษาไทย เช่น "15 มกราคม 2569"
+ * แปลงวันที่เป็นรูปแบบภาษาไทยที่สวยงาม (วันที่ เดือน พ.ศ.)
+ * @param {Date} date - วันที่
+ * @returns {string} ข้อความวันที่ภาษาไทย (เช่น "20 มกราคม 2569")
  */
 export const formatDateToThai = (date) => {
     const thaiMonths = [
@@ -99,12 +89,11 @@ export const formatDateToThai = (date) => {
 };
 
 /**
- * @function getWorkingDays
- * @description คำนวณจำนวนวันทำการระหว่าง 2 วันที่
+ * คำนวณจำนวนวันทำการทั้งหมดในช่วงวันเวลาที่ระบุ
  * @param {Date} startDate - วันที่เริ่มต้น
  * @param {Date} endDate - วันที่สิ้นสุด
  * @param {Array} holidays - รายการวันหยุด
- * @returns {number} - จำนวนวันทำการ
+ * @returns {number} จำนวนวันทำการ
  */
 export const getWorkingDays = (startDate, endDate, holidays = []) => {
     const holidaySet = new Set(

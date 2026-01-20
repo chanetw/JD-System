@@ -1,12 +1,12 @@
 /**
  * @file ReportsDashboard.jsx
- * @description Admin Dashboard สำหรับดูรายงานสรุปผลการทำงาน
- * 
- * Features:
- * - KPI Cards (งานทั้งหมด, ตรงเวลา, ล่าช้า)
- * - SLA Performance Chart
- * - Workload Distribution
- * - Job Type Analytics
+ * @description หน้าจอรายงานสรุปผลและวิเคราะห์ข้อมูล (Admin Reports & Analytics)
+ *
+ * วัตถุประสงค์หลัก:
+ * - แสดงตัวชี้วัดประสิทธิภาพ (KPI) เช่น จำนวนงานรวม, งานที่ตรงเวลา, และงานที่ล่าช้า
+ * - วิเคราะห์การกระจายภาระงาน (Workload Distribution) ตามตัวบุคคล
+ * - สรุปสถิติประเภทงาน (Job Type Analytics) ที่ถูกสั่งงานมากที่สุด
+ * - แสดงประสิทธิภาพการทำงานตามเป้าหมาย (SLA Performance)
  */
 
 import React, { useState, useEffect } from 'react';
@@ -21,25 +21,27 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function ReportsDashboard() {
-    const [jobs, setJobs] = useState([]);
+    // === สถานะข้อมูล (Data States) ===
+    const [jobs, setJobs] = useState([]); // รายการงานทั้งหมดที่ดึงมาคำนวณ
     const [stats, setStats] = useState({
-        total: 0,
-        onTime: 0,
-        overdue: 0,
-        avgDays: 0
+        total: 0,   // จำนวนงานทั้งหมด
+        onTime: 0,  // งานที่ทำเสร็จทันเวลา
+        overdue: 0, // งานที่เกินกำหนด
+        avgDays: 0  // ระยะเวลาทำงานเฉลี่ย (วัน)
     });
-    const [workload, setWorkload] = useState([]);
-    const [jobTypeStats, setJobTypeStats] = useState([]);
+    const [workload, setWorkload] = useState([]); // ข้อมูลการกระจายงานรายบุคคล
+    const [jobTypeStats, setJobTypeStats] = useState([]); // ข้อมูลสรุปตามประเภทงาน
 
     useEffect(() => {
         loadData();
     }, []);
 
+    /** ฟังก์ชันโหลดและคำนวณสถิติเพื่อนำมาแสดงผล */
     const loadData = async () => {
         const allJobs = await getJobs();
         setJobs(allJobs);
 
-        // Calculate Stats
+        // 1. คำนวณภาพรวม (Overall Stats)
         const completed = allJobs.filter(j => j.status === 'completed');
         const onTime = completed.filter(j => !j.isOverdue);
         const overdue = allJobs.filter(j => j.isOverdue);
@@ -48,10 +50,11 @@ export default function ReportsDashboard() {
             total: allJobs.length,
             onTime: onTime.length,
             overdue: overdue.length,
+            // คำนวณวันทำงานเฉลี่ย (กรณีที่มีงานเสร็จแล้ว)
             avgDays: completed.length > 0 ? Math.round(completed.reduce((sum, j) => sum + (j.actualDays || 7), 0) / completed.length) : 0
         });
 
-        // Workload by Assignee
+        // 2. คำนวณภาระงานแยกตามผู้รับผิดชอบ (Workload by Assignee)
         const assigneeMap = {};
         allJobs.forEach(j => {
             if (j.assigneeName) {
@@ -63,7 +66,7 @@ export default function ReportsDashboard() {
         });
         setWorkload(Object.values(assigneeMap));
 
-        // Job Type Stats
+        // 3. คำนวณสถิติแยกตามประเภทงาน (Job Type Stats)
         const typeMap = {};
         allJobs.forEach(j => {
             if (j.jobType) {
@@ -79,8 +82,8 @@ export default function ReportsDashboard() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-gray-900">Reports & Analytics</h1>
-                <p className="text-gray-500">ภาพรวมการทำงานและประสิทธิภาพของทีม</p>
+                <h1 className="text-2xl font-bold text-gray-900">ตัวชี้วัดและรายงานสรุป (Reports & Analytics)</h1>
+                <p className="text-gray-500">ติดตามภาพรวมการทำงานและประสิทธิภาพของทีมในระบบ DJ</p>
             </div>
 
             {/* KPI Cards */}
@@ -112,9 +115,9 @@ export default function ReportsDashboard() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Workload Distribution */}
+                {/* ส่วนแสดงภาระงาน (Workload Distribution) */}
                 <Card>
-                    <CardHeader title="Workload Distribution">
+                    <CardHeader title="การกระจายภาระงาน (Workload Distribution)">
                         <UserGroupIcon className="w-5 h-5 text-gray-400" />
                     </CardHeader>
                     <CardBody>
@@ -138,9 +141,9 @@ export default function ReportsDashboard() {
                     </CardBody>
                 </Card>
 
-                {/* Job Type Analytics */}
+                {/* สถิติตามประเภทงาน (Job Type Analytics) */}
                 <Card>
-                    <CardHeader title="Job Type Analytics">
+                    <CardHeader title="สถิติจำแนกตามประเภทงาน (Job Type Analytics)">
                         <ChartBarIcon className="w-5 h-5 text-gray-400" />
                     </CardHeader>
                     <CardBody>
@@ -156,9 +159,9 @@ export default function ReportsDashboard() {
                 </Card>
             </div>
 
-            {/* SLA Performance */}
+            {/* ส่วนวัดประสิทธิภาพตาม SLA (SLA Performance) */}
             <Card>
-                <CardHeader title="SLA Performance" />
+                <CardHeader title="ประสิทธิภาพการทำงานตามเป้าหมาย (SLA Performance)" />
                 <CardBody>
                     <div className="flex items-center justify-around py-8">
                         <div className="text-center">
@@ -182,6 +185,14 @@ export default function ReportsDashboard() {
     );
 }
 
+/**
+ * StatCard: การ์ดแสดงผลตัวเลขสถิติ (KPI)
+ * @param {object} props
+ * @param {React.ReactNode} props.icon - ไอคอนประจำการ์ด
+ * @param {string} props.label - หัวข้อตัวชี้วัด
+ * @param {string|number} props.value - ค่าตัวเลขที่จะแสดง
+ * @param {string} props.color - คลาสสีพื้นหลังของไอคอน
+ */
 function StatCard({ icon, label, value, color }) {
     return (
         <Card>

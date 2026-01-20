@@ -11,7 +11,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
-import { getUsers } from '@/services/mockApi';
+import { getAllUsersForLogin } from '@/services/mockApi';
 
 export default function Login() {
     const navigate = useNavigate();
@@ -32,7 +32,7 @@ export default function Login() {
     useEffect(() => {
         const loadUsers = async () => {
             try {
-                const data = await getUsers();
+                const data = await getAllUsersForLogin();
                 setUsers(data);
             } catch (err) {
                 console.error('Error loading users:', err);
@@ -154,9 +154,9 @@ export default function Login() {
                                             <p className="font-medium text-slate-800">{selected.displayName}</p>
                                             <p className="text-sm text-slate-500">{selected.email}</p>
                                             <span className={`inline-block mt-1 px-2 py-0.5 text-xs rounded-full ${selected.roles?.[0] === 'admin' ? 'bg-purple-100 text-purple-700' :
-                                                    selected.roles?.[0] === 'marketing' ? 'bg-blue-100 text-blue-700' :
-                                                        selected.roles?.[0] === 'approver' ? 'bg-green-100 text-green-700' :
-                                                            'bg-amber-100 text-amber-700'
+                                                selected.roles?.[0] === 'marketing' ? 'bg-blue-100 text-blue-700' :
+                                                    selected.roles?.[0] === 'approver' ? 'bg-green-100 text-green-700' :
+                                                        'bg-amber-100 text-amber-700'
                                                 }`}>
                                                 {selected.roles?.[0]?.toUpperCase()}
                                             </span>

@@ -1,3 +1,14 @@
+/**
+ * UserManagement Component
+ * คอมโพเน็นต์สำหรับจัดการข้อมูลผู้ใช้งานในระบบ (User Management)
+ * 
+ * ฟีเจอร์หลัก:
+ * - แสดงรายการผู้ใช้ทั้งหมดในระบบ
+ * - เพิ่ม/แก้ไข/ลบข้อมูลผู้ใช้
+ * - กำหนดบทบาท (Roles) และขอบเขตการเข้าถึง (Scope) ของผู้ใช้
+ * - รองรับการเลือกหลายโครงการสำหรับบทบาท Marketing และ Assignee
+ */
+
 import React, { useState, useEffect } from 'react';
 import {
     getUsers, createUser, updateUser, deleteUser, getMasterData
@@ -9,6 +20,10 @@ import {
     UserIcon, BuildingOfficeIcon, BriefcaseIcon
 } from '@heroicons/react/24/outline';
 
+/**
+ * ตัวเลือกคำนำหน้าชื่อ (Name Prefix Options)
+ * รองรับทั้งภาษาไทยและภาษาอังกฤษ
+ */
 const PREFIX_OPTIONS = [
     { value: 'นาย', label: 'นาย' },
     { value: 'นาง', label: 'นาง' },
@@ -18,6 +33,13 @@ const PREFIX_OPTIONS = [
     { value: 'Ms.', label: 'Ms.' }
 ];
 
+/**
+ * ตัวเลือกบทบาทผู้ใช้ (User Role Options)
+ * - admin: ผู้ดูแลระบบ มีสิทธิ์เต็ม
+ * - marketing: ผู้สั่งงาน (Requester) สามารถสร้าง DJ ได้
+ * - approver: ผู้อนุมัติ (Head/Manager) อนุมัติคำขอสร้างงาน
+ * - assignee: ผู้รับงาน (Creative/Workflow) รับมอบหมายงานและดำเนินการ
+ */
 const ROLE_OPTIONS = [
     { value: 'admin', label: 'Admin (ผู้ดูแลระบบ)' },
     { value: 'marketing', label: 'Requester (Marketing)' },
@@ -25,53 +47,108 @@ const ROLE_OPTIONS = [
     { value: 'assignee', label: 'Assignee (Creative/Workflow)' }
 ];
 
+/**
+ * ระดับขอบเขตการเข้าถึง (Scope Levels)
+ * กำหนดว่าผู้ใช้มีสิทธิ์เข้าถึงข้อมูลในระดับใด
+ * - Tenant: ระดับบริษัท (เห็นข้อมูลทั้งบริษัท)
+ * - BUD: ระดับสายงาน/แผนก (เห็นเฉพาะสายงานของตน)
+ * - Project: ระดับโครงการ (เห็นเฉพาะโครงการที่เกี่ยวข้อง)
+ */
 const SCOPE_LEVELS = [
     { value: 'Tenant', label: 'ระดับบริษัท (Tenant)' },
     { value: 'BUD', label: 'ระดับสายงาน (BUD)' },
     { value: 'Project', label: 'ระดับโครงการ (Project)' }
 ];
 
+/**
+ * UserManagement Component
+ * คอมโพเน็นต์หลักสำหรับจัดการผู้ใช้งาน
+ * 
+ * @returns {JSX.Element} หน้าจัดการผู้ใช้งาน
+ */
 export default function UserManagement() {
+    // === State Management (การจัดการสถานะ) ===
+
+    /** รายการผู้ใช้ทั้งหมด (User List) */
     const [users, setUsers] = useState([]);
+
+    /** ข้อมูล Master Data ประกอบด้วย tenants, buds, projects */
     const [masters, setMasters] = useState({ tenants: [], buds: [], projects: [] });
+
+    /** สถานะการโหลดข้อมูล (Loading State) */
     const [isLoading, setIsLoading] = useState(true);
+
+    /** สถานะการแสดง Modal สำหรับเพิ่ม/แก้ไขผู้ใช้ */
     const [showModal, setShowModal] = useState(false);
+
+    /** สถานะการส่งข้อมูล (กำลังบันทึก) */
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    /** ข้อมูลผู้ใช้ที่กำลังแก้ไข (null = โหมดเพิ่มใหม่) */
     const [editingUser, setEditingUser] = useState(null);
 
-    // Form State
+    // === Form State (สถานะฟอร์ม) ===
+
+    /** ข้อมูลในฟอร์มสำหรับเพิ่ม/แก้ไขผู้ใช้ */
     const [formData, setFormData] = useState({
-        prefix: '',
-        name: '',
-        lastName: '',
-        email: '',
-        phone: '',
-        roles: [],
-        scopeLevel: 'Project', // Default to Project
-        scopeId: '',
-        assignedProjects: [], // โครงการที่รับผิดชอบ (สำหรับ Assignee)
-        allowedProjects: [] // โครงการที่สร้าง DJ ได้ (สำหรับ Requester)
+        prefix: '',                  // คำนำหน้าชื่อ
+        name: '',                    // ชื่อ
+        lastName: '',                // นามสกุล
+        email: '',                   // อีเมล
+        phone: '',                   // เบอร์โทรศัพท์
+        roles: [],                   // บทบาท (สามารถเลือกได้หลายบทบาท)
+        scopeLevel: 'Project',       // ระดับขอบเขต (ค่าเริ่มต้น: Project)
+        scopeId: '',                 // ID ของ Scope ที่เลือก
+        assignedProjects: [],        // โครงการที่รับผิดชอบ (สำหรับ Assignee)
+        allowedProjects: []          // โครงการที่สร้าง DJ ได้ (สำหรับ Requester/Marketing)
     });
 
-    // Alert State
-    const [alertState, setAlertState] = useState({ show: false, type: 'success', message: '' });
+    // === Alert State (สถานะการแจ้งเตือน) ===
 
-    // Confirm Modal
-    const [confirmModal, setConfirmModal] = useState({ show: false, id: null });
+    /** สถานะการแสดงข้อความแจ้งเตือน (Toast Alert) */
+    const [alertState, setAlertState] = useState({
+        show: false,      // แสดง/ซ่อน Alert
+        type: 'success',  // ประเภท: 'success' หรือ 'error'
+        message: ''       // ข้อความที่จะแสดง
+    });
 
-    // Project Search (for Assignee projects multi-select)
+    // === Confirm Modal State (สถานะ Modal ยืนยันการลบ) ===
+
+    /** สถานะ Modal ยืนยันการลบผู้ใช้ */
+    const [confirmModal, setConfirmModal] = useState({
+        show: false,  // แสดง/ซ่อน Modal
+        id: null      // ID ของผู้ใช้ที่จะลบ
+    });
+
+    // === Search State (สถานะการค้นหา) ===
+
+    /** คำค้นหาโครงการสำหรับ Assignee (ผู้รับงาน) */
     const [projectSearch, setProjectSearch] = useState('');
 
-    // Requester Project Search
+    /** คำค้นหาโครงการสำหรับ Requester/Marketing (ผู้สั่งงาน) */
     const [requesterSearch, setRequesterSearch] = useState('');
 
+    /**
+     * useEffect Hook
+     * เรียกใช้ฟังก์ชัน loadData เมื่อ Component ถูก Mount ครั้งแรก
+     */
     useEffect(() => {
         loadData();
     }, []);
 
+    /**
+     * โหลดข้อมูลผู้ใช้และ Master Data จาก API
+     * ฟังก์ชันนี้จะดึงข้อมูลผู้ใช้ทั้งหมดและข้อมูล Master (tenants, buds, projects) พร้อมกัน
+     * 
+     * @async
+     * @function loadData
+     * @returns {Promise<void>} ไม่มีค่าส่งกลับ แต่จะอัปเดต state users และ masters
+     * @throws {Error} แสดง Alert ข้อผิดพลาดหากโหลดข้อมูลไม่สำเร็จ
+     */
     const loadData = async () => {
         try {
             setIsLoading(true);
+            // เรียก API 2 ตัวพร้อมกัน (Parallel) เพื่อประหยัดเวลา
             const [usersData, masterData] = await Promise.all([
                 getUsers(),
                 getMasterData()
@@ -85,44 +162,77 @@ export default function UserManagement() {
         }
     };
 
+    /**
+     * แสดงข้อความแจ้งเตือนแบบ Toast
+     * ข้อความจะแสดงเป็นเวลา 3 วินาทีแล้วหายไปอัตโนมัติ
+     * 
+     * @function showAlert
+     * @param {string} type - ประเภทของ Alert ('success' หรือ 'error')
+     * @param {string} message - ข้อความที่ต้องการแสดง
+     * @returns {void}
+     */
     const showAlert = (type, message) => {
         setAlertState({ show: true, type, message });
+        // ซ่อน Alert อัตโนมัติหลังจาก 3 วินาที
         setTimeout(() => setAlertState({ show: false, type: '', message: '' }), 3000);
     };
 
-    // --- Form Handlers ---
+    /**
+     * จัดการการเปลี่ยนแปลงบทบาทของผู้ใช้
+     * รองรับการเลือกหลายบทบาท (Multi-select) โดยการ Toggle เพิ่ม/ลบบทบาท
+     * 
+     * @function handleRoleChange
+     * @param {string} roleValue - ค่าบทบาทที่ถูกคลิก (เช่น 'admin', 'marketing', 'approver', 'assignee')
+     * @returns {void}
+     */
     const handleRoleChange = (roleValue) => {
         setFormData(prev => {
             const currentRoles = prev.roles || [];
+            // ถ้ามีบทบาทนี้อยู่แล้ว ให้ลบออก (Uncheck)
             if (currentRoles.includes(roleValue)) {
                 return { ...prev, roles: currentRoles.filter(r => r !== roleValue) };
             } else {
+                // ถ้ายังไม่มี ให้เพิ่มเข้าไป (Check)
                 return { ...prev, roles: [...currentRoles, roleValue] };
             }
         });
     };
 
+    /**
+     * บันทึกข้อมูลผู้ใช้ (เพิ่มใหม่หรือแก้ไข)
+     * ฟังก์ชันนี้จะตรวจสอบความถูกต้องของข้อมูล (Validation) ก่อนบันทึก
+     * 
+     * กฎการตรวจสอบ:
+     * 1. ต้องกรอก ชื่อ, อีเมล และเลือกบทบาทอย่างน้อย 1 บทบาท
+     * 2. บทบาทที่ไม่ใช่ Marketing/Assignee ต้องเลือก Scope (scopeId)
+     * 3. บทบาท Marketing ต้องเลือกโครงการที่สร้าง DJ ได้อย่างน้อย 1 โครงการ
+     * 4. บทบาท Assignee ต้องเลือกโครงการที่รับผิดชอบอย่างน้อย 1 โครงการ
+     * 
+     * @async
+     * @function handleSave
+     * @returns {Promise<void>} ไม่มีค่าส่งกลับ แต่จะอัปเดต state และปิด Modal เมื่อสำเร็จ
+     */
     const handleSave = async () => {
-        // Basic validation
+        // === การตรวจสอบความถูกต้องพื้นฐาน (Basic Validation) ===
         if (!formData.name || !formData.email || formData.roles.length === 0) {
             showAlert('error', 'กรุณากรอกข้อมูลให้ครบถ้วน (ชื่อ, อีเมล, บทบาท)');
             return;
         }
 
-        // Validate scopeId for non-marketing and non-assignee roles
+        // === ตรวจสอบ scopeId สำหรับบทบาทที่ไม่ใช่ Marketing และ Assignee ===
         const needsScopeId = !formData.roles.includes('marketing') && !formData.roles.includes('assignee');
         if (needsScopeId && !formData.scopeId) {
             showAlert('error', 'กรุณาเลือกสังกัด (Assigned To)');
             return;
         }
 
-        // Validate project selection for marketing role
+        // === ตรวจสอบการเลือกโครงการสำหรับบทบาท Marketing ===
         if (formData.roles.includes('marketing') && formData.allowedProjects.length === 0) {
             showAlert('error', 'กรุณาเลือกโครงการที่สร้าง DJ ได้อย่างน้อย 1 โครงการ');
             return;
         }
 
-        // Validate project selection for assignee role
+        // === ตรวจสอบการเลือกโครงการสำหรับบทบาท Assignee ===
         if (formData.roles.includes('assignee') && formData.assignedProjects.length === 0) {
             showAlert('error', 'กรุณาเลือกโครงการที่รับผิดชอบอย่างน้อย 1 โครงการ');
             return;
@@ -131,15 +241,17 @@ export default function UserManagement() {
         setIsSubmitting(true);
         try {
             if (editingUser) {
+                // โหมดแก้ไข: อัปเดตข้อมูลผู้ใช้ที่มีอยู่
                 await updateUser(editingUser.id, formData);
                 showAlert('success', 'แก้ไขข้อมูลผู้ใช้สำเร็จ');
             } else {
+                // โหมดเพิ่มใหม่: สร้างผู้ใช้ใหม่
                 await createUser(formData);
                 showAlert('success', 'เพิ่มผู้ใช้ใหม่สำเร็จ');
             }
-            await loadData();
-            setShowModal(false);
-            resetForm();
+            await loadData();  // โหลดข้อมูลใหม่เพื่ออัปเดตตาราง
+            setShowModal(false);  // ปิด Modal
+            resetForm();  // ล้างฟอร์ม
         } catch (error) {
             showAlert('error', 'เกิดข้อผิดพลาด: ' + error.message);
         } finally {
@@ -147,6 +259,13 @@ export default function UserManagement() {
         }
     };
 
+    /**
+     * รีเซ็ตฟอร์มกลับไปเป็นค่าเริ่มต้น
+     * ใช้เมื่อปิด Modal หรือหลังจากบันทึกข้อมูลสำเร็จ
+     * 
+     * @function resetForm
+     * @returns {void}
+     */
     const resetForm = () => {
         setFormData({
             prefix: '',
@@ -160,12 +279,33 @@ export default function UserManagement() {
             assignedProjects: [],
             allowedProjects: []
         });
-        setEditingUser(null);
+        setEditingUser(null);  // ล้างข้อมูลผู้ใช้ที่กำลังแก้ไข
     };
 
-    // --- Actions ---
+    // === Action Handlers (ฟังก์ชันจัดการ Action) ===
+
+    /**
+     * จัดการเมื่อคลิกปุ่มแก้ไขผู้ใช้
+     * โหลดข้อมูลผู้ใช้ที่เลือกเข้ามาใส่ในฟอร์มและเปิด Modal แก้ไข
+     * 
+     * @function handleEditClick
+     * @param {Object} user - ข้อมูลผู้ใช้ที่ต้องการแก้ไข
+     * @param {string} user.id - ID ของผู้ใช้
+     * @param {string} user.prefix - คำนำหน้าชื่อ
+     * @param {string} user.name - ชื่อผู้ใช้
+     * @param {string} user.lastName - นามสกุล
+     * @param {string} user.email - อีเมล
+     * @param {string} user.phone - เบอร์โทรศัพท์
+     * @param {Array<string>} user.roles - รายการบทบาท
+     * @param {string} user.scopeLevel - ระดับขอบเขต
+     * @param {string} user.scopeId - ID ของ Scope
+     * @param {Array<string>} user.assignedProjects - รายการ ID โครงการที่รับผิดชอบ
+     * @param {Array<string>} user.allowedProjects - รายการ ID โครงการที่สร้าง DJ ได้
+     * @returns {void}
+     */
     const handleEditClick = (user) => {
         setEditingUser(user);
+        // โหลดข้อมูลผู้ใช้เข้ามาในฟอร์ม (รองรับกรณีชื่อ Field ที่อาจไม่มีใน Object)
         setFormData({
             prefix: user.prefix || '',
             name: user.name || user.displayName || user.firstName || '',
@@ -178,26 +318,53 @@ export default function UserManagement() {
             assignedProjects: user.assignedProjects || [],
             allowedProjects: user.allowedProjects || []
         });
-        setShowModal(true);
+        setShowModal(true);  // เปิด Modal แก้ไข
     };
 
+    /**
+     * จัดการเมื่อคลิกปุ่มลบผู้ใช้
+     * เปิด Modal ยืนยันการลบเพื่อให้ผู้ใช้ยืนยัน
+     * 
+     * @function handleDeleteClick
+     * @param {string} id - ID ของผู้ใช้ที่ต้องการลบ
+     * @returns {void}
+     */
     const handleDeleteClick = (id) => {
         setConfirmModal({ show: true, id });
     };
 
+    /**
+     * ยืนยันและดำเนินการลบผู้ใช้
+     * เรียก API ลบผู้ใช้และโหลดข้อมูลใหม่เพื่ออัปเดตตาราง
+     * 
+     * @async
+     * @function confirmDelete
+     * @returns {Promise<void>} ไม่มีค่าส่งกลับ แต่จะอัปเดตรายการผู้ใช้และปิด Modal
+     */
     const confirmDelete = async () => {
-        if (!confirmModal.id) return;
+        if (!confirmModal.id) return;  // ถ้าไม่มี ID ให้ยกเลิก
         try {
             await deleteUser(confirmModal.id);
-            await loadData();
+            await loadData();  // โหลดข้อมูลใหม่เพื่ออัปเดตตาราง
             showAlert('success', 'ลบผู้ใช้สำเร็จ');
-            setConfirmModal({ show: false, id: null });
+            setConfirmModal({ show: false, id: null });  // ปิด Modal
         } catch (error) {
             showAlert('error', 'ลบไม่สำเร็จ: ' + error.message);
         }
     };
 
-    // Helper to get Scope Name
+    // === Helper Functions (ฟังก์ชันช่วยเหลือ) ===
+
+    /**
+     * ดึงชื่อของขอบเขต (Scope Name) จาก ID
+     * ใช้สำหรับแสดงชื่อขอบเขตในตารางผู้ใช้
+     * 
+     * @function getScopeName
+     * @param {Object} user - ข้อมูลผู้ใช้
+     * @param {string} user.scopeLevel - ระดับขอบเขต ('Tenant', 'BUD', หรือ 'Project')
+     * @param {string} user.scopeId - ID ของ Scope
+     * @returns {string} ชื่อของขอบเขต หรือ '-' ถ้าไม่พบ
+     */
     const getScopeName = (user) => {
         if (user.scopeLevel === 'Tenant') {
             return masters.tenants?.find(t => t.id == user.scopeId)?.name || 'Unknown Company';
@@ -211,25 +378,35 @@ export default function UserManagement() {
         return '-';
     };
 
-    // Helper to get Project Names for Marketing/Assignee (Multi-project)
+    /**
+     * ดึงรายการชื่อโครงการสำหรับผู้ใช้บทบาท Marketing และ Assignee
+     * ฟังก์ชันนี้จะแปลง ID โครงการเป็นชื่อโครงการเพื่อแสดงผล
+     * 
+     * @function getProjectNames
+     * @param {Object} user - ข้อมูลผู้ใช้
+     * @param {Array<string>} user.roles - รายการบทบาทของผู้ใช้
+     * @param {Array<string>} user.allowedProjects - รายการ ID โครงการที่สร้าง DJ ได้ (สำหรับ Marketing)
+     * @param {Array<string>} user.assignedProjects - รายการ ID โครงการที่รับผิดชอบ (สำหรับ Assignee)
+     * @returns {Array<string>} รายการชื่อโครงการ หรือ Array ว่างถ้าไม่มี
+     */
     const getProjectNames = (user) => {
-        // For Marketing role - show allowedProjects
+        // สำหรับบทบาท Marketing - แสดง allowedProjects
         if (user.roles?.includes('marketing') && user.allowedProjects?.length > 0) {
             const projectNames = user.allowedProjects
                 .map(projectId => masters.projects?.find(p => p.id === projectId)?.name)
-                .filter(Boolean);
+                .filter(Boolean);  // กรองเฉพาะค่าที่ไม่เป็น null/undefined
             return projectNames.length > 0 ? projectNames : ['ไม่มีโครงการ'];
         }
 
-        // For Assignee role - show assignedProjects
+        // สำหรับบทบาท Assignee - แสดง assignedProjects
         if (user.roles?.includes('assignee') && user.assignedProjects?.length > 0) {
             const projectNames = user.assignedProjects
                 .map(projectId => masters.projects?.find(p => p.id === projectId)?.name)
-                .filter(Boolean);
+                .filter(Boolean);  // กรองเฉพาะค่าที่ไม่เป็น null/undefined
             return projectNames.length > 0 ? projectNames : ['ไม่มีโครงการ'];
         }
 
-        return [];
+        return [];  // ถ้าไม่ใช่บทบาท Marketing หรือ Assignee คืน Array ว่าง
     };
 
     return (
@@ -240,9 +417,27 @@ export default function UserManagement() {
                     <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
                     <p className="text-gray-500">จัดการผู้ใช้งาน กำหนดบทบาทและสิทธิ์การเข้าถึง</p>
                 </div>
-                <Button onClick={() => { resetForm(); setShowModal(true); }}>
-                    <PlusIcon className="w-5 h-5" /> Add User
-                </Button>
+                <div className="flex items-center gap-3">
+                    {/* ปุ่มโหลดข้อมูลใหม่ (สำหรับ Debug เมื่อข้อมูลหาย) */}
+                    {users.length === 0 && !isLoading && (
+                        <Button
+                            variant="secondary"
+                            onClick={() => {
+                                localStorage.removeItem('dj_system_users');
+                                window.location.reload();
+                            }}
+                            className="bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                            โหลดข้อมูลใหม่
+                        </Button>
+                    )}
+                    <Button onClick={() => { resetForm(); setShowModal(true); }}>
+                        <PlusIcon className="w-5 h-5" /> Add User
+                    </Button>
+                </div>
             </div>
 
             {/* Alert Toast */}

@@ -546,8 +546,8 @@ import usersData from '@/mock-data/users/users.json';
 
 ### Backend
 - **Node.js 18+** + **Express.js** - Web framework
-- **Sequelize ORM** - Database ORM
-- **MySQL 8.0** - Relational database
+- **Prisma ORM** - Database ORM (รองรับ PostgreSQL ได้ดี)
+- **PostgreSQL 15+** - Relational database
 - **JWT** - Authentication
 - **Socket.io** - Real-time server
 - **Multer** - File upload (Local Storage)

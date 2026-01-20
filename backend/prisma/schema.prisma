@@ -1,0 +1,420 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================================
+// ENUMS
+// ========================================
+
+enum Priority {
+  low
+  normal
+  urgent
+}
+
+enum JobStatus {
+  draft
+  scheduled
+  submitted
+  pending_approval
+  approved
+  assigned
+  in_progress
+  rework
+  rejected
+  completed
+  closed
+}
+
+enum ApprovalStatus {
+  pending
+  approved
+  rejected
+  returned
+}
+
+// ========================================
+// MODELS
+// ========================================
+
+model Tenant {
+  id            Int      @id @default(autoincrement())
+  name          String   @db.VarChar(200)
+  code          String   @unique @db.VarChar(50)
+  subdomain     String?  @unique @db.VarChar(100)
+  logoUrl       String?  @map("logo_url") @db.VarChar(500)
+  primaryColor  String   @default("#E11D48") @map("primary_color") @db.VarChar(20)
+  isActive      Boolean  @default(true) @map("is_active")
+  settings      Json     @default("{}")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
+
+  // Relations
+  users         User[]
+  roles         Role[]
+  userRoles     UserRole[]
+  buds          Bud[]
+  projects      Project[]
+  jobTypes      JobType[]
+  designJobs    DesignJob[]
+  jobBriefs     JobBrief[]
+  jobAttachments JobAttachment[]
+  jobDeliverables JobDeliverable[]
+  approvalFlows ApprovalFlow[]
+  approvals     Approval[]
+  jobActivities JobActivity[]
+  jobComments   JobComment[]
+  notifications Notification[]
+  holidays      Holiday[]
+  mediaFiles    MediaFile[]
+
+  @@map("tenants")
+}
+
+model User {
+  id             Int      @id @default(autoincrement())
+  tenantId       Int      @map("tenant_id")
+  email          String   @db.VarChar(255)
+  passwordHash   String   @map("password_hash") @db.VarChar(255)
+  firstName      String   @map("first_name") @db.VarChar(100)
+  lastName       String   @map("last_name") @db.VarChar(100)
+  displayName    String?  @map("display_name") @db.VarChar(100)
+  avatarUrl      String?  @map("avatar_url") @db.VarChar(500)
+  phone          String?  @db.VarChar(20)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
+
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Relations
+  userRoles      UserRole[]
+  requestedJobs  DesignJob[] @relation("RequesterJobs")
+  assignedJobs   DesignJob[] @relation("AssigneeJobs")
+  uploadedAttachments JobAttachment[]
+  uploadedDeliverables JobDeliverable[]
+  approvals      Approval[]
+  activities     JobActivity[]
+  comments       JobComment[]
+  notifications  Notification[]
+  mediaFiles     MediaFile[]
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+model Role {
+  id           Int      @id @default(autoincrement())
+  tenantId     Int      @map("tenant_id")
+  name         String   @db.VarChar(50)
+  displayName  String   @map("display_name") @db.VarChar(100)
+  description  String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userRoles    UserRole[]
+
+  @@unique([tenantId, name])
+  @@map("roles")
+}
+
+model UserRole {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  userId    Int      @map("user_id")
+  roleId    Int      @map("role_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId, roleId])
+  @@map("user_roles")
+}
+
+model Bud {
+  id          Int      @id @default(autoincrement())
+  tenantId    Int      @map("tenant_id")
+  name        String   @db.VarChar(100)
+  code        String   @db.VarChar(20)
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  projects    Project[]
+
+  @@unique([tenantId, code])
+  @@map("buds")
+}
+
+model Project {
+  id          Int      @id @default(autoincrement())
+  tenantId    Int      @map("tenant_id")
+  name        String   @db.VarChar(200)
+  code        String   @db.VarChar(50)
+  budId       Int      @map("bud_id")
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bud         Bud         @relation(fields: [budId], references: [id])
+  designJobs  DesignJob[]
+  mediaFiles  MediaFile[]
+
+  @@unique([tenantId, code])
+  @@map("projects")
+}
+
+model JobType {
+  id                  Int      @id @default(autoincrement())
+  tenantId            Int      @map("tenant_id")
+  name                String   @db.VarChar(100)
+  code                String   @db.VarChar(50)
+  slaWorkingDays      Int      @map("sla_working_days")
+  description         String?  @db.Text
+  requiredAttachments Json?    @map("required_attachments")
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at")
+
+  tenant              Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  designJobs          DesignJob[]
+
+  @@unique([tenantId, code])
+  @@map("job_types")
+}
+
+model DesignJob {
+  id                Int       @id @default(autoincrement())
+  tenantId          Int       @map("tenant_id")
+  djId              String    @map("dj_id") @db.VarChar(50)
+  projectId         Int       @map("project_id")
+  jobTypeId         Int       @map("job_type_id")
+  subject           String    @db.VarChar(500)
+  priority          Priority  @default(normal)
+  status            JobStatus @default(draft)
+  requesterId       Int       @map("requester_id")
+  assigneeId        Int?      @map("assignee_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  submittedAt       DateTime? @map("submitted_at")
+  scheduledSubmitAt DateTime? @map("scheduled_submit_at")
+  deadline          DateTime?
+  completedAt       DateTime? @map("completed_at")
+  slaWorkingDays    Int?      @map("sla_working_days")
+  isOverdue         Boolean   @default(false) @map("is_overdue")
+  overdueDays       Int       @default(0) @map("overdue_days")
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project           Project     @relation(fields: [projectId], references: [id])
+  jobType           JobType     @relation(fields: [jobTypeId], references: [id])
+  requester         User        @relation("RequesterJobs", fields: [requesterId], references: [id])
+  assignee          User?       @relation("AssigneeJobs", fields: [assigneeId], references: [id])
+  
+  brief             JobBrief?
+  attachments       JobAttachment[]
+  deliverables      JobDeliverable[]
+  approvals         Approval[]
+  activities        JobActivity[]
+  comments          JobComment[]
+  mediaFiles        MediaFile[]
+
+  @@unique([tenantId, djId])
+  @@map("design_jobs")
+}
+
+model JobBrief {
+  id           Int      @id @default(autoincrement())
+  tenantId     Int      @map("tenant_id")
+  jobId        Int      @unique @map("job_id")
+  objective    String   @db.Text
+  headline     String?  @db.VarChar(500)
+  subHeadline  String?  @map("sub_headline") @db.VarChar(500)
+  sellingPoints Json?   @map("selling_points")
+  price        String?  @db.VarChar(200)
+  referenceUrl String?  @map("reference_url") @db.VarChar(1000)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  job          DesignJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@map("job_briefs")
+}
+
+model JobAttachment {
+  id             Int      @id @default(autoincrement())
+  tenantId       Int      @map("tenant_id")
+  jobId          Int      @map("job_id")
+  fileName       String   @map("file_name") @db.VarChar(500)
+  filePath       String   @map("file_path") @db.VarChar(1000)
+  fileSize       BigInt?  @map("file_size")
+  fileType       String?  @map("file_type") @db.VarChar(100)
+  attachmentType String?  @map("attachment_type") @db.VarChar(100)
+  uploadedBy     Int      @map("uploaded_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  job            DesignJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  user           User      @relation(fields: [uploadedBy], references: [id])
+
+  @@map("job_attachments")
+}
+
+model JobDeliverable {
+  id          Int      @id @default(autoincrement())
+  tenantId    Int      @map("tenant_id")
+  jobId       Int      @map("job_id")
+  version     Int      @default(1)
+  fileName    String   @map("file_name") @db.VarChar(500)
+  filePath    String   @map("file_path") @db.VarChar(1000)
+  fileSize    BigInt?  @map("file_size")
+  fileType    String?  @map("file_type") @db.VarChar(100)
+  uploadedBy  Int      @map("uploaded_by")
+  isFinal     Boolean  @default(false) @map("is_final")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  job         DesignJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [uploadedBy], references: [id])
+
+  @@map("job_deliverables")
+}
+
+model ApprovalFlow {
+  id            Int      @id @default(autoincrement())
+  tenantId      Int      @map("tenant_id")
+  name          String   @db.VarChar(200)
+  description   String?  @db.Text
+  conditions    Json?
+  approverSteps Json?    @map("approver_steps")
+  allowOverride Boolean  @default(false) @map("allow_override")
+  effectiveFrom DateTime? @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("approval_flows")
+}
+
+model Approval {
+  id          Int            @id @default(autoincrement())
+  tenantId    Int            @map("tenant_id")
+  jobId       Int            @map("job_id")
+  stepNumber  Int            @map("step_number")
+  approverId  Int            @map("approver_id")
+  status      ApprovalStatus @default(pending)
+  comment     String?        @db.Text
+  approvedAt  DateTime?      @map("approved_at")
+  createdAt   DateTime       @default(now()) @map("created_at")
+
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  job         DesignJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  approver    User      @relation(fields: [approverId], references: [id])
+
+  @@map("approvals")
+}
+
+model JobActivity {
+  id           Int      @id @default(autoincrement())
+  tenantId     Int      @map("tenant_id")
+  jobId        Int      @map("job_id")
+  userId       Int?     @map("user_id")
+  activityType String   @map("activity_type") @db.VarChar(50)
+  description  String?  @db.Text
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  job          DesignJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  user         User?     @relation(fields: [userId], references: [id])
+
+  @@map("job_activities")
+}
+
+model JobComment {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  jobId     Int      @map("job_id")
+  userId    Int      @map("user_id")
+  comment   String   @db.Text
+  mentions  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  job       DesignJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@map("job_comments")
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  userId    Int      @map("user_id")
+  type      String   @db.VarChar(50)
+  title     String   @db.VarChar(500)
+  message   String?  @db.Text
+  link      String?  @db.VarChar(500)
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model Holiday {
+  id          Int      @id @default(autoincrement())
+  tenantId    Int      @map("tenant_id")
+  name        String   @db.VarChar(200)
+  date        DateTime @db.Date
+  isRecurring Boolean  @default(false) @map("is_recurring")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("holidays")
+}
+
+model MediaFile {
+  id           Int      @id @default(autoincrement())
+  tenantId     Int      @map("tenant_id")
+  jobId        Int?     @map("job_id")
+  projectId    Int?     @map("project_id")
+  fileName     String   @map("file_name") @db.VarChar(500)
+  filePath     String   @map("file_path") @db.VarChar(1000)
+  fileSize     BigInt?  @map("file_size")
+  fileType     String?  @map("file_type") @db.VarChar(100)
+  mimeType     String?  @map("mime_type") @db.VarChar(100)
+  thumbnailPath String? @map("thumbnail_path") @db.VarChar(1000)
+  uploadedBy   Int      @map("uploaded_by")
+  downloadCount Int     @default(0) @map("download_count")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  job          DesignJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  project      Project?   @relation(fields: [projectId], references: [id])
+  user         User       @relation(fields: [uploadedBy], references: [id])
+
+  @@map("media_files")
+}

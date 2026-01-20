@@ -1,27 +1,27 @@
 /**
  * @file Modal.jsx
- * @description Modal Popup Component แบบ Custom - สวยงาม ใช้งานง่าย
+ * @description คอมโพเน็นต์หน้าต่างป๊อปอัพ (Modal Popup) แบบปรับแต่งได้
  * 
- * Features:
- * - รองรับ Success, Error, Warning, Info
- * - Animation เข้า-ออกแบบ smooth
- * - ปิดได้ทั้ง backdrop และปุ่ม X
- * - รองรับ callback เมื่อกดปุ่ม OK
+ * วัตถุประสงค์หลัก:
+ * - ใช้แสดงข้อความแจ้งเตือน ยืนยันการกระทำ หรือแสดงข้อมูลเพิ่มเติม
+ * - รองรับรูปแบบการทำงาน 4 ประเภท: Success, Error, Warning, Info
+ * - มาพร้อม Animation การแสดงผลที่นุ่มนวลและการควบคุมการปิดผ่าน ESC หรือ backdrop
  */
 
 import React, { useEffect } from 'react';
 import { XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon, InformationCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
 
 /**
- * @component Modal
- * @param {boolean} isOpen - เปิด/ปิด Modal
- * @param {function} onClose - Callback เมื่อปิด Modal
- * @param {function} onConfirm - Callback เมื่อกดปุ่ม OK (optional)
- * @param {string} type - ประเภท: 'success' | 'error' | 'warning' | 'info'
- * @param {string} title - หัวข้อ Modal
- * @param {string} message - ข้อความใน Modal
- * @param {string} confirmText - ข้อความปุ่ม OK (default: 'ตรงไป')
- * @param {boolean} showCancel - แสดงปุ่มยกเลิกหรือไม่ (default: false)
+ * Modal: หน้าต่างแจ้งเตือนและโต้ตอบ
+ * @param {object} props
+ * @param {boolean} props.isOpen - สถานะเปิด/ปิด Modal
+ * @param {function} props.onClose - ฟังก์ชันเมื่อต้องการปิด Modal
+ * @param {function} [props.onConfirm] - ฟังก์ชันเมื่อกดยืนยัน (ตกลง)
+ * @param {'success'|'error'|'warning'|'info'} [props.type='info'] - ประเภทของ Modal เพื่อกำหนดสีและไอคอน
+ * @param {string} [props.title='แจ้งเตือน'] - หัวข้อของ Modal
+ * @param {string} props.message - ข้อความรายละเอียดภายใน Modal
+ * @param {string} [props.confirmText='ตกลง'] - ข้อความบนปุ่มยืนยัน
+ * @param {boolean} [props.showCancel=false] - กำหนดว่าจะแสดงปุ่มยกเลิกหรือไม่
  */
 export default function Modal({
     isOpen,
@@ -33,7 +33,7 @@ export default function Modal({
     confirmText = 'ตกลง',
     showCancel = false
 }) {
-    // ป้องกันการ scroll เมื่อ modal เปิด
+    // จัดการสถานะการเลื่อนของหน้าจอ (Scroll Lock) เมื่อ Modal เปิดใช้งาน
     useEffect(() => {
         if (isOpen) {
             document.body.style.overflow = 'hidden';
@@ -45,7 +45,7 @@ export default function Modal({
         };
     }, [isOpen]);
 
-    // ปิด Modal เมื่อกด ESC
+    // ฟังก์ชันสำหรับปิด Modal เมื่อผู้ใช้กดปุ่ม ESC บนคีย์บอร์ด
     useEffect(() => {
         const handleEsc = (e) => {
             if (e.key === 'Escape' && isOpen) {
@@ -58,7 +58,7 @@ export default function Modal({
 
     if (!isOpen) return null;
 
-    // กำหนดสีและไอคอนตาม type
+    // การกำหนดค่าสี ไอคอน และธีม ตามประเภทของ Modal (Config by Type)
     const typeConfig = {
         success: {
             icon: CheckCircleIcon,
@@ -93,6 +93,7 @@ export default function Modal({
     const config = typeConfig[type] || typeConfig.info;
     const IconComponent = config.icon;
 
+    /** ฟังก์ชันจัดการเมื่อกดยืนยัน (OK) */
     const handleConfirm = () => {
         if (onConfirm) {
             onConfirm();

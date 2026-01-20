@@ -1,11 +1,11 @@
 /**
  * @file Sidebar.jsx
- * @description Sidebar Navigation Component
- * แถบเมนูด้านซ้ายสำหรับนำทางไปยังหน้าต่างๆ
+ * @description ส่วนเมนูนำทางด้านข้าง (Sidebar Navigation)
  * 
- * Senior Programmer Notes:
- * - ใช้ NavLink จาก react-router-dom เพื่อ highlight เมนูที่ active
- * - แสดงเมนูตาม Role ของผู้ใช้
+ * วัตถุประสงค์หลัก:
+ * - แสดงรายการเมนูหลักของระบบ (Dashboard, Create DJ, DJ List, etc.)
+ * - ควบคุมการเข้าถึงเมนูส่วนการจัดการ (Admin Menu) ตามบทบาทของผู้ใช้
+ * - มอบประสบการณ์การนำทางที่รวดเร็วด้วย NavLink พร้อมสถานะ Active
  */
 
 import { NavLink } from 'react-router-dom';
@@ -17,11 +17,10 @@ import { FolderIcon, Cog6ToothIcon, UserGroupIcon, BuildingOfficeIcon } from '@h
  * @description แถบเมนูด้านซ้าย
  */
 export default function Sidebar() {
-    // ดึงข้อมูล user จาก authStore
-    // (useAuthStore = Zustand hook สำหรับดึง state)
+    /** ข้อมูลผู้ใช้งานปัจจุบันจาก store */
     const { user } = useAuthStore();
 
-    // ตรวจสอบว่าเป็น Admin หรือไม่
+    /** ตรวจสอบสิทธิ์ว่าเป็นผู้ดูแลระบบ (Admin) หรือไม่ */
     const isAdmin = user?.roles?.includes('admin');
 
     return (
@@ -55,27 +54,27 @@ export default function Sidebar() {
             <nav className="flex-1 px-4 space-y-1 overflow-y-auto pt-2 scrollbar-rose">
 
                 <SidebarLink to="/" icon={DashboardIcon}>
-                    Dashboard
+                    แผงควบคุม (Dashboard)
                 </SidebarLink>
 
                 <SidebarLink to="/create" icon={CreateIcon}>
-                    Create DJ
+                    สร้างงาน DJ ใหม่
                 </SidebarLink>
 
                 <SidebarLink to="/jobs" icon={ListIcon}>
-                    DJ List
+                    รายการงาน DJ ทั้งหมด
                 </SidebarLink>
 
                 <SidebarLink to="/approvals" icon={ApprovalIcon}>
-                    Approvals Queue
+                    คิวงานรออนุมัติ
                 </SidebarLink>
 
                 <SidebarLink to="/media-portal" icon={MediaIcon}>
-                    Media Portal
+                    ศูนย์จัดการสื่อ (Media)
                 </SidebarLink>
 
                 <SidebarLink to="/user-portal" icon={UserIcon}>
-                    User Portal
+                    ข้อมูลผู้ใช้งาน (User)
                 </SidebarLink>
 
 
@@ -92,27 +91,31 @@ export default function Sidebar() {
                         </div>
 
                         <SidebarLink to="/admin/organization" icon={BuildingOfficeIcon}>
-                            Organization Data
+                            ข้อมูลโครงสร้างองค์กร
                         </SidebarLink>
 
                         <SidebarLink to="/admin/approval-flow" icon={FlowIcon}>
-                            Approval Flow
+                            ผังการอนุมัติ (Flow)
                         </SidebarLink>
 
                         <SidebarLink to="/admin/users" icon={UserGroupIcon}>
-                            User Management
+                            จัดการผู้ใช้งาน
                         </SidebarLink>
 
                         <SidebarLink to="/admin/job-types" icon={Cog6ToothIcon}>
-                            Job Type & SLA
+                            ประเภทงาน & SLA
+                        </SidebarLink>
+
+                        <SidebarLink to="/admin/job-type-items" icon={Cog6ToothIcon}>
+                            ชิ้นงานย่อย (Sub-items)
                         </SidebarLink>
 
                         <SidebarLink to="/admin/holidays" icon={CalendarIcon}>
-                            Holiday Calendar
+                            ปฏิทินวันหยุด
                         </SidebarLink>
 
                         <SidebarLink to="/reports" icon={ReportIcon}>
-                            Reports
+                            รายงานและสถิติ
                         </SidebarLink>
                     </>
                 )}
@@ -124,7 +127,7 @@ export default function Sidebar() {
             <div className="p-4 border-t border-rose-800/30 bg-[#881337]">
                 <button className="flex items-center gap-3 px-3 py-2 w-full text-rose-100 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
                     <ArrowLeftOnRectangleIcon className="w-5 h-5" />
-                    <span className="text-sm font-medium">Back to Home</span>
+                    <span className="text-sm font-medium">กลับหน้าหลัก (Home)</span>
                 </button>
             </div>
         </aside>
@@ -132,8 +135,13 @@ export default function Sidebar() {
 }
 
 /**
- * @component SidebarLink
- * @description Link ในเมนู Sidebar พร้อม active state
+ * SidebarLink: คอมโพเน็นต์ย่อยสำหรับแสดงลิงก์ใน Sidebar
+ * @param {object} props
+ * @param {string} props.to - เส้นทางปลายทาง (Route path)
+ * @param {React.ElementType} props.icon - คอมโพเน็นต์ไอคอน
+ * @param {React.ReactNode} props.children - ข้อความหรือเนื้อหาในลิงก์
+ * @param {string|number} [props.badge] - ข้อความตัวเลขบน Badge แจ้งเตือน (ถ้ามี)
+ * @param {string} [props.badgeColor] - คลาสสีสำหรับ Badge
  */
 function SidebarLink({ to, icon: Icon, children, badge, badgeColor }) {
     return (

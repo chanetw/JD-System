@@ -2,12 +2,11 @@
  * @file DJList.jsx
  * @description หน้ารายการงาน DJ ทั้งหมด (DJ Job List)
  * 
- * Features:
- * - โหลดข้อมูลจาก Mock API
- * - Filter ตาม Project, BUD, Job Type, Status, Assignee, Priority
- * - Search ตาม DJ ID และ Subject
- * - Sort ตาม Created Date และ Deadline
- * - Pagination (10 รายการต่อหน้า)
+ * วัตถุประสงค์หลัก:
+ * - แสดงรายการงาน Design Job (DJ) ทั้งหมดในระบบ พร้อมระบบคัดกรองข้อมูล (Filters)
+ * - ค้นหางานด้วยเลขที่ DJ ID หรือหัวข้องาน (Subject)
+ * - สนับสนุนการจัดเรียงข้อมูล (Sorting) ตามวันที่สร้างและวันกำหนดส่ง (Deadline)
+ * - มีระบบจัดการหน้าข้อมูล (Pagination) เพื่อประสิทธิภาพในการแสดงผล
  */
 
 import React, { useState, useEffect } from 'react';
@@ -24,15 +23,13 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function DJList() {
-    // ============================================
-    // State Management
-    // ============================================
-    const [jobs, setJobs] = useState([]);
-    const [filteredJobs, setFilteredJobs] = useState([]);
-    const [masterData, setMasterData] = useState({ projects: [], jobTypes: [], buds: [] });
-    const [isLoading, setIsLoading] = useState(true);
+    // === สถานะข้อมูล (Data Management States) ===
+    const [jobs, setJobs] = useState([]);          // ข้อมูลงานต้นฉบับทั้งหมดจาก API
+    const [filteredJobs, setFilteredJobs] = useState([]); // ข้อมูลงานที่ผ่านการคัดกรองแล้ว
+    const [masterData, setMasterData] = useState({ projects: [], jobTypes: [], buds: [] }); // ข้อมูลอ้างอิงสำหรับ Filter
+    const [isLoading, setIsLoading] = useState(true); // สถานะการโหลดข้อมูล
 
-    // Filters
+    // === สถานะการคัดกรอง (Filter States) ===
     const [filters, setFilters] = useState({
         project: '',
         bud: '',
@@ -40,16 +37,16 @@ export default function DJList() {
         status: '',
         assignee: '',
         priority: '',
-        onlyScheduled: false
+        onlyScheduled: false // แสดงเฉพาะงานที่ตั้งเวลาส่งล่วงหน้า (auto-submit)
     });
 
-    // Search & Sort
-    const [searchQuery, setSearchQuery] = useState('');
-    const [sortBy, setSortBy] = useState('createdDate');
+    // === สถานะการค้นหาและจัดเรียง (Search & Sort States) ===
+    const [searchQuery, setSearchQuery] = useState(''); // ข้อความที่ใช้ค้นหา
+    const [sortBy, setSortBy] = useState('createdDate'); // รูปแบบการจัดเรียง (วันที่สร้าง หรือ Deadline)
 
-    // Pagination
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 10;
+    // === สถานะการจัดการหน้า (Pagination States) ===
+    const [currentPage, setCurrentPage] = useState(1); // หน้าปัจจุบันที่แสดงผล
+    const itemsPerPage = 10;                         // จำนวนรายการต่อหนึ่งหน้า
 
     // ============================================
     // Data Loading
@@ -58,6 +55,7 @@ export default function DJList() {
         loadData();
     }, []);
 
+    /** โหลดข้อมูลงานและข้อมูลอ้างอิงจาก API */
     const loadData = async () => {
         setIsLoading(true);
         try {
@@ -69,7 +67,7 @@ export default function DJList() {
             setFilteredJobs(jobsData);
             setMasterData(masterDataResult);
         } catch (error) {
-            console.error('Failed to load data:', error);
+            console.error('ไม่สามารถโหลดข้อมูลรายการงานได้:', error);
         } finally {
             setIsLoading(false);
         }
@@ -82,10 +80,11 @@ export default function DJList() {
         applyFiltersAndSearch();
     }, [jobs, filters, searchQuery, sortBy]);
 
+    /** ประมวลผลการคัดกรอง การค้นหา และการจัดเรียงข้อมูล */
     const applyFiltersAndSearch = () => {
         let result = [...jobs];
 
-        // Apply Filters
+        // 1. นำ Filters มาใช้งาน
         if (filters.project) {
             result = result.filter(j => j.project === filters.project);
         }
@@ -108,16 +107,16 @@ export default function DJList() {
             result = result.filter(j => j.status === 'scheduled');
         }
 
-        // Apply Search
+        // 2. นำ Search Query มาใช้งาน (ค้นจากเลขที่ DJ หรือหัวข้องาน)
         if (searchQuery.trim()) {
             const query = searchQuery.toLowerCase();
             result = result.filter(j =>
-                j.id?.toLowerCase().includes(query) ||
+                (j.djId || j.id?.toString())?.toLowerCase().includes(query) ||
                 j.subject?.toLowerCase().includes(query)
             );
         }
 
-        // Apply Sort
+        // 3. จัดเรียงข้อมูล (Sort)
         result.sort((a, b) => {
             if (sortBy === 'createdDate') {
                 return new Date(b.createdAt) - new Date(a.createdAt);
@@ -131,16 +130,18 @@ export default function DJList() {
         });
 
         setFilteredJobs(result);
-        setCurrentPage(1); // Reset to first page
+        setCurrentPage(1); // เมื่อเริ่มคัดกรองใหม่ ให้กลับไปที่หน้า 1 เสมอ
     };
 
     // ============================================
     // Event Handlers
     // ============================================
+    /** เปลี่ยนค่าใน Filter */
     const handleFilterChange = (field, value) => {
         setFilters(prev => ({ ...prev, [field]: value }));
     };
 
+    /** ล้างค่าการคัดกรองทั้งหมด */
     const handleClearFilters = () => {
         setFilters({
             project: '',
@@ -171,25 +172,27 @@ export default function DJList() {
     // ============================================
     // Helper: Calculate SLA Badge
     // ============================================
+    /** คำนวณสถานะ SLA เพื่อแสดงผลไอคอนหรือข้อความแจ้งเตือน */
     const calculateSLA = (job) => {
         if (job.status === 'scheduled') {
-            return <span className="text-xs text-violet-600">Auto {job.scheduledTime || '08:00'}</span>;
+            return <span className="text-xs text-violet-600">ตั้งเวลาส่ง {job.scheduledTime || '08:00'} น.</span>;
         }
 
         if (!job.deadline) return <span className="text-xs text-gray-400">-</span>;
 
         const now = new Date();
         const deadline = new Date(job.deadline);
-        const diffDays = Math.ceil((deadline - now) / (1000 * 60 * 60 * 24));
+        const diffTime = deadline - now;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
         if (diffDays < 0) {
             return <Badge status="overdue" count={Math.abs(diffDays)} />;
         } else if (diffDays === 0) {
-            return <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">Due Today</span>;
+            return <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">ครบกำหนดวันนี้</span>;
         } else if (diffDays === 1) {
-            return <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs">Due Tomorrow</span>;
+            return <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs">พรุ่งนี้</span>;
         }
-        return <span className="text-xs text-gray-500">{diffDays} วัน</span>;
+        return <span className="text-xs text-gray-500">อีก {diffDays} วัน</span>;
     };
 
     // ============================================
@@ -204,16 +207,16 @@ export default function DJList() {
     // ============================================
     return (
         <div className="space-y-6">
-            {/* Page Title */}
+            {/* ส่วนหัวของหน้าจอ */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">DJ List</h1>
-                    <p className="text-gray-500">รายการงาน Design Job ทั้งหมด</p>
+                    <h1 className="text-2xl font-bold text-gray-900">รายการงาน DJ (DJ List)</h1>
+                    <p className="text-gray-500">ค้นหาและติดตามสถานะงาน Design Job ทั้งหมด</p>
                 </div>
                 <Link to="/create">
                     <Button>
                         <PlusIcon className="w-5 h-5" />
-                        Create DJ
+                        สร้างงานใหม่ (Create DJ)
                     </Button>
                 </Link>
             </div>
@@ -232,41 +235,41 @@ export default function DJList() {
                 </div>
             </div>
 
-            {/* Filters Section */}
+            {/* ส่วนคัดกรองข้อมูล (Filters Section) */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                     <FilterSelect
-                        label="Project"
+                        label="โครงการ (Project)"
                         value={filters.project}
                         onChange={(val) => handleFilterChange('project', val)}
                         options={uniqueProjects}
                     />
                     <FilterSelect
-                        label="BUD"
+                        label="หน่วยงาน (BUD)"
                         value={filters.bud}
                         onChange={(val) => handleFilterChange('bud', val)}
                         options={uniqueBuds}
                     />
                     <FilterSelect
-                        label="Job Type"
+                        label="ประเภทงาน (Job Type)"
                         value={filters.jobType}
                         onChange={(val) => handleFilterChange('jobType', val)}
                         options={masterData.jobTypes.map(jt => jt.name)}
                     />
                     <FilterSelect
-                        label="Status"
+                        label="สถานะ (Status)"
                         value={filters.status}
                         onChange={(val) => handleFilterChange('status', val)}
                         options={['draft', 'pending_approval', 'approved', 'in_progress', 'completed', 'rejected', 'scheduled']}
                     />
                     <FilterSelect
-                        label="Assignee"
+                        label="ผู้ออกแบบ (Assignee)"
                         value={filters.assignee}
                         onChange={(val) => handleFilterChange('assignee', val)}
                         options={uniqueAssignees}
                     />
                     <FilterSelect
-                        label="Priority"
+                        label="ความสำคัญ (Priority)"
                         value={filters.priority}
                         onChange={(val) => handleFilterChange('priority', val)}
                         options={['Normal', 'Urgent', 'High']}
@@ -281,11 +284,11 @@ export default function DJList() {
                             onChange={(e) => handleFilterChange('onlyScheduled', e.target.checked)}
                             className="rounded border-gray-300 text-rose-500 focus:ring-rose-500"
                         />
-                        Only Scheduled (auto-submit)
+                        เฉพาะงานที่ตั้งเวลาส่งล่วงหน้า (Scheduled)
                     </label>
                     <div className="flex gap-2">
-                        <Button variant="ghost" className="text-sm" onClick={handleClearFilters}>Clear</Button>
-                        <Button className="text-sm" onClick={applyFiltersAndSearch}>Apply Filter</Button>
+                        <Button variant="ghost" className="text-sm" onClick={handleClearFilters}>ล้างค่า (Clear)</Button>
+                        <Button className="text-sm" onClick={applyFiltersAndSearch}>ใช้งานการคัดกรอง (Apply)</Button>
                     </div>
                 </div>
             </div>
@@ -323,23 +326,23 @@ export default function DJList() {
                         <table className="w-full">
                             <thead className="bg-gray-50">
                                 <tr>
-                                    <Th>DJ ID</Th>
-                                    <Th>Project</Th>
-                                    <Th>Job Type</Th>
-                                    <Th>Subject</Th>
-                                    <Th>Status</Th>
-                                    <Th>Submit Date</Th>
-                                    <Th>Deadline</Th>
-                                    <Th>SLA</Th>
-                                    <Th>Assignee</Th>
-                                    <Th>Action</Th>
+                                    <Th>เลขที่ DJ</Th>
+                                    <Th>โครงการ</Th>
+                                    <Th>ประเภทงาน</Th>
+                                    <Th>หัวข้อ</Th>
+                                    <Th>สถานะ</Th>
+                                    <Th>วันที่ส่งมา</Th>
+                                    <Th>กำหนดส่ง</Th>
+                                    <Th>สถานะ SLA</Th>
+                                    <Th>ผู้ออกแบบ</Th>
+                                    <Th>การจัดการ</Th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200">
                                 {currentJobs.map((job) => (
                                     <JobRow
                                         key={job.id}
-                                        id={job.id}
+                                        id={job.djId || `DJ-${job.id}`}
                                         project={job.project}
                                         type={job.jobType}
                                         subject={job.subject}
@@ -347,7 +350,7 @@ export default function DJList() {
                                         submitDate={job.createdAt ? formatDateToThai(new Date(job.createdAt)) : '-'}
                                         deadline={job.deadline ? formatDateToThai(new Date(job.deadline)) : '-'}
                                         sla={calculateSLA(job)}
-                                        assignee={job.assignee || '-'}
+                                        assignee={job.assigneeName || '-'}
                                         rowClass={job.status === 'scheduled' ? 'bg-violet-50/30' : 'hover:bg-gray-50'}
                                     />
                                 ))}
@@ -447,28 +450,37 @@ function Th({ children }) {
 }
 
 /**
- * @component JobRow
- * @description แถวข้อมูลงาน DJ
+ * JobRow Component: แสดงแถวข้อมูลงาน DJ ในตาราง
  */
 function JobRow({ id, project, type, subject, status, submitDate, deadline, sla, assignee, rowClass = 'hover:bg-gray-50' }) {
+    // แยก ID จริงสำหรับการ Link (กรณีแสดงผลเป็น DJ-XXXX แต่ ID จริงคือเลข)
+    const actualId = id.toString().replace('DJ-', '');
+
     return (
         <tr className={rowClass}>
             <td className="px-4 py-3">
-                <Link to={`/jobs/${id}`} className="text-rose-600 font-medium hover:underline">
+                <Link to={`/jobs/${actualId}`} className="text-rose-600 font-medium hover:underline">
                     {id}
                 </Link>
             </td>
             <td className="px-4 py-3 text-sm">{project}</td>
             <td className="px-4 py-3 text-sm">{type}</td>
-            <td className="px-4 py-3 text-sm max-w-xs truncate">{subject}</td>
+            <td className="px-4 py-3 text-sm max-w-xs truncate" title={subject}>{subject}</td>
             <td className="px-4 py-3"><Badge status={status} /></td>
             <td className="px-4 py-3 text-sm text-gray-500">{submitDate}</td>
-            <td className="px-4 py-3 text-sm">{deadline}</td>
-            <td className="px-4 py-3">{sla}</td>
-            <td className="px-4 py-3 text-sm">{assignee}</td>
-            <td className="px-4 py-3">
-                <Link to={`/jobs/${id}`} className="text-sm text-rose-600 hover:underline">
-                    View
+            <td className="px-4 py-3 text-sm font-medium text-gray-700">{deadline}</td>
+            <td className="px-4 py-3 text-center">{sla}</td>
+            <td className="px-4 py-3 text-sm">
+                <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center text-[10px] text-gray-400 font-bold uppercase">
+                        {assignee?.[0] || '-'}
+                    </div>
+                    <span>{assignee}</span>
+                </div>
+            </td>
+            <td className="px-4 py-3 text-center">
+                <Link to={`/jobs/${actualId}`} className="text-sm text-rose-600 font-medium hover:text-rose-700">
+                    ดูรายละเอียด
                 </Link>
             </td>
         </tr>

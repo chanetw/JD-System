@@ -2,6 +2,7 @@
     "designJobs": [
         {
             "id": 1,
+            "tenantId": 1,
             "djId": "DJ-2026-001",
             "project": "Sena Park Grand",
             "jobType": "Online Artwork",
@@ -25,6 +26,7 @@
         },
         {
             "id": 2,
+            "tenantId": 1,
             "djId": "DJ-2026-002",
             "project": "Sena Villa Ratchapruek",
             "jobType": "Print Artwork",
@@ -47,6 +49,7 @@
         },
         {
             "id": 3,
+            "tenantId": 1,
             "djId": "DJ-2026-003",
             "project": "Sena Ecotown Rangsit",
             "jobType": "Social Media",
@@ -69,6 +72,7 @@
         },
         {
             "id": 4,
+            "tenantId": 1,
             "djId": "DJ-2026-004",
             "project": "Sena Park Grand",
             "jobType": "Video Production",
@@ -91,6 +95,7 @@
         },
         {
             "id": 5,
+            "tenantId": 1,
             "djId": "DJ-2026-005",
             "project": "Sena Villa Pinklao",
             "jobType": "Online Artwork",
@@ -113,6 +118,7 @@
         },
         {
             "id": 6,
+            "tenantId": 1,
             "djId": "DJ-2026-006",
             "project": "Sena Ecotown Rangsit",
             "jobType": "Print Artwork",
@@ -133,6 +139,7 @@
         },
         {
             "id": 7,
+            "tenantId": 1,
             "djId": "DJ-2026-007",
             "project": "Sena Park Grand",
             "jobType": "Social Media",
@@ -152,6 +159,7 @@
         },
         {
             "id": 8,
+            "tenantId": 1,
             "djId": "DJ-2026-008",
             "project": "Sena Villa Ratchapruek",
             "jobType": "Online Artwork",
@@ -175,6 +183,7 @@
         },
         {
             "id": 9,
+            "tenantId": 1,
             "djId": "DJ-2026-009",
             "project": "Sena Ecotown Rangsit",
             "jobType": "Event Material",
@@ -197,6 +206,7 @@
         },
         {
             "id": 10,
+            "tenantId": 1,
             "djId": "DJ-2026-010",
             "project": "Sena Park Grand",
             "jobType": "Print Artwork",
@@ -220,6 +230,7 @@
         },
         {
             "id": 11,
+            "tenantId": 1,
             "djId": "DJ-2026-011",
             "project": "Sena Villa Pinklao",
             "jobType": "Video Production",
@@ -242,6 +253,7 @@
         },
         {
             "id": 12,
+            "tenantId": 1,
             "djId": "DJ-2026-012",
             "project": "Sena Ecotown Rangsit",
             "jobType": "Online Artwork",
@@ -264,6 +276,7 @@
         },
         {
             "id": 13,
+            "tenantId": 1,
             "djId": "DJ-2026-013",
             "project": "Sena Park Grand",
             "jobType": "Social Media",
@@ -286,6 +299,7 @@
         },
         {
             "id": 14,
+            "tenantId": 1,
             "djId": "DJ-2026-014",
             "project": "Sena Villa Ratchapruek",
             "jobType": "Print Artwork",
@@ -309,6 +323,7 @@
         },
         {
             "id": 15,
+            "tenantId": 1,
             "djId": "DJ-2026-015",
             "project": "Sena Ecotown Rangsit",
             "jobType": "Online Artwork",
@@ -331,6 +346,7 @@
         },
         {
             "id": 16,
+            "tenantId": 1,
             "djId": "DJ-2026-016",
             "project": "Sena Park Grand",
             "jobType": "Event Material",
@@ -353,6 +369,7 @@
         },
         {
             "id": 17,
+            "tenantId": 1,
             "djId": "DJ-2026-017",
             "project": "Sena Villa Pinklao",
             "jobType": "Online Artwork",
@@ -386,6 +403,7 @@
         },
         {
             "id": 18,
+            "tenantId": 1,
             "djId": "DJ-2026-018",
             "project": "Sena Ecotown Rangsit",
             "jobType": "Video Production",
@@ -408,6 +426,7 @@
         },
         {
             "id": 19,
+            "tenantId": 1,
             "djId": "DJ-2026-019",
             "project": "Sena Park Grand",
             "jobType": "Print Artwork",
@@ -431,6 +450,7 @@
         },
         {
             "id": 20,
+            "tenantId": 1,
             "djId": "DJ-2026-020",
             "project": "Sena Villa Ratchapruek",
             "jobType": "Social Media",

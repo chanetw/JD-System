@@ -1,10 +1,12 @@
 /**
  * @file AssigneePortal.jsx
- * @description Portal สำหรับ Assignee (Graphic Designer)
+ * @description หน้าจอหลักสำหรับนักออกแบบ (Assignee Portal/Graphic Designer)
  * 
- * Quick Actions: งานใหม่, กำลังทำ, ส่งมอบแล้ว, Media
- * Sections: Jobs Table (งานที่รับ), SLA
- * ไม่แสดง: Media Grid, Job Types, Tips
+ * วัตถุประสงค์หลัก:
+ * - แสดงงานที่ได้รับมอบหมายและสถานะความคืบหน้า (My Jobs)
+ * - ให้ทางลัดไปยังกลุ่มงานประเภทต่าง ๆ เช่น งานใหม่, งานที่กำลังทำ, งานที่ส่งมอบแล้ว
+ * - แจ้งเตือนกรณีมีงานที่เกินกำหนดส่ง (Overdue Alert)
+ * - สรุปสถิติงานในความรับผิดชอบเบื้องต้น
  */
 
 import React, { useState, useEffect } from 'react';
@@ -31,20 +33,24 @@ import {
 
 export default function AssigneePortal() {
     const navigate = useNavigate();
+    /** ข้อมูลผู้ใช้งานปัจจุบันจาก store */
     const { user } = useAuthStore();
-    const [myJobs, setMyJobs] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [stats, setStats] = useState({ newJobs: 0, inProgress: 0, delivered: 0 });
+
+    // === สถานะข้อมูล (Data States) ===
+    const [myJobs, setMyJobs] = useState([]);      // รายการงานที่ได้รับมอบหมาย (5 รายการล่าสุด)
+    const [isLoading, setIsLoading] = useState(true); // สถานะการโหลดข้อมูล
+    const [searchQuery, setSearchQuery] = useState(''); // คำค้นหา
+    const [stats, setStats] = useState({ newJobs: 0, inProgress: 0, delivered: 0 }); // สถิติจำแนกตามสถานะ
 
     // Quick Actions สำหรับ Assignee
+    /** รายการทางลัดการทำงาน (Quick Action Cards) */
     const actions = [
         {
             to: '/jobs?status=assigned',
             icon: <InboxArrowDownIcon className="w-7 h-7 text-blue-600" />,
             bgColor: 'bg-blue-100 group-hover:bg-blue-200',
             title: 'งานใหม่',
-            desc: 'งานที่ต้องเริ่มทำ',
+            desc: 'งานที่รอการเริ่มดำเนินการ',
             badge: stats.newJobs > 0 ? `${stats.newJobs}` : null
         },
         {
@@ -52,7 +58,7 @@ export default function AssigneePortal() {
             icon: <WrenchScrewdriverIcon className="w-7 h-7 text-amber-600" />,
             bgColor: 'bg-amber-100 group-hover:bg-amber-200',
             title: 'กำลังทำ',
-            desc: 'งานที่อยู่ระหว่างดำเนินการ',
+            desc: 'งานที่อยู่ระหว่างการออกแบบ',
             badge: stats.inProgress > 0 ? `${stats.inProgress}` : null
         },
         {
@@ -60,36 +66,37 @@ export default function AssigneePortal() {
             icon: <CheckCircleIcon className="w-7 h-7 text-emerald-600" />,
             bgColor: 'bg-emerald-100 group-hover:bg-emerald-200',
             title: 'ส่งมอบแล้ว',
-            desc: 'งานที่ส่งมอบเรียบร้อย'
+            desc: 'งานที่ส่งตรวจหรือเสร็จสิ้น'
         },
         {
             to: '/media-portal',
             icon: <PhotoIcon className="w-7 h-7 text-rose-600" />,
             bgColor: 'bg-rose-100 group-hover:bg-rose-200',
-            title: 'Media Portal',
-            desc: 'คลังไฟล์งาน'
+            title: 'ศูนย์จัดการสื่อ',
+            desc: 'คลังไฟล์งานต้นฉบับและที่ส่งมอบ'
         }
     ];
 
-    // โหลดงานที่รับผิดชอบ
+    /** โหลดงานที่นักออกแบบคนนี้รับผิดชอบ */
     useEffect(() => {
         const loadJobs = async () => {
             try {
                 const jobs = await getJobs();
-                // งานที่ assign ให้ตัวเอง
+                // คัดกรองงานที่มอบหมายให้ผู้ใช้ปัจจุบัน (หรือชื่อ "กานต์" ในกรณี Mock)
                 const assigned = jobs.filter(j =>
                     j.assigneeName === 'กานต์' || j.assigneeId === user?.id
                 );
+                // แสดง 5 รายการล่าสุดบนหน้าแรก
                 setMyJobs(assigned.slice(0, 5));
 
-                // คำนวณสถิติ
+                // คำนวณสถิติจำแนกตามประเภทงานเพื่อแสดงตัวเลขบน Badge
                 setStats({
                     newJobs: assigned.filter(j => j.status === 'assigned' || j.status === 'approved').length,
                     inProgress: assigned.filter(j => j.status === 'in_progress').length,
                     delivered: assigned.filter(j => j.status === 'delivered' || j.status === 'completed').length
                 });
             } catch (err) {
-                console.error('Error loading jobs:', err);
+                console.error('เกิดข้อผิดพลาดในการโหลดข้อมูลงาน:', err);
             } finally {
                 setIsLoading(false);
             }
@@ -97,7 +104,7 @@ export default function AssigneePortal() {
         loadJobs();
     }, [user]);
 
-    // ค้นหา
+    /** จัดการการค้นหางาน (นำไปยังหน้ารายการงานพร้อมระบุคำค้นหา) */
     const handleSearch = (query) => {
         if (query.trim()) {
             navigate(`/jobs?search=${encodeURIComponent(query)}`);

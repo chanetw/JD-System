@@ -111,6 +111,98 @@ export default function JobDetail() {
     };
 
     // ============================================
+    // Request Close - ขอปิดงาน
+    // ============================================
+    /**
+     * ผู้รับงาน (Assignee) ส่งคำขอปิดงานไปยังผู้ขอ (Requester)
+     * ให้ Requester ตรวจสอบและยืนยันการปิดงาน
+     */
+    const handleRequestClose = async () => {
+        if (!confirm('ต้องการส่งคำขอปิดงานนี้หรือไม่? ผู้ขอจะได้รับแจ้งเตือนเพื่อยืนยัน')) return;
+
+        try {
+            const updatedJob = await updateJob(id, {
+                status: 'pending_close',
+                closeRequestedAt: new Date().toISOString(),
+                closeRequestedBy: user?.displayName || 'Assignee',
+                timeline: [
+                    ...(job.timeline || []),
+                    {
+                        action: 'request_close',
+                        by: user?.displayName || 'Assignee',
+                        timestamp: new Date().toISOString(),
+                        detail: 'ส่งคำขอปิดงานไปยังผู้ขอ'
+                    }
+                ]
+            });
+            setJob(updatedJob);
+            alert('ส่งคำขอปิดงานเรียบร้อยแล้ว รอผู้ขอยืนยัน');
+        } catch (error) {
+            console.error('Failed to request close:', error);
+            alert('เกิดข้อผิดพลาด');
+        }
+    };
+
+    /**
+     * ผู้ขอ (Requester) ยืนยันการปิดงาน
+     */
+    const handleConfirmClose = async () => {
+        if (!confirm('ยืนยันปิดงานนี้หรือไม่?')) return;
+
+        try {
+            const updatedJob = await updateJob(id, {
+                status: 'closed',
+                closedAt: new Date().toISOString(),
+                closedBy: user?.displayName || 'Requester',
+                timeline: [
+                    ...(job.timeline || []),
+                    {
+                        action: 'closed',
+                        by: user?.displayName || 'Requester',
+                        timestamp: new Date().toISOString(),
+                        detail: 'งานถูกปิดเรียบร้อยแล้ว'
+                    }
+                ]
+            });
+            setJob(updatedJob);
+            alert('ปิดงานสำเร็จ!');
+            navigate('/jobs');
+        } catch (error) {
+            console.error('Failed to close job:', error);
+            alert('เกิดข้อผิดพลาด');
+        }
+    };
+
+    /**
+     * ผู้ขอ (Requester) ส่งกลับให้แก้ไข (แทนการยืนยันปิด)
+     */
+    const handleRequestRevision = async () => {
+        const reason = prompt('กรุณาระบุสิ่งที่ต้องการให้แก้ไข:');
+        if (!reason) return;
+
+        try {
+            const updatedJob = await updateJob(id, {
+                status: 'in_progress',
+                revisionRequestedAt: new Date().toISOString(),
+                timeline: [
+                    ...(job.timeline || []),
+                    {
+                        action: 'revision_requested',
+                        by: user?.displayName || 'Requester',
+                        timestamp: new Date().toISOString(),
+                        detail: `ขอให้แก้ไข: ${reason}`
+                    }
+                ]
+            });
+            setJob(updatedJob);
+            alert('ส่งคำขอแก้ไขเรียบร้อย');
+        } catch (error) {
+            console.error('Failed to request revision:', error);
+            alert('เกิดข้อผิดพลาด');
+        }
+    };
+
+    // ============================================
     // Comment System
     // ============================================
     const handleAddComment = async () => {
@@ -298,6 +390,49 @@ export default function JobDetail() {
                                 <button className="py-3 px-4 border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 flex items-center justify-center gap-2 transition-colors">
                                     <PencilIcon className="w-5 h-5" />
                                     Edit Brief
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ปุ่มขอปิดงาน - สำหรับ Assignee เมื่อสถานะ in_progress หรือ approved */}
+                    {(job.status === 'in_progress' || job.status === 'approved') && (
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                            <h2 className="font-semibold text-gray-900 mb-4">การดำเนินการของผู้รับงาน</h2>
+                            <button
+                                onClick={handleRequestClose}
+                                className="w-full py-3 px-4 bg-green-500 text-white rounded-xl font-medium hover:bg-green-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                            >
+                                <CheckIcon className="w-5 h-5" />
+                                ขอปิดงาน (Request Close)
+                            </button>
+                            <p className="text-xs text-gray-500 mt-2 text-center">
+                                เมื่อส่งผลงานครบแล้ว กดปุ่มนี้เพื่อแจ้งให้ผู้ขอตรวจสอบและยืนยันการปิดงาน
+                            </p>
+                        </div>
+                    )}
+
+                    {/* ปุ่มยืนยัน/ขอแก้ไข - สำหรับ Requester เมื่อสถานะ pending_close */}
+                    {job.status === 'pending_close' && (
+                        <div className="bg-white rounded-xl border border-amber-200 shadow-sm p-6 bg-amber-50">
+                            <h2 className="font-semibold text-amber-800 mb-2">รอยืนยันการปิดงาน</h2>
+                            <p className="text-sm text-amber-700 mb-4">
+                                ผู้รับงานส่งคำขอปิดงานมาแล้ว กรุณาตรวจสอบผลงานและยืนยัน
+                            </p>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={handleConfirmClose}
+                                    className="flex-1 py-3 px-4 bg-green-500 text-white rounded-xl font-medium hover:bg-green-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                                >
+                                    <CheckIcon className="w-5 h-5" />
+                                    ยืนยันปิดงาน
+                                </button>
+                                <button
+                                    onClick={handleRequestRevision}
+                                    className="flex-1 py-3 px-4 bg-amber-500 text-white rounded-xl font-medium hover:bg-amber-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                                >
+                                    <XMarkIcon className="w-5 h-5" />
+                                    ขอให้แก้ไข
                                 </button>
                             </div>
                         </div>
@@ -542,9 +677,31 @@ export default function JobDetail() {
                                             ${job.currentLevel > level.level ? 'bg-green-500 ring-green-500' :
                                                 job.currentLevel === level.level ? 'bg-rose-500 ring-rose-500' : 'bg-gray-200 ring-gray-300'}`}>
                                         </div>
-                                        <div>
-                                            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Level {level.level} : {level.role}</p>
-                                            <p className="text-sm font-medium text-gray-900 mt-0.5">{level.name}</p>
+                                        <div className="flex-1">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                                                    Level {level.level} : {level.role}
+                                                </p>
+                                                {level.approvers?.length > 1 && (
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${level.logic === 'all' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                        {level.logic === 'all' ? 'ALL' : 'ANY'}
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            <div className="mt-1 space-y-1">
+                                                {level.approvers && level.approvers.length > 0 ? (
+                                                    level.approvers.map((app, idx) => (
+                                                        <p key={idx} className="text-sm font-medium text-gray-900 flex items-center gap-1">
+                                                            <UserIcon className="w-3 h-3 text-gray-400" />
+                                                            {app.name}
+                                                        </p>
+                                                    ))
+                                                ) : (
+                                                    <p className="text-sm font-medium text-gray-900">{level.name || 'Any User'}</p>
+                                                )}
+                                            </div>
+
                                             {job.currentLevel > level.level && (
                                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium mt-1">
                                                     <CheckIcon className="w-3 h-3" /> Approved

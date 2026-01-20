@@ -2,9 +2,15 @@
     "tenants": [
         {
             "id": 1,
-            "name": "SENA Development PCL",
+            "name": "Sena Development",
             "code": "SENA",
             "subdomain": "sena",
+            "isActive": true
+        },
+        {
+            "id": 2,
+            "name": "SENX",
+            "code": "SENX",
             "isActive": true
         }
     ],
@@ -12,8 +18,8 @@
         {
             "id": 1,
             "tenantId": 1,
-            "name": "BUD 1 - สายงานขาย",
-            "code": "BUD1",
+            "name": "Residential 1",
+            "code": "R1",
             "isActive": true
         },
         {
@@ -21,6 +27,13 @@
             "tenantId": 1,
             "name": "BUD 2 - สายงานก่อสร้าง",
             "code": "BUD2",
+            "isActive": true
+        },
+        {
+            "id": 3,
+            "tenantId": 2,
+            "name": "SENX Digital",
+            "code": "SENX-D",
             "isActive": true
         }
     ],
@@ -80,6 +93,70 @@
             "name": "Sena Kith Phahonyothin",
             "code": "SKP-PH",
             "status": "Active"
+        },
+        {
+            "id": 8,
+            "tenantId": 2,
+            "budId": 3,
+            "name": "SENX Project 01",
+            "code": "SENX01",
+            "status": "Active"
+        }
+    ],
+    "departments": [
+        {
+            "id": 1,
+            "tenantId": 1,
+            "budId": 1,
+            "name": "แผนกการตลาด",
+            "code": "MKT",
+            "managerId": 3,
+            "isActive": true
+        },
+        {
+            "id": 2,
+            "tenantId": 1,
+            "budId": 2,
+            "name": "แผนกขาย",
+            "code": "SALES",
+            "managerId": null,
+            "isActive": true
+        },
+        {
+            "id": 3,
+            "tenantId": 1,
+            "budId": null,
+            "name": "ฝ่าย Digital Content กลาง",
+            "code": "DC",
+            "managerId": 5,
+            "isActive": true
+        },
+        {
+            "id": 4,
+            "tenantId": 1,
+            "budId": 3,
+            "name": "แผนกกราฟฟิค",
+            "code": "GFX",
+            "managerId": 5,
+            "isActive": true
+        },
+        {
+            "id": 5,
+            "tenantId": 1,
+            "budId": 3,
+            "name": "แผนก Website",
+            "code": "WEB",
+            "managerId": 6,
+            "isActive": true
+        },
+        {
+            "id": 6,
+            "tenantId": 1,
+            "budId": 3,
+            "name": "แผนก Online Ads",
+            "code": "ADS",
+            "managerId": null,
+            "isActive": true
         }
     ]
 }

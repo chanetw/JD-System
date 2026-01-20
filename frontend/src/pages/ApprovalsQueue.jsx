@@ -1,11 +1,12 @@
 /**
  * @file ApprovalsQueue.jsx
- * @description หน้าคิวรออนุมัติ (Approvals Queue)
+ * @description หน้าจอคิวรออนุมัติ (Approvals Queue)
  * 
- * Senior Programmer Notes:
- * - แสดงรายการงานที่รออนุมัติ โดยเน้นที่ SLA และ Priority
- * - Batch Actions: เลือกหลายรายการเพื่อ Approve/Return พร้อมกัน
- * - Modal Popup สำหรับ Reject/Return พร้อมระบุเหตุผล
+ * วัตถุประสงค์หลัก:
+ * - แสดงรายการงาน DJ (Design Job) ที่รอการตรวจสอบหรืออนุมัติจากผู้ใช้งาน
+ * - รองรับการคัดกรองงานตามสถานะ (รออนุมัติ, ตีกลับ/ปฏิเสธ, ประวัติ)
+ * - มีระบบ Action ด่วนเพื่อ Approve หรือ Reject งานได้ทันทีจากหน้าคิว
+ * - แสดงสถิติเบื้องต้น (Stats) เพื่อช่วยในการติดตามงานที่เร่งด่วน (Urgent)
  */
 
 import React, { useState, useEffect } from 'react';
@@ -29,55 +30,60 @@ import {
     ArrowPathIcon
 } from '@heroicons/react/24/outline';
 
+/**
+ * Component สำหรับหน้าคิวรออนุมัติ
+ */
 export default function ApprovalsQueue() {
-    const [activeTab, setActiveTab] = useState('waiting');
-    const [showRejectModal, setShowRejectModal] = useState(false);
-    const [showApproveModal, setShowApproveModal] = useState(false);
-    const [selectedJobId, setSelectedJobId] = useState(null);
-    const [rejectReason, setRejectReason] = useState('incomplete');
-    const [rejectResult, setRejectComment] = useState('');
+    // === สถานะ UI (UI States) ===
+    const [activeTab, setActiveTab] = useState('waiting');         // แท็บที่เลือกอยู่ (waiting, returned, history)
+    const [showRejectModal, setShowRejectModal] = useState(false); // ควบคุมการแสดงหน้าต่างแจ้งปฏิเสธ
+    const [showApproveModal, setShowApproveModal] = useState(false); // ควบคุมการแสดงหน้าต่างยืนยันการอนุมัติ
+    const [selectedJobId, setSelectedJobId] = useState(null);      // DJ-ID ที่กำลังดำเนินการ
+    const [rejectReason, setRejectReason] = useState('incomplete'); // สาเหตุของการปฏิเสธ
+    const [rejectResult, setRejectComment] = useState('');           // ความคิดเห็นเพิ่มเติมเมื่อปฏิเสธ
 
-    // User จาก authStore
+    /** ข้อมูลผู้ใช้งานปัจจุบันจาก Central Store */
     const { user } = useAuthStore();
 
-    // Data State
-    const [jobs, setJobs] = useState([]);
-    const [isLoading, setIsLoading] = useState(false);
+    // === สถานะข้อมูล (Data States) ===
+    const [jobs, setJobs] = useState([]);      // รายการงานทั้งหมดที่โหลดมา
+    const [isLoading, setIsLoading] = useState(false); // สถานะการโหลดข้อมูล
 
-    // Initial Load - โหลดใหม่เมื่อ user เปลี่ยน
+    // === การโหลดข้อมูล (Initial Load) ===
     useEffect(() => {
         loadData();
     }, [user]);
 
+    /** ดึงข้อมูลงานจาก API และคัดกรองตามสิทธิ์ของผู้ใช้งาน (Authorization Filtering) */
     const loadData = async () => {
         setIsLoading(true);
         try {
             const data = await getJobs();
-            // Sort by Date Descending
+            // เรียงลำดับตามวันที่สร้างล่าสุดขึ้นก่อน (Newest first)
             let sorted = data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-            // กรองตาม Role
+            // กฎการคัดกรองตามบทบาท (Filter Logic by Role)
             const userRole = user?.roles?.[0];
             if (userRole === 'approver' || userRole === 'admin') {
-                // Approver/Admin เห็นทุกงาน
+                // ผู้อนุมัติและ Admin สามารถเห็นและจัดการงานทั้งหมดในระบบ
                 setJobs(sorted);
             } else if (userRole === 'marketing') {
-                // Marketing เห็นเฉพาะงานที่ตัวเองสร้าง (ถ้ามี requesterId)
+                // ผู้สั่งงาน (Marketing) เห็นเฉพาะงานที่ตนเองเป็นคนสร้างเท่านั้น
                 const myJobs = sorted.filter(job => job.requesterId === user?.id);
                 setJobs(myJobs);
             } else {
-                // Assignee และอื่นๆ - เห็นงานที่ถูก assign มา
+                // ผู้ปฏิบัติงาน (Assignee) เห็นงานที่ได้รับมอบหมายมาเท่านั้น
                 const assignedJobs = sorted.filter(job => job.assigneeId === user?.id);
                 setJobs(assignedJobs);
             }
         } catch (error) {
-            console.error("Load jobs error", error);
+            console.error("เกิดข้อผิดพลาดในการโหลดรายการงาน:", error);
         } finally {
             setIsLoading(false);
         }
     };
 
-    // Filter Logic
+    /** การคัดกรองข้อมูลตามแท็บสถานะ (Tab Filtering) */
     const filteredJobs = jobs.filter(job => {
         if (activeTab === 'waiting') return job.status === 'pending_approval';
         if (activeTab === 'returned') return job.status === 'returned' || job.status === 'rejected';
@@ -85,66 +91,68 @@ export default function ApprovalsQueue() {
         return false;
     });
 
-    // Actions
+    // === ฟังก์ชันจัดการเหตุการณ์ (Action Handlers) ===
+
+    /** เปิดหน้าต่างยืนยันการอนุมัติ */
     const handleOpenApprove = (jobId) => {
         setSelectedJobId(jobId);
         setShowApproveModal(true);
     };
 
+    /** ดำเนินการอนุมัติผ่าน API */
     const handleConfirmApprove = async () => {
         try {
             await approveJob(selectedJobId, user?.displayName || 'CurrentUser');
             setShowApproveModal(false);
             setSelectedJobId(null);
-            loadData(); // Refresh
+            loadData(); // โหลดข้อมูลใหม่เพื่ออัปเดตสถานะหน้าจอ
         } catch (error) {
-            alert('Error: ' + error.message);
+            alert('ไม่สามารถอนุมัติงานได้: ' + error.message);
         }
     };
 
+    /** เปิดหน้าต่างแจ้งปฏิเสธงาน */
     const handleOpenReject = (jobId) => {
         setSelectedJobId(jobId);
         setShowRejectModal(true);
     };
 
+    /** ดำเนินการปฏิเสธงานผ่าน API โดยระบุสาเหตุ (Reject/Return) */
     const handleConfirmReject = async () => {
         try {
-            // Check radio value from DOM or State? Used state for input
-            // Let simplify: Always "Return" for now or use radio
             const type = document.querySelector('input[name="rejectType"]:checked')?.value === 'reject' ? 'reject' : 'return';
-
-            await rejectJob(selectedJobId, rejectReason, type, 'CurrentUser');
+            await rejectJob(selectedJobId, rejectReason, type, user?.displayName || 'CurrentUser');
             setShowRejectModal(false);
             loadData();
         } catch (error) {
-            alert('Error: ' + error.message);
+            alert('ไม่สามารถปฏิเสธงานได้: ' + error.message);
         }
     };
 
     return (
         <div className="space-y-6">
             {/* ============================================
-          Page Header
+          ส่วนหัวของหน้าจอ (Page Header)
           ============================================ */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Approvals Queue</h1>
-                    <p className="text-gray-500">รายการ DJ ที่รอการอนุมัติจากคุณ</p>
+                    <h1 className="text-2xl font-bold text-gray-900">คิวรออนุมัติ (Approvals Queue)</h1>
+                    <p className="text-gray-500">รายการงาน DJ (Design Job) ที่รอให้คุณดำเนินการตรวจสอบ</p>
                 </div>
-                {/* Mock User Profile */}
+                {/* ข้อมูลโปรไฟล์ผู้อนุมัติ (Mockup Profile) */}
                 <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
                     <div className="w-10 h-10 bg-rose-100 rounded-full flex items-center justify-center">
-                        <span className="text-rose-600 font-semibold">SK</span>
+                        <span className="text-rose-600 font-semibold">{user?.displayName?.[0] || 'A'}</span>
                     </div>
                     <div>
-                        <p className="text-sm font-medium text-gray-700">สมชาย กรุงเทพ</p>
-                        <p className="text-xs text-gray-500">Head of Marketing</p>
+                        <p className="text-sm font-medium text-gray-700">{user?.displayName || 'Approver Name'}</p>
+                        <p className="text-xs text-gray-500">{user?.bud || 'สายงานการตลาด'}</p>
                     </div>
                 </div>
             </div>
 
             {/* ============================================
-          Tabs
+          แถบเลือกสถานะงาน (Status Tabs)
           ============================================ */}
             <div className="border-b border-gray-200">
                 <nav className="-mb-px flex gap-6">
@@ -152,39 +160,39 @@ export default function ApprovalsQueue() {
                         active={activeTab === 'waiting'}
                         onClick={() => setActiveTab('waiting')}
                         count={jobs.filter(j => j.status === 'pending_approval').length}
-                        label="Waiting My Approval"
+                        label="รออนุมัติงาน"
                         icon={<ClockIcon className="w-5 h-5" />}
                     />
                     <TabButton
                         active={activeTab === 'returned'}
                         onClick={() => setActiveTab('returned')}
                         count={jobs.filter(j => ['returned', 'rejected'].includes(j.status)).length}
-                        label="Returned / Rejected"
+                        label="ตีกลับ / ปฏิเสธ"
                         icon={<ArrowPathIcon className="w-5 h-5" />}
                     />
                     <TabButton
                         active={activeTab === 'history'}
                         onClick={() => setActiveTab('history')}
-                        label="History"
+                        label="ประวัติงาน"
                         icon={<InboxIcon className="w-5 h-5" />}
                     />
                 </nav>
             </div>
 
             {/* ============================================
-          Summary Stats (Only for Waiting)
+          สรุปสถิติเบื้องต้น (Summary Stats)
           ============================================ */}
             {activeTab === 'waiting' && (
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <StatCard label="Waiting Approval" value={filteredJobs.length} icon={<ClockIcon className="w-5 h-5 text-rose-600" />} color="rose" />
-                    <StatCard label="Urgent Items" value={filteredJobs.filter(j => j.priority === 'Urgent').length} icon={<ExclamationTriangleIcon className="w-5 h-5 text-red-600" />} color="red" />
-                    <StatCard label="Total Jobs" value={jobs.length} icon={<CheckBadgeIcon className="w-5 h-5 text-green-600" />} color="green" />
-                    <StatCard label="My Action Rate" value="98%" icon={<ArrowPathIcon className="w-5 h-5 text-yellow-600" />} color="yellow" />
+                    <StatCard label="งานรออนุมัติ" value={filteredJobs.length} icon={<ClockIcon className="w-5 h-5 text-rose-600" />} color="rose" />
+                    <StatCard label="งานเร่งด่วน (Urgent)" value={filteredJobs.filter(j => j.priority === 'Urgent').length} icon={<ExclamationTriangleIcon className="w-5 h-5 text-red-600" />} color="red" />
+                    <StatCard label="งานทั้งหมดในระบบ" value={jobs.length} icon={<CheckBadgeIcon className="w-5 h-5 text-green-600" />} color="green" />
+                    <StatCard label="อัตราการทำงาน" value="98%" icon={<ArrowPathIcon className="w-5 h-5 text-yellow-600" />} color="yellow" />
                 </div>
             )}
 
             {/* ============================================
-          Queue Table
+          ตารางรายการงาน (Queue Table)
           ============================================ */}
             <Card className="overflow-hidden">
                 <div className="overflow-x-auto">
@@ -194,39 +202,40 @@ export default function ApprovalsQueue() {
                                 <th className="px-4 py-3 text-left w-10">
                                     <input type="checkbox" className="rounded border-gray-300 text-rose-600 focus:ring-rose-500" />
                                 </th>
-                                <Th>DJ No.</Th>
-                                <Th>Project / BUD</Th>
-                                <Th>Job Type</Th>
-                                <Th>Subject</Th>
-                                <Th>Requester</Th>
-                                <Th>Level</Th>
-                                <Th>Priority</Th>
-                                <Th className="text-center">Actions</Th>
+                                <Th>เลขที่ DJ</Th>
+                                <Th>โครงการ / BUD</Th>
+                                <Th>ประเภทงาน</Th>
+                                <Th>หัวข้อ</Th>
+                                <Th>ผู้สั่งงาน</Th>
+                                <Th>วันที่ส่งมา</Th>
+                                <Th>สถานะ SLA</Th>
+                                <Th>ความสำคัญ</Th>
+                                <Th className="text-center">การจัดการ</Th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan="9" className="text-center py-8 text-gray-500">Loading jobs...</td>
+                                    <td colSpan="10" className="text-center py-8 text-gray-500">กำลังโหลดรายการงาน...</td>
                                 </tr>
                             ) : filteredJobs.length === 0 ? (
                                 <tr>
-                                    <td colSpan="9" className="text-center py-8 text-gray-500">
-                                        No jobs found in this list.
+                                    <td colSpan="10" className="text-center py-8 text-gray-500">
+                                        ไม่พบรายการงานในหัวข้อนี้
                                     </td>
                                 </tr>
                             ) : (
                                 filteredJobs.map(job => (
                                     <QueueRow
                                         key={job.id}
-                                        id={job.id}
+                                        id={job.djId || `DJ-${job.id}`}
                                         project={job.project}
                                         bud={job.bud}
                                         type={job.jobType}
                                         subject={job.subject}
                                         requester={job.requesterName}
                                         submitted={new Date(job.createdAt).toLocaleDateString('th-TH')}
-                                        level={job.currentLevel ? `Level ${job.currentLevel}` : '-'} // Changed SLA column to Level for clarity or keep SLA logic? keeping Level for now
+                                        sla={job.currentLevel ? `Level ${job.currentLevel}` : '-'}
                                         priority={<Badge status={job.priority?.toLowerCase() || 'normal'} />}
                                         urgent={job.priority === 'Urgent'}
                                         onApprove={() => handleOpenApprove(job.id)}
@@ -283,37 +292,37 @@ export default function ApprovalsQueue() {
             )}
 
             {/* ============================================
-          Reject Modal
-          ============================================ */}
+           Reject Modal - หน้าต่างการแจ้งปฏิเสธงาน (Reject/Return)
+           ============================================ */}
             {showRejectModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-xl max-w-lg w-full overflow-hidden">
                         <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-                            <h3 className="text-lg font-semibold text-gray-900">Reject / Return DJ</h3>
+                            <h3 className="text-lg font-semibold text-gray-900">ปฏิเสธหรือตีกลับงาน (Reject / Return)</h3>
                             <button onClick={() => setShowRejectModal(false)} className="text-gray-400 hover:text-gray-600">
                                 <XMarkIcon className="w-6 h-6" />
                             </button>
                         </div>
 
                         <div className="p-6 space-y-4">
-                            <p className="text-sm text-gray-600">DJ Reference: <span className="font-medium text-gray-900">{selectedJobId}</span></p>
+                            <p className="text-sm text-gray-600">อ้างอิง DJ-ID: <span className="font-medium text-gray-900">{selectedJobId}</span></p>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Action Type</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">ประเภทการดำเนินการ (Action Type)</label>
                                 <div className="flex gap-4">
                                     <label className="flex items-center gap-2 cursor-pointer">
                                         <input type="radio" name="rejectType" value="return" defaultChecked className="text-rose-600 focus:ring-rose-500" />
-                                        <span className="text-sm text-gray-700">Return for Revision</span>
+                                        <span className="text-sm text-gray-700">ตีกลับเพื่อแก้ไข (Return for Revision)</span>
                                     </label>
                                     <label className="flex items-center gap-2 cursor-pointer">
                                         <input type="radio" name="rejectType" value="reject" className="text-rose-600 focus:ring-rose-500" />
-                                        <span className="text-sm text-gray-700">Reject</span>
+                                        <span className="text-sm text-gray-700">ปฏิเสธงาน (Reject)</span>
                                     </label>
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Reason <span className="text-red-500">*</span></label>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">สาเหตุการปฏิเสธ <span className="text-red-500">*</span></label>
                                 <select
                                     value={rejectReason}
                                     onChange={(e) => setRejectReason(e.target.value)}
@@ -326,11 +335,11 @@ export default function ApprovalsQueue() {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Additional Comments</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">ความคิดเห็นเพิ่มเติม</label>
                                 <textarea
                                     rows="4"
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
-                                    placeholder="ระบุรายละเอียดเพิ่มเติม..."
+                                    placeholder="ระบุรายละเอียดเพื่อให้ผู้สั่งงานแก้ไข..."
                                     value={rejectResult}
                                     onChange={(e) => setRejectComment(e.target.value)}
                                 ></textarea>
@@ -338,8 +347,8 @@ export default function ApprovalsQueue() {
                         </div>
 
                         <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
-                            <Button variant="secondary" onClick={() => setShowRejectModal(false)}>Cancel</Button>
-                            <Button variant="primary" onClick={handleConfirmReject}>Confirm</Button>
+                            <Button variant="secondary" onClick={() => setShowRejectModal(false)}>ยกเลิก</Button>
+                            <Button variant="primary" onClick={handleConfirmReject}>ยืนยันการดำเนินการ</Button>
                         </div>
                     </div>
                 </div>
@@ -349,7 +358,15 @@ export default function ApprovalsQueue() {
     );
 }
 
-// Helpers
+/**
+ * TabButton Helper Component
+ * @param {object} props
+ * @param {boolean} props.active - สถานะการเลือกแท็บ
+ * @param {Function} props.onClick - ฟังก์ชันจัดการเมื่อคลิก
+ * @param {number} props.count - จำนวนรายการในแท็บนั้นๆ
+ * @param {string} props.label - ชื่อแท็บ
+ * @param {React.ReactNode} props.icon - ไอคอนประจำแท็บ
+ */
 function TabButton({ active, onClick, count, label, icon }) {
     return (
         <button
@@ -367,6 +384,14 @@ function TabButton({ active, onClick, count, label, icon }) {
     );
 }
 
+/**
+ * StatCard Helper Component
+ * @param {object} props
+ * @param {string} props.label - หัวข้อสถิติ
+ * @param {string|number} props.value - ค่าสถิติ
+ * @param {React.ReactNode} props.icon - ไอคอน
+ * @param {string} props.color - ธีมสี (rose, red, green, yellow)
+ */
 function StatCard({ label, value, icon, color }) {
     const colors = {
         rose: "bg-rose-100",
@@ -387,43 +412,70 @@ function StatCard({ label, value, icon, color }) {
     );
 }
 
+/**
+ * Th Helper Component (ตาราง Header Cell)
+ * @param {object} props
+ * @param {React.ReactNode} props.children - ข้อมูลใน Cell
+ * @param {string} [props.className] - CSS Class เพิ่มเติม
+ */
 function Th({ children, className = "text-left" }) {
     return <th className={`px-4 py-3 text-xs font-semibold text-gray-600 uppercase ${className}`}>{children}</th>;
 }
 
+/**
+ * QueueRow Helper Component (ตารางแถวข้อมูลงาน)
+ * @param {object} props
+ * @param {string} props.id - เลขที่ DJ
+ * @param {string} props.project - ชื่อโครงการ
+ * @param {string} props.bud - หน่วยงานที่รับผิดชอบ
+ * @param {string} props.type - ประเภทงานออกแบบ
+ * @param {string} props.subject - หัวข้องาน
+ * @param {string} props.requester - ชื่อผู้สั่งงาน
+ * @param {string} props.submitted - วันที่ส่งงาน
+ * @param {string} props.sla - สถานะระดับการอนุมัติหรือ SLA
+ * @param {React.ReactNode} props.priority - Badge แสดงความสำคัญ
+ * @param {boolean} props.urgent - สถานะงานเร่งด่วนเพื่อไฮไลต์แถว
+ * @param {Function} props.onApprove - จัดการการอนุมัติ
+ * @param {Function} props.onReject - จัดการการปฏิเสธ
+ * @param {boolean} [props.showActions=true] - แสดงปุ่มจัดการงานหรือไม่
+ */
 function QueueRow({ id, project, bud, type, subject, requester, submitted, sla, priority, urgent, onApprove, onReject, showActions = true }) {
     return (
         <tr className={`hover:bg-gray-50 ${urgent ? 'bg-red-50' : ''}`}>
             <td className="px-4 py-4">
                 <input type="checkbox" className="rounded border-gray-300 text-rose-600 focus:ring-rose-500" />
             </td>
-            <td className="px-4 py-4"><Link to={`/jobs/${id}`} className="text-rose-600 font-medium hover:underline">{id}</Link></td>
+            <td className="px-4 py-4">
+                <Link to={`/jobs/${id.replace('DJ-', '')}`} className="text-rose-600 font-medium hover:underline">{id}</Link>
+            </td>
             <td className="px-4 py-4">
                 <div className="text-sm font-medium text-gray-900">{project}</div>
                 <div className="text-xs text-gray-500">{bud}</div>
             </td>
             <td className="px-4 py-4 text-sm text-gray-900">{type}</td>
-            <td className="px-4 py-4 text-sm text-gray-900 max-w-xs truncate">{subject}</td>
+            <td className="px-4 py-4 text-sm text-gray-900 max-w-xs truncate" title={subject}>{subject}</td>
             <td className="px-4 py-4">
                 <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 bg-gray-200 rounded-full flex items-center justify-center text-xs text-gray-600">User</div>
+                    <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-[10px] text-gray-500 font-bold uppercase">
+                        {requester?.[0] || 'U'}
+                    </div>
                     <span className="text-sm text-gray-900">{requester}</span>
                 </div>
             </td>
             <td className="px-4 py-4 text-sm text-gray-500">{submitted}</td>
-            <td className="px-4 py-4 text-sm">{sla}</td>
+            <td className="px-4 py-4 text-sm font-medium text-gray-700">{sla}</td>
             <td className="px-4 py-4">{priority}</td>
             <td className="px-4 py-4">
                 <div className="flex items-center justify-center gap-2">
-                    <Link to={`/jobs/${id}`} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg">
+                    <Link to={`/jobs/${id.replace('DJ-', '')}`} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg" title="ดูรายละเอียด">
                         <EyeIcon className="w-4 h-4" />
                     </Link>
                     {showActions && (
                         <>
-                            <button onClick={onApprove} className="p-2 text-green-500 hover:text-green-700 hover:bg-green-50 rounded-lg" title="Approve">
+                            <button onClick={onApprove} className="p-2 text-green-500 hover:text-green-700 hover:bg-green-50 rounded-lg" title="อนุมัติ">
                                 <CheckIcon className="w-4 h-4" />
                             </button>
-                            <button onClick={onReject} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Reject">
+                            <button onClick={onReject} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="ตีกลับ / ปฏิเสธ">
                                 <XMarkIcon className="w-4 h-4" />
                             </button>
                         </>

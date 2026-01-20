@@ -17,6 +17,7 @@ import DJList from '@/pages/DJList';
 import JobDetail from '@/pages/JobDetail';
 import ApprovalsQueue from '@/pages/ApprovalsQueue';
 import JobTypeSLA from '@/pages/admin/JobTypeSLA';
+import JobTypeItems from '@/pages/admin/JobTypeItems';
 import HolidayCalendar from '@/pages/admin/HolidayCalendar';
 import ApprovalFlow from '@/pages/admin/ApprovalFlow';
 import OrganizationManagement from '@/pages/admin/OrganizationManagement';
@@ -68,6 +69,7 @@ function App() {
           {/* Admin routes */}
           <Route path="admin/users" element={<UserManagement />} />
           <Route path="admin/job-types" element={<JobTypeSLA />} />
+          <Route path="admin/job-type-items" element={<JobTypeItems />} />
           <Route path="admin/organization" element={<OrganizationManagement />} />
           <Route path="admin/reports" element={<ReportsDashboard />} />
           <Route path="media-portal" element={<MediaPortal />} />
