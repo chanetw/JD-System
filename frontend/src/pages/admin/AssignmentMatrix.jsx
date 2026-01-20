@@ -22,12 +22,25 @@ export default function AssignmentMatrix({ projectId, assignees }) {
     const loadData = async () => {
         setLoading(true);
         try {
-            // โหลด JobTypes และ Matrix ปัจจุบัน
-            const [types, currentMatrix] = await Promise.all([
-                api.getJobTypes({ is_active: true }),
-                api.getAssignmentMatrix(projectId)
-            ]);
+            // โหลด JobTypes ก่อน (ถ้า API พร้อม)
+            let types = [];
+            try {
+                types = await api.getJobTypes({ is_active: true });
+            } catch (e) {
+                console.warn('ไม่สามารถโหลด JobTypes:', e.message);
+            }
             setJobTypes(types || []);
+
+            // โหลด Matrix (ถ้า table มีอยู่)
+            let currentMatrix = [];
+            try {
+                if (api.getAssignmentMatrix) {
+                    currentMatrix = await api.getAssignmentMatrix(projectId);
+                }
+            } catch (e) {
+                // Table อาจยังไม่ถูกสร้าง - ไม่ต้อง throw error
+                console.warn('ไม่สามารถโหลด Assignment Matrix:', e.message);
+            }
             setMatrix(currentMatrix || []);
         } catch (error) {
             console.error('Error loading matrix:', error);

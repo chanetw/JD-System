@@ -16,7 +16,7 @@ import Badge from '@/components/common/Badge';
 import Button from '@/components/common/Button';
 import { FormInput, FormSelect } from '@/components/common/FormInput';
 
-import { PlusIcon, TrashIcon, UserGroupIcon, UserIcon, ArrowLongRightIcon, BriefcaseIcon, CheckCircleIcon, ExclamationCircleIcon, MagnifyingGlassIcon, PencilIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, TrashIcon, UserGroupIcon, UserIcon, ArrowLongRightIcon, ArrowRightIcon, BriefcaseIcon, CheckCircleIcon, ExclamationCircleIcon, MagnifyingGlassIcon, PencilIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import AssignmentMatrix from './AssignmentMatrix'; // Import Matrix Component
 
 /**
@@ -102,11 +102,29 @@ export default function AdminApprovalFlow() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const [projectsData, flowsData, usersData] = await Promise.all([
-                api.getProjects(),
-                api.getApprovalFlows(),
-                api.getUsers()
-            ]);
+            // โหลดข้อมูลแบบ parallel แต่มี fallback ป้องกัน error
+            let projectsData = [];
+            let flowsData = [];
+            let usersData = [];
+
+            try {
+                projectsData = await api.getProjects() || [];
+            } catch (e) {
+                console.warn('Error loading projects:', e.message);
+            }
+
+            try {
+                flowsData = await api.getApprovalFlows() || [];
+            } catch (e) {
+                console.warn('Error loading approval flows:', e.message);
+            }
+
+            try {
+                usersData = await api.getUsers() || [];
+            } catch (e) {
+                console.warn('Error loading users:', e.message);
+            }
+
             setProjects(projectsData);
             setApprovalFlows(flowsData);
             setAllUsers(usersData); // เก็บข้อมูลผู้ใช้ทั้งหมดไว้สำหรับคัดกรองตามโครงการ

@@ -323,6 +323,59 @@ const apiDatabase = {
         }));
     },
 
+    /**
+     * ดึงรายการงานตาม Role ของผู้ใช้
+     * @param {Object} user - ข้อมูลผู้ใช้ที่ล็อกอิน
+     * @returns {Array} รายการงานที่ผู้ใช้มีสิทธิ์เห็น
+     */
+    getJobsByRole: async (user) => {
+        try {
+            // ดึงงานทั้งหมด
+            const { data: jobs, error } = await supabase
+                .from('design_jobs')
+                .select(`
+                    *,
+                    project:projects(name),
+                    job_type:job_types(name),
+                    requester:users!design_jobs_requester_id_fkey(display_name, avatar_url),
+                    assignee:users!design_jobs_assignee_id_fkey(display_name, avatar_url)
+                `)
+                .order('created_at', { ascending: false })
+                .limit(50);
+
+            if (error) {
+                console.warn('Error fetching jobs by role:', error.message);
+                return [];
+            }
+
+            // Transform data
+            return (jobs || []).map(j => ({
+                id: j.id,
+                djId: j.dj_id,
+                subject: j.subject,
+                jobType: j.job_type?.name,
+                project: j.project?.name,
+                projectName: j.project?.name,
+                status: j.status,
+                priority: j.priority,
+                deadline: j.due_date,
+                createdAt: j.created_at,
+                isOverdue: j.due_date ? new Date(j.due_date) < new Date() && j.status !== 'completed' : false,
+                requester: j.requester ? {
+                    name: j.requester.display_name,
+                    avatar: j.requester.avatar_url
+                } : null,
+                assignee: j.assignee ? {
+                    name: j.assignee.display_name,
+                    avatar: j.assignee.avatar_url
+                } : null
+            }));
+        } catch (err) {
+            console.error('getJobsByRole error:', err);
+            return [];
+        }
+    },
+
     getJobById: async (id) => {
         const { data, error } = await supabase.from('jobs')
             .select(`
@@ -599,14 +652,65 @@ const apiDatabase = {
         return { success: true };
     },
 
-    // --- Assignment Matrix (Project + JobType -> Assignee) ---
-
+    // --- Dashboard Stats ---
     /**
-     * ดึงข้อมูล Assignment Matrix ของโครงการที่ระบุ
-     * ใช้สำหรับแสดงในหน้า Admin (Approval Flow Tab)
-     * 
-     * @param {number} projectId - ID ของโครงการ
-     * @returns {Array} รายการคู่ JobType-Assignee ที่ตั้งค่าไว้
+     * ดึงข้อมูลสถิติสำหรับ Dashboard
+     * @returns {Object} สถิติงาน: newToday, dueToday, overdue, totalJobs, pending
+     */
+    getDashboardStats: async () => {
+        try {
+            // ดึงงานทั้งหมด
+            const { data: jobs, error } = await supabase
+                .from('design_jobs')
+                .select('id, status, deadline, created_at');
+
+            if (error) {
+                console.warn('Error fetching dashboard stats:', error.message);
+                return { newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, pending: 0 };
+            }
+
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            let newToday = 0;
+            let dueToday = 0;
+            let overdue = 0;
+
+            (jobs || []).forEach(job => {
+                // นับงานใหม่วันนี้
+                if (job.created_at) {
+                    const createdAt = new Date(job.created_at);
+                    createdAt.setHours(0, 0, 0, 0);
+                    if (createdAt.getTime() === today.getTime()) newToday++;
+                }
+
+                // นับงานครบกำหนดวันนี้ และ overdue
+                if (job.deadline) {
+                    const dueDate = new Date(job.deadline);
+                    dueDate.setHours(0, 0, 0, 0);
+                    if (dueDate.getTime() === today.getTime()) dueToday++;
+                    if (dueDate.getTime() < today.getTime() && job.status !== 'completed' && job.status !== 'closed') {
+                        overdue++;
+                    }
+                }
+            });
+
+            return {
+                newToday,
+                dueToday,
+                overdue,
+                totalJobs: jobs?.length || 0,
+                pending: (jobs || []).filter(j => j.status === 'pending_approval').length,
+            };
+        } catch (err) {
+            console.error('getDashboardStats error:', err);
+            return { newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, pending: 0 };
+        }
+    },
+
+    // --- Assignment Matrix ---
+    /**
+     * ดึงข้อมูล Matrix การมอบหมายงานของ Project
      */
     getAssignmentMatrix: async (projectId) => {
         const { data, error } = await supabase
@@ -617,7 +721,7 @@ const apiDatabase = {
                 job_type_id,
                 assignee_id,
                 job_types ( id, name ),
-                users:assignee_id ( id, first_name, last_name, prefix )
+                users:assignee_id ( id, first_name, last_name )
             `)
             .eq('project_id', projectId);
 
@@ -633,25 +737,20 @@ const apiDatabase = {
             jobTypeName: item.job_types?.name || 'N/A',
             assigneeId: item.assignee_id,
             assigneeName: item.users ?
-                [item.users.prefix, item.users.first_name, item.users.last_name].filter(Boolean).join(' ') :
+                [item.users.first_name, item.users.last_name].filter(Boolean).join(' ') :
                 'ไม่ระบุ'
         }));
     },
 
     /**
-     * ดึง Assignee สำหรับคู่ Project + JobType ที่ระบุ
-     * ใช้สำหรับ Auto-fill ในหน้า CreateDJ เมื่อ User เลือก Project และ Job Type
-     * 
-     * @param {number} projectId - ID ของโครงการ
-     * @param {number} jobTypeId - ID ของประเภทงาน
-     * @returns {Object|null} ข้อมูล Assignee หรือ null ถ้าไม่พบ
+     * ค้นหา Assignee ตาม Project และ Job Type (ใช้สำหรับ Auto-fill)
      */
     getAssigneeByProjectAndJobType: async (projectId, jobTypeId) => {
         const { data, error } = await supabase
             .from('project_job_assignments')
             .select(`
                 assignee_id,
-                users:assignee_id ( id, first_name, last_name, prefix )
+                users:assignee_id ( id, first_name, last_name )
             `)
             .eq('project_id', projectId)
             .eq('job_type_id', jobTypeId)
@@ -662,24 +761,19 @@ const apiDatabase = {
         return {
             id: data.assignee_id,
             name: data.users ?
-                [data.users.prefix, data.users.first_name, data.users.last_name].filter(Boolean).join(' ') :
+                [data.users.first_name, data.users.last_name].filter(Boolean).join(' ') :
                 null
         };
     },
 
     /**
-     * บันทึก/อัปเดต Assignment Matrix (Upsert Strategy)
-     * รับมาเป็น Array ของคู่ { jobTypeId, assigneeId }
-     * 
-     * @param {number} projectId - ID ของโครงการ
-     * @param {Array} assignments - รายการ [{ jobTypeId, assigneeId }, ...]
-     * @returns {Object} ผลลัพธ์การบันทึก { success: true }
+     * บันทึกการตั้งค่า Assignment Matrix
      */
     saveAssignmentMatrix: async (projectId, assignments) => {
         const upsertData = assignments.map(a => ({
             project_id: projectId,
             job_type_id: a.jobTypeId,
-            assignee_id: a.assigneeId || null,
+            assignee_id: a.assigneeId,
             updated_at: new Date().toISOString()
         }));
 
