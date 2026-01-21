@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS job_types (
     sla_days INTEGER DEFAULT 3,
     icon VARCHAR(50),
     color_theme VARCHAR(50),
+    attachments TEXT[], -- Array of strings
     is_active BOOLEAN DEFAULT true
 );
 

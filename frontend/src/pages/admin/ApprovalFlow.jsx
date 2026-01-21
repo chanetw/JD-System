@@ -951,7 +951,7 @@ function ApproverNode({ step, approvers = [], logic = 'any', color = 'blue' }) {
 
             <div className="space-y-1 w-full flex flex-col items-center">
                 {approvers.length > 0 ? approvers.map((app, i) => (
-                    <div key={app.userId} className="w-full text-center">
+                    <div key={app.userId ? `${app.userId}-${i}` : i} className="w-full text-center">
                         <p className="text-xs font-bold text-gray-800 line-clamp-1">{app.name}</p>
                         <p className="text-[9px] text-gray-500 leading-none">{app.role}</p>
                         {i < approvers.length - 1 && <div className="h-px w-1/3 bg-gray-200 mx-auto my-1.5 opacity-50"></div>}

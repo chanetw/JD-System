@@ -12,8 +12,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
-import { createJob, getMasterData, getHolidays, getApprovalFlowByProject, getJobs, getJobTypeItems } from '@/services/mockApi';
-import api from '@/services/apiService'; // สำหรับ Auto-fill Assignee
+import api from '@/services/apiService'; // ใช้ apiService ที่เป็น Centralized API (Support Real DB)
 import { Card, CardHeader, CardBody } from '@/components/common/Card';
 import { FormInput, FormSelect, FormTextarea } from '@/components/common/FormInput';
 import Button from '@/components/common/Button';
@@ -104,7 +103,7 @@ export default function CreateDJ() {
         const loadData = async () => {
             setIsLoading(true);
             try {
-                const data = await getMasterData();
+                const data = await api.getMasterData();
 
                 // Business Rule: User ทั่วไปควรเห็นเฉพาะข้อมูลที่ Active เท่านั้น (กรอง Inactive ออก)
                 data.projects = data.projects?.filter(p => p.isActive) || [];
@@ -118,7 +117,7 @@ export default function CreateDJ() {
 
                 setMasterData(data);
                 // ข้อมูลวันหยุดเพื่อใช้คำนวณเป้าหมายเวลาทำงาน (SLA Calculation)
-                const holidaysData = await getHolidays();
+                const holidaysData = await api.getHolidays();
                 setHolidays(holidaysData);
             } catch (error) {
                 console.error("เกิดข้อผิดพลาดในการโหลดข้อมูลตั้งต้น:", error);
@@ -148,10 +147,17 @@ export default function CreateDJ() {
             if (selectedProject) {
                 const budValue = selectedProject.bud;
                 const budName = typeof budValue === 'object' ? budValue.name : budValue;
-                setFormData(prev => ({ ...prev, bud: budName || 'BUD 1' }));
+                // Update projectId valid
+                setFormData(prev => ({
+                    ...prev,
+                    projectId: selectedProject.id, // Store projectId!
+                    bud: budName || 'BUD 1'
+                }));
 
                 // ดึงข้อมูลลำดับการอนุมัติ (Approval Flow) ประจำโครงการ
-                getApprovalFlowByProject(value).then(flow => {
+                // Pass Project ID if possible, or value (name) if API handles it. My API handles ID or Name.
+                // But safer to pass ID if I have it.
+                api.getApprovalFlowByProject(selectedProject.id).then(flow => {
                     setApprovalFlow(flow);
                 });
             } else {
@@ -170,7 +176,7 @@ export default function CreateDJ() {
                 // โหลดรายการชิ้นงานย่อยของประเภทงานที่เลือก
                 setFormData(prev => ({ ...prev, jobTypeId: selectedJobType.id, subItems: [] }));
                 setSelectedSubItems([]);
-                getJobTypeItems(selectedJobType.id).then(items => {
+                api.getJobTypeItems(selectedJobType.id).then(items => {
                     setJobTypeItems(items || []);
                 }).catch(() => setJobTypeItems([]));
             }
@@ -329,7 +335,7 @@ export default function CreateDJ() {
 
         // กฎข้อที่ 4: โควต้างานต่อวัน (จำกัดที่ 10 งานต่อหนึ่งโครงการต่อวัน)
         if (formData.project) {
-            const jobs = await getJobs();
+            const jobs = await api.getJobs();
             const todayJobs = jobs.filter(j => {
                 const jobDate = new Date(j.createdAt).toISOString().split('T')[0];
                 return j.project === formData.project && jobDate === todayStr;
@@ -398,7 +404,7 @@ export default function CreateDJ() {
     const submitJob = async (status = 'submitted') => {
         setIsSubmitting(true);
         try {
-            await createJob({
+            await api.createJob({
                 ...formData,
                 requesterName: user?.displayName || 'Unknown User',
                 flowSnapshot: approvalFlow,

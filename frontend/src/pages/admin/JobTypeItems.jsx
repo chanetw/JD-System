@@ -14,7 +14,7 @@ import { Card, CardHeader } from '@/components/common/Card';
 import Button from '@/components/common/Button';
 import { FormInput, FormSelect } from '@/components/common/FormInput';
 import {
-    PlusIcon, TrashIcon, XMarkIcon, DocumentDuplicateIcon
+    PlusIcon, TrashIcon, XMarkIcon, DocumentDuplicateIcon, PencilIcon
 } from '@heroicons/react/24/outline';
 
 /**
@@ -34,6 +34,8 @@ export default function JobTypeItems() {
 
     // === สถานะ Modal ===
     const [showModal, setShowModal] = useState(false);
+    const [modalMode, setModalMode] = useState('add'); // 'add' | 'edit'
+    const [selectedId, setSelectedId] = useState(null);
     const [formData, setFormData] = useState({ name: '', defaultSize: '' });
 
     /**
@@ -80,20 +82,45 @@ export default function JobTypeItems() {
     };
 
     /**
-     * เพิ่มรายการชิ้นงานย่อยใหม่
+     * เปิด Modal สำหรับเพิ่มหรือแก้ไข
+     * @param {('add'|'edit')} mode
+     * @param {Object} item
      */
-    const handleAdd = async () => {
+    const handleOpenModal = (mode, item = null) => {
+        setModalMode(mode);
+        if (mode === 'edit' && item) {
+            setSelectedId(item.id);
+            setFormData({ name: item.name, defaultSize: item.defaultSize || '' });
+        } else {
+            setSelectedId(null);
+            setFormData({ name: '', defaultSize: '' });
+        }
+        setShowModal(true);
+    };
+
+    /**
+     * บันทึกข้อมูล (เพิ่ม/แก้ไข)
+     */
+    const handleSave = async () => {
         if (!formData.name.trim()) {
             alert('กรุณาระบุชื่อชิ้นงาน');
             return;
         }
         try {
-            await api.createJobTypeItem({
-                jobTypeId: Number(selectedJobTypeId),
-                name: formData.name,
-                defaultSize: formData.defaultSize || '-',
-                isRequired: false
-            });
+            if (modalMode === 'add') {
+                await api.createJobTypeItem({
+                    jobTypeId: Number(selectedJobTypeId),
+                    name: formData.name,
+                    defaultSize: formData.defaultSize || '-',
+                    isRequired: false
+                });
+            } else {
+                await api.updateJobTypeItem(selectedId, {
+                    name: formData.name,
+                    defaultSize: formData.defaultSize || '-',
+                    isRequired: false
+                });
+            }
             setShowModal(false);
             setFormData({ name: '', defaultSize: '' });
             loadItems();
@@ -143,7 +170,7 @@ export default function JobTypeItems() {
                             ))}
                         </FormSelect>
                     </div>
-                    <Button onClick={() => setShowModal(true)} className="flex items-center gap-2">
+                    <Button onClick={() => handleOpenModal('add')} className="flex items-center gap-2">
                         <PlusIcon className="w-5 h-5" />
                         เพิ่มรายการย่อย
                     </Button>
@@ -182,12 +209,20 @@ export default function JobTypeItems() {
                                     </td>
                                     <td className="px-6 py-4 text-sm font-mono text-gray-600">{item.defaultSize || '-'}</td>
                                     <td className="px-6 py-4 text-center">
-                                        <button
-                                            onClick={() => handleDelete(item.id)}
-                                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
-                                        >
-                                            <TrashIcon className="w-4 h-4" />
-                                        </button>
+                                        <div className="flex items-center justify-center gap-2">
+                                            <button
+                                                onClick={() => handleOpenModal('edit', item)}
+                                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                                            >
+                                                <PencilIcon className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDelete(item.id)}
+                                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                                            >
+                                                <TrashIcon className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -201,7 +236,7 @@ export default function JobTypeItems() {
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
                         <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-                            <h3 className="text-lg font-bold text-gray-900">เพิ่มรายการชิ้นงานย่อย</h3>
+                            <h3 className="text-lg font-bold text-gray-900">{modalMode === 'add' ? 'เพิ่มรายการชิ้นงานย่อย' : 'แก้ไขรายการชิ้นงานย่อย'}</h3>
                             <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
                                 <XMarkIcon className="w-5 h-5" />
                             </button>
@@ -223,7 +258,7 @@ export default function JobTypeItems() {
                         </div>
                         <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
                             <Button variant="secondary" onClick={() => setShowModal(false)}>ยกเลิก</Button>
-                            <Button onClick={handleAdd}>เพิ่มรายการ</Button>
+                            <Button onClick={handleSave}>{modalMode === 'add' ? 'เพิ่มรายการ' : 'บันทึกแก้ไข'}</Button>
                         </div>
                     </div>
                 </div>

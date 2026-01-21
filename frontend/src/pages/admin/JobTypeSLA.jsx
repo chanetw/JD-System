@@ -216,6 +216,41 @@ export default function AdminJobTypeSLA() {
         });
     };
 
+    /**
+     * เปลี่ยนสถานะใช้งาน (Toggle Status)
+     * @param {string|number} id - ID ของรายการ
+     * @param {Object} item - ข้อมูลรายการ
+     */
+    const handleToggleStatus = async (id, item) => {
+        try {
+            const newStatus = item.status === 'active' ? 'inactive' : 'active';
+            await api.updateJobType(id, { ...item, status: newStatus });
+            fetchData();
+        } catch (error) {
+            alert('เกิดข้อผิดพลาดในการเปลี่ยนสถานะ: ' + error.message);
+        }
+    };
+
+    /**
+     * คอมโพเน็นต์แสดงสถานะ (Status Badge) แบบเดียวกับ Projects
+     */
+    const StatusBadge = ({ isActive, onClick }) => (
+        <button
+            onClick={onClick}
+            className={`
+                inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer
+                ${isActive
+                    ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                    : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                }
+            `}
+            title="คลิกเพื่อเปลี่ยนสถานะ"
+        >
+            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-green-500' : 'bg-gray-400'}`}></span>
+            {isActive ? 'Active' : 'Inactive'}
+        </button>
+    );
+
     // Stats Calculation
     const activeCount = jobTypes.filter(j => j.status === 'active').length;
     const avgSLA = jobTypes.length ? (jobTypes.reduce((acc, curr) => acc + Number(curr.sla), 0) / jobTypes.length).toFixed(1) : 0;
@@ -303,7 +338,10 @@ export default function AdminJobTypeSLA() {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-center">
-                                            <Badge status={item.status === 'active' ? 'normal' : 'waiting'} label={item.status} className={item.status === 'active' ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"} />
+                                            <StatusBadge
+                                                isActive={item.status === 'active'}
+                                                onClick={() => handleToggleStatus(item.id, item)}
+                                            />
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center justify-center gap-2">

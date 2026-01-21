@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Architecture: Modular & Plug-n-Play
 
 ## Concept
@@ -21,6 +25,9 @@ src/
 2.  **Registration:** เมื่อสร้าง Module ใหม่ ต้องทำการลงทะเบียนใน `src/moduleRegistry.js` เสมอ เพื่อให้ระบบโหลดแบบ Dynamic
 3.  **Communication:** ห้าม Import ข้าม Module โดยตรง ให้ใช้ Event Bus หรือ Shared Service จาก `shared/` แทน
 4.  **Plug & Play:** การลบโฟลเดอร์ Module หนึ่งออก ต้องไม่ทำให้ระบบล่ม (Build Break)
+5. ห้ามอัพขึ้น git เองต้องให้ผมบอกเท่านั้น
+6. Walkthrough ทำเป็นภาษาไทย
+7. Implementation Plan ทำเป็นภาษาไทย
 
 ## Module Registry Pattern
 ใช้ `moduleRegistry.js` เป็นตัวกลางในการ Config ว่าจะเปิด/ปิด Module ใดบ้าง และโหลด Route/Menu ของ Module นั้นๆ เข้าสู่ระบบหลัก

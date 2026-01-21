@@ -29,11 +29,12 @@ const apiDatabase = {
 
     // --- Master Data (รวมข้อมูลหลักทั้งหมดสำหรับหน้า Organization) ---
     getMasterData: async () => {
-        // ดึงข้อมูล Tenants, BUDs, Projects พร้อมกัน (เอา Inactive มาด้วย เพื่อให้ Admin จัดการได้)
-        const [tenantsRes, budsRes, projectsRes] = await Promise.all([
+        // ดึงข้อมูล Tenants, BUDs, Projects, JobTypes พร้อมกัน
+        const [tenantsRes, budsRes, projectsRes, jobTypesRes] = await Promise.all([
             supabase.from('tenants').select('*').order('id'),
             supabase.from('buds').select('*').order('id'),
-            supabase.from('projects').select(`*, bud:buds(name)`).order('id')
+            supabase.from('projects').select(`*, bud:buds(name), tenant:tenants(name)`).order('id'),
+            supabase.from('job_types').select('*').order('id')
         ]);
 
         // Transform Tenants
@@ -56,14 +57,29 @@ const apiDatabase = {
             code: p.code,
             budId: p.bud_id,
             budName: p.bud?.name,
+            tenantId: p.tenant_id,
+            tenantName: p.tenant?.name,
             status: p.is_active ? 'Active' : 'Inactive', // Map to standard status string used in Frontend
             isActive: p.is_active
+        }));
+
+        // Transform JobTypes
+        const jobTypes = (jobTypesRes.data || []).map(t => ({
+            id: t.id,
+            name: t.name,
+            description: t.description,
+            sla: t.sla_days, // Map sla_days -> sla
+            icon: t.icon,
+            tenantId: t.tenant_id,
+            status: t.is_active ? 'active' : 'inactive',
+            isActive: t.is_active
         }));
 
         return {
             tenants,
             buds,
-            projects
+            projects,
+            jobTypes
         };
     },
 
@@ -114,7 +130,8 @@ const apiDatabase = {
                 .select(`
             *,
             bud:buds(name),
-            department:departments(name)
+            department:departments(name),
+            tenant:tenants(name)
         `)
                 .eq('is_active', true)
                 .order('id')
@@ -131,6 +148,8 @@ const apiDatabase = {
             budName: p.bud?.name,
             departmentId: p.department_id,
             departmentName: p.department?.name,
+            tenantId: p.tenant_id,
+            tenantName: p.tenant?.name,
             status: p.is_active ? 'active' : 'inactive'
         }));
     },
@@ -170,19 +189,24 @@ const apiDatabase = {
     },
 
     // --- Job Types ---
+    // --- Job Types ---
     getJobTypes: async () => {
         // Need to include items
         const { data, error } = await supabase
             .from('job_types')
             .select(`*, items:job_type_items(*)`)
-            .eq('is_active', true);
+            .order('id');
 
         if (error) throw error;
 
         return data.map(jt => ({
             id: jt.id,
             name: jt.name,
+            description: jt.description,
             sla: jt.sla_days,
+            icon: jt.icon,
+            attachments: jt.attachments || [], // Default to empty array
+            status: jt.is_active ? 'active' : 'inactive',
             items: jt.items.map(i => ({
                 id: i.id,
                 name: i.name,
@@ -241,6 +265,75 @@ const apiDatabase = {
         });
 
         return Object.values(grouped);
+    },
+
+    getApprovalFlowByProject: async (projectIdentifier) => {
+        // Find existing flows for this project
+        // Note: projectIdentifier comes as name or ID. API prefers ID.
+        // If it's a name, we might need to resolve it first.
+        // But assuming ID for now or we fetch all and find.
+
+        // For efficiency, if projectIdentifier is number/ID, query directly.
+        // If not, fetch all (fallback).
+
+        let projectId = projectIdentifier;
+        if (typeof projectIdentifier === 'string' && isNaN(projectIdentifier)) {
+            // Name provided? Resolve is hard without fetching projects.
+            // Let's fetch all flows and find.
+            const allFlows = await apiDatabase.getApprovalFlows();
+            const projects = await apiDatabase.getProjects();
+            const proj = projects.find(p => p.name === projectIdentifier);
+            if (proj) projectId = proj.id;
+        }
+
+        const { data: flows, error } = await supabase.from('approval_flows')
+            .select(`*, approver:users(*)`)
+            .eq('project_id', projectId)
+            .order('level');
+
+        if (error || !flows || flows.length === 0) return null;
+
+        // Transform
+        const levels = [];
+        flows.forEach(f => {
+            // Check if level already exists in group
+            let lvl = levels.find(l => l.level === f.level);
+            if (!lvl) {
+                lvl = {
+                    level: f.level,
+                    approvers: [], // List of approvers
+                    logic: 'any', // Default logic
+                    role: f.role
+                };
+                levels.push(lvl);
+            }
+
+            if (f.approver) {
+                lvl.approvers.push({
+                    id: f.approver.id,
+                    name: f.approver.display_name,
+                    role: f.approver.role,
+                    avatar: f.approver.avatar_url,
+                    userId: f.approver.id
+                });
+            }
+        });
+
+        // Also get default assignee
+        const assignment = await apiDatabase.getAssigneeByProjectAndJobType(projectId, null); // Assignee might depend on job type too?
+        // CreateDJ passes 2nd arg? No.
+
+        return {
+            projectId: projectId,
+            levels: levels,
+            defaultAssignee: assignment // Might be null specific to job type
+        };
+    },
+
+    // --- Holidays ---
+    getHolidays: async () => {
+        // Return empty array as table not yet created
+        return [];
     },
 
     saveApprovalFlow: async (projectId, flowData) => {
@@ -332,7 +425,7 @@ const apiDatabase = {
         try {
             // ดึงงานทั้งหมด
             const { data: jobs, error } = await supabase
-                .from('design_jobs')
+                .from('jobs')
                 .select(`
                     *,
                     project:projects(name),
@@ -417,7 +510,7 @@ const apiDatabase = {
         const payload = {
             tenant_id: 1, // Default
             project_id: parseInt(jobData.projectId),
-            job_type_id: parseInt(jobData.jobType), // Frontend might send ID now? check form
+            job_type_id: parseInt(jobData.jobTypeId), // Use ID from form data
             subject: jobData.subject,
             objective: jobData.brief?.objective,
             headline: jobData.brief?.headline,
@@ -465,7 +558,9 @@ const apiDatabase = {
             name: jobTypeData.name,
             description: jobTypeData.description,
             sla_days: jobTypeData.sla || 3,
-            is_active: true
+            icon: jobTypeData.icon,
+            attachments: jobTypeData.attachments,
+            is_active: jobTypeData.status !== 'inactive' // Start active unless specified
         };
         const { data, error } = await supabase.from('job_types').insert([payload]).select().single();
         if (error) throw error;
@@ -476,7 +571,10 @@ const apiDatabase = {
         const payload = {
             name: jobTypeData.name,
             description: jobTypeData.description,
-            sla_days: jobTypeData.sla
+            sla_days: jobTypeData.sla,
+            icon: jobTypeData.icon,
+            attachments: jobTypeData.attachments,
+            is_active: jobTypeData.status === 'active'
         };
         const { data, error } = await supabase.from('job_types').update(payload).eq('id', id).select().single();
         if (error) throw error;
@@ -486,6 +584,70 @@ const apiDatabase = {
     deleteJobType: async (id) => {
         // Soft delete by setting is_active to false
         const { error } = await supabase.from('job_types').update({ is_active: false }).eq('id', id);
+        if (error) throw error;
+        return { success: true };
+    },
+
+    // --- Job Type Items ---
+    getJobTypeItems: async (jobTypeId) => {
+        let query = supabase.from('job_type_items').select('*');
+        if (jobTypeId) {
+            query = query.eq('job_type_id', jobTypeId);
+        }
+        const { data, error } = await query;
+        if (error) throw error;
+
+        return data.map(i => ({
+            id: i.id,
+            jobTypeId: i.job_type_id,
+            name: i.name,
+            defaultSize: i.default_size,
+            isRequired: i.is_required
+        }));
+    },
+
+    createJobTypeItem: async (itemData) => {
+        const payload = {
+            job_type_id: itemData.jobTypeId,
+            name: itemData.name,
+            default_size: itemData.defaultSize,
+            is_required: itemData.isRequired || false
+        };
+        const { data, error } = await supabase.from('job_type_items').insert([payload]).select().single();
+        if (error) throw error;
+
+        return {
+            id: data.id,
+            jobTypeId: data.job_type_id,
+            name: data.name,
+            defaultSize: data.default_size,
+            isRequired: data.is_required
+        };
+    },
+
+    updateJobTypeItem: async (id, itemData) => {
+        const payload = {
+            name: itemData.name,
+            default_size: itemData.defaultSize,
+            is_required: itemData.isRequired
+        };
+        // Remove undefined keys
+        Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]);
+
+        const { data, error } = await supabase.from('job_type_items').update(payload).eq('id', id).select().single();
+        if (error) throw error;
+
+        return {
+            id: data.id,
+            jobTypeId: data.job_type_id,
+            name: data.name,
+            defaultSize: data.default_size,
+            isRequired: data.is_required
+        };
+    },
+
+    deleteJobTypeItem: async (id) => {
+        const { error } = await supabase.from('job_type_items').delete().eq('id', id);
         if (error) throw error;
         return { success: true };
     },
@@ -544,6 +706,7 @@ const apiDatabase = {
             name: projectData.name,
             code: projectData.code,
             bud_id: projectData.budId,
+            tenant_id: projectData.tenantId, // Fix: Update tenant_id
             is_active: projectData.status === 'Active' // Map Frontend 'Active'/'Inactive' to Boolean
         };
         const { data, error } = await supabase.from('projects').update(payload).eq('id', id).select().single();
@@ -746,15 +909,25 @@ const apiDatabase = {
      * ค้นหา Assignee ตาม Project และ Job Type (ใช้สำหรับ Auto-fill)
      */
     getAssigneeByProjectAndJobType: async (projectId, jobTypeId) => {
-        const { data, error } = await supabase
+        let query = supabase
             .from('project_job_assignments')
             .select(`
                 assignee_id,
                 users:assignee_id ( id, first_name, last_name )
             `)
-            .eq('project_id', projectId)
-            .eq('job_type_id', jobTypeId)
-            .single();
+            .eq('project_id', projectId);
+
+        if (jobTypeId) {
+            query = query.eq('job_type_id', jobTypeId);
+        } else {
+            // If null, we might be looking for a default assignment (where job_type_id IS NULL)
+            // or simply ignoring it?
+            // Based on usage in getApprovalFlowByProject(projectId), we pass null.
+            // If the intention is "find generic assignee for project", we check IS NULL.
+            query = query.is('job_type_id', null);
+        }
+
+        const { data, error } = await query.single();
 
         if (error || !data) return null;
 

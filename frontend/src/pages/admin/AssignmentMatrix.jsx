@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '@/services/apiDatabase';
 import { FormSelect } from '@/components/common/FormInput';
 import Button from '@/components/common/Button';
+import Modal from '@/components/common/Modal';
 
 /**
  * AssignmentMatrix Component
@@ -11,6 +12,14 @@ export default function AssignmentMatrix({ projectId, assignees }) {
     const [matrix, setMatrix] = useState([]); // [{ jobTypeId, assigneeId }]
     const [jobTypes, setJobTypes] = useState([]);
     const [loading, setLoading] = useState(false);
+
+    // Modal State
+    const [showModal, setShowModal] = useState(false);
+    const [modalConfig, setModalConfig] = useState({
+        type: 'success',
+        title: '',
+        message: ''
+    });
 
     // โหลดข้อมูลเมื่อ projectId เปลี่ยน
     useEffect(() => {
@@ -77,10 +86,24 @@ export default function AssignmentMatrix({ projectId, assignees }) {
                 }));
 
             await api.saveAssignmentMatrix(projectId, payload);
-            alert('บันทึกการตั้งค่าเรียบร้อยแล้ว');
+
+            // Show Success Modal
+            setModalConfig({
+                type: 'success',
+                title: 'บันทึกสำเร็จ',
+                message: 'บันทึกการตั้งค่าผู้รับงานอัตโนมัติเรียบร้อยแล้ว'
+            });
+            setShowModal(true);
+
             loadData(); // Reload เพื่อ update ID
         } catch (error) {
-            alert('เกิดข้อผิดพลาดในการบันทึก: ' + error.message);
+            // Show Error Modal
+            setModalConfig({
+                type: 'error',
+                title: 'เกิดข้อผิดพลาด',
+                message: 'ไม่สามารถบันทึกข้อมูลได้: ' + error.message
+            });
+            setShowModal(true);
         } finally {
             setLoading(false);
         }
@@ -156,6 +179,15 @@ export default function AssignmentMatrix({ projectId, assignees }) {
                     {loading ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า'}
                 </Button>
             </div>
-        </div>
+
+            {/* Modal Popup */}
+            <Modal
+                isOpen={showModal}
+                onClose={() => setShowModal(false)}
+                type={modalConfig.type}
+                title={modalConfig.title}
+                message={modalConfig.message}
+            />
+        </div >
     );
 }
