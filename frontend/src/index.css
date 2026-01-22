@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 /* ============================================
@@ -6,7 +7,6 @@
    ============================================ */
 
 /* Sarabun Thai Font - ฟอนต์หลักสำหรับภาษาไทย */
-@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
 
 /* กำหนด CSS Variables สำหรับสีหลักของระบบ */
 /* (Rose/Pink Theme ตาม HTML ต้นแบบ) */

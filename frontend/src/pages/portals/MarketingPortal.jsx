@@ -12,7 +12,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
-import { getJobs } from '@/services/mockApi';
+import { api } from '@/services/apiService';
 
 // Shared Components
 import PortalNav from './shared/PortalNav';
@@ -88,7 +88,7 @@ export default function MarketingPortal() {
     useEffect(() => {
         const loadJobs = async () => {
             try {
-                const jobs = await getJobs();
+                const jobs = await api.getJobs();
                 // Filter: แสดงเฉพาะงานที่ผู้ใช้งานปัจจุบันเป็นคนสร้าง (หรือ "สมหญิง" ในกรณี Mock)
                 const filtered = jobs.filter(j =>
                     j.requesterName === 'สมหญิง' || j.requesterId === user?.id

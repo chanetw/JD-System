@@ -11,7 +11,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
-import { getJobs } from '@/services/mockApi';
+import { api } from '@/services/apiService';
 
 // Shared Components
 import PortalNav from './shared/PortalNav';
@@ -79,7 +79,7 @@ export default function ApproverPortal() {
     useEffect(() => {
         const loadJobs = async () => {
             try {
-                const jobs = await getJobs();
+                const jobs = await api.getJobs();
                 // คัดกรองเฉพาะงานที่มีสถานะรอการอนุมัติ
                 const pending = jobs.filter(j =>
                     j.status === 'pending_approval' || j.status === 'waiting_approval'

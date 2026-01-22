@@ -26,7 +26,7 @@ description: เรียก Senior-Dev มาเขียนโค้ด Fronte
 2. **วิเคราะห์** - ศึกษาโครงสร้างโปรเจคและไฟล์ที่เกี่ยวข้อง:
    - `frontend/src/pages/` - หน้าจอต่างๆ
    - `frontend/src/components/` - Components ที่ใช้ซ้ำ
-   - `frontend/src/mock-data/` - ข้อมูล Mock
+  
 
 3. **เสนอโค้ด** - แสดง Code Block ให้ผู้ใช้ตรวจสอบก่อน
 

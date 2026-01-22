@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { getJobById, approveJob, rejectJob, updateJob } from '@/services/mockApi';
+import { api } from '@/services/apiService';
 import { formatDateToThai } from '@/utils/dateUtils';
 import { useAuthStore } from '@/store/authStore';
 import Badge from '@/components/common/Badge';
@@ -57,12 +57,39 @@ export default function JobDetail() {
         setIsLoading(true);
         setError(null);
         try {
-            const data = await getJobById(id);
-            if (!data) {
+            // Parse ID: accept both integer (21) and partial DJ ID (2026-0004)
+            let jobId = null;
+            
+            if (!id) {
+                throw new Error('ไม่มีรหัสงาน');
+            }
+            
+            // Try parsing as integer first
+            const parsed = parseInt(id, 10);
+            if (!isNaN(parsed) && parsed.toString() === id.trim()) {
+                // Pure integer: 21
+                jobId = parsed;
+                console.log(`[JobDetail] loadJob called. IDparam: ${id} (integer)`);
+            } else {
+                // Try to extract number from DJ ID or similar format (e.g., "2026-0004", "0004")
+                // For now, reject non-integer - ensure DJList always passes pkId
+                console.warn(`[JobDetail] ID format unclear: ${id}. Expected integer ID from DJList.`);
+                throw new Error('รหัสงานไม่ถูกต้อง - กรุณาเข้าผ่านรายการงาน');
+            }
+
+            const result = await api.getJobById(jobId);
+            console.log(`[JobDetail] api.getJobById result:`, result);
+
+            // Handle response wrapper if any
+            const jobData = result?.data || result;
+
+            if (!jobData) {
+                console.warn(`[JobDetail] Job NOT Found!`);
                 setError('ไม่พบงานนี้');
             } else {
-                setJob(data);
-                setComments(data.comments || []);
+                console.log(`[JobDetail] Job Found:`, jobData);
+                setJob(jobData);
+                setComments(jobData.comments || []);
             }
         } catch (err) {
             console.error('Failed to load job:', err);
@@ -77,17 +104,15 @@ export default function JobDetail() {
     // ============================================
     const handleApprove = async () => {
         try {
-            const updatedJob = await approveJob(id, user?.displayName || 'Approver');
-            setJob(updatedJob);
+            // Updated to use api.approveJob (Real DB)
+            await api.approveJob(job.id, user?.id || 1, 'Approved via Web');
             alert('อนุมัติงานสำเร็จ!');
 
-            // ถ้า approved แล้ว ไปหน้า DJ List
-            if (updatedJob.status === 'approved') {
-                navigate('/jobs');
-            }
+            // Reload Job to refresh status
+            loadJob();
         } catch (error) {
             console.error('Failed to approve:', error);
-            alert('เกิดข้อผิดพลาดในการอนุมัติ');
+            alert('เกิดข้อผิดพลาดในการอนุมัติ: ' + error.message);
         }
     };
 
@@ -98,15 +123,20 @@ export default function JobDetail() {
         }
 
         try {
-            const updatedJob = await rejectJob(id, rejectReason, 'return', user?.displayName || 'Approver');
-            setJob(updatedJob);
+            // Updated to use api.rejectJob (Real DB)
+            // type 'return' maps to 'rework' status usually, or 'reject' if strict rejection
+            // This UI implies 'Request Revision' -> 'return' logic
+            await api.rejectJob(job.id, rejectReason, 'return', user?.id || 1);
+
             setShowRejectModal(false);
             setRejectReason('');
             alert('ส่งกลับแก้ไขสำเร็จ!');
-            navigate('/jobs');
+
+            // Reload Job to refresh status
+            loadJob();
         } catch (error) {
             console.error('Failed to reject:', error);
-            alert('เกิดข้อผิดพลาดในการปฏิเสธ');
+            alert('เกิดข้อผิดพลาดในการปฏิเสธ: ' + error.message);
         }
     };
 

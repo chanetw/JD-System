@@ -53,8 +53,8 @@ export default function CreateDJ() {
     // === สถานะชิ้นงานย่อย (States: Sub-items) ===
     /** รายการชิ้นงานย่อยของประเภทงานที่เลือก */
     const [jobTypeItems, setJobTypeItems] = useState([]);
-    /** ชิ้นงานย่อยที่เลือก (IDs) */
-    const [selectedSubItems, setSelectedSubItems] = useState([]);
+    /** ชิ้นงานย่อยที่เลือก พร้อมจำนวน { [itemId]: quantity } เช่น { 1: 3, 5: 2 } */
+    const [selectedSubItems, setSelectedSubItems] = useState({});
 
     // === สถานะข้อมูลฟอร์ม (States: Form) ===
     /** ข้อมูลงานที่ผู้ใช้ระบุ */
@@ -219,24 +219,45 @@ export default function CreateDJ() {
     };
 
     /**
-     * เลือก/ยกเลิกเลือกชิ้นงานย่อย
+     * เลือก/ยกเลิกเลือกชิ้นงานย่อย พร้อมจัดการจำนวน
      * @param {number} itemId - รหัสชิ้นงานย่อย
+     * @param {number|null} quantity - จำนวนที่ต้องการ (null = ยกเลิกเลือก)
+     * 
+     * ข้อมูลที่เก็บ:
+     * - selectedSubItems: Object { [itemId]: quantity } เช่น { 1: 3, 5: 2 }
+     * - formData.subItems: Array [{ id, quantity }] เช่น [{ id: 1, quantity: 3 }]
      */
-    const toggleSubItem = (itemId) => {
+    const toggleSubItem = (itemId, quantity = null) => {
         setSelectedSubItems(prev => {
-            if (prev.includes(itemId)) {
-                return prev.filter(id => id !== itemId);
+            const updated = { ...prev };
+
+            if (quantity === null || quantity <= 0) {
+                // ยกเลิกการเลือก
+                delete updated[itemId];
             } else {
-                return [...prev, itemId];
+                // เพิ่ม/แก้ไขจำนวน
+                updated[itemId] = quantity;
             }
+
+            // อัปเดต formData.subItems พร้อมกัน
+            const newSubItems = Object.entries(updated)
+                .filter(([_, qty]) => qty > 0)
+                .map(([id, qty]) => ({ id: parseInt(id), quantity: qty }));
+
+            setFormData(prevForm => ({ ...prevForm, subItems: newSubItems }));
+
+            return updated;
         });
-        // อัปเดต formData.subItems ด้วย
-        setFormData(prev => {
-            const newSubItems = prev.subItems?.includes(itemId)
-                ? prev.subItems.filter(id => id !== itemId)
-                : [...(prev.subItems || []), itemId];
-            return { ...prev, subItems: newSubItems };
-        });
+    };
+
+    /**
+     * อัปเดตจำนวนชิ้นงานย่อย
+     * @param {number} itemId - รหัสชิ้นงานย่อย
+     * @param {string|number} value - จำนวนใหม่ (รับเป็น string จาก input)
+     */
+    const updateSubItemQuantity = (itemId, value) => {
+        const qty = parseInt(value) || 0;
+        toggleSubItem(itemId, qty > 0 ? qty : null);
     };
 
     /**
@@ -533,30 +554,78 @@ export default function CreateDJ() {
                                     )}
                                 </div>
 
-                                {/* ส่วนเลือกชิ้นงานย่อย (Sub-items) */}
+                                {/* ส่วนเลือกชิ้นงานย่อย (Sub-items) พร้อมระบุจำนวน */}
                                 {jobTypeItems.length > 0 && (
                                     <div className="mt-4 p-4 bg-purple-50 border border-purple-100 rounded-lg">
-                                        <p className="text-sm font-medium text-purple-800 mb-2">
-                                            เลือกชิ้นงานที่ต้องการ (Sub-items):
+                                        <p className="text-sm font-medium text-purple-800 mb-3">
+                                            เลือกชิ้นงานที่ต้องการ (Sub-items) พร้อมระบุจำนวน:
                                         </p>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {jobTypeItems.map(item => (
-                                                <label key={item.id} className="flex items-center gap-2 p-2 bg-white rounded border cursor-pointer hover:border-purple-300">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={selectedSubItems.includes(item.id)}
-                                                        onChange={() => toggleSubItem(item.id)}
-                                                        className="w-4 h-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
-                                                    />
-                                                    <span className="text-sm text-gray-700">{item.name}</span>
-                                                    <span className="text-xs text-gray-400">({item.defaultSize})</span>
-                                                </label>
-                                            ))}
+                                        <div className="space-y-2">
+                                            {jobTypeItems.map(item => {
+                                                const isSelected = selectedSubItems[item.id] > 0;
+                                                const quantity = selectedSubItems[item.id] || 0;
+
+                                                return (
+                                                    <div
+                                                        key={item.id}
+                                                        className={`flex items-center gap-3 p-3 bg-white rounded-lg border transition-all ${isSelected ? 'border-purple-400 shadow-sm' : 'border-gray-200'
+                                                            }`}
+                                                    >
+                                                        {/* Checkbox เลือก/ไม่เลือก */}
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            onChange={(e) => toggleSubItem(item.id, e.target.checked ? 1 : null)}
+                                                            className="w-5 h-5 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
+                                                        />
+
+                                                        {/* ชื่อและขนาด */}
+                                                        <div className="flex-1 min-w-0">
+                                                            <span className="text-sm font-medium text-gray-700">{item.name}</span>
+                                                            <span className="text-xs text-gray-400 ml-2">({item.defaultSize})</span>
+                                                        </div>
+
+                                                        {/* ช่องใส่จำนวน (แสดงเมื่อเลือกแล้ว) */}
+                                                        {isSelected && (
+                                                            <div className="flex items-center gap-1 shrink-0">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => updateSubItemQuantity(item.id, quantity - 1)}
+                                                                    className="w-7 h-7 flex items-center justify-center bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition-colors disabled:opacity-50"
+                                                                    disabled={quantity <= 1}
+                                                                >
+                                                                    −
+                                                                </button>
+                                                                <input
+                                                                    type="number"
+                                                                    min="1"
+                                                                    value={quantity}
+                                                                    onChange={(e) => updateSubItemQuantity(item.id, e.target.value)}
+                                                                    className="w-14 h-7 text-center text-sm border border-purple-200 rounded focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => updateSubItemQuantity(item.id, quantity + 1)}
+                                                                    className="w-7 h-7 flex items-center justify-center bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition-colors"
+                                                                >
+                                                                    +
+                                                                </button>
+                                                                <span className="text-xs text-gray-500 ml-1">ชิ้น</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
-                                        {selectedSubItems.length > 0 && (
-                                            <p className="text-xs text-purple-600 mt-2">
-                                                เลือกแล้ว {selectedSubItems.length} ชิ้นงาน
-                                            </p>
+
+                                        {/* สรุปจำนวนทั้งหมด */}
+                                        {Object.keys(selectedSubItems).length > 0 && (
+                                            <div className="mt-3 p-2 bg-purple-100 rounded-lg">
+                                                <p className="text-sm text-purple-800 font-medium">
+                                                    📦 สรุป: {Object.keys(selectedSubItems).length} ประเภท,
+                                                    รวม {Object.values(selectedSubItems).reduce((a, b) => a + b, 0)} ชิ้น
+                                                </p>
+                                            </div>
                                         )}
                                     </div>
                                 )}
@@ -572,16 +641,29 @@ export default function CreateDJ() {
                             />
 
                             <div className="grid grid-cols-2 gap-4">
-                                <FormSelect
-                                    label="ความสำคัญ (Priority)"
-                                    name="priority"
-                                    value={formData.priority}
-                                    onChange={handleChange}
-                                >
-                                    <option value="Low">ต่ำ (Low)</option>
-                                    <option value="Normal">ปกติ (Normal)</option>
-                                    <option value="Urgent">ด่วน (Urgent)</option>
-                                </FormSelect>
+                                <div className="space-y-2">
+                                    <FormSelect
+                                        label="ความสำคัญ (Priority)"
+                                        name="priority"
+                                        value={formData.priority}
+                                        onChange={handleChange}
+                                    >
+                                        <option value="Low">ต่ำ (Low)</option>
+                                        <option value="Normal">ปกติ (Normal)</option>
+                                        <option value="Urgent">🔥 ด่วนมาก (Urgent)</option>
+                                    </FormSelect>
+                                    {formData.priority === 'Urgent' && (
+                                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 animate-fadeIn">
+                                            <p className="font-bold mb-1 flex items-center gap-1">
+                                                ⚠️ ผลกระทบงานด่วน
+                                            </p>
+                                            <p className="text-xs">
+                                                การเลือก "งานด่วน" จะทำให้งานอื่นในมือ Graphic คนเดียวกัน
+                                                ถูกเลื่อนกำหนดส่งออกไป <strong>+2 วันทำการ</strong> โดยอัตโนมัติ
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
                                 <div>
                                     <FormInput label="เวลาส่งงาน" disabled value="ปัจจุบัน (อัตโนมัติ)" className="bg-gray-50" />
                                 </div>

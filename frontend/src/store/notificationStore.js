@@ -1,5 +1,13 @@
+/**
+ * @file notificationStore.js
+ * @description Notification State Management (Zustand)
+ * 
+ * รับข้อมูล Notification จาก Database ผ่าน API
+ * และจัดการ State ภายใน App
+ */
+
 import { create } from 'zustand';
-import { loadMockData, saveMockData } from '@/services/mockStorage';
+import { api } from '@/services/apiService';
 import { useAuthStore } from './authStore';
 
 export const useNotificationStore = create((set, get) => ({
@@ -7,38 +15,46 @@ export const useNotificationStore = create((set, get) => ({
     unreadCount: 0,
     isLoading: false,
 
+    /**
+     * ดึงรายการ Notification จาก Database
+     */
     fetchNotifications: async () => {
         set({ isLoading: true });
 
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 500));
+        try {
+            const currentUser = useAuthStore.getState().user;
 
-        const allNotifications = loadMockData('notifications');
-        const currentUser = useAuthStore.getState().user;
+            if (!currentUser) {
+                set({ notifications: [], unreadCount: 0, isLoading: false });
+                return;
+            }
 
-        if (!currentUser) {
+            // เรียก API ดึง Notifications (ถ้ามีฟังก์ชัน)
+            // ถ้ายังไม่มี API function, ใช้ Empty Array ก่อน
+            let userNotifications = [];
+            if (typeof api.getNotifications === 'function') {
+                userNotifications = await api.getNotifications(currentUser.id) || [];
+            }
+
+            // Sort by date (Newest first)
+            userNotifications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+            const unread = userNotifications.filter(n => !n.isRead).length;
+
+            set({
+                notifications: userNotifications,
+                unreadCount: unread,
+                isLoading: false
+            });
+        } catch (error) {
+            console.error('[notificationStore] fetchNotifications error:', error);
             set({ notifications: [], unreadCount: 0, isLoading: false });
-            return;
         }
-
-        // Filter for current user
-        const userNotifications = allNotifications.filter(n => n.recipientId === currentUser.id);
-
-        // Support role-based broadcast (Optional feature for future)
-        // e.g., if n.role === 'admin'
-
-        // Sort by date (Newest first)
-        userNotifications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-        const unread = userNotifications.filter(n => !n.isRead).length;
-
-        set({
-            notifications: userNotifications,
-            unreadCount: unread,
-            isLoading: false
-        });
     },
 
+    /**
+     * ทำเครื่องหมายว่าอ่านแล้ว
+     */
     markAsRead: async (id) => {
         const notifications = get().notifications.map(n =>
             n.id === id ? { ...n, isRead: true } : n
@@ -49,17 +65,19 @@ export const useNotificationStore = create((set, get) => ({
             unreadCount: notifications.filter(n => !n.isRead).length
         });
 
-        // Update storage
-        // Note: In a real app, this would be an API call
-        // For mock, we need to update the big list
-        const allNotifications = loadMockData('notifications');
-        const index = allNotifications.findIndex(n => n.id === id);
-        if (index !== -1) {
-            allNotifications[index].isRead = true;
-            saveMockData('notifications', allNotifications);
+        // Update in Database (ถ้ามี API function)
+        if (typeof api.markNotificationAsRead === 'function') {
+            try {
+                await api.markNotificationAsRead(id);
+            } catch (error) {
+                console.error('[notificationStore] markAsRead error:', error);
+            }
         }
     },
 
+    /**
+     * ทำเครื่องหมายว่าอ่านทั้งหมดแล้ว
+     */
     markAllAsRead: async () => {
         const notifications = get().notifications.map(n => ({ ...n, isRead: true }));
 
@@ -68,20 +86,20 @@ export const useNotificationStore = create((set, get) => ({
             unreadCount: 0
         });
 
-        // Update storage
-        const currentUser = useAuthStore.getState().user;
-        const allNotifications = loadMockData('notifications');
-
-        allNotifications.forEach(n => {
-            if (n.recipientId === currentUser.id) {
-                n.isRead = true;
+        // Update in Database (ถ้ามี API function)
+        if (typeof api.markAllNotificationsAsRead === 'function') {
+            try {
+                const currentUser = useAuthStore.getState().user;
+                await api.markAllNotificationsAsRead(currentUser?.id);
+            } catch (error) {
+                console.error('[notificationStore] markAllAsRead error:', error);
             }
-        });
-
-        saveMockData('notifications', allNotifications);
+        }
     },
 
-    // For adding new notification locally (e.g. via websocket in real app)
+    /**
+     * เพิ่ม Notification ใหม่ (สำหรับ Real-time / WebSocket)
+     */
     addNotification: (notification) => {
         set(state => ({
             notifications: [notification, ...state.notifications],

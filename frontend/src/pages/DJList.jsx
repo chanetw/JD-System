@@ -13,7 +13,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Badge from '@/components/common/Badge';
 import Button from '@/components/common/Button';
-import { getJobs, getMasterData } from '@/services/mockApi';
+import { api } from '@/services/apiService';
 import { formatDateToThai } from '@/utils/dateUtils';
 
 // Icons
@@ -60,9 +60,10 @@ export default function DJList() {
         setIsLoading(true);
         try {
             const [jobsData, masterDataResult] = await Promise.all([
-                getJobs(),
-                getMasterData()
+                api.getJobs(),
+                api.getMasterData()
             ]);
+            console.log(`[DJList] Loaded ${jobsData.length} jobs. First job:`, jobsData[0]);
             setJobs(jobsData);
             setFilteredJobs(jobsData);
             setMasterData(masterDataResult);
@@ -343,6 +344,7 @@ export default function DJList() {
                                     <JobRow
                                         key={job.id}
                                         id={job.djId || `DJ-${job.id}`}
+                                        pkId={job.id}
                                         project={job.project}
                                         type={job.jobType}
                                         subject={job.subject}
@@ -452,14 +454,16 @@ function Th({ children }) {
 /**
  * JobRow Component: แสดงแถวข้อมูลงาน DJ ในตาราง
  */
-function JobRow({ id, project, type, subject, status, submitDate, deadline, sla, assignee, rowClass = 'hover:bg-gray-50' }) {
+function JobRow({ id, pkId, project, type, subject, status, submitDate, deadline, sla, assignee, rowClass = 'hover:bg-gray-50' }) {
     // แยก ID จริงสำหรับการ Link (กรณีแสดงผลเป็น DJ-XXXX แต่ ID จริงคือเลข)
-    const actualId = id.toString().replace('DJ-', '');
+    // const actualId = id.toString().replace('DJ-', ''); 
+    // ^ OLD logic: unreliable if id format changes. Now using pkId directly.
+    console.log(`[JobRow] Rendering row for ${id}. pkId: ${pkId}, Link to: /jobs/${pkId}`);
 
     return (
         <tr className={rowClass}>
             <td className="px-4 py-3">
-                <Link to={`/jobs/${actualId}`} className="text-rose-600 font-medium hover:underline">
+                <Link to={`/jobs/${pkId}`} className="text-rose-600 font-medium hover:underline">
                     {id}
                 </Link>
             </td>
@@ -479,7 +483,7 @@ function JobRow({ id, project, type, subject, status, submitDate, deadline, sla,
                 </div>
             </td>
             <td className="px-4 py-3 text-center">
-                <Link to={`/jobs/${actualId}`} className="text-sm text-rose-600 font-medium hover:text-rose-700">
+                <Link to={`/jobs/${pkId}`} className="text-sm text-rose-600 font-medium hover:text-rose-700">
                     ดูรายละเอียด
                 </Link>
             </td>

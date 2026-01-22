@@ -12,7 +12,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
-import { getJobs, getDashboardStats } from '@/services/mockApi';
+import { api } from '@/services/apiService';
 
 // Shared Components
 import PortalNav from './shared/PortalNav';
@@ -80,11 +80,11 @@ export default function AdminPortal() {
     useEffect(() => {
         const loadData = async () => {
             try {
-                const jobs = await getJobs();
+                const jobs = await api.getJobs();
                 // เลือกมาแสดงเพียง 6 รายการล่าสุดในหน้าแรก
                 setAllJobs(jobs.slice(0, 6));
 
-                const dashStats = await getDashboardStats();
+                const dashStats = await api.getDashboardStats();
                 setStats({
                     total: jobs.length,
                     overdue: dashStats.overdue || 0

@@ -11,7 +11,6 @@
 import { Outlet, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
-import { initMockData } from '@/services/mockStorage';
 import Sidebar from './Sidebar';
 import Header from './Header';
 
@@ -27,8 +26,8 @@ export default function Layout() {
     // useEffect - ทำงานเมื่อ Component โหลดครั้งแรก
     // ============================================
     useEffect(() => {
-        // เริ่มต้นโหลด Mock Data
-        initMockData();
+        // Database connection initialized via apiService
+        console.log('[Layout] App initialized with Database connection');
     }, []);
 
     // ถ้ายังไม่ได้ login ให้ Redirect ไป Login

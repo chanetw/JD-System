@@ -13,7 +13,7 @@ import { Card, CardHeader } from '@/components/common/Card';
 import Badge from '@/components/common/Badge';
 import Button from '@/components/common/Button';
 import { FormInput, FormSelect } from '@/components/common/FormInput';
-import { getHolidays, addHoliday, updateHoliday, deleteHoliday } from '@/services/mockApi';
+import { api } from '@/services/apiService';
 
 // Icons
 import {
@@ -103,7 +103,7 @@ export default function AdminHoliday() {
     const loadHolidays = async () => {
         setIsLoading(true);
         try {
-            const data = await getHolidays();
+            const data = await api.getHolidays();
             // Sanitize data: Ensure it's an array and filter out invalid items
             const cleanData = (Array.isArray(data) ? data : [])
                 .filter(h => h && typeof h === 'object' && h.date && !isNaN(new Date(h.date).getTime()));
@@ -135,11 +135,11 @@ export default function AdminHoliday() {
         try {
             if (editingId) {
                 // กรณีแก้ไขข้อมูล (Update Existing)
-                await updateHoliday(editingId, formData);
+                await api.updateHoliday(editingId, formData);
                 showAlert('success', 'แก้ไขข้อมูลวันหยุดสำเร็จ');
             } else {
                 // กรณีเพิ่มข้อมูลใหม่ (Add New)
-                await addHoliday(formData);
+                await api.addHoliday(formData);
                 showAlert('success', 'เพิ่มข้อมูลวันหยุดสำเร็จ');
             }
 
@@ -190,7 +190,7 @@ export default function AdminHoliday() {
         if (!confirmModal.id) return;
 
         try {
-            await deleteHoliday(confirmModal.id);
+            await api.deleteHoliday(confirmModal.id);
             await loadHolidays();
             showAlert('success', 'ลบข้อมูลวันหยุดสำเร็จ');
             setConfirmModal({ show: false, id: null });

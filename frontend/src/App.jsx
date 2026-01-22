@@ -21,14 +21,18 @@ import JobTypeItems from '@/pages/admin/JobTypeItems';
 import HolidayCalendar from '@/pages/admin/HolidayCalendar';
 import ApprovalFlow from '@/pages/admin/ApprovalFlow';
 import OrganizationManagement from '@/pages/admin/OrganizationManagement';
-import UserManagement from '@/pages/admin/UserManagement';
+import UserManagement from '@/pages/admin/UserManagementNew';
+import NotificationSettings from '@/pages/admin/NotificationSettings';
 import MediaPortal from '@/pages/MediaPortal';
 import UserPortal from '@/pages/UserPortal';
 import Login from '@/pages/Login';
+import Register from '@/pages/Register';
+import ForgotPassword from '@/pages/ForgotPassword';
+import ChangePassword from '@/pages/ChangePassword';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
-
 import ReportsDashboard from '@/pages/admin/ReportsDashboard';
+import Reports from '@/pages/admin/Reports';
 
 /**
  * @component App
@@ -40,8 +44,17 @@ function App() {
     <BrowserRouter>
       <Routes>
 
-        {/* Login Page */}
+        {/* Public Pages (No Login Required) */}
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+
+        {/* Change Password (Requires Login) */}
+        <Route path="/change-password" element={
+          <ProtectedRoute>
+            <ChangePassword />
+          </ProtectedRoute>
+        } />
 
         {/* V1 User Portal (แยก Layout) */}
         <Route path="/user-portal" element={
@@ -71,14 +84,15 @@ function App() {
           <Route path="admin/job-types" element={<JobTypeSLA />} />
           <Route path="admin/job-type-items" element={<JobTypeItems />} />
           <Route path="admin/organization" element={<OrganizationManagement />} />
-          <Route path="admin/reports" element={<ReportsDashboard />} />
+          <Route path="admin/reports-v1" element={<ReportsDashboard />} />
+          <Route path="admin/reports" element={<Reports />} />
+          <Route path="admin/notifications" element={<NotificationSettings />} />
           <Route path="media-portal" element={<MediaPortal />} />
           <Route path="admin/holidays" element={<HolidayCalendar />} />
           <Route path="admin/approval-flow" element={<ApprovalFlow />} />
 
           {/* Staff Portals */}
           <Route path="media-portal" element={<MediaPortal />} />
-          <Route path="reports" element={<ComingSoon title="Reports" />} />
         </Route>
       </Routes>
     </BrowserRouter>

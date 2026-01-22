@@ -12,7 +12,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
-import { resetMockData } from '@/services/mockStorage';
 import { useNotificationStore } from '@/store/notificationStore';
 
 /**
@@ -44,10 +43,10 @@ export default function Header() {
     };
 
     /**
-     * คืนค่าข้อมูลตัวอย่าง (Mock Data) กลับเป็นค่าเริ่มต้น
+     * รีเฟรชหน้า (สำหรับ Demo)
      */
     const handleResetDemo = () => {
-        resetMockData();
+        // Note: ไม่ใช้ Mock แล้ว เพียงแค่รีเฟรชหน้า
         window.location.reload();
     };
 

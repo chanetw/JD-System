@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/authStore';
-import { getJobs } from '@/services/mockApi';
+import { api } from '@/services/apiService';
 import {
     ClockIcon,
     CheckCircleIcon,
@@ -31,7 +31,7 @@ export default function ApprovalStatsWidget() {
     useEffect(() => {
         const loadStats = async () => {
             try {
-                const jobs = await getJobs();
+                const jobs = await api.getJobs();
 
                 // นับงานรออนุมัติ (ที่ตรงกับ currentApproverId หรือทั้งหมด)
                 const pending = jobs.filter(j =>

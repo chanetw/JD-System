@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { getJobs, approveJob, rejectJob } from '@/services/mockApi';
+import { api } from '@/services/apiService';
 import { useAuthStore } from '@/store/authStore';
 import { Link } from 'react-router-dom';
 import { Card } from '@/components/common/Card';
@@ -58,9 +58,9 @@ export default function ApprovalsQueue() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const data = await getJobs();
+            const data = await api.getJobs();
             // เรียงลำดับตามวันที่สร้างล่าสุดขึ้นก่อน (Newest first)
-            let sorted = data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            let sorted = (Array.isArray(data) ? data : []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
             // กฎการคัดกรองตามบทบาท (Filter Logic by Role)
             const userRole = user?.roles?.[0];
@@ -102,7 +102,7 @@ export default function ApprovalsQueue() {
     /** ดำเนินการอนุมัติผ่าน API */
     const handleConfirmApprove = async () => {
         try {
-            await approveJob(selectedJobId, user?.displayName || 'CurrentUser');
+            await api.approveJob(selectedJobId, user?.id || 1, 'Approved via Approvals Queue');
             setShowApproveModal(false);
             setSelectedJobId(null);
             loadData(); // โหลดข้อมูลใหม่เพื่ออัปเดตสถานะหน้าจอ
@@ -121,7 +121,7 @@ export default function ApprovalsQueue() {
     const handleConfirmReject = async () => {
         try {
             const type = document.querySelector('input[name="rejectType"]:checked')?.value === 'reject' ? 'reject' : 'return';
-            await rejectJob(selectedJobId, rejectReason, type, user?.displayName || 'CurrentUser');
+            await api.rejectJob(selectedJobId, rejectReason, type, user?.id || 1);
             setShowRejectModal(false);
             loadData();
         } catch (error) {
@@ -228,6 +228,7 @@ export default function ApprovalsQueue() {
                                 filteredJobs.map(job => (
                                     <QueueRow
                                         key={job.id}
+                                        pkId={job.id}
                                         id={job.djId || `DJ-${job.id}`}
                                         project={job.project}
                                         bud={job.bud}
@@ -439,14 +440,14 @@ function Th({ children, className = "text-left" }) {
  * @param {Function} props.onReject - จัดการการปฏิเสธ
  * @param {boolean} [props.showActions=true] - แสดงปุ่มจัดการงานหรือไม่
  */
-function QueueRow({ id, project, bud, type, subject, requester, submitted, sla, priority, urgent, onApprove, onReject, showActions = true }) {
+function QueueRow({ pkId, id, project, bud, type, subject, requester, submitted, sla, priority, urgent, onApprove, onReject, showActions = true }) {
     return (
         <tr className={`hover:bg-gray-50 ${urgent ? 'bg-red-50' : ''}`}>
             <td className="px-4 py-4">
                 <input type="checkbox" className="rounded border-gray-300 text-rose-600 focus:ring-rose-500" />
             </td>
             <td className="px-4 py-4">
-                <Link to={`/jobs/${id.replace('DJ-', '')}`} className="text-rose-600 font-medium hover:underline">{id}</Link>
+                <Link to={`/jobs/${pkId}`} className="text-rose-600 font-medium hover:underline">{id}</Link>
             </td>
             <td className="px-4 py-4">
                 <div className="text-sm font-medium text-gray-900">{project}</div>
@@ -467,7 +468,7 @@ function QueueRow({ id, project, bud, type, subject, requester, submitted, sla, 
             <td className="px-4 py-4">{priority}</td>
             <td className="px-4 py-4">
                 <div className="flex items-center justify-center gap-2">
-                    <Link to={`/jobs/${id.replace('DJ-', '')}`} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg" title="ดูรายละเอียด">
+                    <Link to={`/jobs/${pkId}`} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg" title="ดูรายละเอียด">
                         <EyeIcon className="w-4 h-4" />
                     </Link>
                     {showActions && (

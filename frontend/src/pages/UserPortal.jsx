@@ -16,7 +16,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Badge from '@/components/common/Badge';
 import { useAuthStore } from '@/store/authStore';
-import { getJobs } from '@/services/mockApi';
+import { api } from '@/services/apiService';
 
 // Icons
 import {
@@ -53,7 +53,7 @@ export default function UserPortal() {
     useEffect(() => {
         const loadJobs = async () => {
             try {
-                const jobs = await getJobs();
+                const jobs = await api.getJobs();
                 // Filter ตาม role
                 const role = user?.roles?.[0] || 'marketing';
                 let filtered = jobs;

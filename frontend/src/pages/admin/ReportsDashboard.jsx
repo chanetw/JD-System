@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { getJobs, getDashboardStats } from '@/services/mockApi';
+import { api } from '@/services/apiService';
 import { Card, CardHeader, CardBody } from '@/components/common/Card';
 import {
     ChartBarIcon,
@@ -38,7 +38,7 @@ export default function ReportsDashboard() {
 
     /** ฟังก์ชันโหลดและคำนวณสถิติเพื่อนำมาแสดงผล */
     const loadData = async () => {
-        const allJobs = await getJobs();
+        const allJobs = await api.getJobs();
         setJobs(allJobs);
 
         // 1. คำนวณภาพรวม (Overall Stats)

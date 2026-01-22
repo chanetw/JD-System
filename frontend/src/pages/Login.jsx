@@ -9,9 +9,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
-import { getAllUsersForLogin } from '@/services/mockApi';
+import { api } from '@/services/apiService';
 
 export default function Login() {
     const navigate = useNavigate();
@@ -32,7 +32,7 @@ export default function Login() {
     useEffect(() => {
         const loadUsers = async () => {
             try {
-                const data = await getAllUsersForLogin();
+                const data = await api.getUsers();
                 setUsers(data);
             } catch (err) {
                 console.error('Error loading users:', err);
@@ -195,6 +195,16 @@ export default function Login() {
                         )}
                     </button>
                 </form>
+
+                {/* Links */}
+                <div className="mt-4 flex justify-between text-sm">
+                    <Link to="/register" className="text-rose-600 hover:text-rose-700 font-medium">
+                        สมัครใช้งาน
+                    </Link>
+                    <Link to="/forgot-password" className="text-slate-500 hover:text-slate-700">
+                        ลืมรหัสผ่าน?
+                    </Link>
+                </div>
 
                 {/* Demo Note */}
                 <div className="mt-6 text-center">

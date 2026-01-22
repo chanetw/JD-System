@@ -12,7 +12,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
-import { getJobs } from '@/services/mockApi';
+import { api } from '@/services/apiService';
 
 // Shared Components
 import PortalNav from './shared/PortalNav';
@@ -81,7 +81,7 @@ export default function AssigneePortal() {
     useEffect(() => {
         const loadJobs = async () => {
             try {
-                const jobs = await getJobs();
+                const jobs = await api.getJobs();
                 // คัดกรองงานที่มอบหมายให้ผู้ใช้ปัจจุบัน (หรือชื่อ "กานต์" ในกรณี Mock)
                 const assigned = jobs.filter(j =>
                     j.assigneeName === 'กานต์' || j.assigneeId === user?.id

@@ -10,9 +10,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import {
-    getUsers, createUser, updateUser, deleteUser, getMasterData
-} from '@/services/mockApi';
+import { api } from '@/services/apiService';
 import Button from '@/components/common/Button';
 import { FormInput, FormSelect } from '@/components/common/FormInput';
 import {
@@ -78,6 +76,25 @@ export default function UserManagement() {
     /** สถานะการโหลดข้อมูล (Loading State) */
     const [isLoading, setIsLoading] = useState(true);
 
+    /** Tab ปัจจุบัน: 'active' หรือ 'registrations' */
+    const [activeTab, setActiveTab] = useState('active');
+
+    /** รายการคำขอสมัครที่รอการอนุมัติ */
+    const [registrations, setRegistrations] = useState([]);
+
+    /** สถานะการโหลดคำขอสมัคร */
+    const [registrationsLoading, setRegistrationsLoading] = useState(false);
+
+    /** Modal สำหรับ Reject Reason */
+    const [rejectModal, setRejectModal] = useState({
+        show: false,
+        registrationId: null,
+        registrationEmail: null
+    });
+
+    /** Reject Reason Text */
+    const [rejectReason, setRejectReason] = useState('');
+
     /** สถานะการแสดง Modal สำหรับเพิ่ม/แก้ไขผู้ใช้ */
     const [showModal, setShowModal] = useState(false);
 
@@ -128,13 +145,12 @@ export default function UserManagement() {
     /** คำค้นหาโครงการสำหรับ Requester/Marketing (ผู้สั่งงาน) */
     const [requesterSearch, setRequesterSearch] = useState('');
 
-    /**
-     * useEffect Hook
-     * เรียกใช้ฟังก์ชัน loadData เมื่อ Component ถูก Mount ครั้งแรก
-     */
     useEffect(() => {
         loadData();
-    }, []);
+        if (activeTab === 'registrations') {
+            loadRegistrations();
+        }
+    }, [activeTab]);
 
     /**
      * โหลดข้อมูลผู้ใช้และ Master Data จาก API
@@ -150,8 +166,8 @@ export default function UserManagement() {
             setIsLoading(true);
             // เรียก API 2 ตัวพร้อมกัน (Parallel) เพื่อประหยัดเวลา
             const [usersData, masterData] = await Promise.all([
-                getUsers(),
-                getMasterData()
+                api.getUsers(),
+                api.getMasterData()
             ]);
             setUsers(usersData);
             setMasters(masterData);
@@ -159,6 +175,23 @@ export default function UserManagement() {
             showAlert('error', 'ไม่สามารถโหลดข้อมูลได้');
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    /**
+     * โหลดรายการคำขอสมัครที่รอการอนุมัติ
+     * @async
+     */
+    const loadRegistrations = async () => {
+        try {
+            setRegistrationsLoading(true);
+            const regsData = await api.getPendingRegistrations('pending');
+            setRegistrations(regsData);
+        } catch (error) {
+            console.error('Error loading registrations:', error);
+            showAlert('error', 'ไม่สามารถโหลดคำขอสมัครได้');
+        } finally {
+            setRegistrationsLoading(false);
         }
     };
 
@@ -242,11 +275,11 @@ export default function UserManagement() {
         try {
             if (editingUser) {
                 // โหมดแก้ไข: อัปเดตข้อมูลผู้ใช้ที่มีอยู่
-                await updateUser(editingUser.id, formData);
+                await api.updateUser(editingUser.id, formData);
                 showAlert('success', 'แก้ไขข้อมูลผู้ใช้สำเร็จ');
             } else {
                 // โหมดเพิ่มใหม่: สร้างผู้ใช้ใหม่
-                await createUser(formData);
+                await api.createUser(formData);
                 showAlert('success', 'เพิ่มผู้ใช้ใหม่สำเร็จ');
             }
             await loadData();  // โหลดข้อมูลใหม่เพื่ออัปเดตตาราง
@@ -254,6 +287,62 @@ export default function UserManagement() {
             resetForm();  // ล้างฟอร์ม
         } catch (error) {
             showAlert('error', 'เกิดข้อผิดพลาด: ' + error.message);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    /**
+     * อนุมัติคำขอสมัครและสร้างผู้ใช้ใหม่
+     */
+    const handleApproveRegistration = async (registrationId) => {
+        try {
+            setIsSubmitting(true);
+            // TODO: ดึง current user ID จาก auth store
+            const currentUserId = 1; // Mock
+            await api.approveRegistration(registrationId, currentUserId);
+            showAlert('success', 'อนุมัติคำขอสมัครสำเร็จ');
+            await loadRegistrations();
+            await loadData(); // รีเฟรช user list
+        } catch (error) {
+            showAlert('error', 'อนุมัติไม่สำเร็จ: ' + error.message);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    /**
+     * เปิด Modal เพื่อยืนยันการปฏิเสธและระบุเหตุผล
+     */
+    const handleOpenRejectModal = (registrationId, email) => {
+        setRejectModal({
+            show: true,
+            registrationId,
+            registrationEmail: email
+        });
+        setRejectReason('');
+    };
+
+    /**
+     * ปฏิเสธคำขอสมัครพร้อมเหตุผล
+     */
+    const handleConfirmReject = async () => {
+        if (!rejectReason.trim()) {
+            showAlert('error', 'กรุณากรอกเหตุผลการปฏิเสธ');
+            return;
+        }
+
+        try {
+            setIsSubmitting(true);
+            // TODO: ดึง current user ID จาก auth store
+            const currentUserId = 1; // Mock
+            await api.rejectRegistration(rejectModal.registrationId, rejectReason, currentUserId);
+            showAlert('success', 'ปฏิเสธคำขอสมัครสำเร็จ');
+            setRejectModal({ show: false, registrationId: null, registrationEmail: null });
+            setRejectReason('');
+            await loadRegistrations();
+        } catch (error) {
+            showAlert('error', 'ปฏิเสธไม่สำเร็จ: ' + error.message);
         } finally {
             setIsSubmitting(false);
         }
@@ -344,7 +433,7 @@ export default function UserManagement() {
     const confirmDelete = async () => {
         if (!confirmModal.id) return;  // ถ้าไม่มี ID ให้ยกเลิก
         try {
-            await deleteUser(confirmModal.id);
+            await api.deleteUser(confirmModal.id);
             await loadData();  // โหลดข้อมูลใหม่เพื่ออัปเดตตาราง
             showAlert('success', 'ลบผู้ใช้สำเร็จ');
             setConfirmModal({ show: false, id: null });  // ปิด Modal
@@ -434,9 +523,40 @@ export default function UserManagement() {
                             โหลดข้อมูลใหม่
                         </Button>
                     )}
-                    <Button onClick={() => { resetForm(); setShowModal(true); }}>
-                        <PlusIcon className="w-5 h-5" /> Add User
-                    </Button>
+                    {activeTab === 'active' && (
+                        <Button onClick={() => { resetForm(); setShowModal(true); }}>
+                            <PlusIcon className="w-5 h-5" /> Add User
+                        </Button>
+                    )}
+                </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="border-b border-gray-200">
+                <div className="flex gap-8">
+                    <button
+                        onClick={() => setActiveTab('active')}
+                        className={`py-3 px-1 font-medium text-sm border-b-2 transition-colors ${activeTab === 'active'
+                            ? 'text-rose-600 border-rose-600'
+                            : 'text-gray-600 border-transparent hover:text-gray-900'
+                            }`}
+                    >
+                        👥 Active Users
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('registrations')}
+                        className={`py-3 px-1 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'registrations'
+                            ? 'text-rose-600 border-rose-600'
+                            : 'text-gray-600 border-transparent hover:text-gray-900'
+                            }`}
+                    >
+                        📋 Pending Registrations
+                        {registrations.length > 0 && (
+                            <span className="bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                                {registrations.length}
+                            </span>
+                        )}
+                    </button>
                 </div>
             </div>
 
@@ -449,131 +569,133 @@ export default function UserManagement() {
                 </div>
             )}
 
-            {/* Table */}
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                        <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User Info</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Roles</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned Scope</th>
-                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                        {isLoading ? (
-                            <tr><td colSpan="5" className="px-6 py-8 text-center text-gray-500">Loading users...</td></tr>
-                        ) : users.length === 0 ? (
-                            <tr><td colSpan="5" className="px-6 py-8 text-center text-gray-500">No users found.</td></tr>
-                        ) : users.map(user => (
-                            <tr key={user.id} className="hover:bg-gray-50">
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center">
-                                        <div className="h-10 w-10 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 font-bold text-sm">
-                                            {(user.name || user.displayName || user.firstName || '?').charAt(0)}
-                                        </div>
-                                        <div className="ml-4">
-                                            <div className="text-sm font-medium text-gray-900">{user.name || user.displayName || '-'}</div>
-                                            <div className="text-sm text-gray-500">{user.email}</div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="flex flex-wrap gap-1">
-                                        {user.roles?.map(role => (
-                                            <span key={role} className={`px-2 py-1 rounded-full text-xs font-medium border uppercase ${role === 'admin' ? 'bg-gray-100 text-gray-800 border-gray-200' :
-                                                role === 'approver' ? 'bg-purple-50 text-purple-700 border-purple-100' :
-                                                    role === 'marketing' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                                                        'bg-orange-50 text-orange-700 border-orange-100' // assignee
-                                                }`}>
-                                                {role}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                    {/* แสดง Scope สำหรับ Admin/Approver */}
-                                    {!user.roles?.includes('marketing') && !user.roles?.includes('assignee') ? (
-                                        <>
-                                            <div className="text-sm text-gray-900 font-medium">
-                                                {user.scopeLevel === 'Tenant' && '🏢 '}
-                                                {user.scopeLevel === 'BUD' && '📑 '}
-                                                {user.scopeLevel === 'Project' && '🏗️ '}
-                                                {getScopeName(user)}
-                                            </div>
-                                            <div className="text-xs text-gray-500">Level: {user.scopeLevel}</div>
-                                        </>
-                                    ) : (
-                                        /* แสดงโครงการสำหรับ Marketing/Assignee */
-                                        <>
-                                            {getProjectNames(user).length > 0 ? (
-                                                <div className="space-y-1">
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {getProjectNames(user).slice(0, 3).map((projectName, idx) => (
-                                                            <span
-                                                                key={idx}
-                                                                className={`px-2 py-0.5 rounded-full text-xs font-medium ${user.roles?.includes('marketing')
-                                                                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                                                                    : 'bg-orange-50 text-orange-700 border border-orange-200'
-                                                                    }`}
-                                                            >
-                                                                🏗️ {projectName}
-                                                            </span>
-                                                        ))}
-                                                        {getProjectNames(user).length > 3 && (
-                                                            <div className="relative group inline-block">
-                                                                <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 cursor-help border border-gray-300 hover:bg-gray-200 transition-colors">
-                                                                    +{getProjectNames(user).length - 3} อื่นๆ
-                                                                </span>
-                                                                {/* Tooltip */}
-                                                                <div className="absolute left-0 top-full mt-1 w-64 bg-gray-900 text-white text-xs rounded-lg shadow-xl p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-                                                                    <div className="font-semibold mb-2 text-gray-300">โครงการที่เหลือ ({getProjectNames(user).length - 3}):</div>
-                                                                    <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
-                                                                        {getProjectNames(user).slice(3).map((projectName, idx) => (
-                                                                            <div key={idx} className="flex items-center gap-2 py-1">
-                                                                                <span className="text-gray-400">{idx + 4}.</span>
-                                                                                <span className="text-white">{projectName}</span>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                    {/* Arrow */}
-                                                                    <div className="absolute -top-1 left-4 w-2 h-2 bg-gray-900 transform rotate-45"></div>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <div className="text-xs text-gray-500">
-                                                        Level: Project ({getProjectNames(user).length} โครงการ)
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div className="text-sm text-gray-400">-</div>
-                                            )}
-                                        </>
-                                    )}
-                                </td>
-                                <td className="px-6 py-4 text-center">
-                                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                                        }`}>
-                                        {user.isActive ? 'Active' : 'Inactive'}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4 text-center text-sm font-medium">
-                                    <div className="flex items-center justify-center gap-2">
-                                        <button onClick={() => handleEditClick(user)} className="text-gray-400 hover:text-rose-600 transition-colors">
-                                            <PencilIcon className="w-5 h-5" />
-                                        </button>
-                                        <button onClick={() => handleDeleteClick(user.id)} className="text-gray-400 hover:text-red-600 transition-colors">
-                                            <TrashIcon className="w-5 h-5" />
-                                        </button>
-                                    </div>
-                                </td>
+            {/* Content based on active tab */}
+            {activeTab === 'active' ? (
+                /* TAB 1: Active Users Table */
+                <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User Info</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Roles</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned Scope</th>
+                                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {isLoading ? (
+                                <tr><td colSpan="5" className="px-6 py-8 text-center text-gray-500">Loading users...</td></tr>
+                            ) : users.length === 0 ? (
+                                <tr><td colSpan="5" className="px-6 py-8 text-center text-gray-500">No users found.</td></tr>
+                            ) : users.map(user => (
+                                <tr key={user.id} className="hover:bg-gray-50">
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center">
+                                            <div className="h-10 w-10 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 font-bold text-sm">
+                                                {(user.name || user.displayName || user.firstName || '?').charAt(0)}
+                                            </div>
+                                            <div className="ml-4">
+                                                <div className="text-sm font-medium text-gray-900">{user.name || user.displayName || '-'}</div>
+                                                <div className="text-sm text-gray-500">{user.email}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex flex-wrap gap-1">
+                                            {user.roles?.map(role => (
+                                                <span key={role} className={`px-2 py-1 rounded-full text-xs font-medium border uppercase ${role === 'admin' ? 'bg-gray-100 text-gray-800 border-gray-200' :
+                                                    role === 'approver' ? 'bg-purple-50 text-purple-700 border-purple-100' :
+                                                        role === 'marketing' ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                                                            'bg-orange-50 text-orange-700 border-orange-100' // assignee
+                                                    }`}>
+                                                    {role}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        {/* แสดง Scope สำหรับ Admin/Approver */}
+                                        {!user.roles?.includes('marketing') && !user.roles?.includes('assignee') ? (
+                                            <>
+                                                <div className="text-sm text-gray-900 font-medium">
+                                                    {user.scopeLevel === 'Tenant' && '🏢 '}
+                                                    {user.scopeLevel === 'BUD' && '📑 '}
+                                                    {user.scopeLevel === 'Project' && '🏗️ '}
+                                                    {getScopeName(user)}
+                                                </div>
+                                                <div className="text-xs text-gray-500">Level: {user.scopeLevel}</div>
+                                            </>
+                                        ) : (
+                                            /* แสดงโครงการสำหรับ Marketing/Assignee */
+                                            <>
+                                                {getProjectNames(user).length > 0 ? (
+                                                    <div className="space-y-1">
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {getProjectNames(user).slice(0, 3).map((projectName, idx) => (
+                                                                <span
+                                                                    key={idx}
+                                                                    className={`px-2 py-0.5 rounded-full text-xs font-medium ${user.roles?.includes('marketing')
+                                                                        ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                                                        : 'bg-orange-50 text-orange-700 border border-orange-200'
+                                                                        }`}
+                                                                >
+                                                                    🏗️ {projectName}
+                                                                </span>
+                                                            ))}
+                                                            {getProjectNames(user).length > 3 && (
+                                                                <div className="relative group inline-block">
+                                                                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 cursor-help border border-gray-300 hover:bg-gray-200 transition-colors">
+                                                                        +{getProjectNames(user).length - 3} อื่นๆ
+                                                                    </span>
+                                                                    {/* Tooltip */}
+                                                                    <div className="absolute left-0 top-full mt-1 w-64 bg-gray-900 text-white text-xs rounded-lg shadow-xl p-3 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                                                                        <div className="font-semibold mb-2 text-gray-300">โครงการที่เหลือ ({getProjectNames(user).length - 3}):</div>
+                                                                        <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
+                                                                            {getProjectNames(user).slice(3).map((projectName, idx) => (
+                                                                                <div key={idx} className="flex items-center gap-2 py-1">
+                                                                                    <span className="text-gray-400">{idx + 4}.</span>
+                                                                                    <span className="text-white">{projectName}</span>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                        {/* Arrow */}
+                                                                        <div className="absolute -top-1 left-4 w-2 h-2 bg-gray-900 transform rotate-45"></div>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-xs text-gray-500">
+                                                            Level: Project ({getProjectNames(user).length} โครงการ)
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-sm text-gray-400">-</div>
+                                                )}
+                                            </>
+                                        )}
+                                    </td>
+                                    <td className="px-6 py-4 text-center">
+                                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                            }`}>
+                                            {user.isActive ? 'Active' : 'Inactive'}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 text-center text-sm font-medium">
+                                        <div className="flex items-center justify-center gap-2">
+                                            <button onClick={() => handleEditClick(user)} className="text-gray-400 hover:text-rose-600 transition-colors">
+                                                <PencilIcon className="w-5 h-5" />
+                                            </button>
+                                            <button onClick={() => handleDeleteClick(user.id)} className="text-gray-400 hover:text-red-600 transition-colors">
+                                                <TrashIcon className="w-5 h-5" />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
 
             {/* Modal */}
             {showModal && (
