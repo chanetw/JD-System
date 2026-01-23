@@ -434,21 +434,18 @@ export const jobService = {
 
     getDashboardStats: async () => {
         try {
+            // ดึงข้อมูลจากตาราง 'jobs' โดยตรง (ไม่มี 'design_jobs' ใน schema จริง)
             const { data: jobs, error } = await supabase
-                .from('design_jobs') // Note: Assuming view or alias. If 'jobs' table, verify schema.
-                .select('id, status, deadline, created_at'); // Using 'deadline' or 'due_date' depending on schema alias
+                .from('jobs')
+                .select('id, status, due_date, created_at');
 
-            // Fallback if 'design_jobs' not found, try 'jobs'
             if (error) {
-                const { data: jobsFallback } = await supabase.from('jobs').select('id, status, due_date, created_at');
-                // map due_date to deadline
-                if (jobsFallback) {
-                    return jobService.calculateStats(jobsFallback.map(j => ({ ...j, deadline: j.due_date })));
-                }
+                console.warn('[Dashboard] Error fetching jobs:', error.message);
                 return { newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, pending: 0 };
             }
 
-            return jobService.calculateStats(jobs);
+            // Map due_date -> deadline สำหรับ calculateStats
+            return jobService.calculateStats((jobs || []).map(j => ({ ...j, deadline: j.due_date })));
         } catch (err) {
             console.error('getDashboardStats error:', err);
             return { newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, pending: 0 };

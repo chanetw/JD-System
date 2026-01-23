@@ -15,7 +15,7 @@
 
 import { routes as jobRequestRoutes } from '@features/job-request';
 import { routes as jobManagementRoutes } from '@features/job-management';
-import { routes as adminRoutes } from '@features/admin';
+import { routes as adminRoutes } from '@features/admin/index.jsx';
 
 /**
  * รายการ Module ที่ลงทะเบียนในระบบ
