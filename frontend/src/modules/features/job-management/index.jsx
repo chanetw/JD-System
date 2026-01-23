@@ -1,0 +1,53 @@
+/**
+ * @file index.js
+ * @description Entry Point ของ Job Management Module
+ * 
+ * Module นี้รับผิดชอบ:
+ * - หน้ารายการงานทั้งหมด (DJList)
+ * - หน้ารายละเอียดงาน (JobDetail)
+ * - หน้าคิวอนุมัติ (ApprovalsQueue)
+ * 
+ * การใช้งาน:
+ * - Import { routes } จากไฟล์นี้เพื่อลงทะเบียนใน moduleRegistry.js
+ */
+
+import React from 'react';
+import DJList from './pages/DJList';
+import JobDetail from './pages/JobDetail';
+import ApprovalsQueue from './pages/ApprovalsQueue';
+
+/**
+ * Routes สำหรับ Job Management Module
+ * 
+ * @type {Array<{path: string, element: JSX.Element, roles?: string[], title?: string}>}
+ */
+export const routes = [
+    {
+        path: 'jobs',
+        element: <DJList />,
+        roles: ['user', 'admin', 'staff'],
+        title: 'รายการงาน'
+    },
+    {
+        path: 'jobs/:id',
+        element: <JobDetail />,
+        roles: ['user', 'admin', 'staff'],
+        title: 'รายละเอียดงาน'
+    },
+    {
+        path: 'approvals',
+        element: <ApprovalsQueue />,
+        roles: ['approver', 'admin'],
+        title: 'คิวรออนุมัติ'
+    }
+];
+
+/**
+ * Metadata ของ Module
+ */
+export const moduleInfo = {
+    name: 'job-management',
+    displayName: 'จัดการงาน',
+    icon: 'ClipboardDocumentListIcon',
+    description: 'หน้าจอสำหรับดูรายการงาน, รายละเอียด และคิวอนุมัติ'
+};

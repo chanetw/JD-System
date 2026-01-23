@@ -13,6 +13,13 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
       // ตั้งค่า @mock-data ให้ชี้ไปที่โฟลเดอร์ mock-data
       '@mock-data': path.resolve(__dirname, '../mock-data'),
+
+      // === Modular Architecture Aliases ===
+      // ทางลัดสำหรับ Import จาก Module ใหม่
+      '@modules': path.resolve(__dirname, './src/modules'),
+      '@core': path.resolve(__dirname, './src/modules/core'),
+      '@features': path.resolve(__dirname, './src/modules/features'),
+      '@shared': path.resolve(__dirname, './src/modules/shared'),
     },
   },
 })
