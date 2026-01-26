@@ -18,6 +18,7 @@ import { FormInput, FormSelect, FormTextarea } from '@shared/components/FormInpu
 import Button from '@shared/components/Button';
 import Modal from '@shared/components/Modal';
 import { calculateDueDate, formatDateToThai } from '@shared/utils/slaCalculator';
+import { getAccessibleProjects, hasRole, isAdmin } from '@shared/utils/permission.utils';
 import { XMarkIcon, ClockIcon } from '@heroicons/react/24/outline';
 
 /**
@@ -114,9 +115,15 @@ export default function CreateDJ() {
                 data.jobTypes = data.jobTypes?.filter(jt => jt.isActive) || [];
                 data.buds = data.buds?.filter(b => b.isActive) || [];
 
-                // Logic: ถ้าเป็นผู้อนุมัติระดับสายงาน (BUD) ให้คัดกรองเฉพาะโครงการภายใต้ BUD ตนเองเท่านั้น
-                if (user?.roles?.includes('approver') && user?.level === 'BUD' && user?.budId) {
-                    data.projects = data.projects.filter(p => p.budId === user.budId);
+                // Multi-Role: กรองโครงการตาม scope ที่ user มีสิทธิ์
+                // ใช้ getAccessibleProjects จาก permission.utils
+                if (user && !isAdmin(user)) {
+                    const accessibleProjectIds = getAccessibleProjects(user, 'requester');
+                    if (accessibleProjectIds.length > 0) {
+                        // ถ้ามี scopes กำหนด ให้แสดงเฉพาะโครงการที่มีสิทธิ์
+                        data.projects = data.projects.filter(p => accessibleProjectIds.includes(p.id));
+                    }
+                    // ถ้าไม่มี scopes กำหนด = เข้าถึงได้ทั้งหมด (fallback: tenant level)
                 }
 
                 setMasterData(data);
@@ -559,7 +566,9 @@ export default function CreateDJ() {
             // เตรียม Payload
             const jobPayload = {
                 ...formData,
-                requesterName: user?.displayName || 'Unknown User',
+                requesterId: user?.id,
+                tenantId: user?.tenant_id || 1,
+                requesterName: user?.displayName || user?.display_name || 'Unknown User',
                 flowSnapshot: approvalFlow,
                 status: status
             };

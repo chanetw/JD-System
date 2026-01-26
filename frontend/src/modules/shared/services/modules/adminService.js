@@ -1,4 +1,3 @@
-
 import { supabase } from '../supabaseClient';
 import { handleResponse } from '../utils';
 
@@ -492,8 +491,138 @@ export const adminService = {
         return { success: true };
     },
 
-    getHolidays: async () => {
-        return [];
+    /**
+     * ดึงวันหยุดทั้งหมด (พร้อมรายละเอียด สำหรับ UI)
+     * @param {number} tenantId - รหัส Tenant
+     * @returns {Promise<Array>} รายการวันหยุดพร้อม id, name, date, type
+     */
+    getHolidays: async (tenantId = 1) => {
+        try {
+            const { data, error } = await supabase
+                .from('holidays')
+                .select('*')
+                .eq('tenant_id', tenantId)
+                .order('date', { ascending: true });
+
+            if (error) {
+                console.warn('Error fetching holidays:', error.message);
+                return [];
+            }
+
+            // Return full holiday objects for UI
+            return (data || []).map(h => ({
+                id: h.id,
+                name: h.name,
+                date: h.date,
+                type: h.type || 'government',
+                recurring: h.is_recurring || false,
+                isRecurring: h.is_recurring || false
+            }));
+        } catch (err) {
+            console.error('getHolidays error:', err);
+            return [];
+        }
+    },
+
+    /**
+     * ดึงเฉพาะ Date objects ของวันหยุด (สำหรับ SLA calculation)
+     * @param {number} tenantId - รหัส Tenant
+     * @returns {Promise<Array<Date>>} รายการ Date objects
+     */
+    getHolidayDates: async (tenantId = 1) => {
+        try {
+            const { data, error } = await supabase
+                .from('holidays')
+                .select('date')
+                .eq('tenant_id', tenantId);
+
+            if (error) {
+                console.warn('Error fetching holiday dates:', error.message);
+                return [];
+            }
+
+            return (data || []).map(h => new Date(h.date));
+        } catch (err) {
+            console.error('getHolidayDates error:', err);
+            return [];
+        }
+    },
+
+    // Full holiday data with names (for Holiday Calendar UI) - Alias
+    getHolidaysWithDetails: async (tenantId = 1) => {
+        return adminService.getHolidays(tenantId);
+    },
+
+    /**
+     * เพิ่มวันหยุดใหม่
+     */
+    addHoliday: async (holidayData, tenantId = 1) => {
+        const payload = {
+            tenant_id: tenantId,
+            name: holidayData.name,
+            date: holidayData.date,
+            type: holidayData.type || 'government',
+            is_recurring: holidayData.recurring || false
+        };
+
+        const { data, error } = await supabase
+            .from('holidays')
+            .insert([payload])
+            .select()
+            .single();
+
+        if (error) throw error;
+        return {
+            id: data.id,
+            name: data.name,
+            date: data.date,
+            type: data.type,
+            recurring: data.is_recurring
+        };
+    },
+
+    // Alias for backwards compatibility
+    createHoliday: async (holidayData, tenantId = 1) => {
+        return adminService.addHoliday(holidayData, tenantId);
+    },
+
+    /**
+     * แก้ไขวันหยุด
+     */
+    updateHoliday: async (id, holidayData) => {
+        const payload = {
+            name: holidayData.name,
+            date: holidayData.date,
+            type: holidayData.type || 'government',
+            is_recurring: holidayData.recurring || false,
+            updated_at: new Date().toISOString()
+        };
+
+        const { data, error } = await supabase
+            .from('holidays')
+            .update(payload)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return {
+            id: data.id,
+            name: data.name,
+            date: data.date,
+            type: data.type,
+            recurring: data.is_recurring
+        };
+    },
+
+    deleteHoliday: async (id) => {
+        const { error } = await supabase
+            .from('holidays')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+        return { success: true };
     },
 
     // --- Users ---
@@ -551,5 +680,387 @@ export const adminService = {
 
         if (error) throw error;
         return data;
+    },
+
+    // ============================================
+    // Multi-Role API Functions
+    // ============================================
+
+    /**
+     * ดึงข้อมูล User พร้อม Roles และ Scopes
+     * @param {number} userId - ID ของ user
+     * @param {number} tenantId - ID ของ tenant
+     * @returns {Promise<Object>} User object พร้อม roles และ scopes
+     */
+    getUserWithRoles: async (userId, tenantId = 1) => {
+        try {
+            // ดึงข้อมูล user พื้นฐาน
+            const { data: user, error: userError } = await supabase
+                .from('users')
+                .select(`
+                    id, 
+                    display_name, 
+                    email, 
+                    role, 
+                    title, 
+                    phone_number, 
+                    department_id,
+                    department:departments!users_department_id_fkey(id, name),
+                    is_active, 
+                    avatar_url,
+                    tenant_id
+                `)
+                .eq('id', userId)
+                .single();
+
+            if (userError) throw userError;
+            if (!user) return null;
+
+            // ดึง roles
+            const { data: roles, error: rolesError } = await supabase
+                .from('user_roles')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('tenant_id', tenantId)
+                .eq('is_active', true);
+
+            if (rolesError) {
+                console.warn('Error fetching user_roles:', rolesError);
+            }
+
+            // ดึง scope assignments
+            const { data: scopes, error: scopesError } = await supabase
+                .from('user_scope_assignments')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('tenant_id', tenantId)
+                .eq('is_active', true);
+
+            if (scopesError) {
+                console.warn('Error fetching user_scope_assignments:', scopesError);
+            }
+
+            // จัด structure ใหม่: group scopes by role
+            const rolesWithScopes = (roles || []).map(role => ({
+                id: role.id,
+                name: role.role_name,
+                isActive: role.is_active,
+                assignedBy: role.assigned_by,
+                assignedAt: role.assigned_at,
+                scopes: (scopes || [])
+                    .filter(s => s.role_type === role.role_name)
+                    .map(s => ({
+                        id: s.id,
+                        level: s.scope_level?.toLowerCase(),
+                        scopeId: s.scope_id,
+                        scopeName: s.scope_name
+                    }))
+            }));
+
+            return {
+                id: user.id,
+                name: user.display_name,
+                email: user.email,
+                role: user.role, // Legacy field
+                title: user.title,
+                department: user.department?.name,
+                departmentId: user.department_id,
+                phone: user.phone_number,
+                avatar: user.avatar_url,
+                isActive: user.is_active,
+                tenantId: user.tenant_id,
+                roles: rolesWithScopes // Multi-role data
+            };
+        } catch (err) {
+            console.error('getUserWithRoles error:', err);
+            throw err;
+        }
+    },
+
+    /**
+     * บันทึก Multiple Roles พร้อม Scopes
+     * @param {number} userId - ID ของ user
+     * @param {Array} roles - Array ของ roles พร้อม scopes
+     * @param {number} assignedBy - ID ของ admin ที่กำหนด
+     * @param {number} tenantId - ID ของ tenant
+     * @returns {Promise<Object>} ผลลัพธ์การบันทึก
+     */
+    saveUserRoles: async (userId, roles, assignedBy, tenantId = 1) => {
+        console.log('📋 saveUserRoles called with:', { userId, roles, assignedBy, tenantId });
+        try {
+            // Step 1: ลบ roles และ scopes เก่า
+            const deleteResult1 = await supabase
+                .from('user_scope_assignments')
+                .delete()
+                .eq('user_id', userId)
+                .eq('tenant_id', tenantId);
+            
+            console.log('✅ Deleted old scope assignments:', deleteResult1);
+
+            const deleteResult2 = await supabase
+                .from('user_roles')
+                .delete()
+                .eq('user_id', userId)
+                .eq('tenant_id', tenantId);
+            
+            console.log('✅ Deleted old user roles:', deleteResult2);
+
+            // Step 2: Insert roles ใหม่
+            if (roles && roles.length > 0) {
+                const roleRows = roles.map(r => ({
+                    user_id: userId,
+                    tenant_id: tenantId,
+                    role_name: r.name,
+                    assigned_by: assignedBy,
+                    is_active: r.isActive !== false
+                }));
+
+                console.log('📝 Inserting role rows:', roleRows);
+
+                const { error: roleErr, data: roleData } = await supabase
+                    .from('user_roles')
+                    .insert(roleRows);
+
+                if (roleErr) {
+                    console.error('❌ Role insert error:', roleErr);
+                    throw roleErr;
+                }
+                
+                console.log('✅ Inserted roles:', roleData);
+
+                // Step 3: Insert scopes ใหม่
+                const scopeRows = [];
+                roles.forEach(role => {
+                    const roleLevel = role.level || 'project'; // ดึง level จาก role config
+                    if (role.scopes && role.scopes.length > 0) {
+                        role.scopes.forEach(scope => {
+                            scopeRows.push({
+                                user_id: userId,
+                                tenant_id: tenantId,
+                                role_type: role.name,
+                                scope_level: roleLevel, // ✅ ใช้ level จาก role config แทน scope
+                                scope_id: scope.scopeId,
+                                scope_name: scope.scopeName || null,
+                                assigned_by: assignedBy,
+                                is_active: true
+                            });
+                        });
+                    }
+                });
+
+                if (scopeRows.length > 0) {
+                    console.log('📝 Inserting scope rows:', scopeRows);
+                    
+                    const { error: scopeErr, data: scopeData } = await supabase
+                        .from('user_scope_assignments')
+                        .insert(scopeRows);
+
+                    if (scopeErr) {
+                        console.error('❌ Scope insert error:', scopeErr);
+                        throw scopeErr;
+                    }
+                    
+                    console.log('✅ Inserted scopes:', scopeData);
+                }
+
+                // Step 4: อัปเดต role หลักใน users table (legacy support)
+                const primaryRole = roles[0]?.name || 'requester';
+                console.log('📝 Updating primary role to:', primaryRole);
+                
+                const { error: updateErr, data: updateData } = await supabase
+                    .from('users')
+                    .update({ 
+                        role: primaryRole
+                    })
+                    .eq('id', userId);
+                
+                if (updateErr) {
+                    console.error('❌ Update error:', updateErr);
+                } else {
+                    console.log('✅ Updated users table:', updateData);
+                }
+            }
+
+            return { 
+                success: true, 
+                message: 'บันทึกบทบาทสำเร็จ' 
+            };
+        } catch (err) {
+            console.error('saveUserRoles error:', err);
+            throw err;
+        }
+    },
+
+    /**
+     * ดึง Scopes ที่มีให้เลือก (projects, buds)
+     * @param {number} tenantId - ID ของ tenant
+     * @returns {Promise<Object>} { projects, buds }
+     */
+    getAvailableScopes: async (tenantId = 1) => {
+        try {
+            const [projectsRes, budsRes, tenantsRes] = await Promise.all([
+                supabase
+                    .from('projects')
+                    .select('id, name, code, bud_id')
+                    .eq('tenant_id', tenantId)
+                    .eq('is_active', true)
+                    .order('name'),
+                supabase
+                    .from('buds')
+                    .select('id, name, code')
+                    .eq('tenant_id', tenantId)
+                    .eq('is_active', true)
+                    .order('name'),
+                supabase
+                    .from('tenants')
+                    .select('id, name, code')
+                    .eq('is_active', true)
+                    .order('name')
+            ]);
+
+            return {
+                projects: (projectsRes.data || []).map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    code: p.code,
+                    budId: p.bud_id
+                })),
+                buds: (budsRes.data || []).map(b => ({
+                    id: b.id,
+                    name: b.name,
+                    code: b.code
+                })),
+                tenants: (tenantsRes.data || []).map(t => ({
+                    id: t.id,
+                    name: t.name,
+                    code: t.code
+                }))
+            };
+        } catch (err) {
+            console.error('getAvailableScopes error:', err);
+            return { projects: [], buds: [], tenants: [] };
+        }
+    },
+
+    /**
+     * ดึง Users ที่มี role เป็น Approver (สำหรับ Approval Flow)
+     * @param {number} budId - ID ของ BUD (optional - filter by scope)
+     * @param {number} tenantId - ID ของ tenant
+     * @returns {Promise<Array>} รายการ approvers
+     */
+    getApproversByScope: async (budId = null, tenantId = 1) => {
+        try {
+            // ดึง users ที่มี role = approver จาก user_roles
+            let query = supabase
+                .from('user_roles')
+                .select(`
+                    user_id,
+                    users!inner(id, display_name, email, avatar_url, is_active)
+                `)
+                .eq('role_name', 'approver')
+                .eq('tenant_id', tenantId)
+                .eq('is_active', true);
+
+            const { data: approverRoles, error } = await query;
+
+            if (error) {
+                // Fallback: ดึงจาก users table โดยตรง
+                const { data: fallbackUsers } = await supabase
+                    .from('users')
+                    .select('id, display_name, email, avatar_url')
+                    .eq('role', 'approver')
+                    .eq('is_active', true);
+
+                return (fallbackUsers || []).map(u => ({
+                    id: u.id,
+                    name: u.display_name,
+                    email: u.email,
+                    avatar: u.avatar_url
+                }));
+            }
+
+            // ถ้ามี budId → filter by scope
+            if (budId && approverRoles && approverRoles.length > 0) {
+                const userIds = approverRoles.map(r => r.user_id);
+                
+                const { data: scopes } = await supabase
+                    .from('user_scope_assignments')
+                    .select('user_id')
+                    .in('user_id', userIds)
+                    .eq('role_type', 'approver')
+                    .eq('tenant_id', tenantId)
+                    .eq('is_active', true)
+                    .or(`scope_level.eq.tenant,and(scope_level.eq.bud,scope_id.eq.${budId})`);
+
+                const validUserIds = new Set((scopes || []).map(s => s.user_id));
+                
+                // ถ้าไม่มี scopes → ถือว่า legacy (full access)
+                return approverRoles
+                    .filter(r => validUserIds.size === 0 || validUserIds.has(r.user_id))
+                    .map(r => ({
+                        id: r.users.id,
+                        name: r.users.display_name,
+                        email: r.users.email,
+                        avatar: r.users.avatar_url
+                    }));
+            }
+
+            return (approverRoles || []).map(r => ({
+                id: r.users.id,
+                name: r.users.display_name,
+                email: r.users.email,
+                avatar: r.users.avatar_url
+            }));
+        } catch (err) {
+            console.error('getApproversByScope error:', err);
+            return [];
+        }
+    },
+
+    /**
+     * ดึง Users ที่มี role เป็น Assignee (สำหรับ Assignment)
+     * @param {number} budId - ID ของ BUD (optional)
+     * @param {number} tenantId - ID ของ tenant
+     * @returns {Promise<Array>} รายการ assignees
+     */
+    getAssigneesByScope: async (budId = null, tenantId = 1) => {
+        try {
+            // ดึงจาก user_roles
+            const { data: assigneeRoles, error } = await supabase
+                .from('user_roles')
+                .select(`
+                    user_id,
+                    users!inner(id, display_name, email, avatar_url, is_active)
+                `)
+                .eq('role_name', 'assignee')
+                .eq('tenant_id', tenantId)
+                .eq('is_active', true);
+
+            if (error) {
+                // Fallback
+                const { data: fallbackUsers } = await supabase
+                    .from('users')
+                    .select('id, display_name, email, avatar_url')
+                    .eq('role', 'assignee')
+                    .eq('is_active', true);
+
+                return (fallbackUsers || []).map(u => ({
+                    id: u.id,
+                    name: u.display_name,
+                    email: u.email,
+                    avatar: u.avatar_url
+                }));
+            }
+
+            return (assigneeRoles || []).map(r => ({
+                id: r.users.id,
+                name: r.users.display_name,
+                email: r.users.email,
+                avatar: r.users.avatar_url
+            }));
+        } catch (err) {
+            console.error('getAssigneesByScope error:', err);
+            return [];
+        }
     }
 };

@@ -15,6 +15,8 @@ import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
 import { api } from '@shared/services/apiService';
 import { formatDateToThai } from '@shared/utils/dateUtils';
+import { useAuthStore } from '@core/stores/authStore';
+import { getUserScopes, getAllowedProjectIds } from '@shared/utils/scopeHelpers';
 
 // Icons
 import {
@@ -23,6 +25,9 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function DJList() {
+    // === Auth State ===
+    const { user } = useAuthStore();
+
     // === สถานะข้อมูล (Data Management States) ===
     const [jobs, setJobs] = useState([]);          // ข้อมูลงานต้นฉบับทั้งหมดจาก API
     const [filteredJobs, setFilteredJobs] = useState([]); // ข้อมูลงานที่ผ่านการคัดกรองแล้ว
@@ -64,8 +69,23 @@ export default function DJList() {
                 api.getMasterData()
             ]);
             console.log(`[DJList] Loaded ${jobsData.length} jobs. First job:`, jobsData[0]);
-            setJobs(jobsData);
-            setFilteredJobs(jobsData);
+
+            // === Scope-based Filtering (ใหม่) ===
+            let scopeFilteredJobs = jobsData;
+            if (user?.id) {
+                const scopes = await getUserScopes(user.id);
+                const hasTenantScope = scopes.some(s => s.scope_level === 'Tenant');
+
+                if (!hasTenantScope && scopes.length > 0) {
+                    // ถ้ามี scope แต่ไม่ใช่ Tenant level ให้ filter ตาม project
+                    const allowedProjectIds = await getAllowedProjectIds(user.id, user.tenant_id);
+                    scopeFilteredJobs = jobsData.filter(job => allowedProjectIds.has(job.projectId || job.project_id));
+                    console.log('📋 [DJList] Filtered by scope:', scopeFilteredJobs.length, 'jobs');
+                }
+            }
+
+            setJobs(scopeFilteredJobs);
+            setFilteredJobs(scopeFilteredJobs);
             setMasterData(masterDataResult);
         } catch (error) {
             console.error('ไม่สามารถโหลดข้อมูลรายการงานได้:', error);

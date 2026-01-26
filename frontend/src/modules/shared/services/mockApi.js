@@ -704,6 +704,153 @@ export const rejectJob = async (jobId, reason, type = 'return', approverName = '
     return updatedJob;
 };
 
+
+
+/**
+ * เริ่มงาน (Start Job) - เริ่มนับ SLA
+ * @param {string} jobId - รหัสงาน
+ * @param {string} triggerType - 'manual' | 'view' | 'auto'
+ * @returns {Promise<Object>} ข้อมูลงานที่อัปเดตแล้ว
+ */
+export const startJob = async (jobId, triggerType = 'manual') => {
+    await delay(300);
+    const tenantId = getCurrentTenantId();
+    const jobs = loadMockData('jobs');
+    const index = jobs.findIndex(j => String(j.id) === String(jobId) && j.tenantId === tenantId);
+
+    if (index === -1) throw new Error('Job not found');
+
+    const job = jobs[index];
+
+    // เริ่มงานได้เฉพาะสถานะ 'assigned' เท่านั้น
+    if (job.status !== 'assigned') {
+        return job; // ไม่ทำอะไรถ้าสถานะไม่ใช่ assigned
+    }
+
+    const updatedJob = {
+        ...job,
+        status: 'in_progress',
+        startedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        timeline: [
+            ...(job.timeline || []),
+            {
+                action: 'started',
+                by: triggerType === 'auto' ? 'System (Auto)' : 'Assignee',
+                timestamp: new Date().toISOString(),
+                detail: triggerType === 'view' ? 'เริ่มงานอัตโนมัติ (เปิดดูงาน)' :
+                    triggerType === 'auto' ? 'เริ่มงานอัตโนมัติ (ครบกำหนด)' : 'กดเริ่มงาน'
+            }
+        ]
+    };
+
+    jobs[index] = updatedJob;
+    saveMockData('jobs', jobs);
+    return updatedJob;
+};
+
+/**
+ * ส่งงาน (Complete Job)
+ * @param {string} jobId - รหัสงาน
+ * @param {Object} data - ข้อมูลการส่งงาน { attachments, note }
+ * @returns {Promise<Object>} ข้อมูลงานที่อัปเดตแล้ว
+ */
+export const completeJob = async (jobId, data) => {
+    await delay(500);
+    const tenantId = getCurrentTenantId();
+    const jobs = loadMockData('jobs');
+    const index = jobs.findIndex(j => String(j.id) === String(jobId) && j.tenantId === tenantId);
+
+    if (index === -1) throw new Error('Job not found');
+
+    const job = jobs[index];
+    const completedAt = new Date().toISOString();
+
+    // คำนวณ SLA (แบบคร่าวๆ)
+    const startedAt = job.startedAt ? new Date(job.startedAt) : new Date();
+    const durationMs = new Date(completedAt) - startedAt;
+    const durationHours = Math.round(durationMs / (1000 * 60 * 60));
+
+    const updatedJob = {
+        ...job,
+        status: 'completed',
+        completedAt: completedAt,
+        updatedAt: completedAt,
+        deliveryData: data, // เก็บข้อมูลไฟล์แนบ
+        actualDurationHours: durationHours,
+        timeline: [
+            ...(job.timeline || []),
+            {
+                action: 'completed',
+                by: 'Assignee',
+                timestamp: completedAt,
+                detail: `ส่งงานเรียบร้อย (ใช้เวลา ${durationHours} ชม.)`
+            }
+        ]
+    };
+
+    jobs[index] = updatedJob;
+    saveMockData('jobs', jobs);
+    return updatedJob;
+};
+
+/**
+ * จำลอง Background Job ตรวจสอบงานที่ค้าง (Simulation)
+ * - ปกติจะเป็น Cron Job รันทุกชั่วโมง
+ * - ฟังก์ชันนี้จะถูกเรียกจาก Admin Dashboard หรือปุ่ม Test
+ */
+export const simulateAutoStartCheck = async () => {
+    await delay(1000);
+    const tenantId = getCurrentTenantId();
+    const jobs = loadMockData('jobs');
+    const jobTypes = loadMockData('jobTypes');
+
+    let processedCount = 0;
+    const now = new Date();
+
+    const updatedJobs = jobs.map(job => {
+        // สนใจเฉพาะงานที่ Assigned และยังไม่ได้เริ่ม และเป็นของ Tenant นี้
+        if (job.status === 'assigned' && !job.startedAt && job.tenantId === tenantId) {
+
+            // หา Config ของ Job Type
+            const jobType = jobTypes.find(jt => String(jt.id) === String(job.jobTypeId));
+            const timeoutHours = jobType?.autoStartHours || 4; // Default 4 hours
+
+            // คำนวณเวลาที่ผ่านไปตั้งแต่ Assigned
+            // Note: ใช้ updatedAt แทน assignedAt ชั่วคราว ถ้า assignedAt ไม่มี
+            const assignedTime = new Date(job.assignedAt || job.updatedAt);
+            const diffMs = now - assignedTime;
+            const diffHours = diffMs / (1000 * 60 * 60);
+
+            if (diffHours >= timeoutHours) {
+                processedCount++;
+                return {
+                    ...job,
+                    status: 'in_progress',
+                    startedAt: now.toISOString(),
+                    updatedAt: now.toISOString(),
+                    timeline: [
+                        ...(job.timeline || []),
+                        {
+                            action: 'started',
+                            by: 'System (Auto-Timeout)',
+                            timestamp: now.toISOString(),
+                            detail: `เริ่มงานอัตโนมัติเนื่องจากเกินกำหนด ${timeoutHours} ชม.`
+                        }
+                    ]
+                };
+            }
+        }
+        return job;
+    });
+
+    if (processedCount > 0) {
+        saveMockData('jobs', updatedJobs);
+    }
+
+    return { success: true, processedCount };
+};
+
 export const mockApiService = {
     getJobs,
     getJobById,
@@ -744,6 +891,11 @@ export const mockApiService = {
     deleteUser,
     approveJob,
     rejectJob,
+    approveJob,
+    rejectJob,
+    startJob,
+    completeJob,
+    simulateAutoStartCheck,
     login: async (email) => {
         await delay(300);
         const users = loadMockData('users');

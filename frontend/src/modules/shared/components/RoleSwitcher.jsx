@@ -3,7 +3,7 @@
  * @description Component สำหรับสลับ role เพื่อทดสอบ workflow
  * 
  * Features:
- * - สลับระหว่าง Marketing, Approver, Designer, Admin
+ * - สลับระหว่าง Requester, Approver, Designer, Admin
  * - บันทึก role ลง localStorage
  * - อัพเดท user context
  */
@@ -15,7 +15,7 @@ export default function RoleSwitcher() {
     const { user, setUser } = useAuth();
 
     const roles = [
-        { value: 'Marketing', label: 'Marketing Requester', icon: '📝' },
+        { value: 'Requester', label: 'ผู้เปิดงาน', icon: '📝' },
         { value: 'Approver', label: 'Approver/Manager', icon: '✅' },
         { value: 'Designer', label: 'Designer/Assignee', icon: '🎨' },
         { value: 'Admin', label: 'Admin', icon: '⚙️' }
@@ -36,7 +36,7 @@ export default function RoleSwitcher() {
         window.location.reload();
     };
 
-    const currentRole = user?.currentRole || user?.roles?.[0] || 'Marketing';
+    const currentRole = user?.currentRole || user?.roles?.[0] || 'Requester';
 
     return (
         <div className="flex items-center gap-2">

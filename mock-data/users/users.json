@@ -23,7 +23,7 @@
       "lastName": "ใจดี",
       "displayName": "สมหญิง ใจดี (Marketing)",
       "roles": [
-        "marketing"
+        "requester"
       ],
       "avatarUrl": null,
       "isActive": true
@@ -36,7 +36,7 @@
       "lastName": "มานะ",
       "displayName": "สมชาย มานะ (Marketing)",
       "roles": [
-        "marketing"
+        "requester"
       ],
       "avatarUrl": null,
       "isActive": true
@@ -90,7 +90,7 @@
       "lastName": "สุขใจ",
       "displayName": "ณัฐยา สุขใจ (Marketing)",
       "roles": [
-        "marketing"
+        "requester"
       ],
       "avatarUrl": null,
       "isActive": true
@@ -142,7 +142,7 @@
       "lastName": "ตลาด",
       "displayName": "วราภรณ์ ตลาด (Marketing)",
       "roles": [
-        "marketing"
+        "requester"
       ],
       "avatarUrl": null,
       "isActive": true
@@ -168,7 +168,7 @@
       "lastName": "SENX",
       "displayName": "Marketing SENX",
       "roles": [
-        "marketing"
+        "requester"
       ],
       "avatarUrl": null,
       "isActive": true
@@ -191,8 +191,8 @@
     {
       "id": 1,
       "tenantId": 1,
-      "name": "marketing",
-      "displayName": "Marketing (Requester)"
+      "name": "requester",
+      "displayName": "Requester (ผู้เปิดงาน)"
     },
     {
       "id": 2,

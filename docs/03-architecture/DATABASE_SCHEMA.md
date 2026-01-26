@@ -78,6 +78,18 @@ CREATE TABLE IF NOT EXISTS sla_shift_logs (
 );
 ```
 
+### 3.4 ⏳ Auto-Start Configuration (Phase 4)
+Logic: Configurable Auto-Start timeout per Job Type
+- Status: 🟡 **Pending Implementation**
+
+```sql
+-- Table: job_types
+ALTER TABLE job_types ADD COLUMN auto_start_hours INTEGER DEFAULT 4; -- 0 = Immediate, >0 = Hours delay
+
+-- Index for Performance (Background Job)
+CREATE INDEX idx_jobs_status_assigned ON jobs(status) WHERE status = 'assigned';
+```
+
 ## 4. Entity Relationship Diagram (Mermaid)
 
 ```mermaid

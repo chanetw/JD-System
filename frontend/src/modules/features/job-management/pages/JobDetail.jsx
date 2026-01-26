@@ -53,12 +53,34 @@ export default function JobDetail() {
     const [users, setUsers] = useState([]);
     const [selectedAssignee, setSelectedAssignee] = useState('');
 
+    // Complete Job
+    const [showCompleteModal, setShowCompleteModal] = useState(false);
+    const [completeNote, setCompleteNote] = useState('');
+    const [finalLink, setFinalLink] = useState('');
+
     // ============================================
     // Data Loading
     // ============================================
     useEffect(() => {
         loadJob();
     }, [id]);
+
+    // Auto-Start (Immediate Access)
+    useEffect(() => {
+        if (job && user && job.status === 'assigned') {
+            const isAssignee = String(job.assigneeId) === String(user.id);
+            if (isAssignee) {
+                // Trigger Auto-Start
+                console.log('[Auto-Start] Triggering start job (view event)...');
+                api.startJob(job.id, 'view').then(updatedJob => {
+                    if (updatedJob.status === 'in_progress') {
+                        setJob(prev => ({ ...prev, status: 'in_progress', startedAt: updatedJob.startedAt }));
+                        // Optional: Show toast "Job Started Automatically"
+                    }
+                }).catch(err => console.error('Auto-start failed:', err));
+            }
+        }
+    }, [job, user]);
 
     const loadJob = async () => {
         setIsLoading(true);
@@ -170,6 +192,37 @@ export default function JobDetail() {
         } catch (error) {
             console.error('Failed to reassign:', error);
             alert('เกิดข้อผิดพลาดในการย้ายงาน');
+        }
+    };
+
+    const handleStartJob = async () => {
+        try {
+            const updated = await api.startJob(job.id, 'manual');
+            setJob(prev => ({ ...prev, status: 'in_progress', startedAt: updated.startedAt }));
+            alert('เริ่มงานแล้ว! (Job Started)');
+        } catch (err) {
+            console.error(err);
+            alert('เกิดข้อผิดพลาดในการเริ่มงาน');
+        }
+    };
+
+    const handleCompleteJob = async () => {
+        if (!finalLink.trim()) {
+            alert('กรุณาระบุลิงก์ผลงาน (Final Link)');
+            return;
+        }
+
+        try {
+            await api.completeJob(job.id, {
+                note: completeNote,
+                attachments: [{ name: 'Final Link', url: finalLink }]
+            });
+            alert('ส่งงานเรียบร้อย! (Job Completed)');
+            setShowCompleteModal(false);
+            loadJob();
+        } catch (err) {
+            console.error(err);
+            alert('เกิดข้อผิดพลาดในการส่งงาน');
         }
     };
 
@@ -517,22 +570,41 @@ export default function JobDetail() {
                         );
                     })()}
 
-                    {/* ปุ่มขอปิดงาน - สำหรับ Assignee เมื่อสถานะ in_progress หรือ approved */}
-                    {(job.status === 'in_progress' || job.status === 'approved') && (
+                    {/* ปุ่มสำหรับ Assignee (Start / Complete) */}
+                    {(job.status === 'assigned' || job.status === 'in_progress') && (
                         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
                             <h2 className="font-semibold text-gray-900 mb-4">การดำเนินการของผู้รับงาน</h2>
-                            <button
-                                onClick={handleRequestClose}
-                                className="w-full py-3 px-4 bg-green-500 text-white rounded-xl font-medium hover:bg-green-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
-                            >
-                                <CheckIcon className="w-5 h-5" />
-                                ขอปิดงาน (Request Close)
-                            </button>
-                            <p className="text-xs text-gray-500 mt-2 text-center">
-                                เมื่อส่งผลงานครบแล้ว กดปุ่มนี้เพื่อแจ้งให้ผู้ขอตรวจสอบและยืนยันการปิดงาน
-                            </p>
+
+                            {/* Start Job Button (Optional if Auto-Start fails or needed manual) */}
+                            {job.status === 'assigned' && (
+                                <button
+                                    onClick={handleStartJob}
+                                    className="w-full py-3 px-4 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 flex items-center justify-center gap-2 transition-colors shadow-sm mb-3"
+                                >
+                                    <ClockIcon className="w-5 h-5" />
+                                    กดเริ่มงาน (Start Job)
+                                </button>
+                            )}
+
+                            {/* Complete Job Button */}
+                            {job.status === 'in_progress' && (
+                                <button
+                                    onClick={() => setShowCompleteModal(true)}
+                                    className="w-full py-3 px-4 bg-green-500 text-white rounded-xl font-medium hover:bg-green-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                                >
+                                    <CheckIcon className="w-5 h-5" />
+                                    ส่งงาน (Complete Job)
+                                </button>
+                            )}
+
+                            {job.status === 'approved' && (
+                                <p className="text-center text-gray-500 text-sm">งานอนุมัติแล้ว รอส่งมอบไฟล์ (ถ้ามี)</p>
+                            )}
                         </div>
                     )}
+
+                    {/* ปุ่มขอปิดงาน (Legacy Phase 3 Logic - Hidden if Phase 4 Active) */}
+                    {/* {(job.status === 'in_progress' || job.status === 'approved') && ( ... )} */}
 
                     {/* ปุ่มยืนยัน/ขอแก้ไข - สำหรับ Requester เมื่อสถานะ pending_close */}
                     {job.status === 'pending_close' && (
@@ -970,6 +1042,66 @@ export default function JobDetail() {
                             <div className="flex gap-3 mt-4">
                                 <Button variant="secondary" onClick={() => setShowReassignModal(false)}>ยกเลิก</Button>
                                 <Button onClick={handleReassign}>ยืนยันการย้าย</Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Complete Job Modal */}
+            {showCompleteModal && (
+                <div className="fixed inset-0 z-50 overflow-y-auto">
+                    <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                        <div className="fixed inset-0 transition-opacity" onClick={() => setShowCompleteModal(false)}>
+                            <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+                        </div>
+                        <span className="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+                        <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                            <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                                <div className="sm:flex sm:items-start">
+                                    <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-green-100 sm:mx-0 sm:h-10 sm:w-10">
+                                        <CheckIcon className="h-6 w-6 text-green-600" />
+                                    </div>
+                                    <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                                        <h3 className="text-lg leading-6 font-medium text-gray-900">ส่งมอบงาน (Complete Job)</h3>
+                                        <div className="mt-4 space-y-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">ลิงก์ผลงาน (Final Link Job/File) <span className="text-red-500">*</span></label>
+                                                <input
+                                                    type="url"
+                                                    className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-green-500 outline-none"
+                                                    placeholder="https://drive.google.com/..."
+                                                    value={finalLink}
+                                                    onChange={(e) => setFinalLink(e.target.value)}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ / Message to Requester</label>
+                                                <textarea
+                                                    className="w-full border border-gray-300 rounded-lg p-2 h-24 focus:ring-2 focus:ring-green-500 outline-none"
+                                                    placeholder="รายละเอียดเพิ่มเติม..."
+                                                    value={completeNote}
+                                                    onChange={(e) => setCompleteNote(e.target.value)}
+                                                ></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                                <button
+                                    type="button"
+                                    onClick={handleCompleteJob}
+                                    className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base font-medium text-white hover:bg-green-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm"
+                                >
+                                    ส่งงาน (Complete)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCompleteModal(false)}
+                                    className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                                >
+                                    ยกเลิก
+                                </button>
                             </div>
                         </div>
                     </div>

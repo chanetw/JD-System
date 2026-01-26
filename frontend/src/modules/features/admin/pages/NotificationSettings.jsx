@@ -334,7 +334,7 @@ export default function NotificationSettings() {
                                         />
                                         <div>
                                             <div className="font-medium text-gray-900">📣 Requester</div>
-                                            <div className="text-xs text-gray-500">ผู้ขอ (Marketing)</div>
+                                            <div className="text-xs text-gray-500">ผู้เปิดงาน</div>
                                         </div>
                                     </label>
                                     <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">

@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.6.0] - 2026-01-26
+### Phase 4: Job Execution & Modular Refactor Implementation
+
+### Breaking Changes ⚠️
+- **Architecture:** Completed Modular Architecture migration (100%).
+- **Cleanup:** Removed legacy `src/services` and `src/utils` folders. All codebase now uses `@shared` aliases.
+- **Paths:** Updated `App.jsx` comments and internal imports to reflect `modules/shared` standard.
+
+### Fixed
+- **Approval Flow:** Fixed White Screen crash caused by undefined `roles` array in legacy user objects. Implemented safe `hasRole` check.
+
+### Added
+- **Job Execution Logic (Phase 4):**
+  - **Auto-Start:** เริ่มนับเวลาทำทันทีเมื่อ Assignee เปิดดูงาน (Immediate Start).
+  - **Timeout Logic:** รองรับ Business Rule "ดองงานเกิน X ชั่วโมง = เริ่มอัตโนมัติ".
+  - **Complete Job:** เพิ่ม UI ส่งงานพร้อมแนบลิงก์ (Google Drive/Dropbox).
+  - **API:** เพิ่ม endpoints `startJob`, `completeJob`, `checkAutoJobStart` ใน `jobService.js`.
+- **User Management (Priority 5):**
+  - **Feature:** Registration Approval Flow (`UserManagement.jsx`).
+  - **Logic:** เพิ่มฟังก์ชันอนุมัติ/ปฏิเสธผู้สมัครใหม่ พร้อมกำหนด Role/Scope.
+  - **API:** `assignUserRoles()`, `assignUserScopes()` implemented.
+- **Database Migrations:**
+  - `001_add_missing_columns.sql`: Fix schema consistency.
+  - `002_create_user_roles_and_assignments.sql`: Support RBAC & Registration Flow.
+  - Tables added: `user_registration_requests`, `password_reset_requests`.
+
+### Changed
+- **UI/UX:**
+  - **JobDetail:** ปรับ Status flow (Assigned -> In Progress -> Completed).
+  - **Alerts:** เพิ่ม System Alert เมื่อ Job ถูก Auto-start.
+
 ## [0.5.0] - 2026-01-26
 ### Released Phase 3: Real Approval Flow & Reassignment
 
@@ -63,3 +94,5 @@
 - Initial project structure (Modular Architecture).
 - Core modules: Auth, Layout, Dashboard.
 - Feature modules: Job Request, Job Management, Admin.
+
+

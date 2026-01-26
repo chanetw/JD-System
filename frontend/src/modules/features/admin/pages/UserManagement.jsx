@@ -13,26 +13,23 @@
 import React, { useState, useEffect } from 'react';
 import apiDatabase from '@shared/services/apiDatabase';
 import { supabase } from '@shared/services/supabaseClient';
+import { adminService } from '@shared/services/modules/adminService';
+import { useAuth } from '@core/stores/authStore';
+import { generateTempPassword } from '@shared/utils/passwordGenerator';
+import { ROLES, ROLE_LABELS } from '@shared/utils/permission.utils';
 import Button from '@shared/components/Button';
+import RoleSelectionCheckbox from '@shared/components/RoleSelectionCheckbox';
+import ScopeConfigPanel from '@shared/components/ScopeConfigPanel';
 import {
     CheckIcon, XMarkIcon,
     UserIcon, EnvelopeIcon, BuildingOfficeIcon
 } from '@heroicons/react/24/outline';
 
-const ROLE_OPTIONS = [
-    { value: 'admin', label: 'Admin (ผู้ดูแลระบบ)' },
-    { value: 'marketing', label: 'Marketing (ผู้สั่งงาน)' },
-    { value: 'approver', label: 'Approver (ผู้อนุมัติ)' },
-    { value: 'assignee', label: 'Assignee (ผู้รับงาน)' }
-];
-
-const SCOPE_LEVELS = [
-    { value: 'Tenant', label: 'ระดับบริษัท' },
-    { value: 'BUD', label: 'ระดับสายงาน' },
-    { value: 'Project', label: 'ระดับโครงการ' }
-];
+// ROLE_OPTIONS และ SCOPE_LEVELS ย้ายไปใช้จาก permission.utils.js แล้ว
+// ดู: ROLES, ROLE_LABELS, SCOPE_LEVELS จาก '@shared/utils/permission.utils'
 
 export default function UserManagementNew() {
+    const { user } = useAuth(); // ดึง current user จาก Auth Store
     const [activeTab, setActiveTab] = useState('active');
     const [isLoading, setIsLoading] = useState(false);
     const [registrations, setRegistrations] = useState([]);
@@ -56,6 +53,26 @@ export default function UserManagementNew() {
         show: false,
         user: null
     });
+    const [editScopeData, setEditScopeData] = useState({
+        scopeLevel: 'Project',
+        scopeId: '',
+        scopeName: '',
+        allowedProjects: [],
+        assignedProjects: []
+    });
+
+    // Multi-Role: Role configs with scopes
+    const [approvalRoleConfigs, setApprovalRoleConfigs] = useState({});
+    const [approvalSelectedRoles, setApprovalSelectedRoles] = useState([]);
+    const [editRoleConfigs, setEditRoleConfigs] = useState({});
+    const [editSelectedRoles, setEditSelectedRoles] = useState([]);
+    const [availableScopes, setAvailableScopes] = useState({
+        projects: [],
+        buds: [],
+        tenants: []
+    });
+    const [scopesLoading, setScopesLoading] = useState(false);
+
     const [masterData, setMasterData] = useState({
         tenants: [],
         buds: [],
@@ -118,8 +135,29 @@ export default function UserManagementNew() {
                 projects: projectsRes.data || [],
                 departments: departmentsRes.data || []
             });
+
+            // Also load available scopes for multi-role
+            loadAvailableScopes();
         } catch (error) {
             console.error('Error loading master data:', error);
+        }
+    };
+
+    // Load available scopes for Multi-Role UI
+    const loadAvailableScopes = async () => {
+        try {
+            setScopesLoading(true);
+            const scopes = await adminService.getAvailableScopes(user?.tenant_id || 1);
+            setAvailableScopes(scopes);
+        } catch (error) {
+            console.error('Error loading available scopes:', error);
+            // Fallback to masterData
+            setAvailableScopes({
+                projects: masterData.projects.map(p => ({ id: p.id, name: p.name, code: p.code, budId: p.bud_id })),
+                buds: masterData.buds.map(b => ({ id: b.id, name: b.name, code: b.code }))
+            });
+        } finally {
+            setScopesLoading(false);
         }
     };
 
@@ -156,6 +194,180 @@ export default function UserManagementNew() {
             allowedProjects: [],
             assignedProjects: []
         });
+        // Reset Multi-Role configs
+        setApprovalRoleConfigs({});
+        setApprovalSelectedRoles([]);
+    };
+
+    // ✨ Handle Edit User - open modal with user data
+    const handleEditUser = async (userToEdit) => {
+        try {
+            // Reset scope data with defaults
+            const initialScopeData = {
+                scopeLevel: 'Project',
+                scopeId: '',
+                scopeName: '',
+                allowedProjects: [],
+                assignedProjects: []
+            };
+
+            // Load user with roles using new Multi-Role API
+            let userWithRoles = null;
+            try {
+                userWithRoles = await adminService.getUserWithRoles(userToEdit.id, userToEdit.tenantId || 1);
+                console.log('📋 Loaded user with roles:', userWithRoles);
+            } catch (apiError) {
+                console.warn("Could not load user roles from new API:", apiError.message);
+            }
+
+            // Build roleConfigs from loaded roles
+            const loadedRoleConfigs = {};
+            const loadedRoleNames = [];
+
+            if (userWithRoles?.roles && userWithRoles.roles.length > 0) {
+                userWithRoles.roles.forEach(role => {
+                    loadedRoleNames.push(role.name);
+                    loadedRoleConfigs[role.name] = {
+                        level: role.scopes?.[0]?.level || 'project',
+                        scopes: role.scopes || []
+                    };
+                });
+                console.log('✅ Loaded roles:', loadedRoleNames);
+                console.log('✅ Loaded configs:', loadedRoleConfigs);
+            } else {
+                // Fallback: use legacy role
+                if (userToEdit.role) {
+                    // Fix: Map 'marketing' to 'requester' dynamically
+                    const roleName = userToEdit.role === 'marketing' ? 'requester' : userToEdit.role;
+                    loadedRoleNames.push(roleName);
+                    console.log(`⚠️ Using legacy role: ${userToEdit.role} -> mapped to ${roleName}`);
+                }
+            }
+
+            // Try to fetch existing scopes (legacy support)
+            try {
+                const scopes = await apiDatabase.getUserScopes(userToEdit.id);
+                if (scopes && scopes.length > 0) {
+                    scopes.forEach(s => {
+                        if (s.role_type === 'approver_scope') {
+                            initialScopeData.scopeLevel = s.scope_level;
+                            initialScopeData.scopeId = s.scope_id;
+                            initialScopeData.scopeName = s.scope_name;
+                        } else if (s.role_type === 'requester_allowed') {
+                            initialScopeData.allowedProjects.push(s.scope_id);
+                        } else if (s.role_type === 'assignee_assigned') {
+                            initialScopeData.assignedProjects.push(s.scope_id);
+                        }
+                    });
+                }
+            } catch (scopeError) {
+                console.warn("Could not load user scopes:", scopeError.message);
+            }
+
+            // Set states
+            setEditScopeData(initialScopeData);
+            setEditRoleConfigs(loadedRoleConfigs);
+            setEditSelectedRoles(loadedRoleNames);
+            setEditModal({
+                show: true,
+                user: {
+                    ...userToEdit,
+                    role: userToEdit.role || loadedRoleNames[0] || 'requester'
+                }
+            });
+
+            console.log('🎯 Edit modal opened with roles:', loadedRoleNames);
+        } catch (error) {
+            console.error("Error opening edit modal:", error);
+            showAlert('error', 'ไม่สามารถเปิดหน้าแก้ไขได้');
+        }
+    };
+
+    // ✨ Save User Changes (uses editModal.user data + Multi-Role)
+    const handleSaveUserChanges = async () => {
+        if (!editModal.user) return;
+
+        const selectedRoles = editSelectedRoles;
+        if (!selectedRoles || selectedRoles.length === 0) {
+            showAlert('error', 'กรุณาเลือกบทบาทอย่างน้อย 1 ตัว');
+            return;
+        }
+
+        // Validate scopes for each non-admin role
+        const rolesNeedingScope = selectedRoles.filter(r => r !== 'admin');
+        for (const roleName of rolesNeedingScope) {
+            const roleConfig = editRoleConfigs[roleName];
+            if (!roleConfig || !roleConfig.scopes || roleConfig.scopes.length === 0) {
+                showAlert('error', `กรุณากำหนดขอบเขตสำหรับบทบาท ${ROLE_LABELS[roleName] || roleName}`);
+                return;
+            }
+        }
+
+        try {
+            setIsSubmitting(true);
+
+            const currentUserId = user.id;
+            const tenantId = editModal.user.tenantId || editModal.user.tenant_id || 1;
+
+            console.log('📝 Saving user:', {
+                userId: editModal.user.id,
+                title: editModal.user.title,
+                phone: editModal.user.phone,
+                departmentId: editModal.user.departmentId,
+                selectedRoles,
+                tenantId
+            });
+
+            // 1. Update users table basic info
+            const { error: userError } = await supabase
+                .from('users')
+                .update({
+                    title: editModal.user.title,
+                    phone_number: editModal.user.phone,
+                    department_id: editModal.user.departmentId || null,
+                    role: selectedRoles[0] || 'requester', // Primary role for legacy
+                    is_active: editModal.user.isActive
+                })
+                .eq('id', editModal.user.id);
+
+            if (userError) {
+                console.warn('❌ Could not update users table:', userError);
+                throw userError;
+            }
+
+            console.log('✅ Updated users table');
+
+            // 2. Build roles array for saveUserRoles
+            const rolesForSave = selectedRoles.map(roleName => {
+                const roleConfig = editRoleConfigs[roleName] || { level: 'project', scopes: [] };
+                return {
+                    name: roleName,
+                    level: roleConfig.level || 'project', // ✅ ส่ง level ให้ด้วย
+                    isActive: true,
+                    scopes: roleConfig.scopes || []
+                };
+            });
+
+            // 3. Save roles using new Multi-Role API
+            await adminService.saveUserRoles(
+                editModal.user.id,
+                rolesForSave,
+                currentUserId,
+                tenantId
+            );
+
+            console.log('✅ Saved user roles successfully');
+            showAlert('success', 'บันทึกข้อมูลสำเร็จ');
+            setEditModal({ show: false, user: null });
+            setEditRoleConfigs({});
+            setEditSelectedRoles([]);
+            loadUsers();
+        } catch (error) {
+            console.error('❌ Error saving user:', error);
+            showAlert('error', `ไม่สามารถบันทึกข้อมูลได้: ${error.message}`);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleConfirmApprove = async () => {
@@ -164,39 +376,45 @@ export default function UserManagementNew() {
             return;
         }
 
-        const needsScopeId = !approvalData.roles.includes('marketing') && !approvalData.roles.includes('assignee');
-        if (needsScopeId && !approvalData.scopeId) {
-            showAlert('error', 'กรุณาเลือกสังกัด/โครงการ');
-            return;
-        }
-
-        if (approvalData.roles.includes('marketing') && approvalData.allowedProjects.length === 0) {
-            showAlert('error', 'กรุณาเลือกโครงการที่สร้าง DJ ได้');
-            return;
-        }
-
-        if (approvalData.roles.includes('assignee') && approvalData.assignedProjects.length === 0) {
-            showAlert('error', 'กรุณาเลือกโครงการที่รับผิดชอบ');
-            return;
+        // Validate scopes for each non-admin role
+        const rolesNeedingScope = approvalData.roles.filter(r => r !== 'admin');
+        for (const roleName of rolesNeedingScope) {
+            const roleConfig = approvalRoleConfigs[roleName];
+            if (!roleConfig || !roleConfig.scopes || roleConfig.scopes.length === 0) {
+                showAlert('error', `กรุณากำหนดขอบเขตสำหรับบทบาท ${ROLE_LABELS[roleName] || roleName}`);
+                return;
+            }
         }
 
         try {
             setIsSubmitting(true);
-            const currentUserId = 1; // TODO: ดึงจาก auth store
-            const tenantId = 1; // Default tenant
 
-            // 1. Create new user
+            // Validate current user
+            if (!user) {
+                showAlert('error', 'กรุณาเข้าสู่ระบบก่อนทำการอนุมัติ');
+                return;
+            }
+
+            const currentUserId = user.id;
+            const tenantId = user.tenant_id || 1;
+
+            // Generate temporary password
+            const tempPassword = generateTempPassword();
+
+            // 1. Create new user in users table
             const { data: newUser, error: createError } = await supabase
                 .from('users')
                 .insert([{
                     tenant_id: tenantId,
                     email: approveModal.registrationData.email,
-                    password_hash: 'temp_hash',
+                    password_hash: tempPassword,
                     first_name: approveModal.registrationData.firstName,
                     last_name: approveModal.registrationData.lastName,
+                    display_name: `${approveModal.registrationData.firstName} ${approveModal.registrationData.lastName}`,
                     title: approveModal.registrationData.title,
-                    phone: approveModal.registrationData.phone,
+                    phone_number: approveModal.registrationData.phone,
                     department: approveModal.registrationData.department,
+                    role: approvalData.roles[0] || 'requester', // Primary role for legacy
                     is_active: true
                 }])
                 .select()
@@ -204,62 +422,24 @@ export default function UserManagementNew() {
 
             if (createError) throw createError;
 
-            // 2. Assign roles to new user
-            await apiDatabase.assignUserRoles(
+            // 2. Build roles array for saveUserRoles
+            const rolesForSave = approvalData.roles.map(roleName => {
+                const roleConfig = approvalRoleConfigs[roleName] || { level: 'project', scopes: [] };
+                return {
+                    name: roleName,
+                    level: roleConfig.level || 'project', // ✅ ส่ง level ให้ด้วย
+                    isActive: true,
+                    scopes: roleConfig.scopes || []
+                };
+            });
+
+            // 3. Save roles using new Multi-Role API
+            await adminService.saveUserRoles(
                 newUser.id,
-                tenantId,
-                approvalData.roles,
-                currentUserId
+                rolesForSave,
+                currentUserId,
+                tenantId
             );
-
-            // 3. Assign scopes to new user
-            const scopeAssignments = [];
-
-            // Add scope assignment based on scopeLevel
-            if (approvalData.scopeLevel && approvalData.scopeId) {
-                // Determine roleType based on selected roles
-                if (approvalData.roles.includes('approver') || approvalData.roles.includes('admin')) {
-                    scopeAssignments.push({
-                        scopeLevel: approvalData.scopeLevel,
-                        scopeId: approvalData.scopeId,
-                        scopeName: approvalData.scopeName || '',
-                        roleType: 'approver_scope'
-                    });
-                }
-            }
-
-            // Add marketing allowed projects
-            if (approvalData.roles.includes('marketing') && approvalData.allowedProjects.length > 0) {
-                approvalData.allowedProjects.forEach(projectId => {
-                    scopeAssignments.push({
-                        scopeLevel: 'Project',
-                        scopeId: projectId,
-                        scopeName: '',
-                        roleType: 'marketing_allowed'
-                    });
-                });
-            }
-
-            // Add assignee assigned projects
-            if (approvalData.roles.includes('assignee') && approvalData.assignedProjects.length > 0) {
-                approvalData.assignedProjects.forEach(projectId => {
-                    scopeAssignments.push({
-                        scopeLevel: 'Project',
-                        scopeId: projectId,
-                        scopeName: '',
-                        roleType: 'assignee_assigned'
-                    });
-                });
-            }
-
-            if (scopeAssignments.length > 0) {
-                await apiDatabase.assignUserScopes(
-                    newUser.id,
-                    tenantId,
-                    scopeAssignments,
-                    currentUserId
-                );
-            }
 
             // 4. Update registration status
             const { error: updateError } = await supabase
@@ -274,13 +454,18 @@ export default function UserManagementNew() {
             if (updateError) throw updateError;
 
             // 5. Send approval email
-            await apiDatabase.sendApprovalEmail(
-                approveModal.registrationData.email,
-                approveModal.registrationData.firstName
-            );
+            try {
+                await apiDatabase.sendApprovalEmail(
+                    approveModal.registrationData.email,
+                    approveModal.registrationData.firstName
+                );
+            } catch (emailErr) {
+                console.warn('Could not send approval email:', emailErr);
+            }
 
-            showAlert('success', 'อนุมัติและสร้างผู้ใช้สำเร็จ ☑️ ชื่อย้ายไปยัง Active Users');
+            showAlert('success', 'อนุมัติและสร้างผู้ใช้สำเร็จ ☑️');
             setApproveModal({ show: false, registrationId: null, registrationData: null });
+            setApprovalRoleConfigs({});
             await loadRegistrations();
         } catch (error) {
             console.error('Error approving registration:', error);
@@ -307,7 +492,14 @@ export default function UserManagementNew() {
 
         try {
             setIsSubmitting(true);
-            const currentUserId = 1; // TODO: ดึงจาก auth store
+
+            // Validate current user
+            if (!user) {
+                showAlert('error', 'กรุณาเข้าสู่ระบบก่อนทำการปฏิเสธ');
+                return;
+            }
+
+            const currentUserId = user.id;
             await apiDatabase.rejectRegistration(rejectModal.registrationId, rejectReason, currentUserId);
             showAlert('success', 'ปฏิเสธคำขอสมัครและส่งอีเมลแล้ว');
             setRejectModal({ show: false, registrationId: null, registrationEmail: null });
@@ -432,7 +624,7 @@ export default function UserManagementNew() {
                                             <td className="px-6 py-4">
                                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
                                                     ${user.role === 'admin' ? 'bg-purple-100 text-purple-800' :
-                                                        user.role === 'marketing' ? 'bg-blue-100 text-blue-800' :
+                                                        user.role === 'requester' ? 'bg-blue-100 text-blue-800' :
                                                             user.role === 'approver' ? 'bg-orange-100 text-orange-800' :
                                                                 'bg-gray-100 text-gray-800'}`}>
                                                     {user.role}
@@ -621,18 +813,34 @@ export default function UserManagementNew() {
                                 </select>
                             </div>
 
+                            {/* Role Selection - Multi-Role Component */}
                             <div>
-                                <label className="block text-sm font-bold text-gray-900 mb-1">บทบาทในระบบ (System Role)</label>
-                                <select
-                                    value={editModal.user.role}
-                                    onChange={(e) => setEditModal(prev => ({ ...prev, user: { ...prev.user, role: e.target.value } }))}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                                >
-                                    {ROLE_OPTIONS.map(role => (
-                                        <option key={role.value} value={role.value}>{role.label}</option>
-                                    ))}
-                                </select>
+                                <label className="block text-sm font-bold text-gray-900 mb-3">
+                                    บทบาทในระบบ <span className="text-red-500">*</span>
+                                </label>
+                                <RoleSelectionCheckbox
+                                    selectedRoles={editSelectedRoles}
+                                    onChange={(roles) => {
+                                        console.log('🔄 Roles changed to:', roles);
+                                        setEditSelectedRoles(roles);
+                                    }}
+                                    showDescriptions={true}
+                                />
                             </div>
+
+                            {/* Scope Configuration - Multi-Role Component */}
+                            {editSelectedRoles.length > 0 && (
+                                <ScopeConfigPanel
+                                    selectedRoles={editSelectedRoles}
+                                    roleConfigs={editRoleConfigs}
+                                    onConfigChange={(configs) => {
+                                        console.log('🔄 Configs changed to:', configs);
+                                        setEditRoleConfigs(configs);
+                                    }}
+                                    availableScopes={availableScopes}
+                                    loading={scopesLoading}
+                                />
+                            )}
 
                             <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg bg-gray-50">
                                 <label className="flex items-center gap-2 cursor-pointer">
@@ -651,7 +859,7 @@ export default function UserManagementNew() {
                             <Button variant="secondary" onClick={() => setEditModal({ show: false, user: null })}>
                                 ยกเลิก
                             </Button>
-                            <Button onClick={handleSaveUser} disabled={isSubmitting}>
+                            <Button onClick={handleSaveUserChanges} disabled={isSubmitting}>
                                 {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}
                             </Button>
                         </div>
@@ -676,170 +884,27 @@ export default function UserManagementNew() {
                         </div>
 
                         <div className="p-6 space-y-6 max-h-[60vh] overflow-y-auto">
-                            {/* Role Selection */}
+                            {/* Role Selection - Multi-Role Component */}
                             <div>
                                 <label className="block text-sm font-bold text-gray-900 mb-3">
                                     เลือกบทบาท <span className="text-red-500">*</span>
                                 </label>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {ROLE_OPTIONS.map(role => (
-                                        <label
-                                            key={role.value}
-                                            className={`flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition-colors ${approvalData.roles.includes(role.value)
-                                                ? 'bg-green-50 border-green-500'
-                                                : 'bg-white border-gray-200 hover:border-gray-300'
-                                                }`}
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                checked={approvalData.roles.includes(role.value)}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) {
-                                                        setApprovalData(prev => ({
-                                                            ...prev,
-                                                            roles: [...prev.roles, role.value]
-                                                        }));
-                                                    } else {
-                                                        setApprovalData(prev => ({
-                                                            ...prev,
-                                                            roles: prev.roles.filter(r => r !== role.value)
-                                                        }));
-                                                    }
-                                                }}
-                                                className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
-                                            />
-                                            <span className="text-sm font-medium text-gray-900">{role.label}</span>
-                                        </label>
-                                    ))}
-                                </div>
+                                <RoleSelectionCheckbox
+                                    selectedRoles={approvalData.roles}
+                                    onChange={(roles) => setApprovalData(prev => ({ ...prev, roles }))}
+                                    showDescriptions={true}
+                                />
                             </div>
 
-                            {/* Scope Selection */}
-                            {!approvalData.roles.includes('marketing') && !approvalData.roles.includes('assignee') && approvalData.roles.length > 0 && (
-                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-900 mb-2">
-                                            เลือกสังกัด <span className="text-red-500">*</span>
-                                        </label>
-                                        <select
-                                            value={approvalData.scopeLevel}
-                                            onChange={(e) => setApprovalData(prev => ({
-                                                ...prev,
-                                                scopeLevel: e.target.value,
-                                                scopeId: ''
-                                            }))}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                                        >
-                                            {SCOPE_LEVELS.map(level => (
-                                                <option key={level.value} value={level.value}>{level.label}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-900 mb-2">
-                                            ระบุ {approvalData.scopeLevel} <span className="text-red-500">*</span>
-                                        </label>
-                                        <select
-                                            value={approvalData.scopeId}
-                                            onChange={(e) => {
-                                                let scopeName = '';
-                                                if (approvalData.scopeLevel === 'Tenant') {
-                                                    scopeName = masterData.tenants.find(t => t.id === parseInt(e.target.value))?.name || '';
-                                                } else if (approvalData.scopeLevel === 'BUD') {
-                                                    scopeName = masterData.buds.find(b => b.id === parseInt(e.target.value))?.name || '';
-                                                } else if (approvalData.scopeLevel === 'Project') {
-                                                    scopeName = masterData.projects.find(p => p.id === parseInt(e.target.value))?.name || '';
-                                                }
-                                                setApprovalData(prev => ({
-                                                    ...prev,
-                                                    scopeId: e.target.value,
-                                                    scopeName: scopeName
-                                                }));
-                                            }}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                                        >
-                                            <option value="">-- เลือก --</option>
-                                            {approvalData.scopeLevel === 'Tenant' && masterData.tenants.map(t => (
-                                                <option key={t.id} value={t.id}>{t.name}</option>
-                                            ))}
-                                            {approvalData.scopeLevel === 'BUD' && masterData.buds.map(b => (
-                                                <option key={b.id} value={b.id}>{b.name}</option>
-                                            ))}
-                                            {approvalData.scopeLevel === 'Project' && masterData.projects.map(p => (
-                                                <option key={p.id} value={p.id}>{p.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Marketing Projects */}
-                            {approvalData.roles.includes('marketing') && (
-                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 space-y-3">
-                                    <label className="block text-sm font-bold text-gray-900">
-                                        เลือกโครงการ <span className="text-red-500">*</span>
-                                    </label>
-                                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                                        {masterData.projects.map(project => (
-                                            <label key={project.id} className="flex items-center gap-3 p-2 hover:bg-white rounded cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={approvalData.allowedProjects.includes(project.id)}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
-                                                            setApprovalData(prev => ({
-                                                                ...prev,
-                                                                allowedProjects: [...prev.allowedProjects, project.id]
-                                                            }));
-                                                        } else {
-                                                            setApprovalData(prev => ({
-                                                                ...prev,
-                                                                allowedProjects: prev.allowedProjects.filter(id => id !== project.id)
-                                                            }));
-                                                        }
-                                                    }}
-                                                    className="w-4 h-4 rounded border-gray-300 text-green-600"
-                                                />
-                                                <span className="text-sm text-gray-900">{project.name}</span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Assignee Projects */}
-                            {approvalData.roles.includes('assignee') && (
-                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 space-y-3">
-                                    <label className="block text-sm font-bold text-gray-900">
-                                        เลือกโครงการ <span className="text-red-500">*</span>
-                                    </label>
-                                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                                        {masterData.projects.map(project => (
-                                            <label key={project.id} className="flex items-center gap-3 p-2 hover:bg-white rounded cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={approvalData.assignedProjects.includes(project.id)}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
-                                                            setApprovalData(prev => ({
-                                                                ...prev,
-                                                                assignedProjects: [...prev.assignedProjects, project.id]
-                                                            }));
-                                                        } else {
-                                                            setApprovalData(prev => ({
-                                                                ...prev,
-                                                                assignedProjects: prev.assignedProjects.filter(id => id !== project.id)
-                                                            }));
-                                                        }
-                                                    }}
-                                                    className="w-4 h-4 rounded border-gray-300 text-green-600"
-                                                />
-                                                <span className="text-sm text-gray-900">{project.name}</span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
+                            {/* Scope Configuration - Multi-Role Component */}
+                            {approvalData.roles.length > 0 && (
+                                <ScopeConfigPanel
+                                    selectedRoles={approvalData.roles}
+                                    roleConfigs={approvalRoleConfigs}
+                                    onConfigChange={setApprovalRoleConfigs}
+                                    availableScopes={availableScopes}
+                                    loading={scopesLoading}
+                                />
                             )}
                         </div>
 

@@ -4,34 +4,51 @@
  * 
  * Senior Programmer Notes:
  * - ใช้ React Router v6 สำหรับ routing
+ * - Code Splitting: ใช้ React.lazy() สำหรับ lazy loading modules
  * - Refactored: ใช้ moduleRegistry เพื่อสร้าง Routes แบบ Dynamic (Phase 4)
  * - Layout เป็น wrapper ที่มี Sidebar และ Header สำหรับ Admin/Staff pages
  * - UserPortal แยกออกมาอยู่นอก Layout หลัก เพื่อให้มี Design หน้าบ้านของตัวเอง
  */
 
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { useEffect, Suspense, lazy } from 'react';
+import { useAuthStore } from '@core/stores/authStore';
 
-// Core Modules
+// Core Modules (loaded immediately)
 import { Layout } from '@core/layout';
 import { Login, Register, ForgotPassword, ChangePassword, ProtectedRoute } from '@core/auth';
 
-// Feature Modules
-import { Dashboard } from '@features/dashboard';
-import { UserPortal, MediaPortal } from '@features/portals';
-
-// Admin / Legacy Pages (ยังไม่ Migrate)
-// import JobTypeSLA from '@/pages/admin/JobTypeSLA';
-// import JobTypeItems from '@/pages/admin/JobTypeItems';
-// import HolidayCalendar from '@/pages/admin/HolidayCalendar';
-// import ApprovalFlow from '@/pages/admin/ApprovalFlow';
-// import OrganizationManagement from '@/pages/admin/OrganizationManagement';
-// import UserManagement from '@/pages/admin/UserManagementNew';
-// import NotificationSettings from '@/pages/admin/NotificationSettings';
-// import ReportsDashboard from '@/pages/admin/ReportsDashboard';
-// import Reports from '@/pages/admin/Reports';
+// Lazy-loaded Feature Modules (Code Splitting)
+const Dashboard = lazy(() => import('@features/dashboard/pages/Dashboard'));
+const UserPortal = lazy(() => import('@features/portals/pages/UserPortal'));
+const MediaPortal = lazy(() => import('@features/portals/pages/MediaPortal'));
 
 // Module Registry
 import { getAllRoutes } from './moduleRegistry';
+
+/**
+ * Loading Fallback Component
+ */
+const LoadingFallback = () => (
+  <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-rose-600 mx-auto"></div>
+      <p className="mt-3 text-gray-500 text-sm">กำลังโหลด...</p>
+    </div>
+  </div>
+);
+
+/**
+ * Page Loading Fallback (smaller, for inner pages)
+ */
+const PageLoadingFallback = () => (
+  <div className="flex items-center justify-center py-12">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-rose-600 mx-auto"></div>
+      <p className="mt-2 text-gray-500 text-sm">กำลังโหลด...</p>
+    </div>
+  </div>
+);
 
 /**
  * @component App
@@ -39,6 +56,25 @@ import { getAllRoutes } from './moduleRegistry';
  */
 function App() {
   const dynamicRoutes = getAllRoutes();
+  const initialize = useAuthStore((state) => state.initialize);
+  const isLoading = useAuthStore((state) => state.isLoading);
+
+  // Initialize auth on app start
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
+
+  // Show loading spinner while checking auth
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rose-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">กำลังโหลด...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     // BrowserRouter = ใช้ History API ของ Browser สำหรับ routing
@@ -60,7 +96,9 @@ function App() {
         {/* V1 User Portal (แยก Layout) */}
         <Route path="/user-portal" element={
           <ProtectedRoute>
-            <UserPortal />
+            <Suspense fallback={<LoadingFallback />}>
+              <UserPortal />
+            </Suspense>
           </ProtectedRoute>
         } />
 
@@ -71,21 +109,33 @@ function App() {
           </ProtectedRoute>
         }>
           {/* index = default child route (เมื่อเข้า /) */}
-          <Route index element={<Dashboard />} />
+          <Route index element={
+            <Suspense fallback={<PageLoadingFallback />}>
+              <Dashboard />
+            </Suspense>
+          } />
 
           {/* === Dynamic Routes from Module Registry === */}
           {dynamicRoutes.map((route, index) => (
             <Route
               key={`${route.moduleName}-${index}`}
               path={route.path}
-              element={route.element}
+              element={
+                <Suspense fallback={<PageLoadingFallback />}>
+                  {route.element}
+                </Suspense>
+              }
             />
           ))}
 
           {/* === Admin / Legacy Routes (Pending Migration) === */}
           {/* Admin routes migrated to modules/features/admin */}
 
-          <Route path="media-portal" element={<MediaPortal />} />
+          <Route path="media-portal" element={
+            <Suspense fallback={<PageLoadingFallback />}>
+              <MediaPortal />
+            </Suspense>
+          } />
 
         </Route>
       </Routes>

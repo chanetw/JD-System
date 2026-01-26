@@ -69,7 +69,7 @@ CREATE INDEX idx_users_is_active ON users(is_active);
 CREATE TABLE roles (
   id SERIAL PRIMARY KEY,
   tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  name VARCHAR(50) NOT NULL, -- 'marketing', 'approver', 'assignee', 'admin'
+  name VARCHAR(50) NOT NULL, -- 'requester', 'approver', 'assignee', 'admin'
   display_name VARCHAR(100) NOT NULL,
   description TEXT,
   created_at TIMESTAMP DEFAULT NOW(),
@@ -439,7 +439,7 @@ INSERT INTO tenants (name, code, subdomain, logo_url, primary_color) VALUES
 
 -- Roles (for tenant_id = 1)
 INSERT INTO roles (tenant_id, name, display_name, description) VALUES
-(1, 'marketing', 'Marketing (Requester)', 'เปิดงาน DJ, แก้ brief, แนบไฟล์'),
+(1, 'requester', 'Requester (ผู้เปิดงาน)', 'เปิดงาน DJ, แก้ brief, แนบไฟล์'),
 (1, 'approver', 'Approver (Head/Manager)', 'อนุมัติ/ตีกลับ/ปรับผู้อนุมัติ'),
 (1, 'assignee', 'Assignee (Graphic/Web)', 'รับงาน, ดู brief, แชท, ส่งงาน'),
 (1, 'admin', 'Admin', 'จัดการประเภทงาน, SLA, วันหยุด, Approval flow');

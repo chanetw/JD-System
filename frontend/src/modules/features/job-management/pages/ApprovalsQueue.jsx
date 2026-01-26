@@ -16,6 +16,7 @@ import { Link } from 'react-router-dom';
 import { Card } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
+import { getUserScopes, getAllowedProjectIds } from '@shared/utils/scopeHelpers';
 
 // Icons
 import {
@@ -62,13 +63,27 @@ export default function ApprovalsQueue() {
             // เรียงลำดับตามวันที่สร้างล่าสุดขึ้นก่อน (Newest first)
             let sorted = (Array.isArray(data) ? data : []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-            // กฎการคัดกรองตามบทบาท (Filter Logic by Role)
+            // === Scope-based Filtering (ใหม่) ===
+            // ดึง scopes ของ user จาก database
+            if (user?.id) {
+                const scopes = await getUserScopes(user.id);
+                const hasTenantScope = scopes.some(s => s.scope_level === 'Tenant');
+
+                if (!hasTenantScope && scopes.length > 0) {
+                    // ถ้ามี scope แต่ไม่ใช่ Tenant level ให้ filter ตาม project
+                    const allowedProjectIds = await getAllowedProjectIds(user.id, user.tenant_id);
+                    sorted = sorted.filter(job => allowedProjectIds.has(job.projectId || job.project_id));
+                    console.log('📋 Filtered by scope:', sorted.length, 'jobs');
+                }
+            }
+
+            // กฎการคัดกรองตามบทบาท (Filter Logic by Role) - เก็บไว้เป็น fallback
             const userRole = user?.roles?.[0];
             if (userRole === 'approver' || userRole === 'admin') {
-                // ผู้อนุมัติและ Admin สามารถเห็นและจัดการงานทั้งหมดในระบบ
+                // ผู้อนุมัติและ Admin สามารถเห็นและจัดการงานทั้งหมดใน scope
                 setJobs(sorted);
-            } else if (userRole === 'marketing') {
-                // ผู้สั่งงาน (Marketing) เห็นเฉพาะงานที่ตนเองเป็นคนสร้างเท่านั้น
+            } else if (userRole === 'requester') {
+                // ผู้ขอใช้บริการ (Requester) เห็นเฉพาะงานที่ตนเองเป็นคนสร้างเท่านั้น
                 const myJobs = sorted.filter(job => job.requesterId === user?.id);
                 setJobs(myJobs);
             } else {
@@ -206,7 +221,7 @@ export default function ApprovalsQueue() {
                                 <Th>โครงการ / BUD</Th>
                                 <Th>ประเภทงาน</Th>
                                 <Th>หัวข้อ</Th>
-                                <Th>ผู้สั่งงาน</Th>
+                                <Th>ผู้เปิดงาน</Th>
                                 <Th>วันที่ส่งมา</Th>
                                 <Th>สถานะ SLA</Th>
                                 <Th>ความสำคัญ</Th>
@@ -340,7 +355,7 @@ export default function ApprovalsQueue() {
                                 <textarea
                                     rows="4"
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
-                                    placeholder="ระบุรายละเอียดเพื่อให้ผู้สั่งงานแก้ไข..."
+                                    placeholder="ระบุรายละเอียดเพื่อให้ผู้เปิดงานแก้ไข..."
                                     value={rejectResult}
                                     onChange={(e) => setRejectComment(e.target.value)}
                                 ></textarea>
@@ -431,7 +446,7 @@ function Th({ children, className = "text-left" }) {
  * @param {string} props.bud - หน่วยงานที่รับผิดชอบ
  * @param {string} props.type - ประเภทงานออกแบบ
  * @param {string} props.subject - หัวข้องาน
- * @param {string} props.requester - ชื่อผู้สั่งงาน
+ * @param {string} props.requester - ชื่อผู้เปิดงาน
  * @param {string} props.submitted - วันที่ส่งงาน
  * @param {string} props.sla - สถานะระดับการอนุมัติหรือ SLA
  * @param {React.ReactNode} props.priority - Badge แสดงความสำคัญ

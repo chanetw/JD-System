@@ -8,18 +8,24 @@ export const userService = {
         const data = handleResponse(
             await supabase.from('users').select('*').order('id')
         );
-        return data.map(u => ({
-            id: u.id,
-            firstName: u.first_name,
-            lastName: u.last_name,
-            displayName: u.display_name,
-            email: u.email,
-            roles: [u.role], // Mock uses array
-            role: u.role,
-            avatar: u.avatar_url,
-            isActive: u.is_active,
-            tenantId: u.tenant_id
-        }));
+        return data.map(u => {
+            const firstName = u.first_name || '';
+            const lastName = u.last_name || '';
+            // Fix: Add name property which is used by UserManagement and others
+            return {
+                id: u.id,
+                firstName: firstName,
+                lastName: lastName,
+                name: `${firstName} ${lastName}`.trim() || u.email, // Fallback to email if empty
+                displayName: u.display_name || `${firstName} ${lastName}`.trim(),
+                email: u.email,
+                roles: [u.role], // Mock uses array
+                role: u.role,
+                avatar: u.avatar_url,
+                isActive: u.is_active,
+                tenantId: u.tenant_id
+            };
+        });
     },
 
     getCurrentUser: async () => {
@@ -168,7 +174,7 @@ export const userService = {
                 display_name: `${registrationData.first_name} ${registrationData.last_name}`,
                 title: registrationData.title,
                 phone: registrationData.phone,
-                role: 'marketing', // Default role for now, can be updated later via roles assignment
+                role: 'requester', // Default role for now, can be updated later via roles assignment
                 must_change_password: true,
                 is_active: true
             };
@@ -335,6 +341,44 @@ export const userService = {
             return data;
         } catch (error) {
             console.error('Error assigning user scopes:', error);
+            throw error;
+        }
+    },
+
+    getUserScopes: async (userId) => {
+        try {
+            const { data, error } = await supabase
+                .from('user_scope_assignments')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('is_active', true);
+
+            if (error) throw error;
+            return data;
+        } catch (error) {
+            console.error('Error getting user scopes:', error);
+            throw error;
+        }
+    },
+
+    updateUserScopes: async (userId, tenantId, scopeAssignments, assignedBy) => {
+        try {
+            // 1. Deactivate or Delete old scopes
+            // For simplicity, we'll delete old active assignments for this user
+            const { error: deleteError } = await supabase
+                .from('user_scope_assignments')
+                .delete()
+                .eq('user_id', userId);
+
+            if (deleteError) throw deleteError;
+
+            // 2. Insert new scopes
+            if (scopeAssignments.length > 0) {
+                return await userService.assignUserScopes(userId, tenantId, scopeAssignments, assignedBy);
+            }
+            return [];
+        } catch (error) {
+            console.error('Error updating user scopes:', error);
             throw error;
         }
     },

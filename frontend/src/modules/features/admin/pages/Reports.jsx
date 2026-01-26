@@ -16,7 +16,7 @@ import {
     Legend,
     ResponsiveContainer
 } from 'recharts';
-import apiDatabase from '../../../../services/apiDatabase';
+import apiDatabase from '@shared/services/apiDatabase';
 import {
     ClipboardDocumentListIcon,
     CheckCircleIcon,

@@ -35,7 +35,7 @@ export default function Header() {
 
     /**
      * เปลี่ยนบทบาทผู้ใช้งาน (สำหรับวัตถุประสงค์ในการสาธิตเท่านั้น)
-     * @param {string} role - ชื่อบทบาทที่ต้องการเปลี่ยนไป (e.g., 'admin', 'marketing')
+     * @param {string} role - ชื่อบทบาทที่ต้องการเปลี่ยนไป (e.g., 'admin', 'requester')
      */
     const handleSwitchRole = async (role) => {
         await switchRole(role);
@@ -50,16 +50,57 @@ export default function Header() {
         window.location.reload();
     };
 
-    // รายการ Role ที่เลือกได้
+    // รายการ Role ที่เลือกได้ (ตาม mockup - ภาษาไทย)
     const roles = [
-        { id: 'marketing', label: 'Marketing Requester', color: 'bg-blue-100 text-blue-700' },
-        { id: 'approver', label: 'Approver (Head)', color: 'bg-amber-100 text-amber-700' },
-        { id: 'assignee', label: 'Assignee (Graphic)', color: 'bg-green-100 text-green-700' },
-        { id: 'admin', label: 'Admin', color: 'bg-purple-100 text-purple-700' },
+        { 
+            id: 'requester', 
+            label: 'Requester',
+            labelTh: 'ผู้ขอใช้บริการ',
+            badgeText: 'requester',
+            color: 'bg-blue-100 text-blue-700' 
+        },
+        { 
+            id: 'approver', 
+            label: 'Approver (Head)',
+            labelTh: 'ผู้อนุมัติ',
+            badgeText: 'approver',
+            color: 'bg-amber-100 text-amber-700' 
+        },
+        { 
+            id: 'assignee', 
+            label: 'Assignee (Graphic)',
+            labelTh: 'ผู้ปฏิบัติงาน',
+            badgeText: 'assignee',
+            color: 'bg-green-100 text-green-700' 
+        },
+        { 
+            id: 'admin', 
+            label: 'Admin',
+            labelTh: 'ผู้ดูแลระบบ',
+            badgeText: 'admin',
+            color: 'bg-purple-100 text-purple-700' 
+        },
     ];
 
-    // หา role ปัจจุบัน
-    const currentRole = roles.find(r => r.id === user?.roles?.[0]) || roles[0];
+    // Multi-Role Support: หา roles ทั้งหมดของ user
+    const getUserRoleNames = () => {
+        // ถ้ามี user.roles เป็น array of objects (Multi-Role format)
+        if (user?.roles && Array.isArray(user.roles) && user.roles[0]?.name) {
+            return user.roles.map(r => r.name);
+        }
+        // ถ้าเป็น array of strings (legacy format)
+        if (user?.roles && Array.isArray(user.roles)) {
+            return user.roles;
+        }
+        // Fallback: ใช้ role เดียว
+        return user?.role ? [user.role] : ['requester'];
+    };
+
+    const userRoleNames = getUserRoleNames();
+    // หา role ปัจจุบัน (ใช้ตัวแรกเป็น primary)
+    const currentRole = roles.find(r => userRoleNames.includes(r.id)) || roles[0];
+    // หา roles ทั้งหมดที่ user มี
+    const userRoles = roles.filter(r => userRoleNames.includes(r.id));
 
     return (
         // ============================================
@@ -92,38 +133,121 @@ export default function Header() {
                 <div className="relative">
                     <button
                         onClick={() => setShowRoleMenu(!showRoleMenu)}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium ${currentRole.color}`}
+                        className="flex items-center gap-3 px-4 py-2 rounded-lg hover:opacity-90 transition-all border-2 shadow-sm"
+                        style={{
+                            backgroundColor: currentRole.id === 'requester' ? '#DBEAFE' : 
+                                           currentRole.id === 'approver' ? '#FEF3C7' : 
+                                           currentRole.id === 'assignee' ? '#D1FAE5' : 
+                                           '#F3E8FF',
+                            borderColor: currentRole.id === 'requester' ? '#3B82F6' : 
+                                        currentRole.id === 'approver' ? '#F59E0B' : 
+                                        currentRole.id === 'assignee' ? '#10B981' : 
+                                        '#9333EA',
+                            color: currentRole.id === 'requester' ? '#1E40AF' : 
+                                   currentRole.id === 'approver' ? '#92400E' : 
+                                   currentRole.id === 'assignee' ? '#065F46' : 
+                                   '#6B21A8'
+                        }}
                     >
-                        {currentRole.label}
-                        <ChevronDownIcon className="w-4 h-4" />
+                        {/* Multi-Role: แสดง badges ของ roles ทั้งหมด */}
+                        <div className="flex items-center gap-1.5">
+                            {userRoles.length > 1 ? (
+                                // แสดงหลาย roles
+                                userRoles.slice(0, 2).map((role, idx) => (
+                                    <span key={role.id} className={`px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wide ${role.color}`}>
+                                        {role.badgeText}
+                                    </span>
+                                ))
+                            ) : (
+                                // แสดง role เดียว
+                                <span className={`px-2.5 py-1 rounded text-xs font-bold uppercase tracking-wide ${currentRole.color}`}>
+                                    {currentRole.badgeText}
+                                </span>
+                            )}
+                            {userRoles.length > 2 && (
+                                <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                                    +{userRoles.length - 2}
+                                </span>
+                            )}
+                        </div>
+                        {/* Label Thai */}
+                        <span className="text-sm font-semibold">
+                            {userRoles.length > 1 ? 'หลายบทบาท' : currentRole.labelTh}
+                        </span>
+                        <ChevronDownIcon className="w-4 h-4 ml-1" />
                     </button>
 
-                    {/* Dropdown Menu */}
+                    {/* Dropdown Menu - แสดง roles ของ user */}
                     {showRoleMenu && (
-                        <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                            <p className="px-4 py-2 text-xs text-gray-500 font-medium">
-                                เปลี่ยนบทบาท (Demo)
-                            </p>
-                            {roles.map(role => (
+                        <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
+                            {/* หัวเรื่อง - บทบาทของฉัน */}
+                            {userRoles.length > 0 && (
+                                <>
+                                    <div className="px-4 py-2 border-b border-gray-100">
+                                        <p className="text-sm font-medium text-gray-900">
+                                            👤 บทบาทของฉัน
+                                        </p>
+                                    </div>
+                                    <div className="py-1">
+                                        {userRoles.map(role => (
+                                            <button
+                                                key={role.id}
+                                                onClick={() => handleSwitchRole(role.id)}
+                                                className={`w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors ${
+                                                    role.id === currentRole.id ? 'bg-blue-50' : ''
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <span className={`px-2.5 py-1 rounded text-xs font-medium ${role.color}`}>
+                                                        {role.badgeText}
+                                                    </span>
+                                                    <span className="text-sm text-gray-900 flex-1">
+                                                        {role.labelTh}
+                                                    </span>
+                                                    {role.id === currentRole.id && (
+                                                        <span className="text-xs text-blue-600">✓ กำลังใช้</span>
+                                                    )}
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Demo Mode - เปลี่ยนเป็น role อื่น */}
+                            <div className="px-4 py-2 border-t border-b border-gray-100">
+                                <p className="text-sm font-medium text-gray-900">
+                                    🎭 Demo Mode
+                                </p>
+                            </div>
+                            <div className="py-1">
+                                {roles.filter(r => !userRoleNames.includes(r.id)).map(role => (
+                                    <button
+                                        key={role.id}
+                                        onClick={() => handleSwitchRole(role.id)}
+                                        className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors opacity-60"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <span className={`px-2.5 py-1 rounded text-xs font-medium ${role.color}`}>
+                                                {role.badgeText}
+                                            </span>
+                                            <span className="text-sm text-gray-900">
+                                                {role.label}
+                                            </span>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Reset Demo */}
+                            <div className="border-t border-gray-100 mt-1">
                                 <button
-                                    key={role.id}
-                                    onClick={() => handleSwitchRole(role.id)}
-                                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 ${role.id === currentRole.id ? 'font-medium' : ''
-                                        }`}
+                                    onClick={handleResetDemo}
+                                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
                                 >
-                                    <span className={`inline-block px-2 py-0.5 rounded text-xs mr-2 ${role.color}`}>
-                                        {role.id}
-                                    </span>
-                                    {role.label}
+                                    🔄 Reset Demo Data
                                 </button>
-                            ))}
-                            <hr className="my-1" />
-                            <button
-                                onClick={handleResetDemo}
-                                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                            >
-                                🔄 Reset Demo Data
-                            </button>
+                            </div>
                         </div>
                     )}
                 </div>

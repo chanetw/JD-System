@@ -1,10 +1,16 @@
 # 🎒 DJ System - Product Backlog
 
 ## 🔴 High Priority (Do Now) - Phase 3: Approval & Workflow
-- [ ] **Approval Flow UI:** Re-implement Approval Diagram with new data structure
-- [ ] **My Queue / Inbox:** Improve UI for Assignee (Action Buttons: Start, Complete)
+- [x] **Approval Flow UI:** Re-implement Approval Diagram with new data structure
+- [x] **Auto-Start Logic:** Phase 4 Job Execution (Immediate & Timeout Simulation) [NEW]
+- [x] **Job Completion:** Complete Job Modal & File Link [NEW]
+- [x] **User Management:** Registration Approval Flow & Role Assignment [NEW]
+- [x] **Database Migration:** Rename Marketing -> Requester [DONE]
+- [x] **Standardize Role Naming:** Requester, Approver, Assignee, Admin [DONE]
+- [x] **Scope Assignment:** Edit User Modal Multi-role & Scope [DONE]
+- [ ] **My Queue / Inbox:** Improve UI for Assignee (Current Priority)
 - [ ] **Notification System:** Implement Real-time / Polling notifications
-- [ ] **Job Reassignment:** Allow Admin/Manager to change Assignee after job is started (with log)
+- [x] **Job Reassignment:** Allow Admin/Manager to change Assignee after job is started (with log)
 
 ## 🔵 Completed (Phase 2)
 - [x] **Refactor Frontend:** Move to Modular Architecture

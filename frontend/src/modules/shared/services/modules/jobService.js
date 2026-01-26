@@ -45,7 +45,7 @@ export const jobService = {
     getJobsByRole: async (user) => {
         try {
             // TODO: Filter by role logic if needed (currently fetches all + limit)
-            let query = supabase
+            const { data: jobs, error } = await supabase
                 .from('jobs')
                 .select(`
                     *,
@@ -56,17 +56,6 @@ export const jobService = {
                 `)
                 .order('created_at', { ascending: false })
                 .limit(50);
-
-            // Filter by Role
-            const role = user.role || user.roles?.[0];
-            if (role === 'marketing' || role === 'requester') {
-                query = query.eq('requester_id', user.id);
-            } else if (role === 'assignee' || role === 'graphic' || role === 'editor') {
-                query = query.eq('assignee_id', user.id);
-            }
-            // Admin/Approver sees all (or filter for Approver later)
-
-            const { data: jobs, error } = await query;
 
             if (error) {
                 console.warn('Error fetching jobs by role:', error.message);
@@ -162,7 +151,7 @@ export const jobService = {
 
         // Original: Single Job Creation
         const payload = {
-            tenant_id: 1, // Default
+            tenant_id: jobData.tenantId || 1, // Use from Auth context
             project_id: parseInt(jobData.projectId),
             job_type_id: parseInt(jobData.jobTypeId),
             subject: jobData.subject,
@@ -171,7 +160,7 @@ export const jobService = {
             sub_headline: jobData.brief?.subHeadline,
             priority: jobData.priority,
             status: 'pending_approval',
-            requester_id: 1, // Current User Hardcoded (Replace with Auth context later)
+            requester_id: jobData.requesterId, // Use from Auth context
             assignee_id: jobData.assigneeId || null, // Add assignee
             due_date: jobData.deadline,
             is_parent: false,
@@ -184,9 +173,9 @@ export const jobService = {
 
         // ถ้าเป็นงานด่วน (Urgent) และมี Assignee แล้ว -> Shift SLA ของงานอื่น
         if (jobData.priority === 'Urgent' && jobData.assigneeId) {
-            // ดึงข้อมูลวันหยุดก่อนส่งเข้าฟังก์ชัน
+            // ดึงข้อมูลวันหยุดก่อนส่งเข้าฟังก์ชัน (ใช้ getHolidayDates สำหรับ Date objects)
             const { adminService } = await import('./adminService');
-            const holidays = await adminService.getHolidays();
+            const holidays = await adminService.getHolidayDates();
 
             await jobService.shiftSLAIfUrgent(data.id, jobData.assigneeId, holidays);
         }
@@ -230,7 +219,7 @@ export const jobService = {
 
         // 2. สร้าง Parent Job
         const parentPayload = {
-            tenant_id: 1,
+            tenant_id: jobData.tenantId || 1,
             project_id: parseInt(jobData.projectId),
             job_type_id: parentType.id, // Dummy Job Type
             subject: jobData.subject,
@@ -239,7 +228,7 @@ export const jobService = {
             sub_headline: jobData.brief?.subHeadline,
             priority: jobData.priority,
             status: 'pending_approval',
-            requester_id: 1,
+            requester_id: jobData.requesterId, // Use from Auth context
             assignee_id: null, // Parent ไม่มี Assignee
             due_date: null, // จะคำนวณหลังจากสร้าง Children
             is_parent: true,
@@ -257,7 +246,7 @@ export const jobService = {
 
         // 3. สร้าง Child Jobs
         const childJobs = [];
-        const holidays = await (await import('./adminService')).adminService.getHolidays();
+        const holidays = await (await import('./adminService')).adminService.getHolidayDates();
         let maxDueDate = null;
 
         for (const childType of jobData.jobTypes) {
@@ -274,7 +263,7 @@ export const jobService = {
 
             // สร้าง Child Job
             const childPayload = {
-                tenant_id: 1,
+                tenant_id: jobData.tenantId || 1,
                 project_id: parseInt(jobData.projectId),
                 job_type_id: parseInt(childType.jobTypeId),
                 subject: `${jobData.subject} - Child #${childJobs.length + 1}`,
@@ -283,7 +272,7 @@ export const jobService = {
                 sub_headline: jobData.brief?.subHeadline,
                 priority: jobData.priority, // สืบทอด Priority จาก Parent
                 status: 'pending_approval',
-                requester_id: 1,
+                requester_id: jobData.requesterId, // Use from Auth context
                 assignee_id: childType.assigneeId || null,
                 due_date: childDueDate.toISOString(),
                 is_parent: false,
@@ -332,111 +321,90 @@ export const jobService = {
     },
 
     /**
-     * ดึงโครงสร้าง Approval Flow ของโครงการ (สำหรับวาด Diagram)
-     * @param {number} projectId 
-     */
-    getApprovalFlow: async (projectId) => {
-        try {
-            // ดึงข้อมูล Flow ที่ตั้งค่าไว้
-            const { data: flows, error } = await supabase
-                .from('approval_flows')
-                .select(`
-                    *,
-                    boundary:buds(name), -- สมมติว่าผูกกับ BU หรือ Department
-                    approver:users(id, display_name, role, avatar_url)
-                `)
-                .eq('project_id', projectId) // หรือ filter ตาม BU
-                .order('level', { ascending: true });
-
-            if (error) throw error;
-            if (!flows || flows.length === 0) return null;
-
-            // แปลงเป็น Node/Edge Structure สำหรับ React Flow หรือ UI
-            const nodes = flows.map(f => ({
-                id: f.level.toString(),
-                label: `Level ${f.level}: ${f.role_name || 'Approver'}`,
-                subLabel: f.approver?.display_name || 'TBD',
-                data: { ...f }
-            }));
-
-            const edges = flows.slice(0, -1).map((f, i) => ({
-                id: `e${f.level}-${flows[i + 1].level}`,
-                source: f.level.toString(),
-                target: flows[i + 1].level.toString(),
-                type: 'smoothstep'
-            }));
-
-            return { projectId, nodes, edges, raw: flows };
-        } catch (error) {
-            console.error('Error fetching approval flow:', error);
-            // Mock Data Fallback (ถ้ายังไม่มีข้อมูลจริงใน DB)
-            return {
-                projectId,
-                nodes: [
-                    { id: '1', label: 'Level 1: Head of Graphic', subLabel: 'K. Somchai', status: 'pending' },
-                    { id: '2', label: 'Level 2: Marketing Manager', subLabel: 'K. Somsri', status: 'waiting' }
-                ],
-                edges: [{ id: 'e1-2', source: '1', target: '2' }]
-            };
-        }
-    },
-
-    /**
-     * อนุมัติงาน (Sequential Approval)
-     * @param {number} jobId 
-     * @param {number} approverId 
-     * @param {string} comment 
+     * อนุมัติงาน (Approve Job) - รองรับ Multi-level Approval
+     * 
+     * Logic:
+     * 1. ดึงข้อมูล Approval Flow ของ Project นี้
+     * 2. ตรวจสอบว่าตอนนี้อยู่ที่ Level ไหน (จาก status)
+     * 3. ถ้ามี Level ถัดไป -> Update status เป็น pending_level_X
+     * 4. ถ้าไม่มี (จบ Flow) -> Update status เป็น approved (หรือ in_progress)
      */
     approveJob: async (jobId, approverId, comment) => {
-        try {
-            // 1. ดึงข้อมูล Job ปัจจุบัน และ Flow ของมัน
-            const { data: job } = await supabase.from('jobs').select('status, project_id').eq('id', jobId).single();
+        // 1. ดึงข้อมูล Job เพื่อดู Project ID และ Status ปัจจุบัน
+        const { data: job, error: jobErr } = await supabase
+            .from('jobs')
+            .select('id, project_id, status, job_type_id')
+            .eq('id', jobId)
+            .single();
 
-            // TODO: ดึง Flow จริงมาเทียบ (Simplified for now check strict levels)
-            // สมมติ: Logic ง่ายๆ คือดู status ปัจจุบัน
+        if (jobErr) throw new Error('Job not found');
 
-            let nextStatus = 'approved';
-            let actionName = 'approve_final';
+        // 2. ดึง Approval Flow ของ Project
+        // Note: เรียกใช้ adminService แบบ Dynamic Import เพื่อเลี่ยง Circular Dependency ถ้ามี
+        const { adminService } = await import('./adminService');
+        const flow = await adminService.getApprovalFlowByProject(job.project_id);
 
-            // Sequential Logic Flow
-            if (job.status === 'pending_approval') {
-                // Level 1 Approved -> Go to Level 2 (สมมติว่ามี 2 Level)
-                // เช็คว่า Project นี้มี Level 2 ไหม? (ข้ามไปก่อนเพื่อความง่าย)
-                // nextStatus = 'pending_level_2'; 
-                // actionName = 'approve_level_1';
+        let nextStatus = 'in_progress'; // Default ถ้าไม่มี Flow
+        let isFinal = true;
 
-                // *For MVP Phase 2/3*: Single Step Approval ก่อน
-                nextStatus = 'approved'; // Ready for Assignee
-            } else if (job.status === 'pending_level_2') {
-                nextStatus = 'approved';
+        if (flow && flow.levels && flow.levels.length > 0) {
+            // Map Status -> Current Level
+            let currentLevel = 0;
+            if (job.status === 'pending_approval') currentLevel = 1;
+            else if (job.status.startsWith('pending_level_')) {
+                currentLevel = parseInt(job.status.split('_')[2]);
             }
 
-            // 2. Update Status
-            const { error } = await supabase.from('jobs')
-                .update({
-                    status: nextStatus,
-                    started_at: nextStatus === 'in_progress' ? new Date() : null // ถ้าจบ Flow อาจเริ่มนับเวลา SLA Graphic?
-                })
-                .eq('id', jobId);
+            // หาดูว่า Level นี้ต้องมีคนอนุมัติกี่คน (Logic ANY/ALL ยังไม่ทำใน Phase นี้ เอาแบบ ANY ไปก่อน)
+            // เช็คว่ามี Level ถัดไปไหม?
+            const nextLevelNode = flow.levels.find(l => l.level === currentLevel + 1);
 
-            if (error) throw error;
-
-            // 3. Log Activity
-            await supabase.from('activity_logs').insert([{
-                job_id: jobId,
-                user_id: approverId,
-                action: 'approve',
-                message: comment || `Approved (${actionName}) -> Status: ${nextStatus}`
-            }]);
-
-            // 4. Send Notification
-            await notificationService.sendNotification('job_approved', jobId, { nextStatus });
-
-            return { success: true, nextStatus };
-        } catch (error) {
-            console.error('Approve job error:', error);
-            throw error;
+            if (nextLevelNode) {
+                // ยังไม่จบ -> ไป Level ถัดไป
+                nextStatus = `pending_level_${nextLevelNode.level}`;
+                isFinal = false;
+            } else {
+                // จบ Flow แล้ว -> Approved
+                // ถ้ามี Assignee แล้วให้เป็น in_progress เลย (เริ่มงานได้)
+                // ถ้ายังไม่มี Assignee ให้เป็น approved (รอคนกดรับงาน)
+                nextStatus = 'in_progress'; // ปรับเป็น in_progress เลยเพื่อความง่ายใน Phase นี้
+                isFinal = true;
+            }
         }
+
+        console.log(`[Approval Logic] Job ${jobId} Level ${job.status} -> ${nextStatus}`);
+
+        // 3. Update Status
+        const updatePayload = {
+            status: nextStatus,
+            updated_at: new Date().toISOString()
+        };
+
+        // ถ้าจบ Flow ให้บันทึก started_at
+        if (isFinal) {
+            updatePayload.started_at = new Date().toISOString();
+        }
+
+        const { error } = await supabase.from('jobs')
+            .update(updatePayload)
+            .eq('id', jobId);
+
+        if (error) throw error;
+
+        // 4. Log Activity & Notification
+        await supabase.from('activity_logs').insert([{
+            job_id: jobId,
+            user_id: approverId,
+            action: 'approve',
+            message: `Approved (Step -> ${nextStatus}). Comment: ${comment || '-'}`
+        }]);
+
+        await notificationService.sendNotification('job_approved', jobId, {
+            nextStatus,
+            isFinal
+        });
+
+        return { success: true, nextStatus, isFinal };
     },
 
     rejectJob: async (jobId, reason, type, rejecterId) => {
@@ -531,18 +499,21 @@ export const jobService = {
 
     getDashboardStats: async () => {
         try {
-            // ดึงข้อมูลจากตาราง 'jobs' โดยตรง (ไม่มี 'design_jobs' ใน schema จริง)
             const { data: jobs, error } = await supabase
-                .from('jobs')
-                .select('id, status, due_date, created_at');
+                .from('design_jobs') // Note: Assuming view or alias. If 'jobs' table, verify schema.
+                .select('id, status, deadline, created_at'); // Using 'deadline' or 'due_date' depending on schema alias
 
+            // Fallback if 'design_jobs' not found, try 'jobs'
             if (error) {
-                console.warn('[Dashboard] Error fetching jobs:', error.message);
+                const { data: jobsFallback } = await supabase.from('jobs').select('id, status, due_date, created_at');
+                // map due_date to deadline
+                if (jobsFallback) {
+                    return jobService.calculateStats(jobsFallback.map(j => ({ ...j, deadline: j.due_date })));
+                }
                 return { newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, pending: 0 };
             }
 
-            // Map due_date -> deadline สำหรับ calculateStats
-            return jobService.calculateStats((jobs || []).map(j => ({ ...j, deadline: j.due_date })));
+            return jobService.calculateStats(jobs);
         } catch (err) {
             console.error('getDashboardStats error:', err);
             return { newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, pending: 0 };
@@ -670,5 +641,122 @@ export const jobService = {
         } catch (err) {
             console.error('[Urgent Logic] Exception:', err);
         }
+    },
+
+
+    /**
+     * เริ่มงาน (Start Job)
+     * @param {string} jobId - รหัสงาน
+     * @param {string} triggerType - 'manual' | 'view' | 'auto'
+     */
+    startJob: async (jobId, triggerType = 'manual') => {
+        try {
+            console.log(`[jobService] startJob: ${jobId}, trigger: ${triggerType}`);
+
+            // Check Environment (Mock vs Real)
+            const isMock = import.meta.env.VITE_USE_MOCK_API === 'true';
+
+            if (isMock) {
+                const { mockApiService } = await import('../../services/mockApi');
+                return await mockApiService.startJob(jobId, triggerType);
+            } else {
+                // Real Supabase Implementation
+                // 1. Get current status to validate
+                const { data: job, error: fetchErr } = await supabase
+                    .from('jobs')
+                    .select('status')
+                    .eq('id', jobId)
+                    .single();
+
+                if (fetchErr || !job) throw new Error('Job not found');
+                if (job.status !== 'assigned') return { message: 'Job already started or not ready' };
+
+                // 2. Update status and log
+                const { data, error } = await supabase
+                    .from('jobs')
+                    .update({
+                        status: 'in_progress',
+                        started_at: new Date().toISOString()
+                    })
+                    .eq('id', jobId)
+                    .select()
+                    .single();
+
+                if (error) throw error;
+
+                // 3. Log Activity
+                await supabase.from('activity_logs').insert([{
+                    job_id: jobId,
+                    action: 'started',
+                    message: `Job started (${triggerType})`
+                }]);
+
+                return data;
+            }
+        } catch (err) {
+            console.error('[jobService] startJob error:', err);
+            throw err;
+        }
+    },
+
+    /**
+     * ส่งงาน (Complete Job)
+     * @param {string} jobId - รหัสงาน
+     * @param {Object} data - { attachments, note }
+     */
+    completeJob: async (jobId, payload) => {
+        try {
+            console.log(`[jobService] completeJob: ${jobId}`, payload);
+
+            const isMock = import.meta.env.VITE_USE_MOCK_API === 'true';
+
+            if (isMock) {
+                const { mockApiService } = await import('../../services/mockApi');
+                return await mockApiService.completeJob(jobId, payload);
+            } else {
+                // Real Supabase Implementation
+                // 1. Update Job
+                const { data, error } = await supabase
+                    .from('jobs')
+                    .update({
+                        status: 'completed',
+                        completed_at: new Date().toISOString(),
+                        // In real DB, we might store attachments in a separate table or jsonb column
+                        // For now assuming we don't save attachments in 'jobs' directly unless we add a column
+                    })
+                    .eq('id', jobId)
+                    .select()
+                    .single();
+
+                if (error) throw error;
+
+                // 2. Save Attachments (Logic to be implemented for Real DB - likely separate API call for uploading)
+                // For Phase 4, we assume attachments are just links in description or comment
+
+                // 3. Log Activity
+                await supabase.from('activity_logs').insert([{
+                    job_id: jobId,
+                    action: 'completed',
+                    message: `Job completed. Note: ${payload.note || '-'}`
+                }]);
+
+                return data;
+            }
+        } catch (err) {
+            console.error('[jobService] completeJob error:', err);
+            throw err;
+        }
+    },
+
+    /**
+     * จำลองการทำงานของ Background Job (Auto-Start)
+     */
+    checkAutoJobStart: async () => {
+        const isMock = true; // Force check mock for simulation
+        if (isMock) {
+            const { mockApiService } = await import('../../services/mockApi');
+            return await mockApiService.simulateAutoStartCheck();
+        }
+        return { message: 'Not implemented for Real DB yet (Requires Edge Functions)' };
     }
 };

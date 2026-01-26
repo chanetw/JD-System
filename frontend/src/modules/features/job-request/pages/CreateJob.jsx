@@ -10,10 +10,55 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@shared/services/supabaseClient';
-import { addWorkDays } from '@/utils/slaCalculator';
-import { assignJobFromMatrix } from '../../../../shared/services/modules/autoAssignService'; // Use relative path to avoid alias issues
+import { addWorkDays } from '@shared/utils/slaCalculator';
+import { assignJobFromMatrix } from '@shared/services/modules/autoAssignService';
+import { useAuth } from '@core/stores/authStore';
+import { retry } from '@shared/utils/retry';
+
+// Holidays cache configuration
+const HOLIDAYS_CACHE_KEY = 'dj_holidays_cache';
+const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+
+/**
+ * Load holidays from localStorage cache
+ */
+const loadHolidaysFromCache = () => {
+    try {
+        const cached = localStorage.getItem(HOLIDAYS_CACHE_KEY);
+        if (!cached) return null;
+
+        const { data, timestamp } = JSON.parse(cached);
+        const isExpired = Date.now() - timestamp > CACHE_DURATION;
+
+        if (isExpired) {
+            localStorage.removeItem(HOLIDAYS_CACHE_KEY);
+            return null;
+        }
+
+        return data;
+    } catch (error) {
+        console.error('Error loading holidays from cache:', error);
+        return null;
+    }
+};
+
+/**
+ * Save holidays to localStorage cache
+ */
+const saveHolidaysToCache = (holidays) => {
+    try {
+        const cacheData = {
+            data: holidays,
+            timestamp: Date.now()
+        };
+        localStorage.setItem(HOLIDAYS_CACHE_KEY, JSON.stringify(cacheData));
+    } catch (error) {
+        console.error('Error saving holidays to cache:', error);
+    }
+};
 
 const CreateJob = () => {
+    const { user } = useAuth();
     // --- State for Form Data ---
     const [formData, setFormData] = useState({
         subject: '',
@@ -58,9 +103,31 @@ const CreateJob = () => {
             const { data: typeData } = await supabase.from('job_types').select('id, name, sla_days').eq('is_active', true);
             setJobTypes(typeData || []);
 
-            // 3. ดึง Holidays
-            const mockHolidays = ['2026-05-01', '2026-05-04'];
-            setHolidays(mockHolidays);
+            // 3. ดึง Holidays from Database with caching
+            const cachedHolidays = loadHolidaysFromCache();
+            if (cachedHolidays) {
+                console.log('📅 Using cached holidays');
+                setHolidays(cachedHolidays);
+            } else {
+                console.log('📅 Fetching holidays from database...');
+                const { data: holidaysData, error: holidaysError } = await supabase
+                    .from('holidays')
+                    .select('date')
+                    .eq('is_public', true)
+                    .eq('is_active', true)
+                    .gte('date', new Date().toISOString().split('T')[0]) // เฉพาะวันที่อนาคต
+                    .order('date');
+
+                if (holidaysError) {
+                    console.error('Error loading holidays:', holidaysError);
+                    setHolidays([]); // Fallback to empty array
+                } else {
+                    const holidayDates = (holidaysData || []).map(h => h.date);
+                    setHolidays(holidayDates);
+                    saveHolidaysToCache(holidayDates);
+                    console.log('📅 Loaded holidays:', holidayDates);
+                }
+            }
 
         } catch (error) {
             console.error('Error fetching master data:', error);
@@ -146,9 +213,15 @@ const CreateJob = () => {
         try {
             setSubmitting(true);
 
-            // 1. Insert Job
-            const payload = {
-                tenant_id: 1,
+            // Validate user session
+            if (!user) {
+                alert('กรุณาเข้าสู่ระบบก่อนสร้างงาน');
+                return;
+            }
+
+            // 1. Prepare job data
+            const jobData = {
+                tenant_id: user.tenant_id,
                 project_id: parseInt(formData.project_id),
                 job_type_id: parseInt(formData.job_type_id),
                 subject: formData.subject,
@@ -158,51 +231,58 @@ const CreateJob = () => {
                 sub_headline: formData.sub_headline,
                 priority: formData.priority,
                 status: 'pending_approval',
-                requester_id: 1,
+                requester_id: user.id,
                 due_date: calculatedDueDate?.toISOString(),
             };
 
-            const { data, error } = await supabase
-                .from('jobs')
-                .insert([payload])
-                .select()
-                .single();
+            // 2. Prepare items data
+            const itemsData = subItems.map(item => ({
+                job_type_item_id: item.id,
+                name: item.name,
+                quantity: itemValues[item.id]?.quantity || 1,
+                status: 'pending'
+            }));
 
-            if (error) throw error;
+            // 3. Call PostgreSQL function (Transaction) with retry logic
+            console.log('🔄 Creating job with transaction...');
+            const result = await retry(async () => {
+                const { data, error } = await supabase.rpc('create_job_with_items', {
+                    p_job_data: jobData,
+                    p_items_data: itemsData
+                });
 
-            const jobId = data.id;
+                if (error) throw error;
+                return data;
+            }, {
+                maxAttempts: 3,
+                delayMs: 1000,
+                onRetry: (attempt, error) => {
+                    console.log(`🔄 Retry attempt ${attempt}:`, error.message);
+                }
+            });
 
-            // 2. Insert Design Job Items (Transaction)
-            if (subItems.length > 0) {
-                const itemsPayload = subItems.map(item => ({
-                    job_id: jobId,
-                    job_type_item_id: item.id,
-                    name: item.name, // Snapshot name
-                    quantity: itemValues[item.id]?.quantity || 1,
-                    status: 'pending'
-                }));
+            const jobId = result.id;
+            const djId = result.dj_id;
 
-                const { error: itemsError } = await supabase
-                    .from('design_job_items')
-                    .insert(itemsPayload);
-
-                if (itemsError) console.error('Error saving items:', itemsError);
-            }
-
-            // --- Auto-Assignment Logic ---
+            // 4. Auto-Assignment Logic
             console.log('🤖 Triggering Auto-Assignment...');
-            const assignResult = await assignJobFromMatrix(data.id, payload.project_id, payload.job_type_id);
+            const assignResult = await assignJobFromMatrix(
+                jobId, 
+                jobData.project_id, 
+                jobData.job_type_id
+            );
 
-            let successMessage = `✅ สร้างใบงานสำเร็จ! รหัสเอกสาร: ${data.dj_id || jobId}`;
+            // 5. Success message
+            let successMessage = `✅ สร้างใบงานสำเร็จ! รหัสเอกสาร: ${djId || jobId}`;
             if (assignResult.success && assignResult.assigneeId) {
                 successMessage += `\n👤 ระบบได้จ่ายงานให้ User #${assignResult.assigneeId} เรียบร้อยแล้ว`;
             } else {
-                successMessage += `\n⚠️ ยังไม่ได้ระบุผู้รับผิดชอบ (Pending Assignment)`;
+                successMessage += `\n⚠️ ยังไม่ได้ระบุผู้รับผิดชอบ`;
             }
 
             alert(successMessage);
 
-            // Reset Form
+            // 6. Reset Form
             setFormData({
                 subject: '', project_id: '', job_type_id: '',
                 objective: '', description: '', headline: '', sub_headline: '', priority: 'normal'

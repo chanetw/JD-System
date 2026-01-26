@@ -11,15 +11,15 @@ To create a comprehensive, modular, and scalable Job Description (JD) and Job As
 - [x] **Authentication:** Login/Logout, Role-based Access
 - [x] **Organization Data:** Tenants, BUDs, Departments Management
 
-### Phase 2: Core Features & Workflow (Next)
-- [ ] **Job Request Management:** Create, Edit, View Jobs
-- [ ] **Approval Workflow:** Dynamic Multi-level Approval
-- [ ] **Auto-Assignment:** Matrix-based assignment (Project + Job Type)
-- [ ] **Job Detail Features:** Comments, Timeline, Deliverables
+### Phase 2: Core Features & Workflow (Current - 95%)
+- [x] **Job Request Management:** Create, Edit, View Jobs
+- [x] **Approval Workflow:** Dynamic Multi-level Approval
+- [x] **Auto-Assignment:** Matrix-based assignment (Project + Job Type)
+- [x] **Job Detail Features:** Comments, Timeline, Deliverables
 
-### Phase 3: Advanced Features & Portals
+### Phase 3: Advanced Features & Portals (Next)
 - [ ] **User Portals:** Specific dashboards for each role (Requester, Approver, Assignee)
-- [ ] **Reporting & Analytics:** KPI Dashboards
+- [ ] **Reporting & Analytics:** KPI Dashboards (Initial version done)
 - [ ] **Notifications:** Real-time alerts (Bell & Email)
 
 ### Phase 4: Optimization & Launch

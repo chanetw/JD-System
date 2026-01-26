@@ -55,10 +55,10 @@ export default function UserPortal() {
             try {
                 const jobs = await api.getJobs();
                 // Filter ตาม role
-                const role = user?.roles?.[0] || 'marketing';
+                const role = user?.roles?.[0] || 'requester';
                 let filtered = jobs;
 
-                if (role === 'marketing') {
+                if (role === 'requester') {
                     // เห็นงานที่ตัวเองสร้าง (สมมติ requesterName = Demo User)
                     filtered = jobs.filter(j => j.requesterName === 'สมหญิง' || j.requesterId === user?.id);
                 } else if (role === 'assignee') {
@@ -150,7 +150,7 @@ export default function UserPortal() {
                                     {user?.displayName?.[0] || 'ส'}
                                 </div>
                                 <span className="text-sm text-slate-700 hidden sm:inline">
-                                    {user?.displayName || 'สมชาย'} {user?.roles?.[0] || 'Marketing'}
+                                    {user?.displayName || 'สมชาย'} {user?.roles?.[0] || 'Requester'}
                                 </span>
                             </div>
                         </div>

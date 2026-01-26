@@ -63,10 +63,12 @@ export default function Login() {
                 await new Promise(resolve => setTimeout(resolve, 500));
 
                 // Redirect ตาม role
-                const role = selectedUser.roles?.[0];
+                let role = selectedUser.roles?.[0];
+                if (role === 'marketing') role = 'requester'; // Map legacy
+
                 if (role === 'admin') {
                     navigate('/');
-                } else if (role === 'marketing') {
+                } else if (role === 'requester') {
                     navigate('/user-portal');
                 } else {
                     navigate('/');
@@ -81,7 +83,10 @@ export default function Login() {
 
     // จัดกลุ่ม User ตาม Role
     const groupedUsers = users.reduce((acc, user) => {
-        const role = user.roles?.[0] || 'other';
+        let role = user.roles?.[0] || 'other';
+        // Map legacy role
+        if (role === 'marketing') role = 'requester';
+
         if (!acc[role]) acc[role] = [];
         acc[role].push(user);
         return acc;
@@ -89,7 +94,7 @@ export default function Login() {
 
     const roleLabels = {
         admin: '👑 Admin',
-        marketing: '📣 Marketing',
+        requester: '📝 ผู้เปิดงาน',
         approver: '✅ Approver',
         assignee: '🎨 Assignee'
     };
@@ -154,7 +159,7 @@ export default function Login() {
                                             <p className="font-medium text-slate-800">{selected.displayName}</p>
                                             <p className="text-sm text-slate-500">{selected.email}</p>
                                             <span className={`inline-block mt-1 px-2 py-0.5 text-xs rounded-full ${selected.roles?.[0] === 'admin' ? 'bg-purple-100 text-purple-700' :
-                                                selected.roles?.[0] === 'marketing' ? 'bg-blue-100 text-blue-700' :
+                                                selected.roles?.[0] === 'requester' ? 'bg-blue-100 text-blue-700' :
                                                     selected.roles?.[0] === 'approver' ? 'bg-green-100 text-green-700' :
                                                         'bg-amber-100 text-amber-700'
                                                 }`}>

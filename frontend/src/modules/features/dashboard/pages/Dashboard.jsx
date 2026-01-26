@@ -5,7 +5,7 @@
  * Senior Programmer Notes:
  * - ใช้ useEffect สำหรับ fetch ข้อมูลเมื่อ component โหลด
  * - แสดงข้อมูลแตกต่างกันตาม Role:
- *   - Marketing: เห็นเฉพาะงานที่ตัวเองสร้าง
+ *   - Requester: เห็นเฉพาะงานที่ตัวเองสร้าง
  *   - Assignee: เห็นเฉพาะงานที่ assigned ให้ตัวเอง
  *   - Approver: เห็นเฉพาะงานที่รออนุมัติ
  *   - Admin: เห็นทั้งหมด
@@ -114,8 +114,8 @@ export default function Dashboard() {
                     </p>
                 </div>
 
-                {/* ปุ่ม Create DJ (เฉพาะ Admin และ Marketing) */}
-                {['admin', 'marketing'].includes(user?.roles?.[0]) && (
+                {/* ปุ่ม Create DJ (เฉพาะ Admin และ Requester) */}
+                {['admin', 'requester'].includes(user?.roles?.[0]) && (
                     <Link
                         to="/create"
                         className="flex items-center gap-2 px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors shadow-sm"

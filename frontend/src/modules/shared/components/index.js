@@ -11,3 +11,31 @@ export { default as Button } from './Button';
 export { Card, CardHeader, CardBody } from './Card';
 export { FormInput, FormSelect, FormTextarea } from './FormInput';
 export { default as Modal } from './Modal';
+export { default as FileUpload } from './FileUpload';
+export { default as Badge } from './Badge';
+export { default as RoleSwitcher } from './RoleSwitcher';
+
+// Role & Scope Management Components (Multi-Role Support)
+export { 
+    default as RoleSelectionCheckbox,
+    RoleSelectionCompact,
+    RoleRadioSelect 
+} from './RoleSelectionCheckbox';
+export { 
+    default as ScopeConfigPanel,
+    ScopePreview 
+} from './ScopeConfigPanel';
+
+// Responsive Components
+export {
+    ResponsiveContainer,
+    MobileOnly,
+    TabletOnly,
+    DesktopOnly,
+    HiddenOnMobile,
+    ResponsiveGrid,
+    ResponsiveStack,
+    ResponsiveText,
+    MobileMenu,
+    TouchFriendlyButton
+} from './ResponsiveContainer';

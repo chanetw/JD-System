@@ -15,6 +15,7 @@ import { Card, CardHeader } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
 import { FormInput, FormSelect } from '@shared/components/FormInput';
+import { canApproveInProject, canBeAssignedInBud, hasRole, isAdmin as checkIsAdmin } from '@shared/utils/permission.utils';
 
 import { PlusIcon, TrashIcon, UserGroupIcon, UserIcon, ArrowLongRightIcon, ArrowRightIcon, BriefcaseIcon, CheckCircleIcon, ExclamationCircleIcon, MagnifyingGlassIcon, PencilIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import AssignmentMatrix from './AssignmentMatrix'; // Import Matrix Component
@@ -83,7 +84,7 @@ export default function AdminApprovalFlow() {
     const [allUsers, setAllUsers] = useState([]);
     /** รายชื่อทีมงานที่รับผิดชอบโครงการที่เลือก (แบ่งตามหน้าที่) */
     const [responsibleTeam, setResponsibleTeam] = useState({
-        requesters: [], // ผู้สั่งงาน
+        requesters: [], // ผู้เปิดงาน
         approvers: [],  // ผู้อนุมัติ
         assignees: []   // ผู้รับงาน
     });
@@ -130,8 +131,8 @@ export default function AdminApprovalFlow() {
             setAllUsers(usersData); // เก็บข้อมูลผู้ใช้ทั้งหมดไว้สำหรับคัดกรองตามโครงการ
 
             // คัดกรองผู้ใช้งานตามบทบาทพื้นฐาน เพื่อความสะดวกรวดเร็ว
-            setApprovers(usersData.filter(u => u.roles?.includes('approver') || u.roles?.includes('admin')));
-            setAssignees(usersData.filter(u => u.roles?.includes('assignee')));
+            setApprovers(usersData.filter(u => hasRole(u, 'approver') || hasRole(u, 'admin')));
+            setAssignees(usersData.filter(u => hasRole(u, 'assignee')));
 
             // กำหนดโครงการแรกเป็นรายการที่ถูกเลือกโดยตั้งต้น
             if (projectsData.length > 0) {
@@ -159,34 +160,45 @@ export default function AdminApprovalFlow() {
     useEffect(() => {
         if (selectedProject && allUsers.length > 0) {
             const projectId = selectedProject.id;
+            const budId = selectedProject.budId;
 
-            // คัดกรองผู้สั่งงาน (Requesters) ที่มีสิทธิ์ในโครงการนี้
-            const reqs = allUsers.filter(u =>
-                (u.roles?.includes('marketing') || u.roles?.includes('requester')) &&
-                (u.allowedProjects?.includes(projectId) || (u.scopeLevel === 'Project' && u.scopeId === projectId))
-            );
+            // คัดกรองผู้เปิดงาน (Requesters) ที่มีสิทธิ์ในโครงการนี้
+            // ใช้ Multi-Role: ตรวจสอบ scopes ใน user.roles
+            const reqs = allUsers.filter(u => {
+                if (!hasRole(u, 'requester')) return false;
+                // Admin สามารถเปิดงานได้ทุกโครงการ
+                if (checkIsAdmin(u)) return true;
+                // Legacy support: allowedProjects, scopeLevel, scopeId
+                if (u.allowedProjects?.includes(projectId)) return true;
+                if (u.scopeLevel === 'Project' && u.scopeId === projectId) return true;
+                // Multi-Role: ตรวจสอบ scopes array
+                const requesterRole = u.roles?.find?.(r => r.name === 'requester');
+                if (requesterRole?.scopes) {
+                    return requesterRole.scopes.some(s =>
+                        s.level === 'tenant' ||
+                        (s.level === 'bud' && s.scopeId === budId) ||
+                        (s.level === 'project' && s.scopeId === projectId)
+                    );
+                }
+                return true; // Fallback: ถ้าไม่มี scopes = tenant level
+            });
 
             // คัดกรองผู้อนุมัติ (Approvers)
-            // นโยบาย: ผู้ดูแลระบบ (Admin) มีสิทธิ์ทุกโครงการ, ผู้อนุมัติทั่วไปตรวจสอบตามขอบเขต (Scope)
+            // ใช้ Multi-Role: canApproveInProject helper
             const apps = allUsers.filter(u => {
-                const isAdmin = u.roles?.includes('admin');
-                const isApprover = u.roles?.includes('approver');
-                if (!isApprover && !isAdmin) return false;
-                if (isAdmin) return true; // แอดมินมีสิทธิ์ทุกโครงการ
-
-                // ตรวจสอบความสอดคล้องของขอบเขตงาน (Scope Check)
-                if (u.scopeLevel === 'Project') return u.scopeId === projectId;
-                // สำหรับขอบเขตระดับสายงาน (BUD) หรือบริษัท (Tenant)
-                // ปัจจุบันเปิดให้เห็นทุกคนเพื่อให้ผู้ใช้เลือกหัวหน้างานข้ามระดับได้สะดวก
-                return true;
+                if (!hasRole(u, 'approver') && !checkIsAdmin(u)) return false;
+                if (checkIsAdmin(u)) return true; // Admin มีสิทธิ์ทุกโครงการ
+                // ใช้ canApproveInProject จาก permission.utils
+                return canApproveInProject(u, projectId, budId);
             });
 
             // คัดกรองผู้รับงาน (Assignees)
-            // ปัจจุบัน: แสดงทุกคนที่มี Role 'assignee' เพราะ DB ไม่มี assignedProjects field
-            // TODO: ในอนาคตอาจเพิ่ม assignedProjects ใน DB และ Filter ตาม Project
-            const asgs = allUsers.filter(u =>
-                u.roles?.includes('assignee')
-            );
+            // ใช้ Multi-Role: canBeAssignedInBud helper
+            const asgs = allUsers.filter(u => {
+                if (!hasRole(u, 'assignee')) return false;
+                // ใช้ canBeAssignedInBud จาก permission.utils
+                return canBeAssignedInBud(u, budId, projectId);
+            });
 
             setResponsibleTeam({
                 requesters: reqs,
@@ -628,7 +640,7 @@ export default function AdminApprovalFlow() {
                                     {/* Requesters */}
                                     <div className="p-4 bg-green-50 rounded-lg border border-green-100">
                                         <div className="text-xs font-bold text-green-800 mb-2 flex justify-between items-center">
-                                            <span>Requester (ผู้สั่งงาน)</span>
+                                            <span>Requester (ผู้เปิดงาน)</span>
                                             <span className="bg-green-200/50 px-2 py-0.5 rounded text-[10px]">{responsibleTeam.requesters.length}</span>
                                         </div>
                                         <div className="space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar">
@@ -652,7 +664,7 @@ export default function AdminApprovalFlow() {
                                                 <div key={u.id} className="text-xs text-gray-700 flex items-center gap-2">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-purple-400"></div>
                                                     {[u.prefix, u.name, u.lastName].filter(Boolean).join(' ')}
-                                                    {u.roles.includes('admin') && <span className="text-[10px] text-gray-400">(Admin)</span>}
+                                                    {hasRole(u, 'admin') && <span className="text-[10px] text-gray-400">(Admin)</span>}
                                                 </div>
                                             )) : <p className="text-xs text-gray-400 text-center py-2">- ไม่มีผู้รับผิดชอบ -</p>}
                                         </div>

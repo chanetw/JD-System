@@ -1,4 +1,3 @@
-
 /**
  * @file apiDatabase.js
  * @description Real Database API Service integrating with Supabase.
@@ -10,6 +9,10 @@ import { adminService } from './modules/adminService';
 import { jobService } from './modules/jobService';
 import { reportService } from './modules/reportService';
 import { notificationService } from './modules/notificationService';
+import { emailService } from './modules/emailService';
+import { fileUploadService } from './modules/fileUploadService';
+import { auditService } from './modules/auditService';
+import { realtimeService } from './modules/realtimeService';
 
 const apiDatabase = {
     // --- Initialization ---
@@ -30,7 +33,19 @@ const apiDatabase = {
     ...reportService,
 
     // --- Notification Services ---
-    ...notificationService
+    ...notificationService,
+
+    // --- Email Services ---
+    ...emailService,
+
+    // --- File Upload Services ---
+    ...fileUploadService,
+
+    // --- Audit Trail Services ---
+    ...auditService,
+
+    // --- Real-time Services ---
+    ...realtimeService
 };
 
 export default apiDatabase;

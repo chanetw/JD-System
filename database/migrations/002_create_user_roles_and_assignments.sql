@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS user_roles (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    role_name VARCHAR(50) NOT NULL,             -- admin, marketing, approver, assignee
+    role_name VARCHAR(50) NOT NULL,             -- admin, requester, approver, assignee
     assigned_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     assigned_at TIMESTAMP DEFAULT NOW(),
     is_active BOOLEAN DEFAULT TRUE,
@@ -31,7 +31,7 @@ CREATE INDEX IF NOT EXISTS idx_user_roles_role_name ON user_roles(role_name);
 CREATE INDEX IF NOT EXISTS idx_user_roles_is_active ON user_roles(is_active);
 
 COMMENT ON TABLE user_roles IS 'เก็บ Role ของ User (สามารถมี Multiple Roles ต่อ User ได้)';
-COMMENT ON COLUMN user_roles.role_name IS 'ชื่อบทบาท: admin, marketing, approver, assignee';
+COMMENT ON COLUMN user_roles.role_name IS 'ชื่อบทบาท: admin, requester, approver, assignee';
 COMMENT ON COLUMN user_roles.assigned_by IS 'Admin ผู้กำหนดบทบาท';
 
 -- Trigger for auto-update updated_at
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS user_scope_assignments (
     scope_level VARCHAR(20) NOT NULL,           -- 'Tenant', 'BUD', 'Project'
     scope_id INTEGER,                            -- ID ของ BUD หรือ Project (NULL สำหรับ Tenant scope)
     scope_name VARCHAR(255),                    -- ชื่อ BUD/Project (cache)
-    role_type VARCHAR(50),                      -- marketing_allowed, assignee_assigned, approver_scope, etc.
+    role_type VARCHAR(50),                      -- requester_allowed, assignee_assigned, approver_scope, etc.
     assigned_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     assigned_at TIMESTAMP DEFAULT NOW(),
     is_active BOOLEAN DEFAULT TRUE,
@@ -66,10 +66,10 @@ CREATE INDEX IF NOT EXISTS idx_user_scope_assignments_scope_level ON user_scope_
 CREATE INDEX IF NOT EXISTS idx_user_scope_assignments_scope_id ON user_scope_assignments(scope_id);
 CREATE INDEX IF NOT EXISTS idx_user_scope_assignments_role_type ON user_scope_assignments(role_type);
 
-COMMENT ON TABLE user_scope_assignments IS 'เก็บการกำหนด Scope/Project ให้ User (เช่น Marketing สร้าง DJ ได้ โครงการไหนบ้าง)';
+COMMENT ON TABLE user_scope_assignments IS 'เก็บการกำหนด Scope/Project ให้ User (เช่น ผู้เปิดงานสร้าง DJ ได้ โครงการไหนบ้าง)';
 COMMENT ON COLUMN user_scope_assignments.scope_level IS 'ระดับ: Tenant (บริษัท), BUD (สายงาน), Project (โครงการ)';
 COMMENT ON COLUMN user_scope_assignments.scope_id IS 'ID ของ Scope (NULL สำหรับ Tenant level)';
-COMMENT ON COLUMN user_scope_assignments.role_type IS 'ประเภท Role สำหรับ Scope นี้ (marketing_allowed, assignee_assigned, etc.)';
+COMMENT ON COLUMN user_scope_assignments.role_type IS 'ประเภท Role สำหรับ Scope นี้ (requester_allowed, assignee_assigned, etc.)';
 
 -- Trigger for auto-update updated_at
 CREATE TRIGGER update_user_scope_assignments_updated_at

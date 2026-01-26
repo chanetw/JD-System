@@ -7,3 +7,21 @@
 
 // SLA Calculator Utilities
 export * from './slaCalculator';
+
+// Date Utilities
+export * from './dateUtils';
+
+// Password Generator Utilities
+export * from './passwordGenerator';
+
+// Retry Utilities
+export * from './retry';
+
+// Scope Helpers
+export * from './scopeHelpers';
+
+// Soft Delete Utilities
+export * from './softDelete';
+
+// Permission Utilities (Multi-Role Support)
+export * from './permission.utils';

@@ -27,9 +27,30 @@
   - ห้ามส่งงานถ้าข้อมูลไม่ครบตาม Job Type Config
   - แจ้งเตือน SLA ล่วงหน้าตามประเภทงาน
 
+### 3.4 Auto-Start & Job Execution (Phase 4)
+- **Concept:** งานจะเริ่มนับ SLA (`started_at`) ทันทีที่ Assignee "รับรู้" งานน้ัน
+- **Triggers:**
+  1. **Immediate Start:** เมื่อ Assignee เปิดหน้า Job Detail เป็นครั้งแรก (View Event)
+  2. **Auto-Start Timeout:** หาก Assignee ไม่เปิดดูภายในเวลาที่กำหนด (Default: 4 ชม.) ระบบจะ Force Start อัตโนมัติ
+- **Configuration:**
+  - กำหนดค่า `auto_start_hours` ได้ที่ระดับ **Job Type** (เช่น งานด่วน = 1 ชม., งานปกติ = 4 ชม.)
+  - หาก Job Type ไม่ได้ระบุ ให้ใช้ค่า Default ของ System (4 ชม.)
+
 ### 3.3 Job Status Workflow
 Sequence ของสถานะงาน:
-`Draft` -> `Pending Approval` -> `Approved` -> `Assigned` -> `In Progress` -> `Review` -> `Completed` -> `Closed`
+`Draft` -> `Pending Approval` -> `Approved` -> `Assigned` (Waiting for Start) -> `In Progress` -> `Review` -> `Completed` -> `Closed`
+
+### 3.5 My Queue / Inbox (Phase 5)
+- **Objective:** หน้า Dashboard ส่วนตัวสำหรับ Assignee เพื่อจัดการงานในมือให้มีประสิทธิภาพ
+- **Structure (Tab Breakdown):**
+  1. **To Do:** งานใหม่ที่ได้รับมอบหมาย (Status: `Assigned`) เรียงตามความด่วน
+  2. **In Progress:** งานที่กำลังทำอยู่ (Status: `In Progress`) 
+  3. **Waiting:** งานที่รอ Action จากผู้อื่น (Status: `Correction`, `Pending Approval` ที่ตีกลับ)
+  4. **Done:** ประวัติงานที่ทำเสร็จแล้ว (Status: `Completed`, `Closed`)
+- **Job Health Indicators:**
+  - **Normal:** สีปกติ (เหลือเวลา > 2 วัน)
+  - **Warning:** สีเหลือง (เหลือเวลา <= 2 วัน)
+  - **Critical/Overdue:** สีแดง (เลยกำหนด หรือเหลือ < 4 ชม.)
 
 ## 4. Data Needs (For SA)
 - **User Profile:** ชื่อ, แผนก, บทบาท, รูปโปรไฟล์
