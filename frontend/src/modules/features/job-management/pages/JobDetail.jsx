@@ -95,6 +95,48 @@ export default function JobDetail() {
                 setError('ไม่พบงานนี้');
             } else {
                 console.log(`[JobDetail] Job Found:`, jobData);
+
+                // Fetch Approval Flow (Real DB)
+                let flowSnapshot = null;
+                if (jobData.projectId) {
+                    try {
+                        // Use correct method name: getApprovalFlowByProject
+                        const flowResult = await api.getApprovalFlowByProject(jobData.projectId);
+                        if (flowResult && flowResult.levels) {
+                            flowSnapshot = {
+                                levels: flowResult.levels.map(l => ({
+                                    level: l.level,
+                                    role: l.role || 'Approver',
+                                    name: l.approvers.map(a => a.name).join(', '),
+                                    approvers: l.approvers, // Keep full approver objects for permission check
+                                    logic: l.logic || 'any'
+                                }))
+                            };
+                        }
+                    } catch (flowErr) {
+                        console.warn('Failed to load approval flow:', flowErr);
+                    }
+                }
+
+                if (flowSnapshot) {
+                    jobData.flowSnapshot = flowSnapshot;
+                }
+
+                // Calculate Current Level based on status
+                // Logic:
+                // pending_approval -> Level 1
+                // pending_level_X  -> Level X
+                // approved / in_progress -> Completed (Max Level + 1)
+                if (jobData.status === 'pending_approval') {
+                    jobData.currentLevel = 1;
+                } else if (jobData.status && jobData.status.startsWith('pending_level_')) {
+                    jobData.currentLevel = parseInt(jobData.status.split('_')[2]);
+                } else if (jobData.status === 'approved' || jobData.status === 'in_progress' || jobData.status === 'completed') {
+                    jobData.currentLevel = 999; // Finished
+                } else {
+                    jobData.currentLevel = 0; // Unknown or Rejected/Rework
+                }
+
                 setJob(jobData);
                 setComments(jobData.comments || []);
             }
@@ -430,32 +472,50 @@ export default function JobDetail() {
                         </div>
                     </div>
 
-                    {/* Action Buttons (Prominent) */}
-                    {(job.status === 'pending_approval' || job.status === 'review') && (
-                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-                            <h2 className="font-semibold text-gray-900 mb-4">Actions</h2>
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={handleApprove}
-                                    className="flex-1 py-3 px-4 bg-rose-500 text-white rounded-xl font-medium hover:bg-rose-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
-                                >
-                                    <CheckIcon className="w-5 h-5" />
-                                    Approve & Close Job
-                                </button>
-                                <button
-                                    onClick={() => setShowRejectModal(true)}
-                                    className="flex-1 py-3 px-4 bg-amber-500 text-white rounded-xl font-medium hover:bg-amber-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
-                                >
-                                    <XMarkIcon className="w-5 h-5" />
-                                    Request Revision
-                                </button>
-                                <button className="py-3 px-4 border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 flex items-center justify-center gap-2 transition-colors">
-                                    <PencilIcon className="w-5 h-5" />
-                                    Edit Brief
-                                </button>
+                    {/* Action Buttons (Strict Permission Check) */}
+                    {(() => {
+                        // 1. เช็คว่างานอยู่ในสถานะรออนุมัติหรือไม่
+                        const isPending = job.currentLevel > 0 && job.currentLevel < 999;
+
+                        // 2. เช็คว่าเป็นผู้อนุมัติใน Level นี้หรือไม่
+                        let canApprove = false;
+                        if (isPending && job.flowSnapshot) {
+                            const currentLevelConfig = job.flowSnapshot.levels.find(l => l.level === job.currentLevel);
+                            if (currentLevelConfig && currentLevelConfig.approvers) {
+                                // เช็คว่า User ID ของเราอยู่ในรายการ Approvers ของ Level นี้หรือไม่
+                                canApprove = currentLevelConfig.approvers.some(a => a.id === user?.id) ||
+                                    currentLevelConfig.approvers.some(a => a.userId === user?.id); // Handle different naming (id vs userId)
+                            }
+                        }
+
+                        // Admin Bypass (Optional: ให้ Admin กดอนุมัติได้ทุก Level)
+                        const isAdmin = user?.roles?.includes('admin');
+                        if (isAdmin && isPending) canApprove = true;
+
+                        if (!canApprove) return null;
+
+                        return (
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                                <h2 className="font-semibold text-gray-900 mb-4">Actions (Level {job.currentLevel})</h2>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={handleApprove}
+                                        className="flex-1 py-3 px-4 bg-rose-500 text-white rounded-xl font-medium hover:bg-rose-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                                    >
+                                        <CheckIcon className="w-5 h-5" />
+                                        Approve & Next
+                                    </button>
+                                    <button
+                                        onClick={() => setShowRejectModal(true)}
+                                        className="flex-1 py-3 px-4 bg-amber-500 text-white rounded-xl font-medium hover:bg-amber-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                                    >
+                                        <XMarkIcon className="w-5 h-5" />
+                                        Reject / Return
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
 
                     {/* ปุ่มขอปิดงาน - สำหรับ Assignee เมื่อสถานะ in_progress หรือ approved */}
                     {(job.status === 'in_progress' || job.status === 'approved') && (
@@ -652,13 +712,16 @@ export default function JobDetail() {
                                             <p className="text-xs text-gray-500">Graphic Designer</p>
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={() => setShowReassignModal(true)}
-                                        className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-white rounded-md transition-all opacity-0 group-hover:opacity-100"
-                                        title="ย้ายผู้รับงาน (Reassign)"
-                                    >
-                                        <PencilIcon className="w-4 h-4" />
-                                    </button>
+                                    {/* Permission Check for Reassignment */}
+                                    {(user?.roles?.includes('admin') || user?.roles?.includes('manager')) && (
+                                        <button
+                                            onClick={() => setShowReassignModal(true)}
+                                            className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-white rounded-md transition-all opacity-0 group-hover:opacity-100"
+                                            title="ย้ายผู้รับงาน (Reassign)"
+                                        >
+                                            <PencilIcon className="w-4 h-4" />
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -737,50 +800,86 @@ export default function JobDetail() {
                         </div>
                     </div>
 
-                    {/* Approval Flow (Compact) */}
+                    {/* Approval Flow (Detailed) */}
                     {job.flowSnapshot && (
                         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 overflow-hidden">
-                            <h2 className="font-semibold text-gray-900 mb-4">Approval Chain</h2>
+                            <h2 className="font-semibold text-gray-900 mb-4">Approval Chain (เส้นทางการอนุมัติ)</h2>
                             <div className="relative pl-4 space-y-6 before:absolute before:left-[21px] before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-200">
-                                {job.flowSnapshot.levels.map((level, i) => (
-                                    <div key={i} className="relative flex items-start gap-4">
-                                        <div className={`absolute -left-[21px] w-3 h-3 rounded-full border-2 border-white ring-1 
-                                            ${job.currentLevel > level.level ? 'bg-green-500 ring-green-500' :
-                                                job.currentLevel === level.level ? 'bg-rose-500 ring-rose-500' : 'bg-gray-200 ring-gray-300'}`}>
-                                        </div>
-                                        <div className="flex-1">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                                                    Level {level.level} : {level.role}
-                                                </p>
-                                                {level.approvers?.length > 1 && (
-                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${level.logic === 'all' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                        {level.logic === 'all' ? 'ALL' : 'ANY'}
+                                {job.flowSnapshot.levels.map((level, i) => {
+                                    // Status Logic
+                                    const isPassed = job.currentLevel > level.level;
+                                    const isCurrent = job.currentLevel === level.level;
+                                    const isPending = job.currentLevel < level.level;
+
+                                    return (
+                                        <div key={i} className="relative flex items-start gap-4">
+                                            {/* Status Dot */}
+                                            <div className={`absolute -left-[21px] w-3 h-3 rounded-full border-2 border-white ring-1 z-10 
+                                                ${isPassed ? 'bg-green-500 ring-green-500' :
+                                                    isCurrent ? 'bg-rose-500 ring-rose-500' : 'bg-gray-200 ring-gray-300'}`}>
+                                            </div>
+
+                                            <div className="flex-1">
+                                                <div className="flex items-center justify-between">
+                                                    <p className={`text-xs font-bold uppercase tracking-wider ${isCurrent ? 'text-rose-600' : 'text-gray-500'}`}>
+                                                        Level {level.level} : {level.role}
+                                                    </p>
+                                                    {level.approvers?.length > 1 && (
+                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${level.logic === 'all' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                            {level.logic === 'all' ? 'WaitFor ALL' : 'ANY OK'}
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                <div className="mt-1 space-y-1">
+                                                    {level.approvers && level.approvers.length > 0 ? (
+                                                        level.approvers.map((app, idx) => (
+                                                            <div key={idx} className="flex items-center gap-2">
+                                                                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] text-white font-bold
+                                                                    ${isPassed ? 'bg-green-500' : isCurrent ? 'bg-rose-500' : 'bg-gray-300'}`}>
+                                                                    {app.name ? app.name[0] : '?'}
+                                                                </div>
+                                                                <p className={`text-sm ${isCurrent ? 'font-semibold text-gray-900' : 'text-gray-600'}`}>
+                                                                    {app.name}
+                                                                </p>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <p className="text-sm font-medium text-gray-500 italic">No specific approver</p>
+                                                    )}
+                                                </div>
+
+                                                {/* Status Badge */}
+                                                {isPassed && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-[10px] font-medium mt-2 border border-green-100">
+                                                        <CheckIcon className="w-3 h-3" /> Approved
+                                                    </span>
+                                                )}
+                                                {isCurrent && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-rose-50 text-rose-700 rounded-full text-[10px] font-medium mt-2 border border-rose-100 animate-pulse">
+                                                        <ClockIcon className="w-3 h-3" /> Waiting for Action...
                                                     </span>
                                                 )}
                                             </div>
-
-                                            <div className="mt-1 space-y-1">
-                                                {level.approvers && level.approvers.length > 0 ? (
-                                                    level.approvers.map((app, idx) => (
-                                                        <p key={idx} className="text-sm font-medium text-gray-900 flex items-center gap-1">
-                                                            <UserIcon className="w-3 h-3 text-gray-400" />
-                                                            {app.name}
-                                                        </p>
-                                                    ))
-                                                ) : (
-                                                    <p className="text-sm font-medium text-gray-900">{level.name || 'Any User'}</p>
-                                                )}
-                                            </div>
-
-                                            {job.currentLevel > level.level && (
-                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium mt-1">
-                                                    <CheckIcon className="w-3 h-3" /> Approved
-                                                </span>
-                                            )}
                                         </div>
+                                    );
+                                })}
+
+                                {/* Final Destination */}
+                                <div className="relative flex items-start gap-4">
+                                    <div className={`absolute -left-[21px] w-3 h-3 rounded-full border-2 border-white ring-1 z-10 
+                                            ${job.currentLevel === 999 ? 'bg-green-600 ring-green-600' : 'bg-gray-200 ring-gray-300'}`}>
                                     </div>
-                                ))}
+                                    <div className="flex-1">
+                                        <p className="text-xs font-bold uppercase tracking-wider text-gray-500">End Process</p>
+                                        <p className="text-sm font-medium text-gray-900">Start Job (In Progress)</p>
+                                        {job.currentLevel === 999 && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-800 rounded-full text-[10px] font-bold mt-2">
+                                                <CheckIcon className="w-3 h-3" /> Ready to Work
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}

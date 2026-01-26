@@ -272,7 +272,7 @@ export default function CreateDJ() {
      * 
      * @param {number} jobTypeId - ID ของประเภทงานที่ต้องการเพิ่ม
      */
-    const addJobType = (jobTypeId) => {
+    const addJobType = async (jobTypeId) => {
         if (!jobTypeId) return;
 
         // ตรวจสอบว่ามี JobType นี้อยู่แล้วหรือไม่
@@ -285,16 +285,34 @@ export default function CreateDJ() {
         // หาข้อมูล JobType จาก masterData
         const jobTypeInfo = masterData.jobTypes.find(t => t.id === parseInt(jobTypeId));
 
-        setSelectedJobTypes(prev => [...prev, {
+        // เตรียมข้อมูลเบื้องต้น
+        const newJobType = {
             jobTypeId: parseInt(jobTypeId),
             name: jobTypeInfo?.name || 'Unknown',
             sla: jobTypeInfo?.sla_days || 7,
             assigneeId: null,
             // === Accordion State ===
-            isExpanded: false,      // สถานะเปิด/ปิด Accordion
+            isExpanded: true,       // ✅ Default: Expanded
             subItems: {},           // ชิ้นงานย่อยที่เลือก { itemId: qty }
-            availableSubItems: []   // รายการชิ้นงานย่อยที่เป็นไปได้ (โหลดเมื่อ Expand)
-        }]);
+            availableSubItems: []   // จะโหลดข้อมูลใส่ตรงนี้
+        };
+
+        // เพิ่มเข้า State ก่อนเพื่อให้ UI ตอบสนองเร็ว (Optimistic UI)
+        setSelectedJobTypes(prev => [...prev, newJobType]);
+
+        // โหลดข้อมูล Sub-items ทันที
+        try {
+            const items = await api.getJobTypeItems(jobTypeId);
+
+            // อัปเดต state กลับเข้าไป
+            setSelectedJobTypes(prev => prev.map(jt =>
+                jt.jobTypeId === parseInt(jobTypeId)
+                    ? { ...jt, availableSubItems: items || [] }
+                    : jt
+            ));
+        } catch (error) {
+            console.error('Error loading sub-items for new job type:', error);
+        }
     };
 
     /**
@@ -906,7 +924,7 @@ export default function CreateDJ() {
                                 <FormTextarea
                                     label="วัตถุประสงค์และรายละเอียด (Objective & Details)"
                                     name="objective"
-                                    required
+                                    // optional
                                     rows="4"
                                     placeholder="อธิบายรายละเอียดงาน, วัตถุประสงค์, กลุ่มเป้าหมาย หรือสิ่งที่ต้องการให้บริษัทรับทราบ..."
                                     value={formData.objective}

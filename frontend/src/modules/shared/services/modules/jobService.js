@@ -45,7 +45,7 @@ export const jobService = {
     getJobsByRole: async (user) => {
         try {
             // TODO: Filter by role logic if needed (currently fetches all + limit)
-            const { data: jobs, error } = await supabase
+            let query = supabase
                 .from('jobs')
                 .select(`
                     *,
@@ -56,6 +56,17 @@ export const jobService = {
                 `)
                 .order('created_at', { ascending: false })
                 .limit(50);
+
+            // Filter by Role
+            const role = user.role || user.roles?.[0];
+            if (role === 'marketing' || role === 'requester') {
+                query = query.eq('requester_id', user.id);
+            } else if (role === 'assignee' || role === 'graphic' || role === 'editor') {
+                query = query.eq('assignee_id', user.id);
+            }
+            // Admin/Approver sees all (or filter for Approver later)
+
+            const { data: jobs, error } = await query;
 
             if (error) {
                 console.warn('Error fetching jobs by role:', error.message);
@@ -320,26 +331,112 @@ export const jobService = {
         };
     },
 
+    /**
+     * ดึงโครงสร้าง Approval Flow ของโครงการ (สำหรับวาด Diagram)
+     * @param {number} projectId 
+     */
+    getApprovalFlow: async (projectId) => {
+        try {
+            // ดึงข้อมูล Flow ที่ตั้งค่าไว้
+            const { data: flows, error } = await supabase
+                .from('approval_flows')
+                .select(`
+                    *,
+                    boundary:buds(name), -- สมมติว่าผูกกับ BU หรือ Department
+                    approver:users(id, display_name, role, avatar_url)
+                `)
+                .eq('project_id', projectId) // หรือ filter ตาม BU
+                .order('level', { ascending: true });
+
+            if (error) throw error;
+            if (!flows || flows.length === 0) return null;
+
+            // แปลงเป็น Node/Edge Structure สำหรับ React Flow หรือ UI
+            const nodes = flows.map(f => ({
+                id: f.level.toString(),
+                label: `Level ${f.level}: ${f.role_name || 'Approver'}`,
+                subLabel: f.approver?.display_name || 'TBD',
+                data: { ...f }
+            }));
+
+            const edges = flows.slice(0, -1).map((f, i) => ({
+                id: `e${f.level}-${flows[i + 1].level}`,
+                source: f.level.toString(),
+                target: flows[i + 1].level.toString(),
+                type: 'smoothstep'
+            }));
+
+            return { projectId, nodes, edges, raw: flows };
+        } catch (error) {
+            console.error('Error fetching approval flow:', error);
+            // Mock Data Fallback (ถ้ายังไม่มีข้อมูลจริงใน DB)
+            return {
+                projectId,
+                nodes: [
+                    { id: '1', label: 'Level 1: Head of Graphic', subLabel: 'K. Somchai', status: 'pending' },
+                    { id: '2', label: 'Level 2: Marketing Manager', subLabel: 'K. Somsri', status: 'waiting' }
+                ],
+                edges: [{ id: 'e1-2', source: '1', target: '2' }]
+            };
+        }
+    },
+
+    /**
+     * อนุมัติงาน (Sequential Approval)
+     * @param {number} jobId 
+     * @param {number} approverId 
+     * @param {string} comment 
+     */
     approveJob: async (jobId, approverId, comment) => {
-        // Update status
-        const { error } = await supabase.from('jobs')
-            .update({ status: 'in_progress', started_at: new Date() })
-            .eq('id', jobId);
+        try {
+            // 1. ดึงข้อมูล Job ปัจจุบัน และ Flow ของมัน
+            const { data: job } = await supabase.from('jobs').select('status, project_id').eq('id', jobId).single();
 
-        if (error) throw error;
+            // TODO: ดึง Flow จริงมาเทียบ (Simplified for now check strict levels)
+            // สมมติ: Logic ง่ายๆ คือดู status ปัจจุบัน
 
-        // Log Activity
-        await supabase.from('activity_logs').insert([{
-            job_id: jobId,
-            user_id: approverId,
-            action: 'approve',
-            message: comment || 'Job approved'
-        }]);
+            let nextStatus = 'approved';
+            let actionName = 'approve_final';
 
-        // Send Notification
-        await notificationService.sendNotification('job_approved', jobId);
+            // Sequential Logic Flow
+            if (job.status === 'pending_approval') {
+                // Level 1 Approved -> Go to Level 2 (สมมติว่ามี 2 Level)
+                // เช็คว่า Project นี้มี Level 2 ไหม? (ข้ามไปก่อนเพื่อความง่าย)
+                // nextStatus = 'pending_level_2'; 
+                // actionName = 'approve_level_1';
 
-        return { success: true };
+                // *For MVP Phase 2/3*: Single Step Approval ก่อน
+                nextStatus = 'approved'; // Ready for Assignee
+            } else if (job.status === 'pending_level_2') {
+                nextStatus = 'approved';
+            }
+
+            // 2. Update Status
+            const { error } = await supabase.from('jobs')
+                .update({
+                    status: nextStatus,
+                    started_at: nextStatus === 'in_progress' ? new Date() : null // ถ้าจบ Flow อาจเริ่มนับเวลา SLA Graphic?
+                })
+                .eq('id', jobId);
+
+            if (error) throw error;
+
+            // 3. Log Activity
+            await supabase.from('activity_logs').insert([{
+                job_id: jobId,
+                user_id: approverId,
+                action: 'approve',
+                message: comment || `Approved (${actionName}) -> Status: ${nextStatus}`
+            }]);
+
+            // 4. Send Notification
+            await notificationService.sendNotification('job_approved', jobId, { nextStatus });
+
+            return { success: true, nextStatus };
+        } catch (error) {
+            console.error('Approve job error:', error);
+            throw error;
+        }
     },
 
     rejectJob: async (jobId, reason, type, rejecterId) => {

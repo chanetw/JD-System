@@ -320,26 +320,91 @@ export const jobService = {
         };
     },
 
+    /**
+     * อนุมัติงาน (Approve Job) - รองรับ Multi-level Approval
+     * 
+     * Logic:
+     * 1. ดึงข้อมูล Approval Flow ของ Project นี้
+     * 2. ตรวจสอบว่าตอนนี้อยู่ที่ Level ไหน (จาก status)
+     * 3. ถ้ามี Level ถัดไป -> Update status เป็น pending_level_X
+     * 4. ถ้าไม่มี (จบ Flow) -> Update status เป็น approved (หรือ in_progress)
+     */
     approveJob: async (jobId, approverId, comment) => {
-        // Update status
+        // 1. ดึงข้อมูล Job เพื่อดู Project ID และ Status ปัจจุบัน
+        const { data: job, error: jobErr } = await supabase
+            .from('jobs')
+            .select('id, project_id, status, job_type_id')
+            .eq('id', jobId)
+            .single();
+
+        if (jobErr) throw new Error('Job not found');
+
+        // 2. ดึง Approval Flow ของ Project
+        // Note: เรียกใช้ adminService แบบ Dynamic Import เพื่อเลี่ยง Circular Dependency ถ้ามี
+        const { adminService } = await import('./adminService');
+        const flow = await adminService.getApprovalFlowByProject(job.project_id);
+
+        let nextStatus = 'in_progress'; // Default ถ้าไม่มี Flow
+        let isFinal = true;
+
+        if (flow && flow.levels && flow.levels.length > 0) {
+            // Map Status -> Current Level
+            let currentLevel = 0;
+            if (job.status === 'pending_approval') currentLevel = 1;
+            else if (job.status.startsWith('pending_level_')) {
+                currentLevel = parseInt(job.status.split('_')[2]);
+            }
+
+            // หาดูว่า Level นี้ต้องมีคนอนุมัติกี่คน (Logic ANY/ALL ยังไม่ทำใน Phase นี้ เอาแบบ ANY ไปก่อน)
+            // เช็คว่ามี Level ถัดไปไหม?
+            const nextLevelNode = flow.levels.find(l => l.level === currentLevel + 1);
+
+            if (nextLevelNode) {
+                // ยังไม่จบ -> ไป Level ถัดไป
+                nextStatus = `pending_level_${nextLevelNode.level}`;
+                isFinal = false;
+            } else {
+                // จบ Flow แล้ว -> Approved
+                // ถ้ามี Assignee แล้วให้เป็น in_progress เลย (เริ่มงานได้)
+                // ถ้ายังไม่มี Assignee ให้เป็น approved (รอคนกดรับงาน)
+                nextStatus = 'in_progress'; // ปรับเป็น in_progress เลยเพื่อความง่ายใน Phase นี้
+                isFinal = true;
+            }
+        }
+
+        console.log(`[Approval Logic] Job ${jobId} Level ${job.status} -> ${nextStatus}`);
+
+        // 3. Update Status
+        const updatePayload = {
+            status: nextStatus,
+            updated_at: new Date().toISOString()
+        };
+
+        // ถ้าจบ Flow ให้บันทึก started_at
+        if (isFinal) {
+            updatePayload.started_at = new Date().toISOString();
+        }
+
         const { error } = await supabase.from('jobs')
-            .update({ status: 'in_progress', started_at: new Date() })
+            .update(updatePayload)
             .eq('id', jobId);
 
         if (error) throw error;
 
-        // Log Activity
+        // 4. Log Activity & Notification
         await supabase.from('activity_logs').insert([{
             job_id: jobId,
             user_id: approverId,
             action: 'approve',
-            message: comment || 'Job approved'
+            message: `Approved (Step -> ${nextStatus}). Comment: ${comment || '-'}`
         }]);
 
-        // Send Notification
-        await notificationService.sendNotification('job_approved', jobId);
+        await notificationService.sendNotification('job_approved', jobId, {
+            nextStatus,
+            isFinal
+        });
 
-        return { success: true };
+        return { success: true, nextStatus, isFinal };
     },
 
     rejectJob: async (jobId, reason, type, rejecterId) => {

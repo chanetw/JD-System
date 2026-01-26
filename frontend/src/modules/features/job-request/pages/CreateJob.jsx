@@ -10,7 +10,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@shared/services/supabaseClient';
-import { addWorkDays } from '@/utils/slaCalculator'; // Utility ที่เพิ่งสร้าง
+import { addWorkDays } from '@/utils/slaCalculator';
+import { assignJobFromMatrix } from '../../../../shared/services/modules/autoAssignService'; // Use relative path to avoid alias issues
 
 const CreateJob = () => {
     // --- State for Form Data ---
@@ -33,6 +34,10 @@ const CreateJob = () => {
     const [calculatedDueDate, setCalculatedDueDate] = useState(null);
     const [holidays, setHolidays] = useState([]); // เก็บวันหยุดสำหรับคำนวณ SLA
 
+    // --- State for Job Type Items ---
+    const [subItems, setSubItems] = useState([]); // Template items from DB
+    const [itemValues, setItemValues] = useState({}); // User inputs { item_id: { quantity, note } }
+
     // --- Fetch Master Data on Mount ---
     useEffect(() => {
         fetchMasterData();
@@ -53,9 +58,8 @@ const CreateJob = () => {
             const { data: typeData } = await supabase.from('job_types').select('id, name, sla_days').eq('is_active', true);
             setJobTypes(typeData || []);
 
-            // 3. ดึง Holidays (ถ้ามีตาราง holidays - ตัวอย่างนี้ mock ไว้ก่อนหากไม่มี DB)
-            // TODO: เปลี่ยนไปดึงจาก DB จริงเมื่อสร้างตาราง holidays เสร็จ
-            const mockHolidays = ['2026-05-01', '2026-05-04']; // ตัวอย่างวันหยุด
+            // 3. ดึง Holidays
+            const mockHolidays = ['2026-05-01', '2026-05-04'];
             setHolidays(mockHolidays);
 
         } catch (error) {
@@ -66,27 +70,68 @@ const CreateJob = () => {
         }
     };
 
-    // --- Logic: คำนวณ SLA เมื่อเลือก Job Type ---
+    // --- Logic: คำนวณ SLA และดึง Sub Items เมื่อเลือก Job Type ---
     useEffect(() => {
         if (formData.job_type_id) {
             const selectedType = jobTypes.find(t => t.id === parseInt(formData.job_type_id));
 
-            if (selectedType && selectedType.sla_days) {
-                // ใช้ SLA Calculator คำนวณวันทำการ
-                const dueDate = addWorkDays(new Date(), selectedType.sla_days, holidays);
-                setCalculatedDueDate(dueDate);
-            } else {
-                setCalculatedDueDate(null);
+            if (selectedType) {
+                // 1. SLA Logic
+                if (selectedType.sla_days) {
+                    const dueDate = addWorkDays(new Date(), selectedType.sla_days, holidays);
+                    setCalculatedDueDate(dueDate);
+                } else {
+                    setCalculatedDueDate(null);
+                }
+
+                // 2. Fetch Job Type Items (Sub-tasks template)
+                fetchJobTypeItems(formData.job_type_id);
             }
         } else {
             setCalculatedDueDate(null);
+            setSubItems([]);
+            setItemValues({});
         }
     }, [formData.job_type_id, jobTypes, holidays]);
+
+    /**
+     * ดึงรายการงานย่อย (Job Type Items) ตามประเภทงาน
+     */
+    const fetchJobTypeItems = async (jobTypeId) => {
+        try {
+            const { data, error } = await supabase
+                .from('job_type_items')
+                .select('*')
+                .eq('job_type_id', parseInt(jobTypeId))
+                .order('id');
+
+            if (error) throw error;
+            setSubItems(data || []);
+
+            // Reset values
+            const initialValues = {};
+            (data || []).forEach(item => {
+                initialValues[item.id] = { quantity: 1, name: item.name }; // Default qty = 1
+            });
+            setItemValues(initialValues);
+
+        } catch (error) {
+            console.error('Error fetching job items:', error);
+        }
+    };
 
     // --- Handlers ---
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    // Handle Sub Item Changes (Qty / Note)
+    const handleItemChange = (itemId, field, value) => {
+        setItemValues(prev => ({
+            ...prev,
+            [itemId]: { ...prev[itemId], [field]: value }
+        }));
     };
 
     const handleSubmit = async (e) => {
@@ -101,9 +146,9 @@ const CreateJob = () => {
         try {
             setSubmitting(true);
 
-            // สร้าง Payload สำหรับบันทึก
+            // 1. Insert Job
             const payload = {
-                tenant_id: 1, // Hardcoded for Phase 2 MVP
+                tenant_id: 1,
                 project_id: parseInt(formData.project_id),
                 job_type_id: parseInt(formData.job_type_id),
                 subject: formData.subject,
@@ -112,12 +157,11 @@ const CreateJob = () => {
                 headline: formData.headline,
                 sub_headline: formData.sub_headline,
                 priority: formData.priority,
-                status: 'pending_approval', // สถานะเริ่มต้น
-                requester_id: 1, // TODO: ใช้ ID จาก Auth Context
-                due_date: calculatedDueDate?.toISOString(), // บันทึกวันส่งที่คำนวณได้
+                status: 'pending_approval',
+                requester_id: 1,
+                due_date: calculatedDueDate?.toISOString(),
             };
 
-            // Call API Supabase
             const { data, error } = await supabase
                 .from('jobs')
                 .insert([payload])
@@ -126,7 +170,37 @@ const CreateJob = () => {
 
             if (error) throw error;
 
-            alert(`✅ สร้างใบงานสำเร็จ! รหัสเอกสาร: ${data.dj_id || data.id}`);
+            const jobId = data.id;
+
+            // 2. Insert Design Job Items (Transaction)
+            if (subItems.length > 0) {
+                const itemsPayload = subItems.map(item => ({
+                    job_id: jobId,
+                    job_type_item_id: item.id,
+                    name: item.name, // Snapshot name
+                    quantity: itemValues[item.id]?.quantity || 1,
+                    status: 'pending'
+                }));
+
+                const { error: itemsError } = await supabase
+                    .from('design_job_items')
+                    .insert(itemsPayload);
+
+                if (itemsError) console.error('Error saving items:', itemsError);
+            }
+
+            // --- Auto-Assignment Logic ---
+            console.log('🤖 Triggering Auto-Assignment...');
+            const assignResult = await assignJobFromMatrix(data.id, payload.project_id, payload.job_type_id);
+
+            let successMessage = `✅ สร้างใบงานสำเร็จ! รหัสเอกสาร: ${data.dj_id || jobId}`;
+            if (assignResult.success && assignResult.assigneeId) {
+                successMessage += `\n👤 ระบบได้จ่ายงานให้ User #${assignResult.assigneeId} เรียบร้อยแล้ว`;
+            } else {
+                successMessage += `\n⚠️ ยังไม่ได้ระบุผู้รับผิดชอบ (Pending Assignment)`;
+            }
+
+            alert(successMessage);
 
             // Reset Form
             setFormData({
@@ -134,6 +208,8 @@ const CreateJob = () => {
                 objective: '', description: '', headline: '', sub_headline: '', priority: 'normal'
             });
             setCalculatedDueDate(null);
+            setSubItems([]);
+            setItemValues({});
 
         } catch (error) {
             console.error('Error creating job:', error);
@@ -212,7 +288,40 @@ const CreateJob = () => {
                     </div>
                 )}
 
-                {/* Section 2: รายละเอียดงาน */}
+                {/* Section 2: รายละเอียดชิ้นงาน (Job Items) */}
+                {subItems.length > 0 && (
+                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-4">
+                        <h3 className="text-lg font-semibold text-gray-700 flex items-center">
+                            📦 ชิ้นงานที่ต้องทำ (Job Items)
+                            <span className="ml-2 text-xs font-normal text-gray-500 bg-white px-2 py-0.5 rounded-full border">
+                                {subItems.length} รายการ
+                            </span>
+                        </h3>
+
+                        <div className="grid grid-cols-1 gap-4">
+                            {subItems.map(item => (
+                                <div key={item.id} className="flex items-center gap-4 bg-white p-3 rounded shadow-sm">
+                                    <div className="flex-1">
+                                        <label className="block text-sm font-medium text-gray-900">{item.name}</label>
+                                        {item.default_size && <span className="text-xs text-gray-500">ขนาด: {item.default_size}</span>}
+                                    </div>
+                                    <div className="w-24">
+                                        <label className="block text-xs text-gray-500 mb-1">จำนวน</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            value={itemValues[item.id]?.quantity || 0}
+                                            onChange={(e) => handleItemChange(item.id, 'quantity', parseInt(e.target.value) || 0)}
+                                            className="w-full p-1 border border-gray-300 rounded text-center"
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Section 3: รายละเอียดเพิ่มเติม */}
                 <div className="space-y-4 border-t pt-4">
                     <h3 className="text-lg font-semibold text-gray-700">รายละเอียดงาน</h3>
 

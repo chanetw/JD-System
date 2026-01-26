@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS project_job_assignments (
 
 ### 3.2 🔔 Notifications (New Required)
 Logic: แจ้งเตือนเมื่อสถานะเปลี่ยน หรือใกล้ถึงกำหนด SLA
-- Status: 🚧 **Missing** (User manually executed, need to formalize)
+- Status: ✅ **Implemented** (Phase 2 Migration)
 
 ```sql
 CREATE TABLE IF NOT EXISTS notifications (
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 ### 3.3 ⏱️ SLA Tracking (New Required)
 Logic: เก็บ Log การคำนวณและเลื่อน SLA (Shift)
-- Status: 🚧 **Missing**
+- Status: ✅ **Implemented** (Phase 2 Migration)
 
 ```sql
 CREATE TABLE IF NOT EXISTS sla_shift_logs (

@@ -21,7 +21,7 @@ export default function Sidebar() {
     const { user } = useAuthStore();
 
     /** ตรวจสอบสิทธิ์ว่าเป็นผู้ดูแลระบบ (Admin) หรือไม่ */
-    const isAdmin = user?.roles?.includes('admin');
+    const isAdmin = user?.roles?.some(r => r.toLowerCase() === 'admin') || user?.role?.toLowerCase() === 'admin';
 
     return (
         // ============================================
@@ -114,7 +114,7 @@ export default function Sidebar() {
                             ปฏิทินวันหยุด
                         </SidebarLink>
 
-                        <SidebarLink to="/reports" icon={ReportIcon}>
+                        <SidebarLink to="/admin/reports" icon={ReportIcon}>
                             รายงานและสถิติ
                         </SidebarLink>
                     </>

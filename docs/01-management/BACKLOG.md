@@ -1,20 +1,18 @@
 # 🎒 DJ System - Product Backlog
 
-## 🔴 High Priority (Do Now)
-- [x] **Refactor Frontend:** Move to Modular Architecture (Completed)
-- [ ] **Auto-Assignment Logic:** Database Integration & Frontend UI
-- [ ] **Verify Authentication Pages:** Ensure Login/Register work in new modules
-- [ ] **Verify Admin Pages:** Test CRUD for Users, Organization, Job Types
+## 🔴 High Priority (Do Now) - Phase 3: Approval & Workflow
+- [ ] **Approval Flow UI:** Re-implement Approval Diagram with new data structure
+- [ ] **My Queue / Inbox:** Improve UI for Assignee (Action Buttons: Start, Complete)
+- [ ] **Notification System:** Implement Real-time / Polling notifications
+- [ ] **Job Reassignment:** Allow Admin/Manager to change Assignee after job is started (with log)
 
-### 🐛 Refactor Regression Bugs (Fix Immediately)
-- [x] **[FIXED] Admin Routes Missing:** `frontend/src/modules/features/admin/index.jsx` - Wired all 10 admin routes with lazy loading.
-- [x] **[FIXED] Dashboard Stats Error:** Fixed `getDashboardStats` to query 'jobs' table directly (removed 'design_jobs' reference).
-- [ ] **[LOW] Notifications Table Missing:** Console warns about `public.notifications` not found. Requires DB migration if notification feature is needed.
-
-## 🟡 Medium Priority (Next)
-- [ ] **Approval Flow UI:** Fix diagram rendering in new location
-- [ ] **Job Creation Form:** Re-test validation and API connection
-- [ ] **SLA Widget:** Fix styles in Shared Components
+## 🔵 Completed (Phase 2)
+- [x] **Refactor Frontend:** Move to Modular Architecture
+- [x] **Auto-Assignment Logic:** Database Integration & Frontend UI
+- [x] **Verify Authentication Pages:** Login/Register verified
+- [x] **Verify Admin Pages:** Users, Job Types, Assignment Matrix
+- [x] **Job Creation Form:** Validation & Parent-Child Logic
+- [x] **Database:** Added `notifications` and `sla_shift_logs` tables
 
 ## 🟢 Low Priority (Later)
 - [ ] **Dark Mode Support**

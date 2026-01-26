@@ -103,20 +103,27 @@ export default function Dashboard() {
             {/* ============================================
           Page Title - หัวข้อหน้า
           ============================================ */}
+            {/* ============================================
+          Page Title - หัวข้อหน้า
+          ============================================ */}
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
                     <p className="text-gray-500">
-                        สวัสดี, {user?.firstName} ({user?.roles?.[0]})
+                        สวัสดี, {user?.displayName || user?.firstName || 'ผู้ใช้งาน'} <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full text-gray-600">({user?.roles?.[0] || 'User'})</span>
                     </p>
                 </div>
-                <Link
-                    to="/create"
-                    className="flex items-center gap-2 px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors"
-                >
-                    <PlusIcon className="w-5 h-5" />
-                    Create DJ
-                </Link>
+
+                {/* ปุ่ม Create DJ (เฉพาะ Admin และ Marketing) */}
+                {['admin', 'marketing'].includes(user?.roles?.[0]) && (
+                    <Link
+                        to="/create"
+                        className="flex items-center gap-2 px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors shadow-sm"
+                    >
+                        <PlusIcon className="w-5 h-5" />
+                        <span>สร้างงานใหม่</span>
+                    </Link>
+                )}
             </div>
 
             {/* ============================================
