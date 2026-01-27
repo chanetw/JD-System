@@ -13,6 +13,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '@core/stores/authStore';
 import { useNotificationStore } from '@core/stores/notificationStore';
+import api from '@shared/services/apiService';
 
 /**
  * @component Header
@@ -42,43 +43,53 @@ export default function Header() {
         setShowRoleMenu(false);
     };
 
+
+
     /**
      * รีเฟรชหน้า (สำหรับ Demo)
      */
-    const handleResetDemo = () => {
-        // Note: ไม่ใช้ Mock แล้ว เพียงแค่รีเฟรชหน้า
-        window.location.reload();
+    const handleResetDemo = async () => {
+        if (window.confirm('ยืนยันการล้างข้อมูล Demo (เฉพาะข้อมูลใหม่ที่สร้างขึ้น)?')) {
+            try {
+                await api.resetDemoData();
+                alert('ล้างข้อมูลเรียบร้อยแล้ว');
+                window.location.reload();
+            } catch (error) {
+                console.error('Reset failed:', error);
+                alert('เกิดข้อผิดพลาดในการล้างข้อมูล');
+            }
+        }
     };
 
     // รายการ Role ที่เลือกได้ (ตาม mockup - ภาษาไทย)
     const roles = [
-        { 
-            id: 'requester', 
+        {
+            id: 'requester',
             label: 'Requester',
             labelTh: 'ผู้ขอใช้บริการ',
             badgeText: 'requester',
-            color: 'bg-blue-100 text-blue-700' 
+            color: 'bg-blue-100 text-blue-700'
         },
-        { 
-            id: 'approver', 
+        {
+            id: 'approver',
             label: 'Approver (Head)',
             labelTh: 'ผู้อนุมัติ',
             badgeText: 'approver',
-            color: 'bg-amber-100 text-amber-700' 
+            color: 'bg-amber-100 text-amber-700'
         },
-        { 
-            id: 'assignee', 
+        {
+            id: 'assignee',
             label: 'Assignee (Graphic)',
             labelTh: 'ผู้ปฏิบัติงาน',
             badgeText: 'assignee',
-            color: 'bg-green-100 text-green-700' 
+            color: 'bg-green-100 text-green-700'
         },
-        { 
-            id: 'admin', 
+        {
+            id: 'admin',
             label: 'Admin',
             labelTh: 'ผู้ดูแลระบบ',
             badgeText: 'admin',
-            color: 'bg-purple-100 text-purple-700' 
+            color: 'bg-purple-100 text-purple-700'
         },
     ];
 
@@ -135,18 +146,18 @@ export default function Header() {
                         onClick={() => setShowRoleMenu(!showRoleMenu)}
                         className="flex items-center gap-3 px-4 py-2 rounded-lg hover:opacity-90 transition-all border-2 shadow-sm"
                         style={{
-                            backgroundColor: currentRole.id === 'requester' ? '#DBEAFE' : 
-                                           currentRole.id === 'approver' ? '#FEF3C7' : 
-                                           currentRole.id === 'assignee' ? '#D1FAE5' : 
-                                           '#F3E8FF',
-                            borderColor: currentRole.id === 'requester' ? '#3B82F6' : 
-                                        currentRole.id === 'approver' ? '#F59E0B' : 
-                                        currentRole.id === 'assignee' ? '#10B981' : 
+                            backgroundColor: currentRole.id === 'requester' ? '#DBEAFE' :
+                                currentRole.id === 'approver' ? '#FEF3C7' :
+                                    currentRole.id === 'assignee' ? '#D1FAE5' :
+                                        '#F3E8FF',
+                            borderColor: currentRole.id === 'requester' ? '#3B82F6' :
+                                currentRole.id === 'approver' ? '#F59E0B' :
+                                    currentRole.id === 'assignee' ? '#10B981' :
                                         '#9333EA',
-                            color: currentRole.id === 'requester' ? '#1E40AF' : 
-                                   currentRole.id === 'approver' ? '#92400E' : 
-                                   currentRole.id === 'assignee' ? '#065F46' : 
-                                   '#6B21A8'
+                            color: currentRole.id === 'requester' ? '#1E40AF' :
+                                currentRole.id === 'approver' ? '#92400E' :
+                                    currentRole.id === 'assignee' ? '#065F46' :
+                                        '#6B21A8'
                         }}
                     >
                         {/* Multi-Role: แสดง badges ของ roles ทั้งหมด */}
@@ -193,9 +204,8 @@ export default function Header() {
                                             <button
                                                 key={role.id}
                                                 onClick={() => handleSwitchRole(role.id)}
-                                                className={`w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors ${
-                                                    role.id === currentRole.id ? 'bg-blue-50' : ''
-                                                }`}
+                                                className={`w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors ${role.id === currentRole.id ? 'bg-blue-50' : ''
+                                                    }`}
                                             >
                                                 <div className="flex items-center gap-3">
                                                     <span className={`px-2.5 py-1 rounded text-xs font-medium ${role.color}`}>

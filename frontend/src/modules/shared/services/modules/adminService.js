@@ -207,7 +207,7 @@ export const adminService = {
             .select(`*, items:job_type_items(*)`)
             .order('id');
         if (error) throw error;
-        return data.map(jt => ({
+        return (data || []).map(jt => ({ // Safe map
             id: jt.id,
             name: jt.name,
             description: jt.description,
@@ -215,7 +215,7 @@ export const adminService = {
             icon: jt.icon,
             attachments: jt.attachments || [],
             status: jt.is_active ? 'active' : 'inactive',
-            items: jt.items.map(i => ({
+            items: (jt.items || []).map(i => ({ // Safe items map
                 id: i.id,
                 name: i.name,
                 defaultSize: i.default_size,
@@ -265,7 +265,7 @@ export const adminService = {
         if (jobTypeId) query = query.eq('job_type_id', jobTypeId);
         const { data, error } = await query;
         if (error) throw error;
-        return data.map(i => ({
+        return (data || []).map(i => ({
             id: i.id,
             jobTypeId: i.job_type_id,
             name: i.name,
@@ -794,7 +794,7 @@ export const adminService = {
                 .delete()
                 .eq('user_id', userId)
                 .eq('tenant_id', tenantId);
-            
+
             console.log('✅ Deleted old scope assignments:', deleteResult1);
 
             const deleteResult2 = await supabase
@@ -802,7 +802,7 @@ export const adminService = {
                 .delete()
                 .eq('user_id', userId)
                 .eq('tenant_id', tenantId);
-            
+
             console.log('✅ Deleted old user roles:', deleteResult2);
 
             // Step 2: Insert roles ใหม่
@@ -825,7 +825,7 @@ export const adminService = {
                     console.error('❌ Role insert error:', roleErr);
                     throw roleErr;
                 }
-                
+
                 console.log('✅ Inserted roles:', roleData);
 
                 // Step 3: Insert scopes ใหม่
@@ -850,7 +850,7 @@ export const adminService = {
 
                 if (scopeRows.length > 0) {
                     console.log('📝 Inserting scope rows:', scopeRows);
-                    
+
                     const { error: scopeErr, data: scopeData } = await supabase
                         .from('user_scope_assignments')
                         .insert(scopeRows);
@@ -859,21 +859,21 @@ export const adminService = {
                         console.error('❌ Scope insert error:', scopeErr);
                         throw scopeErr;
                     }
-                    
+
                     console.log('✅ Inserted scopes:', scopeData);
                 }
 
                 // Step 4: อัปเดต role หลักใน users table (legacy support)
                 const primaryRole = roles[0]?.name || 'requester';
                 console.log('📝 Updating primary role to:', primaryRole);
-                
+
                 const { error: updateErr, data: updateData } = await supabase
                     .from('users')
-                    .update({ 
+                    .update({
                         role: primaryRole
                     })
                     .eq('id', userId);
-                
+
                 if (updateErr) {
                     console.error('❌ Update error:', updateErr);
                 } else {
@@ -881,9 +881,9 @@ export const adminService = {
                 }
             }
 
-            return { 
-                success: true, 
-                message: 'บันทึกบทบาทสำเร็จ' 
+            return {
+                success: true,
+                message: 'บันทึกบทบาทสำเร็จ'
             };
         } catch (err) {
             console.error('saveUserRoles error:', err);
@@ -982,7 +982,7 @@ export const adminService = {
             // ถ้ามี budId → filter by scope
             if (budId && approverRoles && approverRoles.length > 0) {
                 const userIds = approverRoles.map(r => r.user_id);
-                
+
                 const { data: scopes } = await supabase
                     .from('user_scope_assignments')
                     .select('user_id')
@@ -993,7 +993,7 @@ export const adminService = {
                     .or(`scope_level.eq.tenant,and(scope_level.eq.bud,scope_id.eq.${budId})`);
 
                 const validUserIds = new Set((scopes || []).map(s => s.user_id));
-                
+
                 // ถ้าไม่มี scopes → ถือว่า legacy (full access)
                 return approverRoles
                     .filter(r => validUserIds.size === 0 || validUserIds.has(r.user_id))

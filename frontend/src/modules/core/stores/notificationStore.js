@@ -99,11 +99,35 @@ export const useNotificationStore = create((set, get) => ({
 
     /**
      * เพิ่ม Notification ใหม่ (สำหรับ Real-time / WebSocket)
+     * 
+     * เมื่อ Socket.io ส่ง notification:new event มา
+     * ให้เพิ่มลง notifications array และ update unreadCount
      */
     addNotification: (notification) => {
+        set(state => {
+            // ตรวจสอบว่า notification ยังไม่มี (ป้องกัน duplicate)
+            const isDuplicate = state.notifications.some(n => n.id === notification.id);
+            if (isDuplicate) {
+                return state;
+            }
+
+            // เพิ่ม notification ใหม่ที่ด้านบน (newest first)
+            return {
+                notifications: [notification, ...state.notifications],
+                // อัปเดต unreadCount เฉพาะถ้า notification ยังไม่ได้อ่าน
+                unreadCount: notification.isRead ? state.unreadCount : state.unreadCount + 1
+            };
+        });
+    },
+
+    /**
+     * ลบ Notification (สำหรับ Real-time / WebSocket)
+     */
+    deleteNotification: (notificationId) => {
         set(state => ({
-            notifications: [notification, ...state.notifications],
-            unreadCount: state.unreadCount + 1
+            notifications: state.notifications.filter(n => n.id !== notificationId),
+            // Recalculate unreadCount
+            unreadCount: state.notifications.filter(n => !n.isRead && n.id !== notificationId).length
         }));
     }
 }));

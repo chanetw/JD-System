@@ -58,6 +58,9 @@ export default function JobDetail() {
     const [completeNote, setCompleteNote] = useState('');
     const [finalLink, setFinalLink] = useState('');
 
+    // Custom Alert State
+    const [alertState, setAlertState] = useState({ isOpen: false, title: '', message: '', type: 'success' });
+
     // ============================================
     // Data Loading
     // ============================================
@@ -179,19 +182,19 @@ export default function JobDetail() {
 
     const handleReassign = async () => {
         if (!selectedAssignee) {
-            alert('กรุณาเลือกผู้รับงานใหม่');
+            setAlertState({ isOpen: true, title: 'กรุณาเลือก', message: 'กรุณาเลือกผู้รับงานใหม่', type: 'error' });
             return;
         }
 
         try {
             await api.reassignJob(job.id, selectedAssignee, reassignReason, user?.id || 1);
-            alert('ย้ายงานสำเร็จ!');
+            setAlertState({ isOpen: true, title: 'ย้ายงานสำเร็จ', message: 'ระบบได้ทำการย้ายผู้รับงานเรียบร้อยแล้ว', type: 'success' });
             setShowReassignModal(false);
             setReassignReason('');
             loadJob(); // Reload
         } catch (error) {
             console.error('Failed to reassign:', error);
-            alert('เกิดข้อผิดพลาดในการย้ายงาน');
+            setAlertState({ isOpen: true, title: 'เกิดข้อผิดพลาด', message: 'ไม่สามารถย้ายงานได้ กรุณาลองใหม่อีกครั้ง', type: 'error' });
         }
     };
 
@@ -199,10 +202,20 @@ export default function JobDetail() {
         try {
             const updated = await api.startJob(job.id, 'manual');
             setJob(prev => ({ ...prev, status: 'in_progress', startedAt: updated.startedAt }));
-            alert('เริ่มงานแล้ว! (Job Started)');
+            setAlertState({
+                isOpen: true,
+                title: 'เริ่มงานแล้ว! (Job Started)',
+                message: 'สถานะงานเปลี่ยนเป็นกำลังดำเนินงาน',
+                type: 'success'
+            });
         } catch (err) {
             console.error(err);
-            alert('เกิดข้อผิดพลาดในการเริ่มงาน');
+            setAlertState({
+                isOpen: true,
+                title: 'ไม่สามารถเริ่มงานได้',
+                message: 'เกิดข้อผิดพลาด หรือคุณไม่มีสิทธิ์ในการเริ่มงานนี้',
+                type: 'error'
+            });
         }
     };
 
@@ -785,13 +798,14 @@ export default function JobDetail() {
                                         </div>
                                     </div>
                                     {/* Permission Check for Reassignment */}
-                                    {(user?.roles?.includes('admin') || user?.roles?.includes('manager')) && (
+                                    {(user?.roles?.includes('admin') || user?.roles?.includes('manager') || user?.role === 'admin') && (
                                         <button
                                             onClick={() => setShowReassignModal(true)}
-                                            className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-white rounded-md transition-all opacity-0 group-hover:opacity-100"
+                                            className="ml-auto px-3 py-1.5 text-xs font-medium bg-white text-purple-600 border border-purple-200 hover:bg-purple-50 hover:border-purple-300 rounded-lg transition-all shadow-sm flex items-center gap-1.5"
                                             title="ย้ายผู้รับงาน (Reassign)"
                                         >
-                                            <PencilIcon className="w-4 h-4" />
+                                            <PencilIcon className="w-3 h-3" />
+                                            Change
                                         </button>
                                     )}
                                 </div>
@@ -1022,9 +1036,14 @@ export default function JobDetail() {
                                     className="w-full border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
                                 >
                                     <option value="">-- เลือกผู้รับงาน --</option>
-                                    {users.map(u => (
-                                        <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-                                    ))}
+                                    {users
+                                        .filter(u => u.role === 'assignee')
+                                        .map(u => (
+                                            <option key={u.id} value={u.id}>
+                                                {u.name} ({u.department || 'General'})
+                                            </option>
+                                        ))
+                                    }
                                 </select>
                             </div>
 
@@ -1047,6 +1066,36 @@ export default function JobDetail() {
                     </div>
                 </div>
             )}
+
+            {/* Custom Alert Modal */}
+            {alertState.isOpen && (
+                <div className="fixed inset-0 flex items-center justify-center z-[60] p-4">
+                    <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full text-center transform transition-all scale-100">
+                        <div className={`mx-auto flex items-center justify-center h-16 w-16 rounded-full mb-4 ${alertState.type === 'success' ? 'bg-green-100' : 'bg-red-100'
+                            }`}>
+                            {alertState.type === 'success' ? (
+                                <CheckIcon className="h-8 w-8 text-green-600" />
+                            ) : (
+                                <XMarkIcon className="h-8 w-8 text-red-600" />
+                            )}
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 mb-2">
+                            {alertState.title}
+                        </h3>
+                        <p className="text-sm text-gray-500 mb-6">
+                            {alertState.message}
+                        </p>
+                        <Button
+                            onClick={() => setAlertState(prev => ({ ...prev, isOpen: false }))}
+                            className={`w-full justify-center ${alertState.type === 'success' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+                                }`}
+                        >
+                            ตกลง (OK)
+                        </Button>
+                    </div>
+                </div>
+            )}
+
             {/* Complete Job Modal */}
             {showCompleteModal && (
                 <div className="fixed inset-0 z-50 overflow-y-auto">

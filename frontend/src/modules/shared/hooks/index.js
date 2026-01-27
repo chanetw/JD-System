@@ -5,3 +5,5 @@
 
 export * from './useRealtime';
 export * from './useMediaQuery';
+export * from './useSocket';
+export * from './useNotifications';

@@ -296,7 +296,7 @@ export default function CreateDJ() {
         const newJobType = {
             jobTypeId: parseInt(jobTypeId),
             name: jobTypeInfo?.name || 'Unknown',
-            sla: jobTypeInfo?.sla_days || 7,
+            sla: jobTypeInfo?.sla || 7,
             assigneeId: null,
             // === Accordion State ===
             isExpanded: true,       // ✅ Default: Expanded
@@ -730,7 +730,7 @@ export default function CreateDJ() {
                                         {masterData.jobTypes
                                             .filter(t => t.name !== 'Project Group (Parent)') // ซ่อน Parent Group
                                             .map(t => (
-                                                <option key={t.id} value={t.id}>{t.name} ({t.sla_days || 7} วัน)</option>
+                                                <option key={t.id} value={t.id}>{t.name} ({t.sla || 7} วัน)</option>
                                             ))}
                                     </select>
                                     <button

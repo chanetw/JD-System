@@ -34,6 +34,11 @@
 ## [0.5.0] - 2026-01-26
 ### Released Phase 3: Real Approval Flow & Reassignment
 
+### Fixed
+- Fixed `jobService.js` syntax error (missing comma).
+- Fixed SLA days display in Create Job dropdown (was defaults to 7 days due to property mismatch).
+- Updated `DATABASE_SCHEMA.md` and `API_SPEC.md`.
+
 ### Added
 - **Feature:** Real Approval Flow Integration
   - **Dynamic Diagram:** Visualized approval steps based on database configuration (Levels, Approvers).

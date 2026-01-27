@@ -181,8 +181,11 @@ export default function JobTypeItems() {
             <Card>
                 <CardHeader
                     title={`รายการชิ้นงานย่อยของ "${selectedJobType?.name || '...'}"`}
-                    subtitle={`พบ ${items.length} รายการ`}
-                />
+                >
+                    <span className="text-sm text-gray-500">
+                        พบ {items?.length || 0} รายการ
+                    </span>
+                </CardHeader>
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead className="bg-gray-50 border-b border-gray-200">

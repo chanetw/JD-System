@@ -23,6 +23,19 @@ export default function Sidebar() {
     /** ตรวจสอบสิทธิ์ว่าเป็นผู้ดูแลระบบ (Admin) หรือไม่ */
     const isAdmin = user?.roles?.some(r => r.toLowerCase() === 'admin') || user?.role?.toLowerCase() === 'admin';
 
+    /** ตรวจสอบสิทธิ์ Assignee (Graphic/Editor) */
+    const isAssignee = user?.roles?.some(r => ['assignee', 'graphic', 'editor'].includes(r.toLowerCase())) ||
+        ['assignee', 'graphic', 'editor'].includes(user?.role?.toLowerCase());
+
+    /** ตรวจสอบสิทธิ์ Manager */
+    const isManager = user?.roles?.some(r => r.toLowerCase() === 'manager') || user?.role?.toLowerCase() === 'manager';
+
+    /** ตรวจสอบสิทธิ์ Supervisor */
+    const isSupervisor = user?.roles?.some(r => r.toLowerCase() === 'supervisor') || user?.role?.toLowerCase() === 'supervisor';
+
+    /** ตรวจสอบสิทธิ์เข้าถึง Analytics Dashboard (Admin, Manager, Supervisor) */
+    const canAccessAnalytics = isAdmin || isManager || isSupervisor;
+
     return (
         // ============================================
         // Sidebar Container
@@ -68,6 +81,12 @@ export default function Sidebar() {
                 <SidebarLink to="/approvals" icon={ApprovalIcon}>
                     คิวงานรออนุมัติ
                 </SidebarLink>
+
+                {isAssignee && (
+                    <SidebarLink to="/assignee/my-queue" icon={InboxIcon}>
+                        คิวงานของฉัน (My Queue)
+                    </SidebarLink>
+                )}
 
                 <SidebarLink to="/media-portal" icon={MediaIcon}>
                     ศูนย์จัดการสื่อ (Media)
@@ -116,6 +135,23 @@ export default function Sidebar() {
 
                         <SidebarLink to="/admin/reports" icon={ReportIcon}>
                             รายงานและสถิติ
+                        </SidebarLink>
+                    </>
+                )}
+
+                {/* ============================================
+            Analytics Menu - เมนู Analytics (แสดงเฉพาะ Admin, Manager, Supervisor)
+            ============================================ */}
+                {canAccessAnalytics && (
+                    <>
+                        <div className="pt-6 pb-2 px-2">
+                            <p className="text-xs font-bold text-rose-300 uppercase tracking-wider">
+                                Analytics
+                            </p>
+                        </div>
+
+                        <SidebarLink to="/analytics" icon={AnalyticsIcon}>
+                            Dashboard ภาพรวม
                         </SidebarLink>
                     </>
                 )}
@@ -277,3 +313,18 @@ function PortalIcon({ className }) {
     );
 }
 
+function InboxIcon({ className }) {
+    return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+        </svg>
+    );
+}
+
+function AnalyticsIcon({ className }) {
+    return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+    );
+}

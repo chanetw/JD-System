@@ -17,10 +17,10 @@ To create a comprehensive, modular, and scalable Job Description (JD) and Job As
 - [x] **Auto-Assignment:** Matrix-based assignment (Project + Job Type)
 - [x] **Job Detail Features:** Comments, Timeline, Deliverables
 
-### Phase 3: Advanced Features & Portals (Next)
+### Phase 3: Advanced Features & Portals (In Progress)
 - [ ] **User Portals:** Specific dashboards for each role (Requester, Approver, Assignee)
 - [ ] **Reporting & Analytics:** KPI Dashboards (Initial version done)
-- [ ] **Notifications:** Real-time alerts (Bell & Email)
+- [x] **Notifications:** Real-time alerts (Bell & Email)
 
 ### Phase 4: Optimization & Launch
 - [ ] **Performance Tuning:** Lazy loading, caching

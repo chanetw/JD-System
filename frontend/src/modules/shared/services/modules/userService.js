@@ -453,5 +453,26 @@ export const userService = {
     changePassword: async (currentPassword, newPassword) => {
         console.log('[DEV] Password changed');
         return { success: true };
+    },
+
+    // --- Demo Mode Helper ---
+
+    /**
+     * ดึงข้อมูลผู้ใช้สำหรับ Demo Mode ตามบทบาท
+     * @param {string} role - 'requester', 'approver', 'assignee', 'admin'
+     */
+    getUserByRole: async (role) => {
+        // Map role to specific demo user IDs (from users.json SEED)
+        const demoUserMap = {
+            'requester': 2,  // Somying (Marketing)
+            'approver': 4,   // Wipa (Approver)
+            'assignee': 5,   // Karn (Graphic)
+            'admin': 1       // Admin System
+        };
+
+        const userId = demoUserMap[role] || 2;
+
+        // Fetch full user details
+        return await userService.getUserWithRoles(userId);
     }
 };

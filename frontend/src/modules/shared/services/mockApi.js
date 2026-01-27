@@ -603,6 +603,54 @@ export const getDashboardStats = async () => {
     };
 };
 
+/**
+ * ดึงรายการงานสำหรับ Assignee (Graphic/Editor) แยกตาม Tab
+ * @param {string} userId - รหัสผู้ใช้
+ * @param {string} tab - สถานะงาน ('todo', 'in_progress', 'waiting', 'done')
+ * @returns {Promise<Array>} รายการงานที่กรองแล้ว
+ */
+export const getAssigneeJobs = async (userId, tab) => {
+    await delay(400); // Simulate network
+    const tenantId = getCurrentTenantId();
+    const allJobs = loadMockData('jobs');
+
+    // 1. กรองงานที่ตัวเองเป็น Assignee หรือได้รับมอบหมาย
+    let myJobs = allJobs.filter(j => {
+        // Must belong to current tenant (or be cross-tenant assignment)
+        const isMyTenant = j.tenantId === tenantId;
+
+        // Direct Assignment
+        const isAssigned = String(j.assigneeId) === String(userId);
+
+        // Default Assignee from Flow (Optional, usually specific assignment happens first)
+        const isDefaultAssigned = !j.assigneeId && String(j.flowSnapshot?.defaultAssignee?.userId) === String(userId);
+
+        return (isMyTenant || true) && (isAssigned || isDefaultAssigned); // Relax tenant check for cross-tenant
+    });
+
+    // 2. กรองตาม Tab Status
+    switch (tab) {
+        case 'todo':
+            // งานที่ได้รับมอบหมายแล้ว แต่ยังไม่เริ่มทำ
+            return myJobs.filter(j => ['assigned'].includes(j.status));
+
+        case 'in_progress':
+            // งานที่กำลังทำอยู่
+            return myJobs.filter(j => ['in_progress'].includes(j.status));
+
+        case 'waiting':
+            // งานที่ส่งไปตรวจแล้ว รอ Feedback หรือต้องกลับมาแก้
+            return myJobs.filter(j => ['waiting_check', 'rework'].includes(j.status));
+
+        case 'done':
+            // งานที่เสร็จสมบูรณ์
+            return myJobs.filter(j => ['completed', 'approved'].includes(j.status));
+
+        default:
+            return [];
+    }
+};
+
 export const getJobsByRole = async (user) => {
     await delay(300);
     const tenantId = getCurrentTenantId();

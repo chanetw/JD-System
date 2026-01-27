@@ -313,6 +313,144 @@ export const reportService = {
     },
 
     /**
+     * Export Dashboard เป็น PDF
+     * @param {object} data - ข้อมูล Dashboard
+     * @param {object} filters - Filters ที่ใช้
+     */
+    exportDashboardToPDF: async (data, filters = {}) => {
+        try {
+            // สร้าง HTML content สำหรับ PDF
+            const htmlContent = `
+                <html>
+                <head>
+                    <style>
+                        body { font-family: 'Sarabun', sans-serif; padding: 20px; }
+                        h1 { color: #881337; }
+                        .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 20px 0; }
+                        .kpi-card { border: 1px solid #ddd; padding: 15px; border-radius: 8px; }
+                        .kpi-value { font-size: 24px; font-weight: bold; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                        th { background-color: #f5f5f5; }
+                    </style>
+                </head>
+                <body>
+                    <h1>รายงาน Dashboard ภาพรวม</h1>
+                    <p>ช่วงเวลา: ${filters.period || 'this_month'}</p>
+                    <p>วันที่สร้างรายงาน: ${new Date().toLocaleDateString('th-TH')}</p>
+                    
+                    <h2>KPI สรุป</h2>
+                    <div class="kpi-grid">
+                        <div class="kpi-card">
+                            <div>งานทั้งหมด</div>
+                            <div class="kpi-value">${data?.kpi?.totalDJ || 0}</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div>อัตราส่งตรงเวลา</div>
+                            <div class="kpi-value">${data?.kpi?.onTimeRate || 0}%</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div>เวลาเฉลี่ย</div>
+                            <div class="kpi-value">${data?.kpi?.avgTurnaround || 0} วัน</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div>อัตราแก้ไข</div>
+                            <div class="kpi-value">${data?.kpi?.revisionRate || 0}%</div>
+                        </div>
+                    </div>
+                </body>
+                </html>
+            `;
+
+            // สร้าง Blob และ download
+            const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `dashboard-report-${new Date().toISOString().split('T')[0]}.html`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            return true;
+        } catch (error) {
+            console.error('Error exporting PDF:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Export Dashboard เป็น Excel
+     * @param {object} data - ข้อมูล Dashboard
+     * @param {object} filters - Filters ที่ใช้
+     */
+    exportDashboardToExcel: async (data, filters = {}) => {
+        try {
+            const jobs = data?.jobs || [];
+
+            // สร้าง CSV content (Excel compatible)
+            const headers = [
+                'DJ ID',
+                'Subject',
+                'Job Type',
+                'Project',
+                'Requester',
+                'Assignee',
+                'Status',
+                'Priority',
+                'Created Date',
+                'Due Date',
+                'Completed Date',
+                'Turnaround (Days)',
+                'On Time'
+            ];
+
+            const rows = jobs.map(job => [
+                job.dj_id || '',
+                job.subject || '',
+                job.job_type?.name || '-',
+                job.project?.name || '-',
+                job.requester?.display_name || '-',
+                job.assignee?.display_name || '-',
+                job.status || '',
+                job.priority || '',
+                job.created_at ? new Date(job.created_at).toLocaleDateString('th-TH') : '-',
+                job.due_date ? new Date(job.due_date).toLocaleDateString('th-TH') : '-',
+                job.completed_at ? new Date(job.completed_at).toLocaleDateString('th-TH') : '-',
+                job.completed_at && job.created_at
+                    ? Math.ceil((new Date(job.completed_at) - new Date(job.created_at)) / (1000 * 60 * 60 * 24))
+                    : '-',
+                job.completed_at && job.due_date
+                    ? (new Date(job.completed_at) <= new Date(job.due_date) ? 'Yes' : 'No')
+                    : '-'
+            ]);
+
+            // สร้าง CSV content
+            const csvContent = [
+                headers.join(','),
+                ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+            ].join('\n');
+
+            // สร้าง Blob และ download
+            const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `dashboard-report-${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            return true;
+        } catch (error) {
+            console.error('Error exporting Excel:', error);
+            throw error;
+        }
+    },
+
+    /**
      * Helper: คำนวณช่วงวันที่ตาม Period
      */
     getPeriodDates: (periodType, customStartDate, customEndDate) => {

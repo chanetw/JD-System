@@ -68,7 +68,7 @@ export const routes = [
         title: 'ประเภทงานและ SLA'
     },
     {
-        path: 'admin/job-type-items/:id',
+        path: 'admin/job-type-items',
         element: withSuspense(JobTypeItems),
         roles: ['admin'],
         title: 'รายการย่อยประเภทงาน'

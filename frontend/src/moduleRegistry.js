@@ -16,6 +16,8 @@
 import { routes as jobRequestRoutes } from '@features/job-request';
 import { routes as jobManagementRoutes } from '@features/job-management';
 import { routes as adminRoutes } from '@features/admin/index.jsx';
+import { routes as assigneeRoutes } from '@features/assignee/index.jsx';
+import { routes as analyticsRoutes } from '@features/analytics/index.jsx';
 
 /**
  * รายการ Module ที่ลงทะเบียนในระบบ
@@ -54,6 +56,18 @@ export const registeredModules = [
         name: 'admin',
         basePath: '',
         routes: adminRoutes,
+        enabled: true
+    },
+    {
+        name: 'assignee',
+        basePath: '',
+        routes: assigneeRoutes,
+        enabled: true
+    },
+    {
+        name: 'analytics',
+        basePath: '',
+        routes: analyticsRoutes,
         enabled: true
     },
 ];

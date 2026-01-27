@@ -88,6 +88,9 @@ ALTER TABLE job_types ADD COLUMN auto_start_hours INTEGER DEFAULT 4; -- 0 = Imme
 
 -- Index for Performance (Background Job)
 CREATE INDEX idx_jobs_status_assigned ON jobs(status) WHERE status = 'assigned';
+
+-- Index for My Queue (Assignee Dashboard)
+CREATE INDEX idx_jobs_assignee_status_due ON jobs(assignee_id, status, due_date);
 ```
 
 ## 4. Entity Relationship Diagram (Mermaid)

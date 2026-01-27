@@ -1,25 +1,42 @@
 # 🎒 DJ System - Product Backlog
 
 ## 🔴 High Priority (Do Now) - Phase 3: Approval & Workflow
-- [x] **Approval Flow UI:** Re-implement Approval Diagram with new data structure
-- [x] **Auto-Start Logic:** Phase 4 Job Execution (Immediate & Timeout Simulation) [NEW]
-- [x] **Job Completion:** Complete Job Modal & File Link [NEW]
-- [x] **User Management:** Registration Approval Flow & Role Assignment [NEW]
-- [x] **Database Migration:** Rename Marketing -> Requester [DONE]
-- [x] **Standardize Role Naming:** Requester, Approver, Assignee, Admin [DONE]
-- [x] **Scope Assignment:** Edit User Modal Multi-role & Scope [DONE]
-- [ ] **My Queue / Inbox:** Improve UI for Assignee (Current Priority)
-- [ ] **Notification System:** Implement Real-time / Polling notifications
-- [x] **Job Reassignment:** Allow Admin/Manager to change Assignee after job is started (with log)
+- [x] **Approval Flow UI:** Re-implement Approval Diagram with new data structure (หน้าจออนุมัติงาน - ปรับปรุง Diagram ใหม่)
+- [x] **Auto-Start Logic:** Phase 4 Job Execution (Immediate & Timeout Simulation) [NEW] (ระบบเริ่มงานอัตโนมัติ - Phase 4)
+- [x] **Job Completion:** Complete Job Modal & File Link [NEW] (จบงาน - Modal และลิงก์ไฟล์ส่งงาน)
+- [x] **User Management:** Registration Approval Flow & Role Assignment [NEW] (จัดการผู้ใช้ - Flow อนุมัติการลงทะเบียนและกำหนดสิทธิ์)
+- [x] **Database Migration:** Rename Marketing -> Requester [DONE] (ปรับฐานข้อมูล - เปลี่ยน Marketing เป็น Requester)
+- [x] **Standardize Role Naming:** Requester, Approver, Assignee, Admin [DONE] (ปรับชื่อ Role ให้มาตรฐาน)
+- [x] **Scope Assignment:** Edit User Modal Multi-role & Scope [DONE] (ขอบเขตงาน - แก้ไข Modal ผู้ใช้ให้รองรับหลาย Role และ Scope)
+- [x] **My Queue / Inbox:** Improve UI for Assignee (Current Priority) (งานของฉัน / กล่องข้อความ - ปรับปรุง UI สำหรับผู้รับงาน)
+- [x] **Notification System:** Implement Real-time / Polling notifications (ระบบแจ้งเตือน - Real-time และ Polling)
+- [x] **Job Reassignment:** Allow Admin/Manager to change Assignee after job is started (with log) (โอนย้ายงาน - Admin/Manager เปลี่ยนคนทำได้หลังเริ่มงาน)
+- [x] **Demo Mode Enhancements:** Role Switcher & Reset Data [DONE] (โหมดสาธิต - สลับ Role และรีเซ็ตข้อมูล)
+- [x] **Role-Based Views:** Filter Jobs by Role in Dashboard/Queue [DONE] (มุมมองตาม Role - กรองงานใน Dashboard/Queue)
+- [x] **Bug Check:** Job Type Items (Route & Crash Fix) [FIXED] (แก้บั๊ก - รายการ Job Type)
+- [ ] **KPI Dashboard & Reporting:** Analytics Module Implementation (Phase 1-3 Done, entering Fix & Test) [NEW] (KPI Dashboard & รายงาน - Analytics Module)
+    - [ ] **Critical Fix:** Import Paths (SummaryWidget.jsx) (แก้ด่วน: Import Path ผิด)
+    - [ ] **Critical Fix:** useRealtimeAnalytics Hook (subscribe/unsubscribe) (แก้ด่วน: Hook ไม่มี subscribe/unsubscribe)
+    - [ ] **Critical Fix:** Analytics API Integration (reportService vs apiService) (แก้ด่วน: API ไม่ตรงตาม Service)
+    - [ ] **Critical Fix:** Analytics Export Functions (PDF/Excel) (แก้ด่วน: ไม่มีฟังก์ชัน Export)
+    - [ ] **Critical Fix:** Analytics Data Mapping (Charts/Tables) (แก้ด่วน: Mapping ข้อมูลกราฟผิด)
+    - [ ] **Refinement:** Filters, Charts, Export features (ปรับปรุงเพิ่มเติม: ตัวกรอง, กราฟ, การ Export)
+- [ ] **Feature:** Job Type Specific Approval Logic (Bypass or Custom Flow) [NEW] (ฟีเจอร์: Logic การอนุมัติตามประเภทงาน - ข้ามหรือ Custom Flow)
+- [ ] **Feature:** Enhance User Hierarchy (Add `manager_id` / Reports To) [NEW] (ฟีเจอร์: เพิ่มลำดับขั้นผู้ใช้ - หัวหน้า/สายงาน)
+- [ ] **Feature:** BU-Level Assignment Scope (Filter Assignees by BU) [NEW] (ฟีเจอร์: ขอบเขตงานระดับ BU - กรองคนตาม BU)
+
 
 ## 🔵 Completed (Phase 2)
-- [x] **Refactor Frontend:** Move to Modular Architecture
-- [x] **Auto-Assignment Logic:** Database Integration & Frontend UI
-- [x] **Verify Authentication Pages:** Login/Register verified
-- [x] **Verify Admin Pages:** Users, Job Types, Assignment Matrix
-- [x] **Job Creation Form:** Validation & Parent-Child Logic
-- [x] **Database:** Added `notifications` and `sla_shift_logs` tables
+- [x] **Refactor Frontend:** Move to Modular Architecture (Refactor Frontend - ย้ายไป Modular Architecture)
+- [x] **Auto-Assignment Logic:** Database Integration & Frontend UI (Logic จ่ายงานอัตโนมัติ - เชื่อมต่อฐานข้อมูลและ UI)
+- [x] **Verify Authentication Pages:** Login/Register verified (ตรวจสอบหน้าล็อกอิน/ลงทะเบียน)
+- [x] **Verify Admin Pages:** Users, Job Types, Assignment Matrix (ตรวจสอบหน้า Admin)
+- [x] **Job Creation Form:** Validation & Parent-Child Logic (แบบฟอร์มสร้างงาน)
+- [x] **Database:** Added `notifications` and `sla_shift_logs` tables (ฐานข้อมูล - เพิ่มตารางใหม่)
+- [x] **Bug Fix:** Login Role Selection (Legacy 'marketing' support) [FIXED] (แก้บั๊ก Role Selection)
+- [x] **Bug Fix:** Assignment Matrix Name Display [FIXED] (แก้บั๊กชื่อ Assignment Matrix)
+- [x] **Feature:** Holiday Management (Schema & 2026 Data) [DONE] (จัดการวันหยุด)
 
 ## 🟢 Low Priority (Later)
-- [ ] **Dark Mode Support**
-- [ ] **Multi-language Support (i18n)**
+- [ ] **Dark Mode Support** (รองรับ Dark Mode)
+- [ ] **Multi-language Support (i18n)** (รองรับหลายภาษา i18n)
