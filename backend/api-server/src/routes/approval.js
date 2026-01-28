@@ -11,7 +11,7 @@
 
 import express from 'express';
 import { ApprovalService } from '../services/approvalService.js';
-import { authenticateToken } from './auth.js';
+import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import NotificationService from '../services/notificationService.js';
 
 const router = express.Router();
@@ -21,12 +21,12 @@ const notificationService = new NotificationService();
 /**
  * POST /api/approvals/request
  * สร้างคำขออนุมัติใหม่
- * 
+ *
  * @body {number} jobId - ID ของงาน
  * @body {number} approverId - ID ของผู้อนุมัติ
  * @body {number} stepNumber - ลำดับขั้นตอน
  */
-router.post('/request', authenticateToken, async (req, res) => {
+router.post('/request', authenticateToken, setRLSContextMiddleware, async (req, res) => {
   try {
     const { jobId, approverId, stepNumber } = req.body;
     const ipAddress = req.ip || req.connection.remoteAddress || 'unknown';
@@ -41,7 +41,7 @@ router.post('/request', authenticateToken, async (req, res) => {
     }
 
     // ตรวจสอบสิทธิ์ (requester หรือ admin เท่านั้น)
-    const job = await approvalService.prisma.designJob.findUnique({
+    const job = await approvalService.prisma.job.findUnique({
       where: { id: jobId },
       select: { requesterId: true, tenantId: true }
     });
@@ -92,8 +92,8 @@ router.post('/request', authenticateToken, async (req, res) => {
           priority: approval.job.priority,
           priorityText: approval.job.priority.toUpperCase(),
           createdAt: approval.job.createdAt.toLocaleDateString('th-TH'),
-          deadline: approval.job.deadline?.toLocaleDateString('th-TH'),
-          brief: approval.job.brief,
+          deadline: approval.job.dueDate?.toLocaleDateString('th-TH'),
+          brief: approval.job.description || approval.job.objective,
           attachments: [], // ต้องดึงจาก database จริง
           approveUrl,
           rejectUrl,
@@ -188,7 +188,7 @@ router.post('/approve', async (req, res) => {
             priority: approval.job.priority,
             priorityText: approval.job.priority.toUpperCase(),
             assignedAt: new Date().toLocaleDateString('th-TH'),
-            deadline: approval.job.deadline?.toLocaleDateString('th-TH'),
+            deadline: approval.job.dueDate?.toLocaleDateString('th-TH'),
             viewUrl: `${process.env.FRONTEND_URL}/jobs/${approval.jobId}`
           }
         });
@@ -285,10 +285,10 @@ router.post('/reject', async (req, res) => {
 /**
  * GET /api/approvals/history/:jobId
  * ดึงประวัติการอนุมัติของงาน
- * 
+ *
  * @param {number} jobId - ID ของงาน
  */
-router.get('/history/:jobId', authenticateToken, async (req, res) => {
+router.get('/history/:jobId', authenticateToken, setRLSContextMiddleware, async (req, res) => {
   try {
     const { jobId } = req.params;
     const jobIdNum = parseInt(jobId);
@@ -302,7 +302,7 @@ router.get('/history/:jobId', authenticateToken, async (req, res) => {
     }
 
     // ตรวจสอบสิทธิ์ในการดูงาน
-    const job = await approvalService.prisma.designJob.findUnique({
+    const job = await approvalService.prisma.job.findUnique({
       where: { id: jobIdNum },
       select: { tenantId: true, requesterId: true, assigneeId: true }
     });

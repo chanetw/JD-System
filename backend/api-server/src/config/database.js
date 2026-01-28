@@ -1,10 +1,10 @@
 /**
  * @file database.js
  * @description Database Connection Configuration
- * 
+ *
  * จัดการการเชื่อมต่อ PostgreSQL สำหรับ:
  * - Development: Local PostgreSQL
- * - UAT: Supabase PostgreSQL  
+ * - UAT: Supabase PostgreSQL
  * - Production: On-premise PostgreSQL
  */
 
@@ -12,13 +12,13 @@ import { PrismaClient } from '@prisma/client';
 
 /**
  * สร้าง Prisma Client instance สำหรับเชื่อมต่อ database
- * 
+ *
  * @returns {PrismaClient} - Prisma client instance
  */
 export function createDatabaseConnection() {
   // ดึง database URL จาก environment variable
   const databaseUrl = process.env.DATABASE_URL;
-  
+
   if (!databaseUrl) {
     console.warn('[Database] DATABASE_URL not found in environment variables');
     console.warn('[Database] Using default connection for development');
@@ -35,6 +35,25 @@ export function createDatabaseConnection() {
   });
 
   return prisma;
+}
+
+/**
+ * Set RLS tenant context for the database session
+ * Must be called before executing queries to filter by tenant
+ */
+export async function setRLSContext(prisma, tenantId) {
+  if (!tenantId) return;
+  try {
+    // Validate tenantId is a positive integer to prevent SQL injection
+    const validTenantId = parseInt(tenantId, 10);
+    if (isNaN(validTenantId) || validTenantId <= 0) {
+      console.warn('[RLS] Invalid tenant ID:', tenantId);
+      return;
+    }
+    await prisma.$executeRawUnsafe(`SELECT set_config('app.tenant_id', '${validTenantId}', false)`);
+  } catch (error) {
+    console.warn('[RLS] Failed to set tenant context:', error.message);
+  }
 }
 
 /**

@@ -10,13 +10,14 @@
 
 import express from 'express';
 import { UserService } from '../services/userService.js';
-import { authenticateToken } from './auth.js';
+import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 
 const router = express.Router();
 const userService = new UserService();
 
-// ทุก routes ต้องมีการ authenticate
+// ทุก routes ต้องมีการ authenticate และตั้งค่า RLS context
 router.use(authenticateToken);
+router.use(setRLSContextMiddleware);
 
 /**
  * GET /api/users

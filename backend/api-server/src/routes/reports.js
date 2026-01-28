@@ -10,13 +10,14 @@
  */
 
 import express from 'express';
-import { authenticateToken } from './auth.js';
+import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import { getDatabase } from '../config/database.js';
 
 const router = express.Router();
 
-// ทุก routes ต้องมีการ authenticate
+// ทุก routes ต้องมีการ authenticate และตั้งค่า RLS context
 router.use(authenticateToken);
+router.use(setRLSContextMiddleware);
 
 /**
  * GET /api/reports/approval-stats
@@ -366,8 +367,8 @@ router.get('/performance-metrics', async (req, res) => {
         job: {
           select: {
             createdAt: true,
-            submittedAt: true,
-            deadline: true
+            startedAt: true,
+            dueDate: true
           }
         }
       }
@@ -383,10 +384,10 @@ router.get('/performance-metrics', async (req, res) => {
       }, 0) / approvedJobs.length : 0;
 
     // คำนวณเวลาเฉลี่ยจาก submission ถึง approval
-    const submissionToApproval = approvedJobs.filter(a => a.job.submittedAt);
+    const submissionToApproval = approvedJobs.filter(a => a.job.startedAt);
     const avgSubmissionToApproval = submissionToApproval.length > 0 ?
       submissionToApproval.reduce((sum, a) => {
-        const submittedTime = new Date(a.job.submittedAt);
+        const submittedTime = new Date(a.job.startedAt);
         const approvedTime = new Date(a.approvedAt);
         return sum + (approvedTime - submittedTime);
       }, 0) / submissionToApproval.length : 0;

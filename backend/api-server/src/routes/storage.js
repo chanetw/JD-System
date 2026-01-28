@@ -11,15 +11,16 @@
 
 import express from 'express';
 import multer from 'multer';
-import { authenticateToken } from './auth.js';
+import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import { SupabaseStorageService, isUsingSupabase } from '../config/supabase.js';
 import { getDatabase } from '../config/database.js';
 
 const router = express.Router();
 const prisma = getDatabase();
 
-// ทุก routes ต้องมีการ authenticate
+// ทุก routes ต้องมีการ authenticate และตั้งค่า RLS context
 router.use(authenticateToken);
+router.use(setRLSContextMiddleware);
 
 // Multer configuration for file uploads
 const storage = multer.memoryStorage();
