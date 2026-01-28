@@ -2,7 +2,7 @@
 import { supabase } from '../supabaseClient';
 import { handleResponse } from '../utils';
 import { notificationService } from './notificationService';
-import api from '../apiService';
+import httpClient from '../httpClient';
 
 export const jobService = {
     // --- Jobs CRUD ---
@@ -15,7 +15,7 @@ export const jobService = {
                 params.status = filters.status.toLowerCase();
             }
 
-            const response = await api.get('/jobs', { params });
+            const response = await httpClient.get('/jobs', { params });
 
             if (!response.data.success) {
                 console.warn('[jobService] Get jobs failed:', response.data.message);
@@ -40,7 +40,7 @@ export const jobService = {
 
             console.log(`[getJobsByRole] Filtering for Role: ${role}, UserID: ${userId}`);
 
-            const response = await api.get('/jobs', {
+            const response = await httpClient.get('/jobs', {
                 params: { role: role.toLowerCase() }
             });
 

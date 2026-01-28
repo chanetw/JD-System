@@ -1,13 +1,13 @@
 import { supabase } from '../supabaseClient';
 import { handleResponse } from '../utils';
-import api from '../apiService';
+import httpClient from '../httpClient';
 
 export const adminService = {
     // --- Master Data (Organization) ---
     getMasterData: async () => {
         try {
             // ✓ NEW: Use Backend REST API with RLS context
-            const response = await api.get('/master-data');
+            const response = await httpClient.get('/master-data');
 
             if (!response.data.success) {
                 console.warn('[adminService] Get master data failed:', response.data.message);
@@ -139,7 +139,7 @@ export const adminService = {
     getDepartments: async () => {
         try {
             // ✓ NEW: Use Backend REST API with RLS context
-            const response = await api.get('/departments');
+            const response = await httpClient.get('/departments');
 
             if (!response.data.success) {
                 console.warn('[adminService] Get departments failed:', response.data.message);
