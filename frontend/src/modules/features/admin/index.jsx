@@ -25,8 +25,7 @@ const AssignmentMatrix = React.lazy(() => import('./pages/AssignmentMatrix'));
 const OrganizationManagement = React.lazy(() => import('./pages/OrganizationManagement'));
 const HolidayCalendar = React.lazy(() => import('./pages/HolidayCalendar'));
 const NotificationSettings = React.lazy(() => import('./pages/NotificationSettings'));
-const ReportsDashboard = React.lazy(() => import('./pages/ReportsDashboard'));
-const Reports = React.lazy(() => import('./pages/Reports'));
+
 
 /**
  * Helper: ครอบ Component ด้วย Suspense (สำหรับ Lazy Loading)
@@ -103,18 +102,7 @@ export const routes = [
         roles: ['admin'],
         title: 'ตั้งค่าการแจ้งเตือน'
     },
-    {
-        path: 'admin/reports-dashboard',
-        element: withSuspense(ReportsDashboard),
-        roles: ['admin'],
-        title: 'แดชบอร์ดรายงาน'
-    },
-    {
-        path: 'admin/reports',
-        element: withSuspense(Reports),
-        roles: ['admin'],
-        title: 'รายงาน'
-    },
+
 ];
 
 /**

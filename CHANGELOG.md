@@ -4,6 +4,7 @@
 ### Phase 4: Job Execution & Modular Refactor Implementation
 
 ### Breaking Changes ⚠️
+- **Feature:** SLA Preview: Added real-time deadline calculation and excluded days summary to Create DJ form.
 - **Architecture:** Completed Modular Architecture migration (100%).
 - **Cleanup:** Removed legacy `src/services` and `src/utils` folders. All codebase now uses `@shared` aliases.
 - **Paths:** Updated `App.jsx` comments and internal imports to reflect `modules/shared` standard.

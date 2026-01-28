@@ -329,9 +329,19 @@ export const adminService = {
                 grouped[f.project_id] = {
                     projectId: f.project_id,
                     levels: [],
+                    includeTeamLead: f.include_team_lead || false,
+                    teamLeadId: f.team_lead_id || null,
                     updatedAt: f.updated_at
                 };
             }
+            // Update includeTeamLead and teamLeadId if any row has it
+            if (f.include_team_lead) {
+                grouped[f.project_id].includeTeamLead = true;
+            }
+            if (f.team_lead_id) {
+                grouped[f.project_id].teamLeadId = f.team_lead_id;
+            }
+            
             let lvl = grouped[f.project_id].levels.find(l => l.level === f.level);
             if (!lvl) {
                 lvl = { level: f.level, approvers: [], logic: 'any' };
@@ -340,6 +350,7 @@ export const adminService = {
             if (f.approver) {
                 lvl.approvers.push({
                     id: f.approver.id,
+                    userId: f.approver.id,
                     name: f.approver.display_name,
                     role: f.approver.role,
                     avatar: f.approver.avatar_url
@@ -365,7 +376,18 @@ export const adminService = {
         if (error || !flows || flows.length === 0) return null;
 
         const levels = [];
+        let includeTeamLead = false;
+        let teamLeadId = null;
+        
         flows.forEach(f => {
+            // Extract team lead config from any row (typically first row has it)
+            if (f.include_team_lead) {
+                includeTeamLead = true;
+            }
+            if (f.team_lead_id) {
+                teamLeadId = f.team_lead_id;
+            }
+            
             let lvl = levels.find(l => l.level === f.level);
             if (!lvl) {
                 lvl = { level: f.level, approvers: [], logic: 'any', role: f.role };
@@ -388,21 +410,25 @@ export const adminService = {
         return {
             projectId: projectId,
             levels: levels,
+            includeTeamLead: includeTeamLead,
+            teamLeadId: teamLeadId,
             defaultAssignee: assignment
         };
     },
 
     saveApprovalFlow: async (projectId, flowData) => {
+        // Step 1: Delete old approval flows for this project
         const { error: delErr } = await supabase.from('approval_flows').delete().eq('project_id', projectId);
         if (delErr) throw delErr;
 
+        // Step 2: Insert new approver levels
         const rowsToInsert = [];
         flowData.levels.forEach(lvl => {
             lvl.approvers.forEach(appr => {
                 rowsToInsert.push({
                     project_id: projectId,
                     level: lvl.level,
-                    approver_id: appr.id
+                    approver_id: appr.userId  // ✅ FIX: Changed from appr.id to appr.userId
                 });
             });
         });
@@ -411,6 +437,21 @@ export const adminService = {
             const { error: insErr } = await supabase.from('approval_flows').insert(rowsToInsert);
             if (insErr) throw insErr;
         }
+
+        // Step 3: Save team lead config (include_team_lead + team_lead_id)
+        if (rowsToInsert.length > 0) {
+            // Update the first row with includeTeamLead and teamLeadId config
+            const { error: configErr } = await supabase.from('approval_flows')
+                .update({ 
+                    include_team_lead: flowData.includeTeamLead || false,
+                    team_lead_id: flowData.teamLeadId || null
+                })
+                .eq('project_id', projectId)
+                .limit(1);
+            
+            if (configErr) console.warn('Failed to update team lead config:', configErr);
+        }
+
         return { success: true };
     },
 
@@ -701,6 +742,8 @@ export const adminService = {
                     id, 
                     display_name, 
                     email, 
+                    first_name,
+                    last_name,
                     role, 
                     title, 
                     phone_number, 
@@ -715,6 +758,8 @@ export const adminService = {
 
             if (userError) throw userError;
             if (!user) return null;
+
+            console.log('[adminService] Raw user from DB:', user); // Debug Log
 
             // ดึง roles
             const { data: roles, error: rolesError } = await supabase
@@ -757,10 +802,12 @@ export const adminService = {
                     }))
             }));
 
-            return {
+            const result = {
                 id: user.id,
                 name: user.display_name,
                 email: user.email,
+                firstName: user.first_name, // Added
+                lastName: user.last_name,   // Added
                 role: user.role, // Legacy field
                 title: user.title,
                 department: user.department?.name,
@@ -771,6 +818,9 @@ export const adminService = {
                 tenantId: user.tenant_id,
                 roles: rolesWithScopes // Multi-role data
             };
+
+            console.log('[adminService] getUserWithRoles Returns:', result); // Debug Log
+            return result;
         } catch (err) {
             console.error('getUserWithRoles error:', err);
             throw err;

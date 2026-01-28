@@ -66,7 +66,18 @@ export default function JobDetail() {
     // ============================================
     useEffect(() => {
         loadJob();
+        loadUsers();
     }, [id]);
+
+    // Load users for manual assignment
+    const loadUsers = async () => {
+        try {
+            const usersData = await adminService.getUsers();
+            setUsers(usersData || []);
+        } catch (error) {
+            console.error('Failed to load users:', error);
+        }
+    };
 
     // Auto-Start (Immediate Access)
     useEffect(() => {
@@ -277,6 +288,44 @@ export default function JobDetail() {
         } catch (error) {
             console.error('Failed to reject:', error);
             alert('เกิดข้อผิดพลาดในการปฏิเสธ: ' + error.message);
+        }
+    };
+
+    /**
+     * Manual Assign Job - สำหรับ Department Manager หรือ Admin
+     * เมื่องานผ่านการอนุมัติแล้วแต่ยังไม่มี Assignee
+     */
+    const handleManualAssign = async (jobId, assigneeId) => {
+        if (!assigneeId) {
+            alert('กรุณาเลือกผู้รับงาน');
+            return;
+        }
+
+        // Check permission (only admin or dept manager can assign)
+        const isAdmin = user?.roles?.includes('admin');
+        const isDeptManager = user?.roles?.includes('dept_manager'); // Adjust role name as needed
+        
+        if (!isAdmin && !isDeptManager) {
+            alert('คุณไม่มีสิทธิ์มอบหมายงาน (เฉพาะ Admin หรือ Department Manager)');
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            const result = await api.assignJobManually(jobId, assigneeId, user?.id);
+            if (result.success) {
+                alert('มอบหมายงานสำเร็จ');
+                setSelectedAssignee('');
+                // Reload job data
+                loadJob();
+            } else {
+                alert('เกิดข้อผิดพลาด: ' + result.error);
+            }
+        } catch (error) {
+            console.error('Manual assign failed:', error);
+            alert('เกิดข้อผิดพลาด: ' + error.message);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -582,6 +631,52 @@ export default function JobDetail() {
                             </div>
                         );
                     })()}
+
+                    {/* Manual Assignment Section - สำหรับ Jobs ที่ Approved แต่ยังไม่ Assign */}
+                    {job.status === 'approved' && !job.assigneeId && (
+                        <div className="bg-orange-50 border-l-4 border-l-orange-500 rounded-xl p-6 shadow-sm">
+                            <div className="flex items-center justify-between mb-4">
+                                <div>
+                                    <h3 className="font-bold text-orange-800 flex items-center gap-2">
+                                        <UserIcon className="w-5 h-5" />
+                                        ต้องมอบหมายงาน (Pending Assignment)
+                                    </h3>
+                                    <p className="text-sm text-orange-600 mt-1">
+                                        งานผ่านการอนุมัติแล้ว แต่ยังต้องเลือกผู้รับผิดชอบ
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3">
+                                <select 
+                                    value={selectedAssignee}
+                                    onChange={(e) => setSelectedAssignee(e.target.value)}
+                                    className="flex-1 px-4 py-3 border border-orange-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                                    disabled={isLoading}
+                                >
+                                    <option value="">-- เลือกผู้รับงาน --</option>
+                                    {users.filter(u => u.roles?.includes('assignee')).map(u => (
+                                        <option key={u.id} value={u.id}>
+                                            {u.displayName || `${u.firstName} ${u.lastName}`}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                <button
+                                    onClick={() => handleManualAssign(job.id, selectedAssignee)}
+                                    disabled={!selectedAssignee || isLoading}
+                                    className="px-6 py-3 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                                >
+                                    {isLoading ? 'กำลังบันทึก...' : 'มอบหมาย'}
+                                </button>
+                            </div>
+
+                            <p className="text-xs text-orange-600 mt-3 flex items-center gap-1">
+                                <ClockIcon className="w-4 h-4" />
+                                เฉพาะ Department Manager หรือ Admin เท่านั้นที่สามารถมอบหมายงานได้
+                            </p>
+                        </div>
+                    )}
 
                     {/* ปุ่มสำหรับ Assignee (Start / Complete) */}
                     {(job.status === 'assigned' || job.status === 'in_progress') && (

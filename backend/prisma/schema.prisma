@@ -314,19 +314,22 @@ model ApprovalFlow {
 }
 
 model Approval {
-  id          Int            @id @default(autoincrement())
-  tenantId    Int            @map("tenant_id")
-  jobId       Int            @map("job_id")
-  stepNumber  Int            @map("step_number")
-  approverId  Int            @map("approver_id")
-  status      ApprovalStatus @default(pending)
-  comment     String?        @db.Text
-  approvedAt  DateTime?      @map("approved_at")
-  createdAt   DateTime       @default(now()) @map("created_at")
+  id            Int            @id @default(autoincrement())
+  tenantId      Int            @map("tenant_id")
+  jobId         Int            @map("job_id")
+  stepNumber    Int            @map("step_number")
+  approverId    Int            @map("approver_id")
+  status        ApprovalStatus @default(pending)
+  comment       String?        @db.Text
+  approvedAt    DateTime?      @map("approved_at")
+  approvalToken String?        @map("approval_token") @db.VarChar(64)
+  ipAddress     String?        @map("ip_address") @db.VarChar(45) // IPv6 support
+  userAgent     String?        @map("user_agent") @db.Text
+  createdAt     DateTime       @default(now()) @map("created_at")
 
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  job         DesignJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  approver    User      @relation(fields: [approverId], references: [id])
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  job           DesignJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  approver      User      @relation(fields: [approverId], references: [id])
 
   @@map("approvals")
 }

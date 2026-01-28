@@ -483,9 +483,8 @@ export const jobService = {
                 isFinal = false;
             } else {
                 // จบ Flow แล้ว -> Approved
-                // ถ้ามี Assignee แล้วให้เป็น in_progress เลย (เริ่มงานได้)
-                // ถ้ายังไม่มี Assignee ให้เป็น approved (รอคนกดรับงาน)
-                nextStatus = 'in_progress'; // ปรับเป็น in_progress เลยเพื่อความง่ายใน Phase นี้
+                // เปลี่ยนเป็น approved ก่อน แล้วให้ Auto-Assign Logic จัดการต่อ
+                nextStatus = 'approved';
                 isFinal = true;
             }
         }
@@ -521,6 +520,42 @@ export const jobService = {
             nextStatus,
             isFinal
         });
+
+        // 5. ถ้าจบ Flow แล้ว ให้ทำ Auto-Assign
+        if (isFinal && nextStatus === 'approved') {
+            try {
+                const autoAssignResult = await jobService.autoAssignJobAfterApproval(jobId);
+                
+                if (autoAssignResult.success) {
+                    console.log(`[Auto-Assign] Job ${jobId} assigned to user ${autoAssignResult.data.assignee_id}`);
+                    return { 
+                        success: true, 
+                        nextStatus: 'assigned', 
+                        isFinal,
+                        autoAssigned: true,
+                        assigneeId: autoAssignResult.data.assignee_id
+                    };
+                } else if (autoAssignResult.needsManualAssign) {
+                    console.log(`[Auto-Assign] Job ${jobId} needs manual assignment`);
+                    return { 
+                        success: true, 
+                        nextStatus: 'approved', 
+                        isFinal,
+                        needsManualAssign: true
+                    };
+                }
+            } catch (autoAssignError) {
+                console.error('[Auto-Assign] Error:', autoAssignError);
+                // ถ้า Auto-Assign ล้มเหลว ให้คงสถานะ approved ไว้เพื่อรอ Manual Assign
+                return { 
+                    success: true, 
+                    nextStatus: 'approved', 
+                    isFinal,
+                    needsManualAssign: true,
+                    autoAssignError: autoAssignError.message
+                };
+            }
+        }
 
         return { success: true, nextStatus, isFinal };
     },
@@ -902,5 +937,138 @@ export const jobService = {
             return await mockApiService.simulateAutoStartCheck();
         }
         return { message: 'Not implemented for Real DB yet (Requires Edge Functions)' };
+    },
+
+    /**
+     * Auto-assign job after all approvals completed
+     * Logic: Team Lead → Department Manager → Needs Manual Assignment
+     * 
+     * @param {number} jobId - Job ID to assign
+     * @returns {Promise<Object>} - Result with success status and assignee info
+     */
+    autoAssignJobAfterApproval: async (jobId) => {
+        try {
+            // Fetch job with project and department relations
+            const { data: job, error: jobErr } = await supabase
+                .from('jobs')
+                .select(`
+                    *,
+                    project:projects(id, name),
+                    requester:users!jobs_requester_id_fkey(id, display_name, department_id)
+                `)
+                .eq('id', jobId)
+                .single();
+
+            if (jobErr || !job) {
+                throw new Error('Job not found');
+            }
+
+            // Step 1: Check Approval Flow Config for Team Lead
+            const { data: flowData, error: flowErr } = await supabase
+                .from('approval_flows')
+                .select('include_team_lead, team_lead_id')
+                .eq('project_id', job.project_id)
+                .not('team_lead_id', 'is', null)
+                .limit(1);
+
+            const flow = flowData && flowData.length > 0 ? flowData[0] : null;
+
+            if (!flowErr && flow?.include_team_lead && flow?.team_lead_id) {
+                console.log('[Auto-Assign] Assigning to Team Lead:', flow.team_lead_id);
+                return await jobService.assignJobManually(
+                    jobId,
+                    flow.team_lead_id,
+                    null,
+                    'auto-assign: team-lead'
+                );
+            }
+
+            // Step 2: Check Department Manager (from requester's department)
+            if (job.requester?.department_id) {
+                const { data: dept, error: deptErr } = await supabase
+                    .from('departments')
+                    .select('id, name, manager_id')
+                    .eq('id', job.requester.department_id)
+                    .single();
+
+                if (!deptErr && dept?.manager_id) {
+                    console.log('[Auto-Assign] Assigning to Department Manager:', dept.manager_id);
+                    return await jobService.assignJobManually(
+                        jobId,
+                        dept.manager_id,
+                        null,
+                        'auto-assign: dept-manager'
+                    );
+                }
+            }
+
+            // Step 3: No auto-assign possible - needs manual selection
+            console.log('[Auto-Assign] No auto-assign available - needs manual selection');
+            return {
+                success: false,
+                needsManualAssign: true,
+                jobId: jobId,
+                message: 'Job approved but needs manual assignment by Department Manager or Admin'
+            };
+        } catch (error) {
+            console.error('[Auto-Assign] Failed:', error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    /**
+     * Manual assign job (called by Department Manager or Admin)
+     * 
+     * @param {number} jobId - Job ID to assign
+     * @param {number} assigneeId - User ID to assign to
+     * @param {number|null} assignedBy - User ID who performed the assignment
+     * @param {string} source - Source of assignment ('manual', 'auto-assign: team-lead', etc.)
+     * @returns {Promise<Object>} - Result with success status
+     */
+    assignJobManually: async (jobId, assigneeId, assignedBy = null, source = 'manual') => {
+        try {
+            // Update job with assignee
+            const { data: updatedJob, error: updateErr } = await supabase
+                .from('jobs')
+                .update({
+                    assignee_id: assigneeId,
+                    assigned_at: new Date().toISOString(),
+                    status: 'assigned'
+                })
+                .eq('id', jobId)
+                .select()
+                .single();
+
+            if (updateErr) throw updateErr;
+
+            // Log activity
+            await supabase.from('job_activities').insert({
+                job_id: jobId,
+                user_id: assignedBy,
+                activity_type: 'assigned',
+                description: `Job assigned to user ${assigneeId}`,
+                metadata: { source, timestamp: new Date().toISOString() }
+            });
+
+            console.log('[Assign] Job assigned successfully:', { jobId, assigneeId, source });
+
+            // Send notification to assignee
+            try {
+                await notificationService.createNotification({
+                    userId: assigneeId,
+                    jobId: jobId,
+                    type: 'job_assigned',
+                    message: `You have been assigned to job ${updatedJob.dj_id}`,
+                    metadata: { source }
+                });
+            } catch (notifErr) {
+                console.warn('[Assign] Failed to send notification:', notifErr);
+            }
+
+            return { success: true, data: updatedJob };
+        } catch (error) {
+            console.error('[Assign] Failed:', error);
+            return { success: false, error: error.message };
+        }
     }
 };

@@ -76,8 +76,10 @@ export default function AdminApprovalFlow() {
     // === สถานะฟอร์มแก้ไข (States: Edit Form) ===
     /** รายการลำดับการอนุมัติที่กำลังแก้ไข */
     const [editLevels, setEditLevels] = useState([]);
-    /** ผู้รับงานเริ่มต้นที่กำลังแก้ไข */
-    const [editAssignee, setEditAssignee] = useState(null);
+    /** เปิดใช้งาน Team Lead Approval หรือไม่ */
+    const [includeTeamLead, setIncludeTeamLead] = useState(false);
+    /** ID ของ Team Lead ที่เลือก */
+    const [teamLeadId, setTeamLeadId] = useState(null);
 
     // === ทีมงานที่เกี่ยวข้องกับโครงการ (States: Responsible Team) ===
     /** รวมรายการผู้ใช้งานทุกคน (เพื่อการกรองตามขอบเขต) */
@@ -218,10 +220,12 @@ export default function AdminApprovalFlow() {
             setCurrentFlow(flow || null);
             if (flow) {
                 setEditLevels(flow.levels || []);
-                setEditAssignee(flow.defaultAssignee || null);
+                setIncludeTeamLead(flow.includeTeamLead || false);
+                setTeamLeadId(flow.teamLeadId || null);
             } else {
                 setEditLevels([]);
-                setEditAssignee(null);
+                setIncludeTeamLead(false);
+                setTeamLeadId(null);
             }
         }
     }, [selectedProject, approvalFlows]);
@@ -230,7 +234,7 @@ export default function AdminApprovalFlow() {
 
     /**
      * บันทึกข้อมูลลำดับการอนุมัติ (Approval Flow)
-     * บันทึกทั้งข้อมูลโครงการ, ลำดับผู้ตรวจสอบ และผู้รับงานเริ่มต้น
+     * บันทึกทั้งข้อมูลโครงการ, ลำดับผู้ตรวจสอบ และการตั้งค่า Team Lead
      * 
      * @async
      * @function handleSaveFlow
@@ -242,7 +246,8 @@ export default function AdminApprovalFlow() {
                 projectId: selectedProject.id,
                 projectName: selectedProject.name,
                 levels: editLevels,
-                defaultAssignee: editAssignee
+                includeTeamLead: includeTeamLead,
+                teamLeadId: includeTeamLead ? teamLeadId : null
             };
 
             if (currentFlow) {
@@ -333,28 +338,6 @@ export default function AdminApprovalFlow() {
         const updated = [...editLevels];
         updated[levelIndex].approvers = updated[levelIndex].approvers.filter(a => a.userId !== approverUserId);
         setEditLevels(updated);
-    };
-
-    /**
-     * เปลี่ยนผู้รับงานเริ่มต้น (Default Assignee)
-     * 
-     * @function handleAssigneeChange
-     * @param {string|number} userId - ID ของผู้รับงาน
-     * @returns {void}
-     */
-    const handleAssigneeChange = (userId) => {
-        const user = assignees.find(u => u.id == userId);
-        if (user) {
-            // ประกอบชื่อเต็มสำหรับการแสดงผล
-            const userName = [user.prefix, user.name || user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.email;
-            setEditAssignee({
-                userId: userId,
-                name: userName,
-                role: user.roles?.join(', ') || 'Assignee'
-            });
-        } else {
-            setEditAssignee(null);
-        }
     };
 
     /**
@@ -828,45 +811,79 @@ export default function AdminApprovalFlow() {
                                                     </div>
                                                 </div>
 
-                                                {/* Assignee Section */}
-                                                <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-5 border border-orange-100 relative overflow-hidden">
+                                                {/* Team Lead Auto-Assign Option */}
+                                                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-5 border border-blue-200 relative overflow-hidden">
                                                     <div className="absolute top-0 right-0 p-4 opacity-10">
-                                                        <BriefcaseIcon className="w-24 h-24 text-orange-500" />
+                                                        <UserGroupIcon className="w-24 h-24 text-blue-500" />
                                                     </div>
 
                                                     <div className="relative z-10">
-                                                        <h5 className="font-bold text-orange-800 mb-4 flex items-center gap-2">
-                                                            <BriefcaseIcon className="w-5 h-5" /> ผู้รับงานดำเนินงานต่อ (Assignee)
-                                                            <span className="text-xs font-normal text-orange-600 bg-orange-100 px-2 py-0.5 rounded-full">ขั้นตอนสุดท้าย (Final Step)</span>
+                                                        <h5 className="font-bold text-blue-800 mb-4 flex items-center gap-2">
+                                                            <UserGroupIcon className="w-5 h-5" /> การมอบหมายงานอัตโนมัติ (Auto-Assignment)
+                                                            <span className="text-xs font-normal text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">หลังการอนุมัติ</span>
                                                         </h5>
 
-                                                        {/* Assignee Logic */}
-                                                        {(() => {
-                                                            return (
-                                                                <>
-                                                                    {responsibleTeam.assignees.length === 0 && (
-                                                                        <div className="bg-white/80 backdrop-blur border border-yellow-200 rounded-lg p-3 text-sm text-yellow-700 mb-4 flex items-center gap-2">
-                                                                            <ExclamationCircleIcon className="w-5 h-5" />
-                                                                            ยังไม่มี Assignee ในโครงการนี้
-                                                                        </div>
+                                                        <div className="bg-white p-4 rounded-lg border border-blue-200/50 shadow-sm">
+                                                            <label className="flex items-start gap-3 cursor-pointer group">
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    checked={includeTeamLead}
+                                                                    onChange={(e) => setIncludeTeamLead(e.target.checked)}
+                                                                    className="w-5 h-5 mt-0.5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                                                />
+                                                                <div className="flex-1">
+                                                                    <span className="font-semibold text-blue-900 group-hover:text-blue-700 transition-colors">
+                                                                        ✅ อนุญาตให้ Team Lead รับงานอัตโนมัติ
+                                                                    </span>
+                                                                    <p className="text-xs text-blue-600 mt-2 leading-relaxed">
+                                                                        เมื่อเปิดใช้: งานที่ผ่านการอนุมัติครบแล้วจะถูกมอบหมายให้ Team Lead ของโครงการโดยอัตโนมัติ
+                                                                    </p>
+                                                                    <p className="text-xs text-blue-500 mt-1">
+                                                                        หาก Team Lead ไม่มีหรือไม่ได้กำหนด ระบบจะมอบหมายให้ Department Manager แทน
+                                                                    </p>
+                                                                </div>
+                                                            </label>
+
+                                                            {/* Team Lead Selector - แสดงเมื่อติ๊ก checkbox */}
+                                                            {includeTeamLead && (
+                                                                <div className="mt-4 pt-4 border-t border-blue-100">
+                                                                    <label className="block text-sm font-medium text-blue-800 mb-2">
+                                                                        เลือก Team Lead สำหรับโครงการนี้
+                                                                    </label>
+                                                                    <select
+                                                                        value={teamLeadId || ''}
+                                                                        onChange={(e) => setTeamLeadId(e.target.value ? parseInt(e.target.value) : null)}
+                                                                        className="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
+                                                                    >
+                                                                        <option value="">-- กรุณาเลือก Team Lead --</option>
+                                                                        {responsibleTeam.assignees.map(user => (
+                                                                            <option key={user.id} value={user.id}>
+                                                                                {user.displayName || user.display_name} ({user.email})
+                                                                            </option>
+                                                                        ))}
+                                                                    </select>
+                                                                    {!teamLeadId && (
+                                                                        <p className="mt-2 text-xs text-amber-600 flex items-center gap-1">
+                                                                            <ExclamationCircleIcon className="w-4 h-4" />
+                                                                            หากไม่เลือก Team Lead ระบบจะใช้ Department Manager แทน
+                                                                        </p>
                                                                     )}
-                                                                    <div className="bg-white p-3 rounded-lg border border-orange-200/50 shadow-sm">
-                                                                        <FormSelect
-                                                                            label="เลือกผู้รับงาน Default"
-                                                                            value={editAssignee?.userId || ''}
-                                                                            onChange={(e) => handleAssigneeChange(e.target.value)}
-                                                                        >
-                                                                            <option value="">-- ไม่ระบุ (Unassigned) --</option>
-                                                                            {responsibleTeam.assignees.map(u => (
-                                                                                <option key={u.id} value={u.id}>
-                                                                                    {[u.prefix, u.name, u.lastName].filter(Boolean).join(' ')}
-                                                                                </option>
-                                                                            ))}
-                                                                        </FormSelect>
-                                                                    </div>
-                                                                </>
-                                                            );
-                                                        })()}
+                                                                    {teamLeadId && (
+                                                                        <p className="mt-2 text-xs text-green-600 flex items-center gap-1">
+                                                                            <CheckCircleIcon className="w-4 h-4" />
+                                                                            งานที่ผ่านการอนุมัติจะถูกมอบหมายให้ Team Lead ที่เลือกโดยอัตโนมัติ
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="mt-3 p-3 bg-blue-100/50 rounded-lg">
+                                                            <p className="text-xs text-blue-700 flex items-center gap-2">
+                                                                <ExclamationCircleIcon className="w-4 h-4" />
+                                                                <span>หากไม่มีทั้ง Team Lead และ Department Manager ระบบจะให้ Admin หรือ Department Manager เลือกผู้รับงานด้วยตนเอง</span>
+                                                            </p>
+                                                        </div>
                                                     </div>
                                                 </div>
 

@@ -35,6 +35,9 @@ export default function UserManagementNew() {
     const [registrations, setRegistrations] = useState([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // Helper: Check if current user is admin
+    const isAdmin = user?.role === 'admin' || user?.roles?.includes('admin');
+
     // Approve Modal (Select Role & Scope)
     const [approveModal, setApproveModal] = useState({
         show: false,
@@ -265,6 +268,7 @@ export default function UserManagementNew() {
             }
 
             // Set states
+            // Set states
             setEditScopeData(initialScopeData);
             setEditRoleConfigs(loadedRoleConfigs);
             setEditSelectedRoles(loadedRoleNames);
@@ -272,6 +276,11 @@ export default function UserManagementNew() {
                 show: true,
                 user: {
                     ...userToEdit,
+                    // Fix: Merge fresh data from API if available
+                    firstName: userWithRoles?.firstName || userToEdit.firstName,
+                    lastName: userWithRoles?.lastName || userToEdit.lastName,
+                    title: userWithRoles?.title || userToEdit.title,
+                    phone: userWithRoles?.phone || userToEdit.phone,
                     role: userToEdit.role || loadedRoleNames[0] || 'requester'
                 }
             });
@@ -326,7 +335,12 @@ export default function UserManagementNew() {
                     phone_number: editModal.user.phone,
                     department_id: editModal.user.departmentId || null,
                     role: selectedRoles[0] || 'requester', // Primary role for legacy
-                    is_active: editModal.user.isActive
+                    is_active: editModal.user.isActive,
+                    // Admin Only Fields (Updated 2026-01-27)
+                    first_name: editModal.user.firstName,
+                    last_name: editModal.user.lastName,
+                    display_name: `${editModal.user.firstName} ${editModal.user.lastName}`.trim(),
+                    email: editModal.user.email
                 })
                 .eq('id', editModal.user.id);
 
@@ -765,15 +779,43 @@ export default function UserManagementNew() {
                         </div>
 
                         <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-                            {/* Read-only info */}
+                            {/* Editable Info (Admin Only) */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-500 mb-1">ชื่อที่แสดง</label>
-                                    <input type="text" value={editModal.user.name} disabled className="w-full px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-gray-600 text-sm" />
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        ชื่อจริง {isAdmin ? <span className="text-xs text-rose-500">(Admin แก้ได้)</span> : <span className="text-xs text-gray-400">(อ่านเท่านั้น)</span>}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editModal.user.firstName || ''}
+                                        onChange={(e) => isAdmin && setEditModal(prev => ({ ...prev, user: { ...prev.user, firstName: e.target.value } }))}
+                                        disabled={!isAdmin}
+                                        className={`w-full px-3 py-2 border rounded-lg text-sm ${isAdmin ? 'bg-white border-gray-300 focus:ring-2 focus:ring-indigo-500' : 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'}`}
+                                    />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-500 mb-1">อีเมล</label>
-                                    <input type="text" value={editModal.user.email} disabled className="w-full px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-gray-600 text-sm" />
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        นามสกุล
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editModal.user.lastName || ''}
+                                        onChange={(e) => isAdmin && setEditModal(prev => ({ ...prev, user: { ...prev.user, lastName: e.target.value } }))}
+                                        disabled={!isAdmin}
+                                        className={`w-full px-3 py-2 border rounded-lg text-sm ${isAdmin ? 'bg-white border-gray-300 focus:ring-2 focus:ring-indigo-500' : 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'}`}
+                                    />
+                                </div>
+                                <div className="col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        อีเมล {isAdmin ? <span className="text-xs text-rose-500">(Admin แก้ได้)</span> : <span className="text-xs text-gray-400">(อ่านเท่านั้น)</span>}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editModal.user.email || ''}
+                                        onChange={(e) => isAdmin && setEditModal(prev => ({ ...prev, user: { ...prev.user, email: e.target.value } }))}
+                                        disabled={!isAdmin}
+                                        className={`w-full px-3 py-2 border rounded-lg text-sm ${isAdmin ? 'bg-white border-gray-300 focus:ring-2 focus:ring-indigo-500' : 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'}`}
+                                    />
                                 </div>
                             </div>
 

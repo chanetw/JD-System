@@ -15,9 +15,22 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import { authenticateSocket } from './src/socket/middleware/auth.js';
-import { setupJobEventHandlers } from './src/socket/handlers/jobEvents.js';
-import { setupNotificationEventHandlers } from './src/socket/handlers/notificationEvents.js';
+import { authenticateSocket } from './socket/middleware/auth.js';
+import { setupJobEventHandlers } from './socket/handlers/jobEvents.js';
+import { setupNotificationEventHandlers } from './socket/handlers/notificationEvents.js';
+
+// Import Database Connection
+import { getDatabase, testDatabaseConnection, closeDatabaseConnection } from './config/database.js';
+
+// Import Supabase Configuration
+import { testSupabaseConnection, isUsingSupabase } from './config/supabase.js';
+
+// Import Routes
+import authRoutes from './routes/auth.js';
+import usersRoutes from './routes/users.js';
+import approvalRoutes from './routes/approval.js';
+import reportsRoutes from './routes/reports.js';
+import storageRoutes from './routes/storage.js';
 
 // ==========================================
 // ขั้นตอนที่ 1: ตั้งค่า Environment Variables
@@ -177,8 +190,36 @@ io.on('connection', (socket) => {
 /**
  * Health Check Endpoint
  */
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', message: 'DJ System API Server is running' });
+app.get('/health', async (req, res) => {
+  try {
+    // ทดสอบการเชื่อมต่อ database
+    const dbConnected = await testDatabaseConnection();
+    
+    // ทดสอบการเชื่อมต่อ Supabase (ถ้าใช้)
+    let supabaseStatus = 'not_configured';
+    if (isUsingSupabase()) {
+      const supabaseTest = await testSupabaseConnection();
+      supabaseStatus = supabaseTest.success ? 'connected' : 'error';
+    }
+    
+    res.json({ 
+      status: 'ok', 
+      message: 'DJ System API Server is running',
+      database: dbConnected ? 'connected' : 'disconnected',
+      supabase: supabaseStatus,
+      environment: process.env.NODE_ENV || 'development',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.json({ 
+      status: 'ok', 
+      message: 'DJ System API Server is running',
+      database: 'error',
+      supabase: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 /**
@@ -187,6 +228,13 @@ app.get('/health', (req, res) => {
 app.get('/api/version', (req, res) => {
   res.json({ version: '1.0.0', name: 'DJ System API' });
 });
+
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/users', usersRoutes);
+app.use('/api/approvals', approvalRoutes);
+app.use('/api/reports', reportsRoutes);
+app.use('/api/storage', storageRoutes);
 
 // Routes will be added here in the future
 // app.use('/api/notifications', notificationsRouter);
@@ -240,8 +288,27 @@ server.listen(PORT, () => {
  * Handle graceful shutdown
  * เมื่อ SIGTERM signal รับได้ ให้ปิด server อย่างสวยงาม
  */
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   console.log('SIGTERM signal received: closing HTTP server');
+  
+  // ปิด database connection
+  await closeDatabaseConnection();
+  
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
+});
+
+/**
+ * Handle graceful shutdown on SIGINT (Ctrl+C)
+ */
+process.on('SIGINT', async () => {
+  console.log('SIGINT signal received: closing HTTP server');
+  
+  // ปิด database connection
+  await closeDatabaseConnection();
+  
   server.close(() => {
     console.log('HTTP server closed');
     process.exit(0);

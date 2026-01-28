@@ -23,7 +23,12 @@ export const userService = {
                 role: u.role,
                 avatar: u.avatar_url,
                 isActive: u.is_active,
-                tenantId: u.tenant_id
+                tenantId: u.tenant_id,
+                // Fix: Include missing fields
+                title: u.title, // Job Title
+                phone: u.phone || u.phone_number,
+                department: u.department, // If exists as string
+                departmentId: u.department_id
             };
         });
     },

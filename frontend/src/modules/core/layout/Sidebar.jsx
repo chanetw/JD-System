@@ -133,9 +133,7 @@ export default function Sidebar() {
                             ปฏิทินวันหยุด
                         </SidebarLink>
 
-                        <SidebarLink to="/admin/reports" icon={ReportIcon}>
-                            รายงานและสถิติ
-                        </SidebarLink>
+
                     </>
                 )}
 
