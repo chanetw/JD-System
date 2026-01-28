@@ -31,6 +31,9 @@ import usersRoutes from './routes/users.js';
 import approvalRoutes from './routes/approval.js';
 import reportsRoutes from './routes/reports.js';
 import storageRoutes from './routes/storage.js';
+import jobsRoutes from './routes/jobs.js';
+import departmentsRoutes from './routes/departments.js';
+import masterDataRoutes from './routes/master-data.js';
 
 // ==========================================
 // ขั้นตอนที่ 1: ตั้งค่า Environment Variables
@@ -233,6 +236,9 @@ app.get('/api/version', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/jobs', jobsRoutes);
+app.use('/api/departments', departmentsRoutes);
+app.use('/api/master-data', masterDataRoutes);
 app.use('/api/approvals', approvalRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/storage', storageRoutes);

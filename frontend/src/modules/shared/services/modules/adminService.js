@@ -1,43 +1,25 @@
 import { supabase } from '../supabaseClient';
 import { handleResponse } from '../utils';
+import api from '../apiService';
 
 export const adminService = {
     // --- Master Data (Organization) ---
     getMasterData: async () => {
-        const [tenantsRes, budsRes, projectsRes, jobTypesRes] = await Promise.all([
-            supabase.from('tenants').select('*').order('id'),
-            supabase.from('buds').select('*').order('id'),
-            supabase.from('projects').select(`*, bud:buds(name), tenant:tenants(name)`).order('id'),
-            supabase.from('job_types').select('*').order('id')
-        ]);
+        try {
+            // ✓ NEW: Use Backend REST API with RLS context
+            const response = await api.get('/master-data');
 
-        const tenants = (tenantsRes.data || []).map(t => ({ ...t, isActive: t.is_active }));
-        const buds = (budsRes.data || []).map(b => ({ ...b, tenantId: b.tenant_id, isActive: b.is_active }));
+            if (!response.data.success) {
+                console.warn('[adminService] Get master data failed:', response.data.message);
+                return { tenants: [], buds: [], projects: [], jobTypes: [] };
+            }
 
-        const projects = (projectsRes.data || []).map(p => ({
-            id: p.id,
-            name: p.name,
-            code: p.code,
-            budId: p.bud_id,
-            budName: p.bud?.name,
-            tenantId: p.tenant_id,
-            tenantName: p.tenant?.name,
-            status: p.is_active ? 'Active' : 'Inactive',
-            isActive: p.is_active
-        }));
+            return response.data.data;
 
-        const jobTypes = (jobTypesRes.data || []).map(t => ({
-            id: t.id,
-            name: t.name,
-            description: t.description,
-            sla: t.sla_days,
-            icon: t.icon,
-            tenantId: t.tenant_id,
-            status: t.is_active ? 'active' : 'inactive',
-            isActive: t.is_active
-        }));
-
-        return { tenants, buds, projects, jobTypes };
+        } catch (error) {
+            console.error('[adminService] getMasterData error:', error);
+            return { tenants: [], buds: [], projects: [], jobTypes: [] };
+        }
     },
 
     getTenants: async () => {
@@ -155,16 +137,21 @@ export const adminService = {
     },
 
     getDepartments: async () => {
-        const { data, error } = await supabase.from('departments')
-            .select(`*, bud:buds(name, code), manager:users!fk_manager(display_name)`)
-            .order('id');
-        if (error) throw error;
-        return data.map(d => ({
-            ...d,
-            budId: d.bud_id,
-            managerId: d.manager_id,
-            isActive: d.is_active
-        }));
+        try {
+            // ✓ NEW: Use Backend REST API with RLS context
+            const response = await api.get('/departments');
+
+            if (!response.data.success) {
+                console.warn('[adminService] Get departments failed:', response.data.message);
+                return [];
+            }
+
+            return response.data.data;
+
+        } catch (error) {
+            console.error('[adminService] getDepartments error:', error);
+            return [];
+        }
     },
 
     createDepartment: async (deptData) => {
@@ -319,7 +306,7 @@ export const adminService = {
     // --- Approval Flows ---
     getApprovalFlows: async () => {
         const { data: flows, error } = await supabase.from('approval_flows')
-            .select(`*, approver:users(*)`)
+            .select(`*, approver:users!approver_id(*)`)
             .order('level');
         if (error) throw error;
 
@@ -341,7 +328,7 @@ export const adminService = {
             if (f.team_lead_id) {
                 grouped[f.project_id].teamLeadId = f.team_lead_id;
             }
-            
+
             let lvl = grouped[f.project_id].levels.find(l => l.level === f.level);
             if (!lvl) {
                 lvl = { level: f.level, approvers: [], logic: 'any' };
@@ -369,7 +356,7 @@ export const adminService = {
         }
 
         const { data: flows, error } = await supabase.from('approval_flows')
-            .select(`*, approver:users(*)`)
+            .select(`*, approver:users!approver_id(*)`)
             .eq('project_id', projectId)
             .order('level');
 
@@ -378,7 +365,7 @@ export const adminService = {
         const levels = [];
         let includeTeamLead = false;
         let teamLeadId = null;
-        
+
         flows.forEach(f => {
             // Extract team lead config from any row (typically first row has it)
             if (f.include_team_lead) {
@@ -387,7 +374,7 @@ export const adminService = {
             if (f.team_lead_id) {
                 teamLeadId = f.team_lead_id;
             }
-            
+
             let lvl = levels.find(l => l.level === f.level);
             if (!lvl) {
                 lvl = { level: f.level, approvers: [], logic: 'any', role: f.role };
@@ -442,13 +429,13 @@ export const adminService = {
         if (rowsToInsert.length > 0) {
             // Update the first row with includeTeamLead and teamLeadId config
             const { error: configErr } = await supabase.from('approval_flows')
-                .update({ 
+                .update({
                     include_team_lead: flowData.includeTeamLead || false,
                     team_lead_id: flowData.teamLeadId || null
                 })
                 .eq('project_id', projectId)
                 .limit(1);
-            
+
             if (configErr) console.warn('Failed to update team lead config:', configErr);
         }
 

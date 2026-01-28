@@ -89,8 +89,8 @@ export class UserService extends BaseService {
           isActive: true,
           createdAt: true,
           userRoles: {
-            include: {
-              role: true
+            select: {
+              roleName: true
             }
           }
         }
@@ -187,12 +187,7 @@ export class UserService extends BaseService {
           createdAt: true,
           userRoles: {
             select: {
-              role: {
-                select: {
-                  name: true,
-                  displayName: true
-                }
-              }
+              roleName: true
             }
           }
         }

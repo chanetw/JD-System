@@ -2,122 +2,63 @@
 import { supabase } from '../supabaseClient';
 import { handleResponse } from '../utils';
 import { notificationService } from './notificationService';
+import api from '../apiService';
 
 export const jobService = {
     // --- Jobs CRUD ---
 
     getJobs: async (filters = {}) => {
-        let query = supabase.from('jobs')
-            .select(`
-            *,
-            project:projects(name),
-            job_type:job_types(name),
-            requester:users!jobs_requester_id_fkey(display_name, avatar_url),
-            assignee:users!jobs_assignee_id_fkey(display_name, avatar_url)
-         `)
-            .order('created_at', { ascending: false });
+        try {
+            // ✓ NEW: Use Backend REST API with RLS context
+            const params = {};
+            if (filters.status && filters.status !== 'All') {
+                params.status = filters.status.toLowerCase();
+            }
 
-        if (filters.status && filters.status !== 'All') {
-            query = query.eq('status', filters.status.toLowerCase());
+            const response = await api.get('/jobs', { params });
+
+            if (!response.data.success) {
+                console.warn('[jobService] Get jobs failed:', response.data.message);
+                return [];
+            }
+
+            const jobs = response.data.data || [];
+            console.log(`[jobService] getJobs: Fetched ${jobs.length} jobs`);
+            return jobs;
+
+        } catch (error) {
+            console.error('[jobService] getJobs error:', error);
+            return [];
         }
-
-        const data = handleResponse(await query);
-
-        return data.map(j => ({
-            id: j.id,
-            djId: j.dj_id,
-            subject: j.subject,
-            jobType: j.job_type?.name,
-            project: j.project?.name,
-            projectName: j.project?.name,
-            status: j.status,
-            priority: j.priority,
-            deadline: j.due_date,
-            createdAt: j.created_at,
-            requester: j.requester?.display_name,
-            requesterAvatar: j.requester?.avatar_url,
-            assignee: j.assignee?.display_name,
-            assigneeName: j.assignee?.display_name,
-            assigneeAvatar: j.assignee?.avatar_url
-        }));
     },
 
     getJobsByRole: async (user) => {
         try {
-            let query = supabase
-                .from('jobs')
-                .select(`
-                    *,
-                    project:projects(name),
-                    job_type:job_types(name),
-                    requester:users!jobs_requester_id_fkey(display_name, avatar_url),
-                    assignee:users!jobs_assignee_id_fkey(display_name, avatar_url)
-                `)
-                .order('created_at', { ascending: false });
-
-            // Filter logic based on role
-            // Handling Multi-Role: Check primary role or specific override
-            // For Demo default to legacy 'role' field or first role in array
-            const role = user.role || (user.roles && user.roles[0]?.name) || 'requester';
+            // ✓ NEW: Use Backend REST API with RLS context
+            const role = user.role || (user.roles && (user.roles[0]?.name || user.roles[0]?.roleName || user.roles[0])) || 'requester';
             const userId = user.id;
 
             console.log(`[getJobsByRole] Filtering for Role: ${role}, UserID: ${userId}`);
 
-            switch (role.toLowerCase()) {
-                case 'requester':
-                    query = query.eq('requester_id', userId);
-                    break;
-                case 'assignee':
-                    query = query.eq('assignee_id', userId);
-                    break;
-                case 'approver':
-                case 'manager':
-                case 'head':
-                    // Approver sees jobs pending approval (or completed ones for history)
-                    // Simplify: show pending_approval
-                    // Advanced: Check flow permissions (Phase 4 scope)
-                    query = query.in('status', ['pending_approval', 'pending_level_1', 'pending_level_2']);
-                    break;
-                case 'admin':
-                    // Admin sees all
-                    break;
-                default:
-                    // Fallback: show own jobs
-                    query = query.eq('requester_id', userId);
-            }
+            const response = await api.get('/jobs', {
+                params: { role: role.toLowerCase() }
+            });
 
-            // Limit results for dashboard performance
-            query = query.limit(50);
-
-            const { data: jobs, error } = await query;
-            if (error) {
-                console.warn('Error fetching jobs by role:', error.message);
+            if (!response.data.success) {
+                console.warn('[jobService] Get jobs by role failed:', response.data.message);
                 return [];
             }
 
-            return (jobs || []).map(j => ({
-                id: j.id,
-                djId: j.dj_id,
-                subject: j.subject,
-                jobType: j.job_type?.name,
-                project: j.project?.name,
-                projectName: j.project?.name,
-                status: j.status,
-                priority: j.priority,
-                deadline: j.due_date,
-                createdAt: j.created_at,
-                isOverdue: j.due_date ? new Date(j.due_date) < new Date() && j.status !== 'completed' : false,
-                requester: j.requester?.display_name,
-                requesterAvatar: j.requester?.avatar_url,
-                assignee: j.assignee?.display_name,
-                assigneeName: j.assignee?.display_name,
-                assigneeAvatar: j.assignee?.avatar_url
-            }));
-        } catch (err) {
-            console.error('getJobsByRole error:', err);
+            const jobs = response.data.data || [];
+            console.log(`[jobService] getJobsByRole: Fetched ${jobs.length} jobs (Role: ${role})`);
+            return jobs;
+
+        } catch (error) {
+            console.error('[jobService] getJobsByRole error:', error);
             return [];
         }
     },
+
 
     /**
      * ดึงงานของผู้รับผิดชอบ (Assignee) แบ่งตามกลุ่มสถานะ
@@ -161,7 +102,7 @@ export const jobService = {
                 console.warn('getAssigneeJobs error:', error.message);
                 return [];
             }
-
+            console.log(`[jobService] getAssigneeJobs: Fetched ${data?.length || 0} jobs (Filter: ${filterStatus})`);
             // คำนวณ Health Status สำหรับแต่ละงาน
             return data.map(job => {
                 const now = new Date();
@@ -525,21 +466,21 @@ export const jobService = {
         if (isFinal && nextStatus === 'approved') {
             try {
                 const autoAssignResult = await jobService.autoAssignJobAfterApproval(jobId);
-                
+
                 if (autoAssignResult.success) {
                     console.log(`[Auto-Assign] Job ${jobId} assigned to user ${autoAssignResult.data.assignee_id}`);
-                    return { 
-                        success: true, 
-                        nextStatus: 'assigned', 
+                    return {
+                        success: true,
+                        nextStatus: 'assigned',
                         isFinal,
                         autoAssigned: true,
                         assigneeId: autoAssignResult.data.assignee_id
                     };
                 } else if (autoAssignResult.needsManualAssign) {
                     console.log(`[Auto-Assign] Job ${jobId} needs manual assignment`);
-                    return { 
-                        success: true, 
-                        nextStatus: 'approved', 
+                    return {
+                        success: true,
+                        nextStatus: 'approved',
                         isFinal,
                         needsManualAssign: true
                     };
@@ -547,9 +488,9 @@ export const jobService = {
             } catch (autoAssignError) {
                 console.error('[Auto-Assign] Error:', autoAssignError);
                 // ถ้า Auto-Assign ล้มเหลว ให้คงสถานะ approved ไว้เพื่อรอ Manual Assign
-                return { 
-                    success: true, 
-                    nextStatus: 'approved', 
+                return {
+                    success: true,
+                    nextStatus: 'approved',
                     isFinal,
                     needsManualAssign: true,
                     autoAssignError: autoAssignError.message
@@ -665,20 +606,17 @@ export const jobService = {
     getDashboardStats: async () => {
         try {
             const { data: jobs, error } = await supabase
-                .from('design_jobs') // Note: Assuming view or alias. If 'jobs' table, verify schema.
-                .select('id, status, deadline, created_at'); // Using 'deadline' or 'due_date' depending on schema alias
+                .from('jobs')
+                .select('id, status, due_date, created_at');
 
-            // Fallback if 'design_jobs' not found, try 'jobs'
             if (error) {
-                const { data: jobsFallback } = await supabase.from('jobs').select('id, status, due_date, created_at');
-                // map due_date to deadline
-                if (jobsFallback) {
-                    return jobService.calculateStats(jobsFallback.map(j => ({ ...j, deadline: j.due_date })));
-                }
-                return { newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, pending: 0 };
+                console.error('getDashboardStats error:', error.message);
+                return jobService.calculateStats([]);
             }
 
-            return jobService.calculateStats(jobs);
+            // Map due_date to deadline for calculation compatibility
+            const mappedJobs = jobs.map(j => ({ ...j, deadline: j.due_date }));
+            return jobService.calculateStats(mappedJobs);
         } catch (err) {
             console.error('getDashboardStats error:', err);
             return { newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, pending: 0 };
