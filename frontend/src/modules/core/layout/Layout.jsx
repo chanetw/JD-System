@@ -8,9 +8,10 @@
  * - ถ้ายังไม่ login จะแสดงหน้า Login
  */
 
-import { Outlet, Navigate } from 'react-router-dom';
+import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import { useAuthStore } from '@core/stores/authStore';
+import { checkConnection } from '@shared/services/supabaseClient';
 import Sidebar from './Sidebar';
 import Header from './Header';
 
@@ -20,15 +21,24 @@ import Header from './Header';
  */
 export default function Layout() {
     // ดึง state จาก authStore
-    const { isAuthenticated, switchRole } = useAuthStore();
+    const { isAuthenticated } = useAuthStore();
+    const location = useLocation();
 
     // ============================================
-    // useEffect - ทำงานเมื่อ Component โหลดครั้งแรก
+    // useEffect - ทำงานเมื่อเปลี่ยนหน้า
     // ============================================
     useEffect(() => {
-        // Database connection initialized via apiService
-        console.log('[Layout] App initialized with Database connection');
-    }, []);
+        const verifyDB = async () => {
+            const status = await checkConnection();
+            if (status.success) {
+                console.log(`[DB Check] Page: ${location.pathname} - ✅ Database Connected`);
+            } else {
+                console.error(`[DB Check] Page: ${location.pathname} - ❌ Database Error:`, status.message);
+            }
+        };
+
+        verifyDB();
+    }, [location.pathname]);
 
     // ถ้ายังไม่ได้ login ให้ Redirect ไป Login
     if (!isAuthenticated) {

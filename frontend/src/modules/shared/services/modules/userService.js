@@ -5,32 +5,124 @@ import { handleResponse, generateOTP } from '../utils';
 export const userService = {
     // --- Users CRUD ---
     getUsers: async () => {
-        const data = handleResponse(
-            await supabase.from('users').select('*').order('id')
-        );
-        return data.map(u => {
-            const firstName = u.first_name || '';
-            const lastName = u.last_name || '';
-            // Fix: Add name property which is used by UserManagement and others
+        try {
+            const data = handleResponse(
+                await supabase.from('users').select('*').order('id')
+            );
+            return data.map(u => {
+                const firstName = u.first_name || '';
+                const lastName = u.last_name || '';
+                return {
+                    id: u.id,
+                    firstName: firstName,
+                    lastName: lastName,
+                    name: `${firstName} ${lastName}`.trim() || u.email,
+                    displayName: u.display_name || `${firstName} ${lastName}`.trim(),
+                    email: u.email,
+                    roles: [u.role],
+                    role: u.role,
+                    avatar: u.avatar_url,
+                    isActive: u.is_active,
+                    tenantId: u.tenant_id,
+                    title: u.title,
+                    phone: u.phone || u.phone_number,
+                    department: u.department,
+                    departmentId: u.department_id
+                };
+            });
+        } catch (error) {
+            console.error('Error fetching users:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * ดึงรายชื่อ User สำหรับหน้า Login (Mock Mode)
+     * เรียกผ่าน API Server (Public endpoint) แทนการเรียก Supabase โดยตรง (ติด RLS)
+     */
+    getMockUsers: async () => {
+        try {
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+            const response = await fetch(`${API_URL}/auth/mock-users`);
+
+            if (!response.ok) throw new Error('Failed to fetch mock users');
+
+            return await response.json();
+        } catch (error) {
+            console.error('Error fetching mock users:', error);
+            return [];
+        }
+    },
+
+    /**
+     * เข้าสู่ระบบ (Real Authentication)
+     * @param {Object} credentials - { email, password, tenantId }
+     */
+    login: async (credentials) => {
+        try {
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+            const response = await fetch(`${API_URL}/auth/login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    email: credentials.email,
+                    password: credentials.password,
+                    tenantId: credentials.tenantId || 1 // Default tenant
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Login failed');
+            }
+
+            // Store token if needed (though authStore handles session via Supabase usually, 
+            // but here we are using custom auth endpoint. 
+            // Ideally we should sync with Supabase Auth or just use the token returned)
+
+            // For now, return the user object as expected by authStore
             return {
-                id: u.id,
-                firstName: firstName,
-                lastName: lastName,
-                name: `${firstName} ${lastName}`.trim() || u.email, // Fallback to email if empty
-                displayName: u.display_name || `${firstName} ${lastName}`.trim(),
-                email: u.email,
-                roles: [u.role], // Mock uses array
-                role: u.role,
-                avatar: u.avatar_url,
-                isActive: u.is_active,
-                tenantId: u.tenant_id,
-                // Fix: Include missing fields
-                title: u.title, // Job Title
-                phone: u.phone || u.phone_number,
-                department: u.department, // If exists as string
-                departmentId: u.department_id
+                ...data.data.user,
+                token: data.data.token // Attach token for authStore/interceptors to use
             };
-        });
+        } catch (error) {
+            console.error('Login error:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Demo Login - Authenticate via UserId (No Password)
+     * Calls specialized endpoint to get Valid JWT Token
+     */
+    loginDemo: async (userId) => {
+        try {
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+            const response = await fetch(`${API_URL}/auth/login-demo`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ userId })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Demo Login failed');
+            }
+
+            return {
+                ...data.data.user,
+                token: data.data.token
+            };
+        } catch (error) {
+            console.error('Demo Login error:', error);
+            throw error;
+        }
     },
 
     getCurrentUser: async () => {
@@ -463,8 +555,9 @@ export const userService = {
     // --- Demo Mode Helper ---
 
     /**
-     * ดึงข้อมูลผู้ใช้สำหรับ Demo Mode ตามบทบาท
+     * ดึงข้อมูลผู้ใช้สำหรับ Demo Mode ตามบทบาท (Legacy - ใช้ Mock Data)
      * @param {string} role - 'requester', 'approver', 'assignee', 'admin'
+     * @deprecated ใช้ impersonate() แทน
      */
     getUserByRole: async (role) => {
         // Map role to specific demo user IDs (from users.json SEED)
@@ -479,5 +572,90 @@ export const userService = {
 
         // Fetch full user details
         return await userService.getUserWithRoles(userId);
+    },
+
+    /**
+     * ดึงข้อมูลผู้ใช้ปัจจุบันจาก Token (API Server)
+     */
+    getMe: async () => {
+        try {
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+            const token = localStorage.getItem('token');
+
+            if (!token) return { success: false };
+
+            const response = await fetch(`${API_URL}/auth/me`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const data = await response.json();
+            if (!response.ok) return { success: false, error: data.message };
+
+            return data; // { success: true, data: user }
+        } catch (error) {
+            console.error('getMe error:', error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    /**
+     * Admin Impersonation - สลับไปเป็น User จริงตาม Role (Real Data)
+     * @param {string} role - 'requester', 'approver', 'assignee', 'admin'
+     * @returns {Promise<{user: Object, token: string}>} User data และ JWT token ใหม่
+     * 
+     * Security: ต้องเป็น Admin เท่านั้นถึงจะใช้ได้ (Backend จะตรวจสอบ)
+     */
+    impersonate: async (role) => {
+        try {
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+
+            // ดึง token จาก Zustand persist storage หรือ localStorage
+            let token = localStorage.getItem('token');
+
+            // ถ้าไม่มีใน localStorage ให้ลองดึงจาก Zustand persist storage (dj-auth-storage)
+            if (!token) {
+                try {
+                    const authStorage = localStorage.getItem('dj-auth-storage');
+                    if (authStorage) {
+                        const parsed = JSON.parse(authStorage);
+                        token = parsed?.state?.user?.token || parsed?.state?.session?.access_token;
+                    }
+                } catch (e) {
+                    console.warn('Could not parse auth storage:', e);
+                }
+            }
+
+            if (!token) {
+                throw new Error('ไม่พบ Token - กรุณาเข้าสู่ระบบใหม่');
+            }
+
+            const response = await fetch(`${API_URL}/auth/impersonate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ role })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || `ไม่สามารถสลับเป็น ${role} ได้`);
+            }
+
+            // Return user และ token ใหม่
+            return {
+                user: data.data.user,
+                token: data.data.token,
+                impersonatedBy: data.data.impersonatedBy
+            };
+        } catch (error) {
+            console.error('Impersonate error:', error);
+            throw error;
+        }
     }
 };

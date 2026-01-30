@@ -304,7 +304,7 @@ export default function JobDetail() {
         // Check permission (only admin or dept manager can assign)
         const isAdmin = user?.roles?.includes('admin');
         const isDeptManager = user?.roles?.includes('dept_manager'); // Adjust role name as needed
-        
+
         if (!isAdmin && !isDeptManager) {
             alert('คุณไม่มีสิทธิ์มอบหมายงาน (เฉพาะ Admin หรือ Department Manager)');
             return;
@@ -563,14 +563,18 @@ export default function JobDetail() {
                         </div>
                         <div className="p-6">
                             {/* Main Preview Placeholder */}
-                            <div className="bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl aspect-video flex items-center justify-center mb-4 border-2 border-dashed border-gray-300 relative overflow-hidden group">
-                                <div className="text-center z-10">
-                                    <DocumentTextIcon className="w-20 h-20 text-gray-400 mx-auto mb-3" />
-                                    <p className="font-medium text-gray-600">Preview Image</p>
-                                    <p className="text-sm text-gray-400">Wait for upload...</p>
+                            <div
+                                className="bg-black rounded-xl aspect-video mb-4 border-2 border-dashed border-gray-700 relative overflow-hidden group"
+                                style={{ backgroundColor: '#000000' }}
+                            >
+                                <div className="absolute inset-0 flex flex-col items-center justify-center p-4 z-10">
+                                    <DocumentTextIcon className="w-20 h-20 text-gray-500 mb-3" />
+                                    <p className="font-medium text-gray-400">Preview Image</p>
+                                    <p className="text-sm text-gray-500">Wait for upload...</p>
                                 </div>
+
                                 {/* Hover Overlay */}
-                                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-5 transition-all flex items-center justify-center">
+                                <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                                 </div>
                             </div>
 
@@ -648,7 +652,7 @@ export default function JobDetail() {
                             </div>
 
                             <div className="flex gap-3">
-                                <select 
+                                <select
                                     value={selectedAssignee}
                                     onChange={(e) => setSelectedAssignee(e.target.value)}
                                     className="flex-1 px-4 py-3 border border-orange-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
@@ -1076,18 +1080,28 @@ export default function JobDetail() {
                                 <XMarkIcon className="w-6 h-6 text-red-600" />
                             </div>
                             <div>
-                                <h3 className="text-lg font-bold text-gray-900">Request Revision</h3>
-                                <p className="text-sm text-gray-500">ส่งกลับแก้ไข / ปฏิเสธงาน</p>
+                                <h3 className="text-lg font-bold text-gray-900">ปฏิเสธงาน (Reject Job)</h3>
+                                <p className="text-sm text-red-600 font-medium">⚠️ การปฏิเสธจะปิดงานนี้ทันที</p>
                             </div>
                         </div>
 
+                        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                            <p className="text-xs text-amber-800">
+                                <strong>หมายเหตุ:</strong> การปฏิเสธงานจะทำให้งานนี้ถูกปิดถาวร
+                                หากต้องการดำเนินการต่อ ผู้ขอต้องเปิดใบงานใหม่
+                            </p>
+                        </div>
+
                         <div className="mb-6">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">เหตุผล / สิ่งที่ต้องแก้ไข</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                เหตุผลในการปฏิเสธ <span className="text-red-500">*</span>
+                            </label>
                             <textarea
                                 value={rejectReason}
                                 onChange={(e) => setRejectReason(e.target.value)}
-                                placeholder="ระบุสิ่งที่ต้องการให้แก้ไข..."
-                                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-rose-500 focus:border-rose-500 resize-none h-32 text-sm"
+                                placeholder="กรุณาระบุเหตุผลที่ปฏิเสธงานนี้..."
+                                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none h-32 text-sm"
+                                required
                             />
                         </div>
 
@@ -1105,8 +1119,9 @@ export default function JobDetail() {
                             <Button
                                 className="flex-1 bg-red-600 hover:bg-red-700 border-transparent text-white shadow-lg shadow-red-200"
                                 onClick={handleReject}
+                                disabled={!rejectReason || rejectReason.trim() === ''}
                             >
-                                ยืนยันส่งกลับ
+                                ยืนยันปฏิเสธ
                             </Button>
                         </div>
                     </div>
@@ -1193,60 +1208,54 @@ export default function JobDetail() {
 
             {/* Complete Job Modal */}
             {showCompleteModal && (
-                <div className="fixed inset-0 z-50 overflow-y-auto">
-                    <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-                        <div className="fixed inset-0 transition-opacity" onClick={() => setShowCompleteModal(false)}>
-                            <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+                <div className="fixed inset-0 flex items-center justify-center z-50 p-4 transition-all">
+                    <div className="bg-white rounded-2xl shadow-xl p-6 max-w-lg w-full mx-auto transform transition-all scale-100">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                                <CheckIcon className="h-6 w-6 text-green-600" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900">ส่งมอบงาน (Complete Job)</h3>
+                                <p className="text-sm text-gray-500">กรอกรายละเอียดเพื่อส่งมอบงาน</p>
+                            </div>
                         </div>
-                        <span className="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
-                        <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-                            <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                                <div className="sm:flex sm:items-start">
-                                    <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-green-100 sm:mx-0 sm:h-10 sm:w-10">
-                                        <CheckIcon className="h-6 w-6 text-green-600" />
-                                    </div>
-                                    <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                                        <h3 className="text-lg leading-6 font-medium text-gray-900">ส่งมอบงาน (Complete Job)</h3>
-                                        <div className="mt-4 space-y-4">
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">ลิงก์ผลงาน (Final Link Job/File) <span className="text-red-500">*</span></label>
-                                                <input
-                                                    type="url"
-                                                    className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-green-500 outline-none"
-                                                    placeholder="https://drive.google.com/..."
-                                                    value={finalLink}
-                                                    onChange={(e) => setFinalLink(e.target.value)}
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ / Message to Requester</label>
-                                                <textarea
-                                                    className="w-full border border-gray-300 rounded-lg p-2 h-24 focus:ring-2 focus:ring-green-500 outline-none"
-                                                    placeholder="รายละเอียดเพิ่มเติม..."
-                                                    value={completeNote}
-                                                    onChange={(e) => setCompleteNote(e.target.value)}
-                                                ></textarea>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+
+                        <div className="space-y-4 mb-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">ลิงก์ผลงาน (Final Link Job/File) <span className="text-red-500">*</span></label>
+                                <input
+                                    type="url"
+                                    className="w-full border border-gray-300 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-shadow text-sm"
+                                    placeholder="https://drive.google.com/..."
+                                    value={finalLink}
+                                    onChange={(e) => setFinalLink(e.target.value)}
+                                />
                             </div>
-                            <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                                <button
-                                    type="button"
-                                    onClick={handleCompleteJob}
-                                    className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base font-medium text-white hover:bg-green-700 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm"
-                                >
-                                    ส่งงาน (Complete)
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowCompleteModal(false)}
-                                    className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
-                                >
-                                    ยกเลิก
-                                </button>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ / Message to Requester</label>
+                                <textarea
+                                    className="w-full border border-gray-300 rounded-xl px-4 py-2.5 h-24 focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-shadow resize-none text-sm"
+                                    placeholder="รายละเอียดเพิ่มเติม..."
+                                    value={completeNote}
+                                    onChange={(e) => setCompleteNote(e.target.value)}
+                                ></textarea>
                             </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <Button
+                                variant="ghost"
+                                className="flex-1"
+                                onClick={() => setShowCompleteModal(false)}
+                            >
+                                ยกเลิก
+                            </Button>
+                            <Button
+                                className="flex-1 bg-green-600 hover:bg-green-700 border-transparent text-white shadow-lg shadow-green-200"
+                                onClick={handleCompleteJob}
+                            >
+                                ส่งงาน (Complete)
+                            </Button>
                         </div>
                     </div>
                 </div>

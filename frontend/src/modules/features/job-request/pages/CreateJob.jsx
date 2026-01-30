@@ -89,49 +89,35 @@ const CreateJob = () => {
     }, []);
 
     /**
-     * ดึงข้อมูล Master Data (Projects, JobTypes) และวันหยุด
+     * ดึงข้อมูล Master Data จาก Backend API
      */
     const fetchMasterData = async () => {
         try {
             setLoading(true);
+            const { api } = await import('@shared/services/apiService'); // Dynamic import to avoid cycles if any
 
-            // 1. ดึง Projects
-            const { data: projData } = await supabase.from('projects').select('id, name').eq('is_active', true);
-            setProjects(projData || []);
+            // Call Backend API via AdminService or APIService
+            // Using api.getMasterData which calls /api/master-data
+            const data = await api.getMasterData();
 
-            // 2. ดึง Job Types
-            const { data: typeData } = await supabase.from('job_types').select('id, name, sla_days').eq('is_active', true);
-            setJobTypes(typeData || []);
+            if (data) {
+                setProjects(data.projects || []);
+                setJobTypes(data.jobTypes || []);
 
-            // 3. ดึง Holidays from Database with caching
-            const cachedHolidays = loadHolidaysFromCache();
-            if (cachedHolidays) {
-                console.log('📅 Using cached holidays');
-                setHolidays(cachedHolidays);
-            } else {
-                console.log('📅 Fetching holidays from database...');
-                const { data: holidaysData, error: holidaysError } = await supabase
-                    .from('holidays')
-                    .select('date')
-                    .eq('is_public', true)
-                    .eq('is_active', true)
-                    .gte('date', new Date().toISOString().split('T')[0]) // เฉพาะวันที่อนาคต
-                    .order('date');
-
-                if (holidaysError) {
-                    console.error('Error loading holidays:', holidaysError);
-                    setHolidays([]); // Fallback to empty array
-                } else {
-                    const holidayDates = (holidaysData || []).map(h => h.date);
-                    setHolidays(holidayDates);
-                    saveHolidaysToCache(holidayDates);
-                    console.log('📅 Loaded holidays:', holidayDates);
-                }
+                // Holidays logic
+                const holidaysData = data.holidays || [];
+                const holidayDates = holidaysData.map(h => h.date);
+                setHolidays(holidayDates);
+                saveHolidaysToCache(holidayDates);
+                console.log('📅 Master Data Loaded:', {
+                    projects: data.projects?.length,
+                    jobTypes: data.jobTypes?.length,
+                    holidays: holidayDates.length
+                });
             }
-
         } catch (error) {
             console.error('Error fetching master data:', error);
-            alert('ไม่สามารถโหลดข้อมูลระบบได้ กรุณาลองใหม่');
+            alert('ไม่สามารถโหลดข้อมูลระบบได้: ' + error.message);
         } finally {
             setLoading(false);
         }
@@ -144,15 +130,26 @@ const CreateJob = () => {
 
             if (selectedType) {
                 // 1. SLA Logic
-                if (selectedType.sla_days) {
-                    const dueDate = addWorkDays(new Date(), selectedType.sla_days, holidays);
+                if (selectedType.sla) {
+                    const dueDate = addWorkDays(new Date(), selectedType.sla, holidays);
                     setCalculatedDueDate(dueDate);
                 } else {
                     setCalculatedDueDate(null);
                 }
 
-                // 2. Fetch Job Type Items (Sub-tasks template)
-                fetchJobTypeItems(formData.job_type_id);
+                // 2. Set Sub Items directly from Master Data (Nested items)
+                const items = selectedType.items || [];
+                // Sort items by sortOrder (if available) or id
+                items.sort((a, b) => (a.sortOrder || a.id) - (b.sortOrder || b.id));
+
+                setSubItems(items);
+
+                // Reset values for new items
+                const initialValues = {};
+                items.forEach(item => {
+                    initialValues[item.id] = { quantity: 1, name: item.name };
+                });
+                setItemValues(initialValues);
             }
         } else {
             setCalculatedDueDate(null);
@@ -160,32 +157,6 @@ const CreateJob = () => {
             setItemValues({});
         }
     }, [formData.job_type_id, jobTypes, holidays]);
-
-    /**
-     * ดึงรายการงานย่อย (Job Type Items) ตามประเภทงาน
-     */
-    const fetchJobTypeItems = async (jobTypeId) => {
-        try {
-            const { data, error } = await supabase
-                .from('job_type_items')
-                .select('*')
-                .eq('job_type_id', parseInt(jobTypeId))
-                .order('id');
-
-            if (error) throw error;
-            setSubItems(data || []);
-
-            // Reset values
-            const initialValues = {};
-            (data || []).forEach(item => {
-                initialValues[item.id] = { quantity: 1, name: item.name }; // Default qty = 1
-            });
-            setItemValues(initialValues);
-
-        } catch (error) {
-            console.error('Error fetching job items:', error);
-        }
-    };
 
     // --- Handlers ---
     const handleChange = (e) => {
@@ -267,8 +238,8 @@ const CreateJob = () => {
             // 4. Auto-Assignment Logic
             console.log('🤖 Triggering Auto-Assignment...');
             const assignResult = await assignJobFromMatrix(
-                jobId, 
-                jobData.project_id, 
+                jobId,
+                jobData.project_id,
                 jobData.job_type_id
             );
 

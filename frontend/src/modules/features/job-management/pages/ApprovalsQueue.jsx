@@ -311,7 +311,7 @@ export default function ApprovalsQueue() {
            Reject Modal - หน้าต่างการแจ้งปฏิเสธงาน (Reject/Return)
            ============================================ */}
             {showRejectModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-xl max-w-lg w-full overflow-hidden">
                         <div className="p-6 border-b border-gray-200 flex justify-between items-center">
                             <h3 className="text-lg font-semibold text-gray-900">ปฏิเสธหรือตีกลับงาน (Reject / Return)</h3>

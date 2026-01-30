@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.7.0] - 2026-01-29
+### Phase 5: Approval Flow V2 Integration
+
+### Added
+- **Feature:** Job Creation API V2 with Template-Based Approval Flow
+  - **Backend:** Added `POST /api/jobs` endpoint in `routes/jobs.js`
+  - **Logic:** Flow Assignment Resolution (Specific Project+JobType > Default)
+  - **Logic:** Skip Approval (Template `totalLevels = 0`)
+  - **Logic:** Auto-Assign (Template Config: `team_lead`, `dept_manager`, `specific_user`)
+  - **Logic:** DJ ID Generation (`DJ-YYYY-XXXX` format)
+  - **Logging:** Activity Log creation for job creation events
+- **Database:** Approval Flow V2 Schema
+  - Tables: `approval_flow_templates`, `approval_flow_steps`, `project_flow_assignments`, `project_flow_approvers`
+  - Migration: `approval_flow_v2.sql`
+- **Documentation:**
+  - Updated `API_SPEC.md` with V2 Job Creation endpoint specification
+  - Updated `SYSTEM_DATA_FLOW.md` with V2 Flow diagrams and decision logic
+- **Admin UI:** Added `ApprovalFlowTemplates.jsx` for template management
+
+### Changed
+- **Frontend:** Refactored `jobService.js` to use Backend API instead of direct Supabase calls
+  - Skip Approval Logic now works immediately on job creation
+  - Auto-Assign triggers automatically based on Template config
+- **Architecture:** Business Logic moved from Frontend to Backend (Single Source of Truth)
+
+### Fixed
+- **Schema:** Fixed duplicate model definitions in `schema.prisma`
+- **Prisma Client:** Regenerated to include V2 models
+
+---
+
 ## [0.6.0] - 2026-01-26
 ### Phase 4: Job Execution & Modular Refactor Implementation
 

@@ -8,9 +8,8 @@
  * - แสดงสถานะคำขอ
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api } from '@shared/services/apiService';
 import Button from '@shared/components/Button';
 import { 
     UserIcon, 
@@ -87,21 +86,46 @@ export default function Register() {
         return true;
     };
 
-    // Handle submit
+    // Handle submit - calls V2 registration request API
     const handleSubmit = async (e) => {
         e.preventDefault();
-        
+
         if (!validateForm()) return;
 
         setIsLoading(true);
         setError('');
 
         try {
-            await api.submitRegistration(formData);
+            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+            const response = await fetch(`${API_URL}/api/v2/auth/register-request`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: formData.email,
+                    firstName: formData.firstName,
+                    lastName: formData.lastName,
+                    title: formData.title,
+                    phone: formData.phone,
+                    position: formData.position,
+                    departmentId: null, // Will be assigned by admin
+                    tenantId: 1 // Default tenant
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || data.message || 'Registration failed');
+            }
+
             setStep(2); // Success
         } catch (err) {
             console.error('Registration error:', err);
-            setError(err.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง');
+            if (err.message === 'EMAIL_EXISTS') {
+                setError('อีเมลนี้ถูกใช้งานแล้ว กรุณาใช้อีเมลอื่น');
+            } else {
+                setError(err.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง');
+            }
         } finally {
             setIsLoading(false);
         }
@@ -301,10 +325,18 @@ export default function Register() {
                             <h2 className="text-2xl font-bold text-gray-900 mb-2">
                                 ส่งคำขอสำเร็จ!
                             </h2>
-                            <p className="text-gray-600 mb-6">
-                                คำขอสมัครใช้งานของคุณถูกส่งไปยัง Admin เรียบร้อยแล้ว<br />
-                                กรุณารอการอนุมัติ ระบบจะส่งอีเมลแจ้งผลให้ท่านทราบ
+                            <p className="text-gray-600 mb-4">
+                                คำขอสมัครใช้งานของคุณถูกส่งไปยัง Admin เรียบร้อยแล้ว
                             </p>
+                            <div className="bg-blue-50 rounded-xl p-4 mb-4 text-left border border-blue-200">
+                                <p className="text-sm font-medium text-blue-800 mb-2">ขั้นตอนถัดไป:</p>
+                                <ol className="text-sm text-blue-700 list-decimal list-inside space-y-1">
+                                    <li>รอการอนุมัติจาก Admin</li>
+                                    <li>เมื่อได้รับอนุมัติ Admin จะส่งรหัสผ่านให้คุณ</li>
+                                    <li>ใช้รหัสผ่านที่ได้รับเพื่อเข้าสู่ระบบครั้งแรก</li>
+                                    <li>ระบบจะให้คุณตั้งรหัสผ่านใหม่ของตัวเอง</li>
+                                </ol>
+                            </div>
                             <div className="bg-gray-50 rounded-xl p-4 mb-6 text-left">
                                 <p className="text-sm text-gray-500 mb-1">อีเมลที่ลงทะเบียน:</p>
                                 <p className="font-medium text-gray-900">{formData.email}</p>

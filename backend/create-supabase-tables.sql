@@ -4,6 +4,72 @@
 -- รัน SQL นี้ใน Supabase SQL Editor
 -- https://supabase.com/dashboard/project/putfusjtlzmvjmcwkefv
 
+-- 0. ตรวจสอบว่ามี tables พื้นฐานอยู่แล้วหรือไม่
+-- ถ้าไม่มี ให้สร้างก่อน
+
+-- สร้าง tenants table ถ้ายังไม่มี
+CREATE TABLE IF NOT EXISTS tenants (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  code VARCHAR(50) UNIQUE NOT NULL,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- สร้าง users table ถ้ายังไม่มี  
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  tenant_id INTEGER REFERENCES tenants(id),
+  first_name VARCHAR(100) NOT NULL,
+  last_name VARCHAR(100) NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  is_active BOOLEAN DEFAULT true,
+  roles TEXT[] DEFAULT ARRAY['user'],
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Ensure users has tenant_id (Critical for RLS)
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'tenant_id') THEN
+        ALTER TABLE users ADD COLUMN tenant_id INTEGER REFERENCES tenants(id);
+    END IF;
+    -- Ensure other required columns exist (if table was created partially)
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'password_hash') THEN
+        ALTER TABLE users ADD COLUMN password_hash VARCHAR(255) DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'roles') THEN
+        ALTER TABLE users ADD COLUMN roles TEXT[] DEFAULT ARRAY['user'];
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'first_name') THEN
+        ALTER TABLE users ADD COLUMN first_name VARCHAR(100) DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'last_name') THEN
+        ALTER TABLE users ADD COLUMN last_name VARCHAR(100) DEFAULT '';
+    END IF;
+END $$;
+
+-- สร้าง job_types table ถ้ายังไม่มี
+CREATE TABLE IF NOT EXISTS job_types (
+  id SERIAL PRIMARY KEY,
+  tenant_id INTEGER REFERENCES tenants(id),
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Ensure job_types has tenant_id
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'job_types' AND column_name = 'tenant_id') THEN
+        ALTER TABLE job_types ADD COLUMN tenant_id INTEGER REFERENCES tenants(id);
+    END IF;
+END $$;
+
 -- 1. Create design_jobs table
 CREATE TABLE IF NOT EXISTS design_jobs (
   id SERIAL PRIMARY KEY,
@@ -15,7 +81,7 @@ CREATE TABLE IF NOT EXISTS design_jobs (
   status VARCHAR(20) DEFAULT 'draft',
   requester_id INTEGER REFERENCES users(id),
   assignee_id INTEGER REFERENCES users(id),
-  job_type_id INTEGER,
+  job_type_id INTEGER REFERENCES job_types(id),
   deadline TIMESTAMP,
   submitted_at TIMESTAMP,
   assigned_at TIMESTAMP,
@@ -23,6 +89,14 @@ CREATE TABLE IF NOT EXISTS design_jobs (
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Ensure design_jobs has tenant_id
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'design_jobs' AND column_name = 'tenant_id') THEN
+        ALTER TABLE design_jobs ADD COLUMN tenant_id INTEGER REFERENCES tenants(id);
+    END IF;
+END $$;
 
 -- 2. Create approvals table (พร้อม audit fields)
 CREATE TABLE IF NOT EXISTS approvals (
@@ -40,6 +114,14 @@ CREATE TABLE IF NOT EXISTS approvals (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Ensure approvals has tenant_id
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'approvals' AND column_name = 'tenant_id') THEN
+        ALTER TABLE approvals ADD COLUMN tenant_id INTEGER REFERENCES tenants(id);
+    END IF;
+END $$;
+
 -- 3. Create media_files table
 CREATE TABLE IF NOT EXISTS media_files (
   id SERIAL PRIMARY KEY,
@@ -55,6 +137,14 @@ CREATE TABLE IF NOT EXISTS media_files (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Ensure media_files has tenant_id
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'media_files' AND column_name = 'tenant_id') THEN
+        ALTER TABLE media_files ADD COLUMN tenant_id INTEGER REFERENCES tenants(id);
+    END IF;
+END $$;
+
 -- 4. Create job_activities table (สำหรับ audit trail)
 CREATE TABLE IF NOT EXISTS job_activities (
   id SERIAL PRIMARY KEY,
@@ -66,6 +156,14 @@ CREATE TABLE IF NOT EXISTS job_activities (
   metadata JSONB,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Ensure job_activities has tenant_id
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'job_activities' AND column_name = 'tenant_id') THEN
+        ALTER TABLE job_activities ADD COLUMN tenant_id INTEGER REFERENCES tenants(id);
+    END IF;
+END $$;
 
 -- 5. Create notifications table
 CREATE TABLE IF NOT EXISTS notifications (
@@ -80,6 +178,14 @@ CREATE TABLE IF NOT EXISTS notifications (
   email_sent BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Ensure notifications has tenant_id
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notifications' AND column_name = 'tenant_id') THEN
+        ALTER TABLE notifications ADD COLUMN tenant_id INTEGER REFERENCES tenants(id);
+    END IF;
+END $$;
 
 -- 6. Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_design_jobs_tenant_id ON design_jobs(tenant_id);
@@ -132,6 +238,10 @@ ALTER TABLE job_activities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
 -- 9. Create RLS policies
+-- [COMMENTED OUT] Reason: These policies cause Type Error (integer vs uuid) and are superseded by 008_fix_advanced_security.sql
+-- Please run database/migrations/manual/008_fix_advanced_security.sql instead for robust security.
+
+/*
 -- Users can only see jobs from their tenant
 CREATE POLICY "Users can view jobs from their tenant" ON design_jobs
   FOR SELECT USING (tenant_id IN (
@@ -149,6 +259,7 @@ CREATE POLICY "Users can view media files from their tenant" ON media_files
   FOR SELECT USING (tenant_id IN (
     SELECT tenant_id FROM users WHERE id = auth.uid()
   ));
+*/
 
 -- 10. Create function for updating updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()

@@ -18,7 +18,7 @@ export class NotificationService {
   }
 
   /**
-   * สร้าง notification ในระบบ
+   * สร้าง notification ในระบบ (Single)
    * 
    * @param {Object} notificationData - ข้อมูล notification
    * @param {number} notificationData.tenantId - ID ของ tenant
@@ -57,6 +57,41 @@ export class NotificationService {
   }
 
   /**
+   * สร้าง notification หลายรายการพร้อมกัน (Batch)
+   * 
+   * @param {Array<Object>} notificationsData - Array ของข้อมูล notification
+   * @returns {Promise<Object>}
+   */
+  async createMany(notificationsData) {
+    try {
+      if (!notificationsData || notificationsData.length === 0) return { success: true, count: 0 };
+
+      // Map data to match Prisma createMany input if needed or create loop if schema strict
+      // Assuming simple structure
+      const data = notificationsData.map(n => ({
+        tenantId: n.tenantId || 1, // Default if missing
+        userId: n.userId,
+        type: n.type,
+        title: n.title,
+        message: n.message,
+        link: n.link,
+        isRead: false,
+        createdAt: new Date()
+      }));
+
+      const result = await this.prisma.notification.createMany({
+        data: data
+      });
+
+      return { success: true, count: result.count };
+    } catch (error) {
+      console.error('[NotificationService] Create Many Failed:', error);
+      // Fallback to simpler loop if createMany fails validation? No, trust prisma
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
    * ส่ง notification ทั้งในระบบและ email
    * 
    * @param {Object} options - ตัวเลือกการส่ง notification
@@ -71,16 +106,16 @@ export class NotificationService {
    * @param {Object} options.io - Socket.io instance (สำหรับ real-time)
    * @returns {Promise<Object>} - ผลลัพธ์การส่ง notification
    */
-  async sendNotification({ 
-    tenantId, 
-    userIds, 
-    type, 
-    title, 
-    message, 
-    link, 
-    sendEmail = false, 
+  async sendNotification({
+    tenantId,
+    userIds,
+    type,
+    title,
+    message,
+    link,
+    sendEmail = false,
     emailData = null,
-    io = null 
+    io = null
   }) {
     const results = {
       database: { success: true, sent: 0, failed: 0 },
@@ -119,7 +154,7 @@ export class NotificationService {
 
             if (user && user.email) {
               let emailResult;
-              
+
               // เลือก method ตามประเภท
               switch (type) {
                 case 'job_assigned':

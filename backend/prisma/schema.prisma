@@ -50,22 +50,19 @@ model Tenant {
   name          String   @db.VarChar(200)
   code          String   @unique @db.VarChar(50)
   subdomain     String?  @unique @db.VarChar(100)
-  logoUrl       String?  @map("logo_url") @db.VarChar(500)
-  primaryColor  String   @default("#E11D48") @map("primary_color") @db.VarChar(20)
   isActive      Boolean  @default(true) @map("is_active")
-  settings      Json     @default("{}")
   createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
 
   // Relations
   users         User[]
   roles         Role[]
   userRoles     UserRole[]
   buds          Bud[]
+  departments   Department[]
   projects      Project[]
   jobTypes      JobType[]
-  designJobs    DesignJob[]
-  jobBriefs     JobBrief[]
+  jobs          Job[]
+  // jobBriefs     JobBrief[]
   jobAttachments JobAttachment[]
   jobDeliverables JobDeliverable[]
   approvalFlows ApprovalFlow[]
@@ -75,6 +72,10 @@ model Tenant {
   notifications Notification[]
   holidays      Holiday[]
   mediaFiles    MediaFile[]
+  auditLogs     AuditLog[]
+  // Approval Flow V2 Relations
+  flowTemplates     ApprovalFlowTemplate[]
+  flowAssignments   ProjectFlowAssignment[]
 
   @@map("tenants")
 }
@@ -82,32 +83,58 @@ model Tenant {
 model User {
   id             Int      @id @default(autoincrement())
   tenantId       Int      @map("tenant_id")
+  departmentId   Int?     @map("department_id")
   email          String   @db.VarChar(255)
   passwordHash   String   @map("password_hash") @db.VarChar(255)
   firstName      String   @map("first_name") @db.VarChar(100)
   lastName       String   @map("last_name") @db.VarChar(100)
   displayName    String?  @map("display_name") @db.VarChar(100)
   avatarUrl      String?  @map("avatar_url") @db.VarChar(500)
-  phone          String?  @db.VarChar(20)
+
   isActive       Boolean  @default(true) @map("is_active")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
 
+  // Registration Approval Workflow Fields
+  status          String?   @default("APPROVED") @db.VarChar(50) // PENDING, APPROVED, REJECTED, INACTIVE
+  registeredAt    DateTime? @map("registered_at")
+  approvedAt      DateTime? @map("approved_at")
+  approvedById    Int?      @map("approved_by")
+  rejectionReason String?   @map("rejection_reason") @db.Text
+  lastLoginAt     DateTime? @map("last_login_at")
+  mustChangePassword Boolean @default(false) @map("must_change_password") // TRUE after admin generates password
+
   tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  department     Department? @relation("UserDepartment", fields: [departmentId], references: [id])
+  approvedByUser User?    @relation("ApprovedByUser", fields: [approvedById], references: [id])
+  approvedUsers  User[]   @relation("ApprovedByUser")
 
   // Relations
   userRoles      UserRole[]
-  requestedJobs  DesignJob[] @relation("RequesterJobs")
-  assignedJobs   DesignJob[] @relation("AssigneeJobs")
+  managedDepartments Department[] @relation("DepartmentManager")
+  requestedJobs  Job[] @relation("RequesterJobs")
+  assignedJobs   Job[] @relation("AssigneeJobs")
+  closeRequestedJobs Job[] @relation("CloseRequestedJobs")
+  closedJobs     Job[] @relation("ClosedJobs")
+  completedJobs  Job[] @relation("CompletedJobs")
   uploadedAttachments JobAttachment[]
   uploadedDeliverables JobDeliverable[]
   approvals      Approval[]
-  activities     JobActivity[]
+  activityLogs   ActivityLog[] @relation("ActivityLogUser")
   comments       JobComment[]
   notifications  Notification[]
+  auditLogs      AuditLog[]
+  assignedProjects ProjectJobAssignment[] @relation("AssignedProjects")
   mediaFiles     MediaFile[]
+  passwordResets PasswordResetRequest[]
+  jobActivities  JobActivity[]
+  // Approval Flow V2 Relations
+  templateAutoAssigns  ApprovalFlowTemplate[] @relation("TemplateAutoAssign")
+  assignmentAutoAssigns ProjectFlowAssignment[] @relation("AssignmentAutoAssign")
+  projectApprovers      ProjectFlowApprover[] @relation("ProjectApprover")
 
   @@unique([tenantId, email])
+  @@index([departmentId])
   @@map("users")
 }
 
@@ -117,27 +144,31 @@ model Role {
   name         String   @db.VarChar(50)
   displayName  String   @map("display_name") @db.VarChar(100)
   description  String?  @db.Text
+  permissions  Json?    @default(dbgenerated("'{\"read\": true, \"create\": false, \"update\": false, \"delete\": false}'::jsonb")) // For V2 auth RBAC
   createdAt    DateTime @default(now()) @map("created_at")
 
   tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  userRoles    UserRole[]
+
+  // userRoles    UserRole[] // Relation removed because UserRole doesnt reference Role anymore
 
   @@unique([tenantId, name])
   @@map("roles")
 }
 
 model UserRole {
-  id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
-  userId    Int      @map("user_id")
-  roleId    Int      @map("role_id")
-  createdAt DateTime @default(now()) @map("created_at")
+  id         Int      @id @default(autoincrement())
+  tenantId   Int      @map("tenant_id")
+  userId     Int      @map("user_id")
+  roleName   String?  @map("role_name") @db.VarChar(100)
+  assignedBy Int?     @map("assigned_by")
+  assignedAt DateTime? @map("assigned_at")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime? @updatedAt @map("updated_at")
 
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role      Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
-  @@unique([tenantId, userId, roleId])
   @@map("user_roles")
 }
 
@@ -149,9 +180,10 @@ model Bud {
   description String?  @db.Text
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+  // updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
 
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  departments Department[]
   projects    Project[]
 
   @@unique([tenantId, code])
@@ -164,96 +196,139 @@ model Project {
   name        String   @db.VarChar(200)
   code        String   @db.VarChar(50)
   budId       Int      @map("bud_id")
-  description String?  @db.Text
+  departmentId Int?    @map("department_id")
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
 
-  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  bud         Bud         @relation(fields: [budId], references: [id])
-  designJobs  DesignJob[]
+  tenant      Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bud         Bud                     @relation(fields: [budId], references: [id])
+  department  Department?             @relation(fields: [departmentId], references: [id])
+  jobs        Job[]
+  jobAssignments ProjectJobAssignment[]
   mediaFiles  MediaFile[]
+  approvalFlows ApprovalFlow[] // 🔥 Added: Reverse relation
+  flowAssignments ProjectFlowAssignment[] // V2: Flow Assignment per Project
 
   @@unique([tenantId, code])
+  @@index([budId])
+  @@index([departmentId])
   @@map("projects")
 }
+
 
 model JobType {
   id                  Int      @id @default(autoincrement())
   tenantId            Int      @map("tenant_id")
   name                String   @db.VarChar(100)
-  code                String   @db.VarChar(50)
-  slaWorkingDays      Int      @map("sla_working_days")
+  slaWorkingDays      Int      @map("sla_days")
   description         String?  @db.Text
-  requiredAttachments Json?    @map("required_attachments")
   isActive            Boolean  @default(true) @map("is_active")
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at")
 
-  tenant              Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  designJobs          DesignJob[]
+  icon                String?  @db.VarChar
+  colorTheme          String?  @map("color_theme") @db.VarChar
+  attachments         String[] @default([])
 
-  @@unique([tenantId, code])
+  tenant              Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  jobs                Job[]
+  jobTypeItems        JobTypeItem[]
+  jobAssignments      ProjectJobAssignment[]
+  flowAssignments     ProjectFlowAssignment[] // V2: Flow Assignment per JobType
+
+  @@index([tenantId])
   @@map("job_types")
 }
 
-model DesignJob {
+model Job {
   id                Int       @id @default(autoincrement())
   tenantId          Int       @map("tenant_id")
-  djId              String    @map("dj_id") @db.VarChar(50)
   projectId         Int       @map("project_id")
   jobTypeId         Int       @map("job_type_id")
-  subject           String    @db.VarChar(500)
-  priority          Priority  @default(normal)
-  status            JobStatus @default(draft)
+
+  // Design Brief
+  djId              String    @unique @map("dj_id") @db.VarChar(50)
+  subject           String    @db.VarChar(255)
+  objective         String?   @db.Text
+  description       String?   @db.Text
+  headline          String?   @db.VarChar(255)
+  subHeadline       String?   @map("sub_headline") @db.VarChar(255)
+
+  // Status & Priority
+  status            String    @default("draft") @db.VarChar(50)
+  priority          String    @default("normal") @db.VarChar(20)
+
+  // People
   requesterId       Int       @map("requester_id")
   assigneeId        Int?      @map("assignee_id")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  submittedAt       DateTime? @map("submitted_at")
-  scheduledSubmitAt DateTime? @map("scheduled_submit_at")
-  deadline          DateTime?
-  completedAt       DateTime? @map("completed_at")
-  slaWorkingDays    Int?      @map("sla_working_days")
-  isOverdue         Boolean   @default(false) @map("is_overdue")
-  overdueDays       Int       @default(0) @map("overdue_days")
-  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at")
+  closeRequestedBy  Int?      @map("close_requested_by")
+  closedBy          Int?      @map("closed_by")
+  completedBy       Int?      @map("completed_by")
 
-  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  project           Project     @relation(fields: [projectId], references: [id])
-  jobType           JobType     @relation(fields: [jobTypeId], references: [id])
-  requester         User        @relation("RequesterJobs", fields: [requesterId], references: [id])
-  assignee          User?       @relation("AssigneeJobs", fields: [assigneeId], references: [id])
-  
-  brief             JobBrief?
+  // Dates
+  dueDate           DateTime? @map("due_date") @db.Timestamptz
+  startedAt         DateTime? @map("started_at") @db.Timestamptz
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz
+  closeRequestedAt  DateTime? @map("close_requested_at") @db.Timestamptz
+  closedAt          DateTime? @map("closed_at") @db.Timestamptz
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  // updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // JSONB Fields
+  autoApprovedLevels Json?    @default("[]") @map("auto_approved_levels")
+  finalFiles         Json?    @default("[]") @map("final_files")
+
+  // Relations
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project           Project         @relation(fields: [projectId], references: [id])
+  jobType           JobType         @relation(fields: [jobTypeId], references: [id])
+  requester         User            @relation("RequesterJobs", fields: [requesterId], references: [id])
+  assignee          User?           @relation("AssigneeJobs", fields: [assigneeId], references: [id])
+  closeRequester    User?           @relation("CloseRequestedJobs", fields: [closeRequestedBy], references: [id])
+  closedByUser      User?           @relation("ClosedJobs", fields: [closedBy], references: [id])
+  completedByUser   User?           @relation("CompletedJobs", fields: [completedBy], references: [id])
+
+  jobItems          DesignJobItem[]
   attachments       JobAttachment[]
   deliverables      JobDeliverable[]
   approvals         Approval[]
-  activities        JobActivity[]
+  activityLogs      ActivityLog[] @relation("JobActivityLogs")
   comments          JobComment[]
   mediaFiles        MediaFile[]
+  slaShiftLogs      SlaShiftLog[] @relation("SlaShiftLogs")
+  urgentJobShifts   SlaShiftLog[] @relation("UrgentJobShifts")
+  jobActivities     JobActivity[]
 
   @@unique([tenantId, djId])
-  @@map("design_jobs")
+  @@index([tenantId])
+  @@index([status])
+  @@index([requesterId])
+  @@index([assigneeId])
+  @@index([dueDate])
+  @@index([createdAt])
+  // ⚡ Performance: Composite Indexes for common queries
+  @@index([tenantId, status, dueDate])  // Dashboard: งานตาม status และ due date
+  @@index([assigneeId, status])         // My Queue: งานของฉันตาม status
+  @@index([requesterId, createdAt])     // My Requests: งานที่ฉันขอ เรียงตามวันที่
+  @@map("jobs")
 }
 
-model JobBrief {
-  id           Int      @id @default(autoincrement())
-  tenantId     Int      @map("tenant_id")
-  jobId        Int      @unique @map("job_id")
-  objective    String   @db.Text
-  headline     String?  @db.VarChar(500)
-  subHeadline  String?  @map("sub_headline") @db.VarChar(500)
-  sellingPoints Json?   @map("selling_points")
-  price        String?  @db.VarChar(200)
-  referenceUrl String?  @map("reference_url") @db.VarChar(1000)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
-
-  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  job          DesignJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
-
-  @@map("job_briefs")
-}
+// model JobBrief {
+//   id           Int      @id @default(autoincrement())
+//   tenantId     Int      @map("tenant_id")
+//   jobId        Int      @unique @map("job_id")
+//   objective    String   @db.Text
+//   headline     String?  @db.VarChar(500)
+//   subHeadline  String?  @map("sub_headline") @db.VarChar(500)
+//   sellingPoints Json?   @map("selling_points")
+//   price        String?  @db.VarChar(200)
+//   referenceUrl String?  @map("reference_url") @db.VarChar(1000)
+//   createdAt    DateTime @default(now()) @map("created_at")
+//   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
+// 
+//   tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+//   job          DesignJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+// 
+//   @@map("job_briefs")
+// }
 
 model JobAttachment {
   id             Int      @id @default(autoincrement())
@@ -268,7 +343,7 @@ model JobAttachment {
   createdAt      DateTime @default(now()) @map("created_at")
 
   tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  job            DesignJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job            Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
   user           User      @relation(fields: [uploadedBy], references: [id])
 
   @@map("job_attachments")
@@ -288,7 +363,7 @@ model JobDeliverable {
   createdAt   DateTime @default(now()) @map("created_at")
 
   tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  job         DesignJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job         Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
   user        User      @relation(fields: [uploadedBy], references: [id])
 
   @@map("job_deliverables")
@@ -297,6 +372,7 @@ model JobDeliverable {
 model ApprovalFlow {
   id            Int      @id @default(autoincrement())
   tenantId      Int      @map("tenant_id")
+  projectId     Int?     @map("project_id") // 🔥 Added: Direct link to project
   name          String   @db.VarChar(200)
   description   String?  @db.Text
   conditions    Json?
@@ -309,8 +385,98 @@ model ApprovalFlow {
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
 
   tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project       Project? @relation(fields: [projectId], references: [id], onDelete: Cascade) // 🔥 Added
 
+  @@index([tenantId])
+  @@index([projectId]) // 🔥 Added for faster lookup
   @@map("approval_flows")
+}
+
+// ========================================
+// Approval Flow V2 (Template System)
+// ========================================
+
+/// Master Template สำหรับ Approval Flow
+/// สร้างครั้งเดียว Apply ได้หลาย Project
+model ApprovalFlowTemplate {
+  id              Int      @id @default(autoincrement())
+  tenantId        Int      @map("tenant_id")
+  name            String   @db.VarChar(200)
+  description     String?  @db.Text
+  totalLevels     Int      @default(1) @map("total_levels") // 0 = Skip Approval
+  autoAssignType  String   @default("manual") @map("auto_assign_type") @db.VarChar(50)
+  autoAssignUserId Int?    @map("auto_assign_user_id")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  autoAssignUser  User?    @relation("TemplateAutoAssign", fields: [autoAssignUserId], references: [id], onDelete: SetNull)
+  steps           ApprovalFlowStep[]
+  assignments     ProjectFlowAssignment[]
+
+  @@index([tenantId])
+  @@map("approval_flow_templates")
+}
+
+/// ขั้นตอนใน Template
+model ApprovalFlowStep {
+  id                Int      @id @default(autoincrement())
+  templateId        Int      @map("template_id")
+  level             Int      // 1, 2, 3...
+  name              String?  @db.VarChar(100)
+  approverType      String   @default("dept_manager") @map("approver_type") @db.VarChar(50)
+  requiredApprovals Int      @default(1) @map("required_approvals")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  template          ApprovalFlowTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@map("approval_flow_steps")
+}
+
+/// การผูก Project + JobType กับ Template
+/// ถ้า jobTypeId = NULL แสดงว่าใช้กับทุก JobType (Default)
+model ProjectFlowAssignment {
+  id                Int      @id @default(autoincrement())
+  tenantId          Int      @map("tenant_id")
+  projectId         Int      @map("project_id")
+  jobTypeId         Int?     @map("job_type_id") // NULL = Default for all JobTypes
+  templateId        Int      @map("template_id")
+  overrideAutoAssign Boolean @default(false) @map("override_auto_assign")
+  autoAssignType    String?  @map("auto_assign_type") @db.VarChar(50)
+  autoAssignUserId  Int?     @map("auto_assign_user_id")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  jobType           JobType? @relation(fields: [jobTypeId], references: [id], onDelete: Cascade)
+  template          ApprovalFlowTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  autoAssignUser    User?    @relation("AssignmentAutoAssign", fields: [autoAssignUserId], references: [id], onDelete: SetNull)
+  approvers         ProjectFlowApprover[]
+
+  @@unique([projectId, jobTypeId])
+  @@index([projectId])
+  @@index([jobTypeId])
+  @@map("project_flow_assignments")
+}
+
+/// ระบุ Approver เฉพาะ Project (Override Template Default)
+model ProjectFlowApprover {
+  id           Int      @id @default(autoincrement())
+  assignmentId Int      @map("assignment_id")
+  level        Int      // ตรงกับ ApprovalFlowStep.level
+  approverId   Int      @map("approver_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  assignment   ProjectFlowAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  approver     User     @relation("ProjectApprover", fields: [approverId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, level, approverId])
+  @@index([assignmentId])
+  @@map("project_flow_approvers")
 }
 
 model Approval {
@@ -328,7 +494,7 @@ model Approval {
   createdAt     DateTime       @default(now()) @map("created_at")
 
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  job           DesignJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job           Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
   approver      User      @relation(fields: [approverId], references: [id])
 
   @@map("approvals")
@@ -345,7 +511,7 @@ model JobActivity {
   createdAt    DateTime @default(now()) @map("created_at")
 
   tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  job          DesignJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job          Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
   user         User?     @relation(fields: [userId], references: [id])
 
   @@map("job_activities")
@@ -362,7 +528,7 @@ model JobComment {
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
   tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  job       DesignJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job       Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id])
 
   @@map("job_comments")
@@ -379,10 +545,180 @@ model Notification {
   isRead    Boolean  @default(false) @map("is_read")
   createdAt DateTime @default(now()) @map("created_at")
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logs      NotificationLog[]
 
   @@map("notifications")
+}
+
+// ========================================
+// Missing Models (Newly Added)
+// ========================================
+
+model Department {
+  id          Int      @id @default(autoincrement())
+  tenantId    Int      @map("tenant_id")
+  budId       Int?     @map("bud_id")
+  name        String   @db.VarChar(255)
+  code        String   @db.VarChar(50)
+  managerId   Int?     @map("manager_id")
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bud         Bud?     @relation(fields: [budId], references: [id])
+  manager     User?    @relation("DepartmentManager", fields: [managerId], references: [id], onDelete: SetNull)
+  users       User[]   @relation("UserDepartment")
+  projects    Project[]
+
+  @@index([tenantId])
+  @@index([budId])
+  @@index([managerId])
+  @@map("departments")
+}
+
+model DesignJobItem {
+  id              Int      @id @default(autoincrement())
+  jobId           Int      @map("job_id")
+  jobTypeItemId   Int?     @map("job_type_item_id")
+  name            String   @db.VarChar(255)
+  quantity        Int      @default(1)
+  status          String   @default("pending") @db.VarChar(50)
+  filePath        String?  @map("file_path") @db.Text
+
+  job             Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobTypeItem     JobTypeItem? @relation(fields: [jobTypeItemId], references: [id])
+
+  @@index([jobId])
+  @@index([jobTypeItemId])
+  @@map("design_job_items")
+}
+
+model JobTypeItem {
+  id            Int       @id @default(autoincrement())
+  jobTypeId     Int       @map("job_type_id")
+  name          String    @db.VarChar(255)
+  defaultSize   String?   @map("default_size") @db.VarChar(100)
+  isRequired    Boolean   @default(false) @map("is_required")
+  sortOrder     Int?      @map("sort_order")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  jobType       JobType   @relation(fields: [jobTypeId], references: [id], onDelete: Cascade)
+  jobItems      DesignJobItem[]
+
+  @@index([jobTypeId]) // Added for performance optimization
+  @@map("job_type_items")
+}
+
+model ActivityLog {
+  id            Int      @id @default(autoincrement())
+  jobId         Int      @map("job_id")
+  userId        Int?     @map("user_id")
+  action        String   @db.VarChar(50)
+  message       String?  @db.Text
+  detail        Json?
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  job           Job      @relation("JobActivityLogs", fields: [jobId], references: [id], onDelete: Cascade)
+  user          User?    @relation("ActivityLogUser", fields: [userId], references: [id])
+
+  @@index([jobId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+
+model AuditLog {
+  id            Int      @id @default(autoincrement())
+  tenantId      Int      @map("tenant_id")
+  userId        Int?     @map("user_id")
+  action        String   @db.VarChar(100)
+  tableName     String   @map("table_name") @db.VarChar(100)
+  recordId      Int?     @map("record_id")
+  oldValue      Json?    @map("old_value")
+  newValue      Json?    @map("new_value")
+  ipAddress     String?  @map("ip_address") @db.VarChar(45)
+  userAgent     String?  @map("user_agent") @db.Text
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user          User?    @relation(fields: [userId], references: [id])
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([tableName, recordId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model NotificationLog {
+  id               Int      @id @default(autoincrement())
+  notificationId   Int      @map("notification_id")
+  status           String   @db.VarChar(50)
+  sentAt           DateTime? @map("sent_at") @db.Timestamptz
+  error            String?  @db.Text
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  notification     Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId])
+  @@map("notification_logs")
+}
+
+model ProjectJobAssignment {
+  id          Int      @id @default(autoincrement())
+  projectId   Int      @map("project_id")
+  jobTypeId   Int      @map("job_type_id")
+  assigneeId  Int?     @map("assignee_id")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  jobType     JobType  @relation(fields: [jobTypeId], references: [id], onDelete: Cascade)
+  assignee    User?    @relation("AssignedProjects", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, jobTypeId])
+  @@index([projectId])
+  @@index([jobTypeId])
+  @@index([assigneeId])
+  @@map("project_job_assignments")
+}
+
+model SlaShiftLog {
+  id              Int       @id @default(autoincrement())
+  jobId           Int       @map("job_id")
+  urgentJobId     Int?      @map("urgent_job_id")
+  originalDueDate DateTime  @map("original_due_date") @db.Timestamptz
+  newDueDate      DateTime  @map("new_due_date") @db.Timestamptz
+  shiftDays       Int       @map("shift_days")
+  reason          String?   @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  job             Job       @relation("SlaShiftLogs", fields: [jobId], references: [id], onDelete: Cascade)
+  urgentJob       Job?      @relation("UrgentJobShifts", fields: [urgentJobId], references: [id], onDelete: NoAction)
+
+  @@index([jobId])
+  @@index([urgentJobId])
+  @@map("sla_shift_logs")
+}
+
+model PasswordResetRequest {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  token       String   @unique @db.VarChar(255)
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz
+  isUsed      Boolean  @default(false) @map("is_used")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("password_reset_requests")
 }
 
 model Holiday {
@@ -414,10 +750,12 @@ model MediaFile {
   downloadCount Int     @default(0) @map("download_count")
   createdAt    DateTime @default(now()) @map("created_at")
 
-  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  job          DesignJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
-  project      Project?   @relation(fields: [projectId], references: [id])
-  user         User       @relation(fields: [uploadedBy], references: [id])
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  job          Job?      @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  project      Project?  @relation(fields: [projectId], references: [id])
+  user         User      @relation(fields: [uploadedBy], references: [id])
 
   @@map("media_files")
 }
+
+

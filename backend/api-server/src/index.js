@@ -34,6 +34,17 @@ import storageRoutes from './routes/storage.js';
 import jobsRoutes from './routes/jobs.js';
 import departmentsRoutes from './routes/departments.js';
 import masterDataRoutes from './routes/master-data.js';
+import tenantsRoutes from './routes/tenants.js';
+import budsRoutes from './routes/buds.js';
+import projectsRoutes from './routes/projects.js';
+
+import holidaysRoutes from './routes/holidays.js';
+import jobTypesRoutes from './routes/job-types.js'; // ✓ NEW: Job Types Management
+import approvalFlowsRoutes from './routes/approval-flows.js';
+import approvalFlowTemplatesRoutes from './routes/approval-flow-templates.js'; // V2: Flow Templates
+
+// V2 Auth System Routes (Production-ready with Sequelize + RBAC)
+import v2Routes from './v2/index.js';
 
 // ==========================================
 // ขั้นตอนที่ 1: ตั้งค่า Environment Variables
@@ -63,12 +74,12 @@ app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (mobile apps, curl)
     if (!origin) return callback(null, true);
-    
+
     // Check if origin is allowed
     if (ALLOWED_ORIGINS.includes(origin)) {
       return callback(null, true);
     }
-    
+
     // Reject if not allowed
     return callback(new Error(`Origin ${origin} not allowed by CORS`));
   },
@@ -100,7 +111,7 @@ const io = new SocketIOServer(server, {
   // ==========================================
   // Socket.io Configuration
   // ==========================================
-  
+
   // CORS Configuration
   cors: {
     origin: ALLOWED_ORIGINS,
@@ -115,7 +126,7 @@ const io = new SocketIOServer(server, {
   // Connection Configuration
   pingInterval: 25000,      // ส่ง ping ทุก 25 วินาที
   pingTimeout: 20000,       // รอ pong สูงสุด 20 วินาที
-  
+
   // Rate Limiting (optional)
   perMessageDeflate: false   // ปิด compression เพื่อให้เร็ว
 });
@@ -162,7 +173,7 @@ io.on('connection', (socket) => {
   // ==========================================
   // Setup Event Listeners
   // ==========================================
-  
+
   // Setup Job Event Handlers
   // ตั้งค่า handlers สำหรับ job-related events
   setupJobEventHandlers(socket, io, { userId, tenantId, role });
@@ -198,16 +209,16 @@ app.get('/health', async (req, res) => {
   try {
     // ทดสอบการเชื่อมต่อ database
     const dbConnected = await testDatabaseConnection();
-    
+
     // ทดสอบการเชื่อมต่อ Supabase (ถ้าใช้)
     let supabaseStatus = 'not_configured';
     if (isUsingSupabase()) {
       const supabaseTest = await testSupabaseConnection();
       supabaseStatus = supabaseTest.success ? 'connected' : 'error';
     }
-    
-    res.json({ 
-      status: 'ok', 
+
+    res.json({
+      status: 'ok',
       message: 'DJ System API Server is running',
       database: dbConnected ? 'connected' : 'disconnected',
       supabase: supabaseStatus,
@@ -215,8 +226,8 @@ app.get('/health', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    res.json({ 
-      status: 'ok', 
+    res.json({
+      status: 'ok',
       message: 'DJ System API Server is running',
       database: 'error',
       supabase: 'error',
@@ -239,9 +250,20 @@ app.use('/api/users', usersRoutes);
 app.use('/api/jobs', jobsRoutes);
 app.use('/api/departments', departmentsRoutes);
 app.use('/api/master-data', masterDataRoutes);
+app.use('/api/tenants', tenantsRoutes);
+app.use('/api/buds', budsRoutes);
+app.use('/api/projects', projectsRoutes);
+app.use('/api/holidays', holidaysRoutes);
+app.use('/api/job-types', jobTypesRoutes); // ✓ NEW: Job Types API
 app.use('/api/approvals', approvalRoutes);
+app.use('/api/approval-flows', approvalFlowsRoutes);
+app.use('/api/approval-flow-templates', approvalFlowTemplatesRoutes); // V2: Flow Templates API
 app.use('/api/reports', reportsRoutes);
 app.use('/api/storage', storageRoutes);
+
+// V2 Auth System Routes (Production-ready with Sequelize + RBAC)
+// Endpoints: /api/v2/auth/*, /api/v2/users/*
+app.use('/api/v2', v2Routes);
 
 // Routes will be added here in the future
 // app.use('/api/notifications', notificationsRouter);
@@ -297,10 +319,10 @@ server.listen(PORT, () => {
  */
 process.on('SIGTERM', async () => {
   console.log('SIGTERM signal received: closing HTTP server');
-  
+
   // ปิด database connection
   await closeDatabaseConnection();
-  
+
   server.close(() => {
     console.log('HTTP server closed');
     process.exit(0);
@@ -312,10 +334,10 @@ process.on('SIGTERM', async () => {
  */
 process.on('SIGINT', async () => {
   console.log('SIGINT signal received: closing HTTP server');
-  
+
   // ปิด database connection
   await closeDatabaseConnection();
-  
+
   server.close(() => {
     console.log('HTTP server closed');
     process.exit(0);

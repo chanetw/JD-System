@@ -69,6 +69,35 @@ export async function setRLSContextMiddleware(req, res, next) {
 }
 
 /**
+ * Middleware สำหรับตรวจสอบความเป็น Admin
+ */
+export function requireAdmin(req, res, next) {
+  if (req.user && req.user.roles && req.user.roles.includes('admin')) {
+    return next();
+  }
+  return res.status(403).json({
+    success: false,
+    error: 'FORBIDDEN',
+    message: 'เฉพาะ Admin เท่านั้นที่สามารถเข้าถึงได้'
+  });
+}
+
+/**
+ * Middleware สำหรับดึง tenantId มาจาก User Object
+ */
+export function injectTenantId(req, res, next) {
+  if (req.user && req.user.tenantId) {
+    req.tenantId = req.user.tenantId;
+  }
+  next();
+}
+
+/**
+ * Helper alias สำหรับ authenticateToken
+ */
+export const requireAuth = authenticateToken;
+
+/**
  * POST /api/auth/login
  * เข้าสู่ระบบ
  * 
@@ -208,6 +237,70 @@ router.get('/mock-users', async (req, res) => {
 });
 
 /**
+ * POST /api/auth/login-demo
+ * Demo Login Logic: Use selected userId to generate REAL token
+ * (No password required - for DEMO purposes only)
+ */
+router.post('/login-demo', async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'User ID is required' });
+    }
+
+    const prisma = getDatabase();
+
+    // 1. Fetch User (Read-Only)
+    const user = await prisma.user.findUnique({
+      where: { id: parseInt(userId) },
+      include: {
+        userRoles: true
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // 2. Generate Real JWT Token
+    const tokenPayload = {
+      sub: crypto.randomUUID(),
+      userId: user.id,
+      tenantId: user.tenantId,
+      email: user.email,
+      roles: user.userRoles.map(ur => ur.roleName)
+    };
+
+    const accessToken = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
+      expiresIn: '24h'
+    });
+
+    // 3. Helper: Format User Response
+    const { passwordHash, ...userWithoutPassword } = user;
+    const formattedUser = {
+      ...userWithoutPassword,
+      roles: user.userRoles.map(ur => ur.roleName)
+    };
+
+    console.log(`[Auth] Demo Login Success for: ${user.email}`);
+
+    res.json({
+      success: true,
+      data: {
+        user: formattedUser,
+        token: accessToken,
+        expiresIn: '24h'
+      }
+    });
+
+  } catch (error) {
+    console.error('[Auth] Demo login error:', error);
+    res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+});
+
+/**
  * POST /api/auth/refresh
  * ต่ออายุ token
  */
@@ -273,7 +366,8 @@ router.get('/me', authenticateToken, setRLSContextMiddleware, async (req, res) =
         firstName: true,
         lastName: true,
         displayName: true,
-        phone: true,
+        displayName: true,
+        // phone: true, // Column missing in DB
         isActive: true,
         createdAt: true,
         userRoles: {

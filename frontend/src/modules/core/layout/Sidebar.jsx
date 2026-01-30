@@ -20,18 +20,31 @@ export default function Sidebar() {
     /** ข้อมูลผู้ใช้งานปัจจุบันจาก store */
     const { user } = useAuthStore();
 
+    // Helper to safely get role name
+    const getRoleName = (r) => {
+        if (typeof r === 'string') return r.toLowerCase();
+        if (typeof r === 'object' && r) {
+            const val = r.name || r.roleName || r.id || '';
+            return String(val).toLowerCase();
+        }
+        return '';
+    };
+
     /** ตรวจสอบสิทธิ์ว่าเป็นผู้ดูแลระบบ (Admin) หรือไม่ */
-    const isAdmin = user?.roles?.some(r => r.toLowerCase() === 'admin') || user?.role?.toLowerCase() === 'admin';
+    const isAdmin = user?.roles?.some(r => getRoleName(r) === 'admin') ||
+        getRoleName(user?.role) === 'admin';
 
     /** ตรวจสอบสิทธิ์ Assignee (Graphic/Editor) */
-    const isAssignee = user?.roles?.some(r => ['assignee', 'graphic', 'editor'].includes(r.toLowerCase())) ||
-        ['assignee', 'graphic', 'editor'].includes(user?.role?.toLowerCase());
+    const isAssignee = user?.roles?.some(r => ['assignee', 'graphic', 'editor'].includes(getRoleName(r))) ||
+        ['assignee', 'graphic', 'editor'].includes(getRoleName(user?.role));
 
-    /** ตรวจสอบสิทธิ์ Manager */
-    const isManager = user?.roles?.some(r => r.toLowerCase() === 'manager') || user?.role?.toLowerCase() === 'manager';
+    /** ตรวจสอบสิทธิ์ Manager (Department Head) */
+    const isManager = user?.roles?.some(r => ['manager', 'head'].includes(getRoleName(r))) ||
+        ['manager', 'head'].includes(getRoleName(user?.role));
 
     /** ตรวจสอบสิทธิ์ Supervisor */
-    const isSupervisor = user?.roles?.some(r => r.toLowerCase() === 'supervisor') || user?.role?.toLowerCase() === 'supervisor';
+    const isSupervisor = user?.roles?.some(r => getRoleName(r) === 'supervisor') ||
+        getRoleName(user?.role) === 'supervisor';
 
     /** ตรวจสอบสิทธิ์เข้าถึง Analytics Dashboard (Admin, Manager, Supervisor) */
     const canAccessAnalytics = isAdmin || isManager || isSupervisor;

@@ -142,36 +142,36 @@ export default function CreateDJ() {
             }
         };
         loadData();
-     }, []);
+    }, []);
 
-     // === Auto-jump Calendar ไปเดือนที่มี Deadline ===
-     useEffect(() => {
-         if (!holidays.length) return; // รอจนกว่า holidays โหลดเสร็จ
-         
-         // คำนวณ SLA และ Due Date
-         let sla = 7;
-         let calculatedDueDate = null;
-         
-         if (selectedJobTypes.length > 0) {
-             sla = Math.max(...selectedJobTypes.map(jt => jt.sla || 7));
-             calculatedDueDate = calculateDueDate(new Date(), sla, holidays);
-         } else {
-             const singleJobType = masterData.jobTypes.find(t => t.id === parseInt(formData.jobTypeId));
-             if (singleJobType?.sla) {
-                 sla = singleJobType.sla;
-                 calculatedDueDate = calculateDueDate(new Date(), sla, holidays);
-             }
-         }
-         
-         // ถ้ามี Due Date ให้ jump ไปเดือนที่มี Deadline
-         if (calculatedDueDate) {
-             const dueDate = new Date(calculatedDueDate);
-             setCalendarMonth(dueDate.getMonth());
-             setCalendarYear(dueDate.getFullYear());
-         }
-     }, [formData.jobTypeId, selectedJobTypes, masterData.jobTypes, holidays]);
+    // === Auto-jump Calendar ไปเดือนที่มี Deadline ===
+    useEffect(() => {
+        if (!holidays.length) return; // รอจนกว่า holidays โหลดเสร็จ
 
-     // === ส่วนจัดการเหตุการณ์ (Event Handlers) ===
+        // คำนวณ SLA และ Due Date
+        let sla = 7;
+        let calculatedDueDate = null;
+
+        if (selectedJobTypes.length > 0) {
+            sla = Math.max(...selectedJobTypes.map(jt => jt.sla || 7));
+            calculatedDueDate = calculateDueDate(new Date(), sla, holidays);
+        } else {
+            const singleJobType = masterData.jobTypes.find(t => t.id === parseInt(formData.jobTypeId));
+            if (singleJobType?.sla) {
+                sla = singleJobType.sla;
+                calculatedDueDate = calculateDueDate(new Date(), sla, holidays);
+            }
+        }
+
+        // ถ้ามี Due Date ให้ jump ไปเดือนที่มี Deadline
+        if (calculatedDueDate) {
+            const dueDate = new Date(calculatedDueDate);
+            setCalendarMonth(dueDate.getMonth());
+            setCalendarYear(dueDate.getFullYear());
+        }
+    }, [formData.jobTypeId, selectedJobTypes, masterData.jobTypes, holidays]);
+
+    // === ส่วนจัดการเหตุการณ์ (Event Handlers) ===
 
     /**
      * จัดการการเปลี่ยนแปลงค่าในฟอร์ม
@@ -1144,7 +1144,7 @@ export default function CreateDJ() {
                                             // คำนวณ Due Date แบบ Real-time
                                             let calculatedDueDate = null;
                                             let sla = 7;
-                                            
+
                                             if (selectedJobTypes.length > 0) {
                                                 sla = Math.max(...selectedJobTypes.map(jt => jt.sla || 7));
                                                 calculatedDueDate = calculateDueDate(new Date(), sla, holidays);
@@ -1155,9 +1155,9 @@ export default function CreateDJ() {
                                                     calculatedDueDate = calculateDueDate(new Date(), sla, holidays);
                                                 }
                                             }
-                                            
+
                                             if (!calculatedDueDate) return '-';
-                                            
+
                                             const start = new Date();
                                             const end = new Date(calculatedDueDate);
                                             // Diff in days (Calendar Days)
@@ -1177,7 +1177,7 @@ export default function CreateDJ() {
                                     // คำนวณ SLA และ Due Date
                                     let sla = 7;
                                     let calculatedDueDate = null;
-                                    
+
                                     if (selectedJobTypes.length > 0) {
                                         sla = Math.max(...selectedJobTypes.map(jt => jt.sla || 7));
                                         calculatedDueDate = calculateDueDate(new Date(), sla, holidays);
@@ -1188,7 +1188,7 @@ export default function CreateDJ() {
                                             calculatedDueDate = calculateDueDate(new Date(), sla, holidays);
                                         }
                                     }
-                                    
+
                                     if (!calculatedDueDate) {
                                         return (
                                             <div className="text-center text-gray-400 text-sm py-4">
@@ -1196,10 +1196,10 @@ export default function CreateDJ() {
                                             </div>
                                         );
                                     }
-                                    
+
                                     const today = new Date();
                                     const dueDate = new Date(calculatedDueDate);
-                                    
+
                                     // สร้าง Holiday Set สำหรับเช็ค
                                     const holidaySet = new Set(
                                         holidays.map(h => {
@@ -1208,52 +1208,52 @@ export default function CreateDJ() {
                                             return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
                                         })
                                     );
-                                    
+
                                     // ใช้ State สำหรับเดือนที่แสดง (รองรับการเลื่อนดูเดือนอื่น)
                                     const displayMonth = calendarMonth;
                                     const displayYear = calendarYear;
                                     const firstDayOfMonth = new Date(displayYear, displayMonth, 1);
                                     const lastDayOfMonth = new Date(displayYear, displayMonth + 1, 0);
                                     const startDayOfWeek = firstDayOfMonth.getDay(); // 0 = Sunday
-                                    
+
                                     // สร้าง Array วันในเดือน
                                     const daysInMonth = [];
-                                    
+
                                     // เติมช่องว่างก่อนวันที่ 1
                                     for (let i = 0; i < startDayOfWeek; i++) {
                                         daysInMonth.push(null);
                                     }
-                                    
+
                                     // เติมวันในเดือน
                                     for (let day = 1; day <= lastDayOfMonth.getDate(); day++) {
                                         daysInMonth.push(day);
                                     }
-                                    
+
                                     // ฟังก์ชันเช็ควันหยุดสุดสัปดาห์
                                     const isWeekend = (day) => {
                                         const date = new Date(displayYear, displayMonth, day);
                                         return date.getDay() === 0 || date.getDay() === 6;
                                     };
-                                    
+
                                     // ฟังก์ชันเช็ควันหยุดนักขัตฤกษ์
                                     const isHolidayDay = (day) => {
                                         return holidaySet.has(`${displayYear}-${displayMonth}-${day}`);
                                     };
-                                    
+
                                     // ฟังก์ชันเช็ควันนี้
                                     const isToday = (day) => {
-                                        return day === today.getDate() && 
-                                               displayMonth === today.getMonth() && 
-                                               displayYear === today.getFullYear();
+                                        return day === today.getDate() &&
+                                            displayMonth === today.getMonth() &&
+                                            displayYear === today.getFullYear();
                                     };
-                                    
+
                                     // ฟังก์ชันเช็คว่าเป็น Deadline หรือไม่
                                     const isDeadline = (day) => {
-                                        return day === dueDate.getDate() && 
-                                               displayMonth === dueDate.getMonth() && 
-                                               displayYear === dueDate.getFullYear();
+                                        return day === dueDate.getDate() &&
+                                            displayMonth === dueDate.getMonth() &&
+                                            displayYear === dueDate.getFullYear();
                                     };
-                                    
+
                                     // ฟังก์ชันเช็คว่าเป็นวันทำการระหว่าง Today ถึง Deadline
                                     const isWorkingDay = (day) => {
                                         const date = new Date(displayYear, displayMonth, day);
@@ -1262,17 +1262,17 @@ export default function CreateDJ() {
                                         todayStart.setHours(0, 0, 0, 0);
                                         const dueDateEnd = new Date(dueDate);
                                         dueDateEnd.setHours(23, 59, 59, 999);
-                                        
+
                                         // ต้องอยู่ระหว่าง Today และ Deadline
                                         if (date < todayStart || date > dueDateEnd) return false;
-                                        
+
                                         // ต้องไม่ใช่วันหยุดสุดสัปดาห์และวันหยุดนักขัตฤกษ์
                                         const dateKey = `${displayYear}-${displayMonth}-${day}`;
                                         if (isWeekend(day) || holidaySet.has(dateKey)) return false;
-                                        
+
                                         return true;
                                     };
-                                    
+
                                     // ฟังก์ชันเลื่อนเดือน
                                     const goToPrevMonth = () => {
                                         if (displayMonth === 0) {
@@ -1282,7 +1282,7 @@ export default function CreateDJ() {
                                             setCalendarMonth(displayMonth - 1);
                                         }
                                     };
-                                    
+
                                     const goToNextMonth = () => {
                                         if (displayMonth === 11) {
                                             setCalendarMonth(0);
@@ -1291,20 +1291,20 @@ export default function CreateDJ() {
                                             setCalendarMonth(displayMonth + 1);
                                         }
                                     };
-                                    
+
                                     // ตรวจสอบว่า Deadline อยู่เดือนอื่นหรือไม่
-                                    const deadlineInDifferentMonth = dueDate.getMonth() !== today.getMonth() || 
-                                                                      dueDate.getFullYear() !== today.getFullYear();
-                                    
+                                    const deadlineInDifferentMonth = dueDate.getMonth() !== today.getMonth() ||
+                                        dueDate.getFullYear() !== today.getFullYear();
+
                                     // ชื่อเดือนภาษาไทย (แบบย่อ)
                                     const thaiMonthsShort = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
-                                                            'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-                                    
+                                        'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
                                     return (
                                         <div className="border border-gray-200 rounded-lg p-3">
                                             {/* Header พร้อมปุ่มเลื่อนเดือน */}
                                             <div className="flex items-center justify-between mb-2">
-                                                <button 
+                                                <button
                                                     type="button"
                                                     onClick={goToPrevMonth}
                                                     className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
@@ -1317,7 +1317,7 @@ export default function CreateDJ() {
                                                 <p className="text-xs text-gray-600 font-medium">
                                                     {thaiMonthsShort[displayMonth]} {displayYear + 543}
                                                 </p>
-                                                <button 
+                                                <button
                                                     type="button"
                                                     onClick={goToNextMonth}
                                                     className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
@@ -1328,7 +1328,7 @@ export default function CreateDJ() {
                                                     </svg>
                                                 </button>
                                             </div>
-                                            
+
                                             {/* Header วันในสัปดาห์ */}
                                             <div className="grid grid-cols-7 gap-1 text-center text-xs mb-1">
                                                 <span className="text-gray-400">อา</span>
@@ -1339,17 +1339,17 @@ export default function CreateDJ() {
                                                 <span className="text-gray-400">ศ</span>
                                                 <span className="text-gray-400">ส</span>
                                             </div>
-                                            
+
                                             {/* วันในเดือน */}
                                             <div className="grid grid-cols-7 gap-1 text-center text-xs">
                                                 {daysInMonth.map((day, index) => {
                                                     if (day === null) {
                                                         return <span key={index} className="p-1 text-gray-300">-</span>;
                                                     }
-                                                    
+
                                                     // กำหนด Style ตามประเภทวัน
                                                     let className = "p-1 rounded ";
-                                                    
+
                                                     if (isDeadline(day)) {
                                                         // วัน Deadline - สีแดง
                                                         className += "bg-rose-500 text-white font-bold";
@@ -1365,7 +1365,7 @@ export default function CreateDJ() {
                                                     } else {
                                                         className += "text-gray-600";
                                                     }
-                                                    
+
                                                     return (
                                                         <span key={index} className={className}>
                                                             {day}
@@ -1373,7 +1373,7 @@ export default function CreateDJ() {
                                                     );
                                                 })}
                                             </div>
-                                            
+
                                             {/* Legend */}
                                             <div className="flex gap-3 mt-3 text-xs justify-center flex-wrap">
                                                 <span className="flex items-center gap-1">
@@ -1386,7 +1386,7 @@ export default function CreateDJ() {
                                                     <span className="w-2.5 h-2.5 bg-rose-500 rounded"></span> Deadline
                                                 </span>
                                             </div>
-                                            
+
                                             {/* แจ้งเตือนถ้า Deadline อยู่เดือนอื่น */}
                                             {deadlineInDifferentMonth && (
                                                 <p className="text-xs text-center text-amber-600 mt-2 bg-amber-50 rounded py-1">
@@ -1452,7 +1452,7 @@ export default function CreateDJ() {
           ============================================ */}
             {
                 showBlockModal && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
                         <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden">
                             <div className="p-6 border-b border-gray-200 flex justify-between items-center">
                                 <h3 className="text-lg font-semibold text-gray-900">ไม่สามารถส่งงานได้</h3>

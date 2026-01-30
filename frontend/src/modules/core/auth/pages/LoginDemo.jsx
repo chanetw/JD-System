@@ -12,8 +12,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '@core/stores/authStore';
 import { api } from '@shared/services/apiService';
+import { userService } from '@shared/services/modules/userService';
 
-export default function Login() {
+export default function LoginDemo() {
     const navigate = useNavigate();
     const { login, user } = useAuthStore();
     const [users, setUsers] = useState([]);
@@ -32,7 +33,8 @@ export default function Login() {
     useEffect(() => {
         const loadUsers = async () => {
             try {
-                const data = await api.getUsers();
+                // Use getMockUsers (Public API) instead of getUsers (Supabase RLS Protected)
+                const data = await api.getMockUsers();
                 setUsers(data);
             } catch (err) {
                 console.error('Error loading users:', err);
@@ -54,28 +56,31 @@ export default function Login() {
         setIsLoading(true);
 
         try {
-            const selectedUser = users.find(u => u.id === parseInt(selectedUserId));
-            if (selectedUser) {
-                // บันทึก user ใน authStore
-                login(selectedUser);
+            // Updated Logic: Call API to get REAL token
+            const userWithToken = await userService.loginDemo(parseInt(selectedUserId));
+
+            if (userWithToken) {
+                // บันทึก user และ token ใน authStore
+                login(userWithToken);
 
                 // รอสักครู่เพื่อ UX
                 await new Promise(resolve => setTimeout(resolve, 500));
 
-                // Redirect ตาม role
-                let role = selectedUser.roles?.[0];
-                if (role === 'marketing') role = 'requester'; // Map legacy
+                // Redirect ตาม role (Priority: Admin > Requester > Others)
+                const userRoles = userWithToken.roles || [];
 
-                if (role === 'admin') {
+                if (userRoles.includes('admin')) {
                     navigate('/');
-                } else if (role === 'requester') {
+                } else if (userRoles.includes('requester') || userRoles.includes('marketing')) {
                     navigate('/user-portal');
                 } else {
+                    // Start at Dashboard for Approvers/Assignees
                     navigate('/');
                 }
             }
         } catch (err) {
-            setError('เกิดข้อผิดพลาด กรุณาลองใหม่');
+            console.error('Login error:', err);
+            setError('เกิดข้อผิดพลาด: ' + (err.message || 'Login failed'));
         } finally {
             setIsLoading(false);
         }
@@ -83,9 +88,19 @@ export default function Login() {
 
     // จัดกลุ่ม User ตาม Role
     const groupedUsers = users.reduce((acc, user) => {
-        let role = user.roles?.[0] || 'other';
-        // Map legacy role
-        if (role === 'marketing') role = 'requester';
+        let role = 'other';
+        const userRoles = user.roles || [];
+
+        // Determine primary role for grouping
+        if (userRoles.includes('admin')) {
+            role = 'admin';
+        } else if (userRoles.includes('approver') || userRoles.includes('head') || userRoles.includes('manager')) {
+            role = 'approver';
+        } else if (userRoles.includes('assignee') || userRoles.includes('graphic') || userRoles.includes('web')) {
+            role = 'assignee';
+        } else if (userRoles.includes('requester') || userRoles.includes('marketing')) {
+            role = 'requester';
+        }
 
         if (!acc[role]) acc[role] = [];
         acc[role].push(user);
@@ -158,12 +173,15 @@ export default function Login() {
                                         <div>
                                             <p className="font-medium text-slate-800">{selected.displayName}</p>
                                             <p className="text-sm text-slate-500">{selected.email}</p>
-                                            <span className={`inline-block mt-1 px-2 py-0.5 text-xs rounded-full ${selected.roles?.[0] === 'admin' ? 'bg-purple-100 text-purple-700' :
-                                                selected.roles?.[0] === 'requester' ? 'bg-blue-100 text-blue-700' :
-                                                    selected.roles?.[0] === 'approver' ? 'bg-green-100 text-green-700' :
+                                            <span className={`inline-block mt-1 px-2 py-0.5 text-xs rounded-full ${selected.roles?.includes('admin') ? 'bg-purple-100 text-purple-700' :
+                                                (selected.roles?.includes('requester') || selected.roles?.includes('marketing')) ? 'bg-blue-100 text-blue-700' :
+                                                    selected.roles?.includes('approver') ? 'bg-green-100 text-green-700' :
                                                         'bg-amber-100 text-amber-700'
                                                 }`}>
-                                                {selected.roles?.[0]?.toUpperCase()}
+                                                {selected.roles?.includes('admin') ? 'ADMIN' :
+                                                    (selected.roles?.includes('requester') || selected.roles?.includes('marketing')) ? 'REQUESTER' :
+                                                        selected.roles?.includes('approver') ? 'APPROVER' :
+                                                            selected.roles?.[0]?.toUpperCase()}
                                             </span>
                                         </div>
                                     </div>

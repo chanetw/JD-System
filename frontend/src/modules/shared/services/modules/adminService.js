@@ -4,10 +4,12 @@ import httpClient from '../httpClient';
 
 export const adminService = {
     // --- Master Data (Organization) ---
-    getMasterData: async () => {
+    getMasterData: async (shouldRefresh = false) => {
         try {
             // ✓ NEW: Use Backend REST API with RLS context
-            const response = await httpClient.get('/master-data');
+            const response = await httpClient.get('/master-data', {
+                params: { refresh: shouldRefresh }
+            });
 
             if (!response.data.success) {
                 console.warn('[adminService] Get master data failed:', response.data.message);
@@ -23,117 +25,116 @@ export const adminService = {
     },
 
     getTenants: async () => {
-        const { data, error } = await supabase.from('tenants').select('*').eq('is_active', true).order('id');
-        if (error) throw error;
-        return data.map(t => ({ ...t, isActive: t.is_active }));
+        try {
+            // ✓ NEW: Use Backend REST API
+            const response = await httpClient.get('/tenants');
+            if (!response.data.success) throw new Error(response.data.message);
+            return response.data.data;
+        } catch (error) {
+            console.error('[adminService] getTenants error:', error);
+            // Fallback to empty if fails, but ideally throw
+            throw error;
+        }
     },
 
     createTenant: async (tenantData) => {
-        const payload = { ...tenantData, is_active: true };
-        const { data, error } = await supabase.from('tenants').insert([payload]).select().single();
-        if (error) throw error;
-        return data;
+        // ✓ NEW: Use Backend REST API with validation
+
+        // Client-side validation
+        if (!tenantData.name || !tenantData.name.trim()) {
+            throw new Error('ชื่อบริษัท (name) เป็นข้อมูลที่จำเป็น');
+        }
+        if (!tenantData.code || !tenantData.code.trim()) {
+            throw new Error('รหัสบริษัท (code) เป็นข้อมูลที่จำเป็น');
+        }
+
+        const payload = {
+            name: tenantData.name.trim(),
+            code: tenantData.code.trim(),
+            subdomain: tenantData.subdomain ? tenantData.subdomain.trim() : null,
+            isActive: true
+        };
+
+        try {
+            const response = await httpClient.post('/tenants', payload);
+            if (!response.data.success) throw new Error(response.data.message);
+            return response.data.data;
+        } catch (error) {
+            // Extract more specific error message from response
+            const message = error.response?.data?.message || error.message || 'ไม่สามารถสร้างบริษัทได้';
+            throw new Error(message);
+        }
     },
 
     updateTenant: async (id, tenantData) => {
-        const payload = { ...tenantData, is_active: tenantData.isActive };
-        const { data, error } = await supabase.from('tenants').update(payload).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
+        try {
+            // ✓ NEW: Use Backend REST API
+            const payload = { ...tenantData, isActive: tenantData.isActive };
+            const response = await httpClient.put(`/tenants/${id}`, payload);
+
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Update failed');
+            }
+
+            return response.data.data;
+        } catch (error) {
+            console.error('[adminService] updateTenant error:', error);
+            throw error;
+        }
     },
 
     deleteTenant: async (id) => {
-        const { error } = await supabase.from('tenants').update({ is_active: false }).eq('id', id);
-        if (error) throw error;
-        return { success: true };
+        // ✓ NEW: Use Backend REST API
+        const response = await httpClient.delete(`/tenants/${id}`);
+        if (!response.data.success) throw new Error(response.data.message);
+        return response.data; // Return full response to check deletion type
     },
 
     getBUDs: async () => {
-        const { data, error } = await supabase.from('buds').select('*').eq('is_active', true).order('id');
-        if (error) throw error;
-        return data.map(b => ({ ...b, tenantId: b.tenant_id, isActive: b.is_active }));
+        const response = await httpClient.get('/buds');
+        return response.data.data;
     },
 
-    createBUD: async (budData) => {
-        const payload = {
-            tenant_id: budData.tenantId || 1,
-            name: budData.name,
-            code: budData.code,
-            is_active: true
-        };
-        const { data, error } = await supabase.from('buds').insert([payload]).select().single();
-        if (error) throw error;
-        return data;
+    createBud: async (budData) => {
+        const response = await httpClient.post('/buds', budData);
+        if (!response.data.success) throw new Error(response.data.message);
+        return response.data.data;
     },
 
-    updateBUD: async (id, budData) => {
-        const payload = {
-            name: budData.name,
-            code: budData.code,
-            is_active: budData.isActive
-        };
-        const { data, error } = await supabase.from('buds').update(payload).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
+    updateBud: async (id, budData) => {
+        const response = await httpClient.put(`/buds/${id}`, budData);
+        if (!response.data.success) throw new Error(response.data.message);
+        return response.data.data;
     },
 
-    deleteBUD: async (id) => {
-        const { error } = await supabase.from('buds').update({ is_active: false }).eq('id', id);
-        if (error) throw error;
-        return { success: true };
+    deleteBud: async (id) => {
+        const response = await httpClient.delete(`/buds/${id}`);
+        if (!response.data.success) throw new Error(response.data.message);
+        return response.data;
     },
 
     getProjects: async () => {
-        const data = handleResponse(
-            await supabase.from('projects')
-                .select(`*, bud:buds(name), department:departments(name), tenant:tenants(name)`)
-                .eq('is_active', true)
-                .order('id')
-        );
-        return data.map(p => ({
-            id: p.id,
-            name: p.name,
-            code: p.code,
-            budId: p.bud_id,
-            budName: p.bud?.name,
-            departmentId: p.department_id,
-            departmentName: p.department?.name,
-            tenantId: p.tenant_id,
-            tenantName: p.tenant?.name,
-            status: p.is_active ? 'active' : 'inactive'
-        }));
+        const response = await httpClient.get('/projects');
+        return response.data.data;
     },
 
     createProject: async (projectData) => {
-        const payload = {
-            tenant_id: projectData.tenantId || 1,
-            bud_id: projectData.budId,
-            name: projectData.name,
-            code: projectData.code,
-            is_active: true
-        };
-        const { data, error } = await supabase.from('projects').insert([payload]).select().single();
-        if (error) throw error;
-        return data;
+        const response = await httpClient.post('/projects', projectData);
+        if (!response.data.success) throw new Error(response.data.message);
+        return response.data.data;
     },
 
     updateProject: async (id, projectData) => {
-        const payload = {
-            name: projectData.name,
-            code: projectData.code,
-            bud_id: projectData.budId,
-            tenant_id: projectData.tenantId,
-            is_active: projectData.status === 'Active'
-        };
-        const { data, error } = await supabase.from('projects').update(payload).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
+        const payload = { ...projectData, isActive: projectData.status === 'Active' };
+        const response = await httpClient.put(`/projects/${id}`, payload);
+        if (!response.data.success) throw new Error(response.data.message);
+        return response.data.data;
     },
 
     deleteProject: async (id) => {
-        const { error } = await supabase.from('projects').update({ is_active: false }).eq('id', id);
-        if (error) throw error;
-        return { success: true };
+        const response = await httpClient.delete(`/projects/${id}`);
+        if (!response.data.success) throw new Error(response.data.message);
+        return response.data;
     },
 
     getDepartments: async () => {
@@ -155,151 +156,269 @@ export const adminService = {
     },
 
     createDepartment: async (deptData) => {
-        const payload = {
-            tenant_id: 1,
-            bud_id: deptData.budId,
-            name: deptData.name,
-            code: deptData.code,
-            manager_id: deptData.managerId || null,
-            is_active: true
-        };
-        const { data, error } = await supabase.from('departments').insert([payload]).select().single();
-        if (error) throw error;
-        return data;
+        const response = await httpClient.post('/departments', deptData);
+        if (!response.data.success) throw new Error(response.data.message);
+        return response.data.data;
     },
 
     updateDepartment: async (id, deptData) => {
-        const payload = {
-            name: deptData.name,
-            code: deptData.code,
-            bud_id: deptData.budId,
-            manager_id: deptData.managerId || null,
-            is_active: deptData.isActive
-        };
-        const { data, error } = await supabase.from('departments').update(payload).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
+        const response = await httpClient.put(`/departments/${id}`, deptData);
+        if (!response.data.success) throw new Error(response.data.message);
+        return response.data.data;
     },
 
     deleteDepartment: async (id) => {
-        const { error } = await supabase.from('departments').update({ is_active: false }).eq('id', id);
-        if (error) throw error;
-        return { success: true };
+        const response = await httpClient.delete(`/departments/${id}`);
+        if (!response.data.success) throw new Error(response.data.message);
+        return response.data;
     },
 
     // --- Job Types ---
-    getJobTypes: async () => {
-        const { data, error } = await supabase
-            .from('job_types')
-            .select(`*, items:job_type_items(*)`)
-            .order('id');
-        if (error) throw error;
-        return (data || []).map(jt => ({ // Safe map
-            id: jt.id,
-            name: jt.name,
-            description: jt.description,
-            sla: jt.sla_days,
-            icon: jt.icon,
-            attachments: jt.attachments || [],
-            status: jt.is_active ? 'active' : 'inactive',
-            items: (jt.items || []).map(i => ({ // Safe items map
-                id: i.id,
-                name: i.name,
-                defaultSize: i.default_size,
-                isRequired: i.is_required
-            }))
-        }));
+    getJobTypes: async (shouldRefresh = false) => {
+        try {
+            // ✓ NEW: Use Backend REST API (Consolidated)
+            // Pass refresh param to bypass cache
+            const response = await httpClient.get('/master-data', {
+                params: { refresh: shouldRefresh }
+            });
+
+            if (!response.data.success) {
+                console.warn('[adminService] Get job types failed:', response.data.message);
+                return [];
+            }
+
+            // Extract jobTypes from masterData
+            const jobTypes = response.data.data.jobTypes || [];
+
+            // Map to match component expectations
+            return jobTypes.map(jt => ({
+                id: jt.id,
+                name: jt.name,
+                description: jt.description,
+                sla: jt.slaWorkingDays, // Note: filed name changed in master-data
+                icon: jt.icon,
+                attachments: jt.attachments || [],
+                status: jt.isActive ? 'active' : 'inactive',
+                // Items are already nested in master-data response
+                items: (jt.items || []).map(i => ({
+                    id: i.id,
+                    jobTypeId: jt.id, // Ensure jobTypeId is present
+                    name: i.name,
+                    defaultSize: i.defaultSize,
+                    isRequired: i.isRequired
+                }))
+            }));
+
+        } catch (error) {
+            console.error('[adminService] getJobTypes error:', error);
+            return [];
+        }
     },
 
+    // --- Job Types ---
+    /**
+     * Create new job type
+     * ✅ FIXED: Proper payload sanitization and validation
+     */
     createJobType: async (jobTypeData) => {
+        // Validate required fields
+        if (!jobTypeData.name || !jobTypeData.name.trim()) {
+            throw new Error('Job type name is required');
+        }
+
+        // Build sanitized payload (only send valid fields)
         const payload = {
-            tenant_id: 1,
-            name: jobTypeData.name,
-            description: jobTypeData.description,
-            sla_days: jobTypeData.sla || 3,
-            icon: jobTypeData.icon,
-            attachments: jobTypeData.attachments,
-            is_active: jobTypeData.status !== 'inactive'
+            name: jobTypeData.name.trim(),
+            description: jobTypeData.description || '',
+            sla: parseInt(jobTypeData.sla) || 3,
+            sla: parseInt(jobTypeData.sla) || 3,
+            isActive: jobTypeData.status === 'active', // Convert status to isActive
+            icon: jobTypeData.icon || 'social',
+            attachments: Array.isArray(jobTypeData.attachments)
+                ? jobTypeData.attachments
+                : (jobTypeData.attachments ? [jobTypeData.attachments] : [])
         };
-        const { data, error } = await supabase.from('job_types').insert([payload]).select().single();
-        if (error) throw error;
-        return data;
+
+        try {
+            const response = await httpClient.post('/job-types', payload);
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Failed to create job type');
+            }
+            return response.data.data;
+        } catch (error) {
+            console.error('[adminService] createJobType error:', error);
+            throw new Error(
+                error.response?.data?.message ||
+                error.message ||
+                'Failed to create job type'
+            );
+        }
     },
 
+    /**
+     * Update existing job type
+     * ✅ FIXED: Proper payload sanitization and validation
+     */
     updateJobType: async (id, jobTypeData) => {
-        const payload = {
-            name: jobTypeData.name,
-            description: jobTypeData.description,
-            sla_days: jobTypeData.sla,
-            icon: jobTypeData.icon,
-            attachments: jobTypeData.attachments,
-            is_active: jobTypeData.status === 'active'
-        };
-        const { data, error } = await supabase.from('job_types').update(payload).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
+        // Validate required fields if provided
+        if (jobTypeData.name !== undefined && (!jobTypeData.name || !jobTypeData.name.trim())) {
+            throw new Error('Job type name cannot be empty');
+        }
+
+        // Build sanitized payload (only send provided fields)
+        const payload = {};
+        if (jobTypeData.name !== undefined) payload.name = jobTypeData.name.trim();
+        if (jobTypeData.description !== undefined) payload.description = jobTypeData.description;
+        if (jobTypeData.sla !== undefined) payload.sla = parseInt(jobTypeData.sla);
+        if (jobTypeData.status !== undefined) {
+            payload.isActive = jobTypeData.status === 'active'; // Convert status to isActive
+        }
+        if (jobTypeData.isActive !== undefined) {
+            payload.isActive = jobTypeData.isActive;
+        }
+        if (jobTypeData.icon !== undefined) payload.icon = jobTypeData.icon;
+        if (jobTypeData.attachments !== undefined) {
+            payload.attachments = Array.isArray(jobTypeData.attachments)
+                ? jobTypeData.attachments
+                : (jobTypeData.attachments ? [jobTypeData.attachments] : []);
+        }
+
+        // Only send if there are fields to update
+        if (Object.keys(payload).length === 0) {
+            throw new Error('No fields to update');
+        }
+
+        try {
+            const response = await httpClient.put(`/job-types/${id}`, payload);
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Failed to update job type');
+            }
+            return response.data.data;
+        } catch (error) {
+            console.error('[adminService] updateJobType error:', error);
+            throw new Error(
+                error.response?.data?.message ||
+                error.message ||
+                'Failed to update job type'
+            );
+        }
     },
 
+    /**
+     * Delete (soft delete) job type by setting isActive to false
+     * ✅ FIXED: Proper payload handling
+     */
     deleteJobType: async (id) => {
-        const { error } = await supabase.from('job_types').update({ is_active: false }).eq('id', id);
-        if (error) throw error;
-        return { success: true };
+        const payload = { isActive: false };
+        try {
+            const response = await httpClient.put(`/job-types/${id}`, payload);
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Failed to delete job type');
+            }
+            return { success: true };
+        } catch (error) {
+            console.error('[adminService] deleteJobType error:', error);
+            throw new Error(
+                error.response?.data?.message ||
+                error.message ||
+                'Failed to delete job type'
+            );
+        }
     },
 
     // --- Job Type Items ---
+
+    /**
+     * Get items (Already included in getMasterData or getJobTypes, but if needed separately)
+     * For now, we rely on master data cache in frontend.
+     */
     getJobTypeItems: async (jobTypeId) => {
-        let query = supabase.from('job_type_items').select('*');
-        if (jobTypeId) query = query.eq('job_type_id', jobTypeId);
-        const { data, error } = await query;
-        if (error) throw error;
-        return (data || []).map(i => ({
-            id: i.id,
-            jobTypeId: i.job_type_id,
-            name: i.name,
-            defaultSize: i.default_size,
-            isRequired: i.is_required
-        }));
+        try {
+            const response = await httpClient.get(`/job-types/${jobTypeId}/items`);
+            if (!response.data.success) {
+                console.warn('[adminService] Get job type items failed:', response.data.message);
+                return [];
+            }
+            // Map to match component expectations
+            return response.data.data.map(i => ({
+                id: i.id,
+                jobTypeId: i.jobTypeId,
+                name: i.name,
+                defaultSize: i.defaultSize,
+                isRequired: i.isRequired
+            }));
+        } catch (error) {
+            console.error('[adminService] getJobTypeItems error:', error);
+            return [];
+        }
     },
 
     createJobTypeItem: async (itemData) => {
+        // ✓ NEW: Use Backend REST API with client-side validation
+
+        // Input validation
+        if (!itemData.jobTypeId) {
+            throw new Error('Job Type ID is required');
+        }
+        if (!itemData.name || !itemData.name.trim()) {
+            throw new Error('Item name is required');
+        }
+
         const payload = {
-            job_type_id: itemData.jobTypeId,
-            name: itemData.name,
-            default_size: itemData.defaultSize,
-            is_required: itemData.isRequired || false
+            name: itemData.name.trim(),
+            defaultSize: itemData.defaultSize,
+            isRequired: itemData.isRequired || false
         };
-        const { data, error } = await supabase.from('job_type_items').insert([payload]).select().single();
-        if (error) throw error;
-        return {
-            id: data.id,
-            jobTypeId: data.job_type_id,
-            name: data.name,
-            defaultSize: data.default_size,
-            isRequired: data.is_required
-        };
+
+        try {
+            const response = await httpClient.post(`/job-types/${itemData.jobTypeId}/items`, payload);
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Failed to create item');
+            }
+
+            // Return format expected by frontend
+            const data = response.data.data;
+            return {
+                id: data.id,
+                jobTypeId: data.jobTypeId,
+                name: data.name,
+                defaultSize: data.defaultSize,
+                isRequired: data.isRequired
+            };
+        } catch (error) {
+            console.error('[adminService] createJobTypeItem error:', error);
+            throw new Error(
+                error.response?.data?.message ||
+                error.message ||
+                'Failed to create job type item'
+            );
+        }
     },
 
     updateJobTypeItem: async (id, itemData) => {
+        // ✓ NEW: Use Backend REST API
         const payload = {
             name: itemData.name,
-            default_size: itemData.defaultSize,
-            is_required: itemData.isRequired
+            defaultSize: itemData.defaultSize,
+            isRequired: itemData.isRequired
         };
-        Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]);
-        const { data, error } = await supabase.from('job_type_items').update(payload).eq('id', id).select().single();
-        if (error) throw error;
+        const response = await httpClient.put(`/job-types/items/${id}`, payload);
+        if (!response.data.success) throw new Error(response.data.message);
+
+        const data = response.data.data;
         return {
             id: data.id,
-            jobTypeId: data.job_type_id,
+            jobTypeId: data.jobTypeId,
             name: data.name,
-            defaultSize: data.default_size,
-            isRequired: data.is_required
+            defaultSize: data.defaultSize,
+            isRequired: data.isRequired
         };
     },
 
     deleteJobTypeItem: async (id) => {
-        const { error } = await supabase.from('job_type_items').delete().eq('id', id);
-        if (error) throw error;
+        // ✓ NEW: Use Backend REST API
+        const response = await httpClient.delete(`/job-types/items/${id}`);
+        if (!response.data.success) throw new Error(response.data.message);
         return { success: true };
     },
 
@@ -349,97 +468,31 @@ export const adminService = {
 
     getApprovalFlowByProject: async (projectIdentifier) => {
         let projectId = projectIdentifier;
-        if (typeof projectIdentifier === 'string' && isNaN(projectIdentifier)) {
-            const allFlows = await adminService.getApprovalFlows(); // Re-use
-            // This part is tricky if we depend on 'name'. Safer to enforce ID.
-            // But let's skip name resolution logic here to simplify.
+        // Basic check, assume projectId is passed
+
+        try {
+            const response = await httpClient.get('/approval-flows', { params: { projectId } });
+            if (!response.data.success) return null;
+
+            // Backend returns { projectId, levels: [...], includeTeamLead, teamLeadId }
+            return response.data.data;
+        } catch (error) {
+            console.error('[adminService] getApprovalFlowByProject error:', error);
+            return null;
         }
-
-        const { data: flows, error } = await supabase.from('approval_flows')
-            .select(`*, approver:users!approver_id(*)`)
-            .eq('project_id', projectId)
-            .order('level');
-
-        if (error || !flows || flows.length === 0) return null;
-
-        const levels = [];
-        let includeTeamLead = false;
-        let teamLeadId = null;
-
-        flows.forEach(f => {
-            // Extract team lead config from any row (typically first row has it)
-            if (f.include_team_lead) {
-                includeTeamLead = true;
-            }
-            if (f.team_lead_id) {
-                teamLeadId = f.team_lead_id;
-            }
-
-            let lvl = levels.find(l => l.level === f.level);
-            if (!lvl) {
-                lvl = { level: f.level, approvers: [], logic: 'any', role: f.role };
-                levels.push(lvl);
-            }
-            if (f.approver) {
-                lvl.approvers.push({
-                    id: f.approver.id,
-                    name: f.approver.display_name,
-                    role: f.approver.role,
-                    avatar: f.approver.avatar_url,
-                    userId: f.approver.id
-                });
-            }
-        });
-
-        // Resolve default assignee from Matrix
-        const assignment = await adminService.getAssigneeByProjectAndJobType(projectId, null);
-
-        return {
-            projectId: projectId,
-            levels: levels,
-            includeTeamLead: includeTeamLead,
-            teamLeadId: teamLeadId,
-            defaultAssignee: assignment
-        };
     },
 
     saveApprovalFlow: async (projectId, flowData) => {
-        // Step 1: Delete old approval flows for this project
-        const { error: delErr } = await supabase.from('approval_flows').delete().eq('project_id', projectId);
-        if (delErr) throw delErr;
+        try {
+            const payload = { ...flowData, projectId }; // Ensure projectId is in body
+            const response = await httpClient.post('/approval-flows', payload);
 
-        // Step 2: Insert new approver levels
-        const rowsToInsert = [];
-        flowData.levels.forEach(lvl => {
-            lvl.approvers.forEach(appr => {
-                rowsToInsert.push({
-                    project_id: projectId,
-                    level: lvl.level,
-                    approver_id: appr.userId  // ✅ FIX: Changed from appr.id to appr.userId
-                });
-            });
-        });
-
-        if (rowsToInsert.length > 0) {
-            const { error: insErr } = await supabase.from('approval_flows').insert(rowsToInsert);
-            if (insErr) throw insErr;
+            if (!response.data.success) throw new Error(response.data.message);
+            return { success: true };
+        } catch (error) {
+            console.error('[adminService] saveApprovalFlow error:', error);
+            throw error;
         }
-
-        // Step 3: Save team lead config (include_team_lead + team_lead_id)
-        if (rowsToInsert.length > 0) {
-            // Update the first row with includeTeamLead and teamLeadId config
-            const { error: configErr } = await supabase.from('approval_flows')
-                .update({
-                    include_team_lead: flowData.includeTeamLead || false,
-                    team_lead_id: flowData.teamLeadId || null
-                })
-                .eq('project_id', projectId)
-                .limit(1);
-
-            if (configErr) console.warn('Failed to update team lead config:', configErr);
-        }
-
-        return { success: true };
     },
 
     updateApprovalFlow: async (flowId, flowData) => {
@@ -452,29 +505,28 @@ export const adminService = {
 
     // --- Assignment Matrix ---
     getAssignmentMatrix: async (projectId) => {
-        const { data, error } = await supabase
-            .from('project_job_assignments')
-            .select(`
-                id,
-                project_id,
-                job_type_id,
-                assignee_id,
-                job_types ( id, name ),
-                users:assignee_id ( id, first_name, last_name )
-            `)
-            .eq('project_id', projectId);
+        try {
+            const response = await httpClient.get('/approval-flows/matrix', { params: { projectId } });
+            if (!response.data.success) return [];
 
-        if (error) return [];
+            // Transform if needed, but backend looks similar
+            // Backend returns project_job_assignments include jobType, assignee
+            // Frontend expects { id, jobTypeId, jobTypeName, assigneeId, assigneeName }
 
-        return data.map(item => ({
-            id: item.id,
-            jobTypeId: item.job_type_id,
-            jobTypeName: item.job_types?.name || 'N/A',
-            assigneeId: item.assignee_id,
-            assigneeName: item.users ?
-                [item.users.first_name, item.users.last_name].filter(Boolean).join(' ') :
-                'ไม่ระบุ'
-        }));
+            const matrix = response.data.data || [];
+            return matrix.map(item => ({
+                id: item.id,
+                jobTypeId: item.jobTypeId,
+                jobTypeName: item.jobType?.name || 'N/A',
+                assigneeId: item.assigneeId,
+                assigneeName: item.assignee ?
+                    [item.assignee.firstName, item.assignee.lastName].filter(Boolean).join(' ') :
+                    'ไม่ระบุ'
+            }));
+        } catch (error) {
+            console.error('[adminService] getAssignmentMatrix error:', error);
+            return [];
+        }
     },
 
     getAssigneeByProjectAndJobType: async (projectId, jobTypeId) => {
@@ -501,22 +553,14 @@ export const adminService = {
     },
 
     saveAssignmentMatrix: async (projectId, assignments) => {
-        const upsertData = assignments.map(a => ({
-            project_id: projectId,
-            job_type_id: a.jobTypeId,
-            assignee_id: a.assigneeId,
-            updated_at: new Date().toISOString()
-        }));
-
-        const { error } = await supabase
-            .from('project_job_assignments')
-            .upsert(upsertData, {
-                onConflict: 'project_id,job_type_id',
-                ignoreDuplicates: false
-            });
-
-        if (error) throw error;
-        return { success: true };
+        try {
+            const response = await httpClient.post('/approval-flows/matrix', { projectId, assignments });
+            if (!response.data.success) throw new Error(response.data.message);
+            return { success: true };
+        } catch (error) {
+            console.error('[adminService] saveAssignmentMatrix error:', error);
+            throw error;
+        }
     },
 
     /**
@@ -525,29 +569,26 @@ export const adminService = {
      * @returns {Promise<Array>} รายการวันหยุดพร้อม id, name, date, type
      */
     getHolidays: async (tenantId = 1) => {
+        // ✓ NEW: Use Backend REST API (Consolidated)
         try {
-            const { data, error } = await supabase
-                .from('holidays')
-                .select('*')
-                .eq('tenant_id', tenantId)
-                .order('date', { ascending: true });
+            const response = await httpClient.get('/holidays');
 
-            if (error) {
-                console.warn('Error fetching holidays:', error.message);
+            if (!response.data.success) {
+                console.warn('[adminService] Get holidays failed:', response.data.message);
                 return [];
             }
 
             // Return full holiday objects for UI
-            return (data || []).map(h => ({
+            return (response.data.data || []).map(h => ({
                 id: h.id,
                 name: h.name,
                 date: h.date,
                 type: h.type || 'government',
-                recurring: h.is_recurring || false,
-                isRecurring: h.is_recurring || false
+                recurring: h.isRecurring || false,
+                isRecurring: h.isRecurring || false
             }));
         } catch (err) {
-            console.error('getHolidays error:', err);
+            console.error('[adminService] getHolidays error:', err);
             return [];
         }
     },
@@ -559,19 +600,16 @@ export const adminService = {
      */
     getHolidayDates: async (tenantId = 1) => {
         try {
-            const { data, error } = await supabase
-                .from('holidays')
-                .select('date')
-                .eq('tenant_id', tenantId);
+            const response = await httpClient.get('/holidays');
 
-            if (error) {
-                console.warn('Error fetching holiday dates:', error.message);
+            if (!response.data.success) {
+                console.warn('[adminService] Get holiday dates failed:', response.data.message);
                 return [];
             }
 
-            return (data || []).map(h => new Date(h.date));
+            return (response.data.data || []).map(h => new Date(h.date));
         } catch (err) {
-            console.error('getHolidayDates error:', err);
+            console.error('[adminService] getHolidayDates error:', err);
             return [];
         }
     },
@@ -585,28 +623,33 @@ export const adminService = {
      * เพิ่มวันหยุดใหม่
      */
     addHoliday: async (holidayData, tenantId = 1) => {
-        const payload = {
-            tenant_id: tenantId,
-            name: holidayData.name,
-            date: holidayData.date,
-            type: holidayData.type || 'government',
-            is_recurring: holidayData.recurring || false
-        };
+        // ✓ NEW: Use Backend REST API
+        try {
+            const payload = {
+                name: holidayData.name,
+                date: holidayData.date,
+                type: holidayData.type || 'government',
+                isRecurring: holidayData.recurring || false
+            };
 
-        const { data, error } = await supabase
-            .from('holidays')
-            .insert([payload])
-            .select()
-            .single();
+            const response = await httpClient.post('/holidays', payload);
 
-        if (error) throw error;
-        return {
-            id: data.id,
-            name: data.name,
-            date: data.date,
-            type: data.type,
-            recurring: data.is_recurring
-        };
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Add holiday failed');
+            }
+
+            const data = response.data.data;
+            return {
+                id: data.id,
+                name: data.name,
+                date: data.date,
+                type: data.type,
+                recurring: data.isRecurring
+            };
+        } catch (error) {
+            console.error('[adminService] addHoliday error:', error);
+            throw error;
+        }
     },
 
     // Alias for backwards compatibility
@@ -617,40 +660,44 @@ export const adminService = {
     /**
      * แก้ไขวันหยุด
      */
+    /**
+     * แก้ไขวันหยุด
+     */
     updateHoliday: async (id, holidayData) => {
-        const payload = {
-            name: holidayData.name,
-            date: holidayData.date,
-            type: holidayData.type || 'government',
-            is_recurring: holidayData.recurring || false,
-            updated_at: new Date().toISOString()
-        };
+        // ✓ NEW: Use Backend REST API
+        try {
+            const payload = {
+                name: holidayData.name,
+                date: holidayData.date,
+                type: holidayData.type || 'government',
+                isRecurring: holidayData.recurring || false
+            };
 
-        const { data, error } = await supabase
-            .from('holidays')
-            .update(payload)
-            .eq('id', id)
-            .select()
-            .single();
+            const response = await httpClient.put(`/holidays/${id}`, payload);
 
-        if (error) throw error;
-        return {
-            id: data.id,
-            name: data.name,
-            date: data.date,
-            type: data.type,
-            recurring: data.is_recurring
-        };
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Update holiday failed');
+            }
+
+            return response.data.data;
+        } catch (error) {
+            console.error('[adminService] updateHoliday error:', error);
+            throw error;
+        }
     },
 
     deleteHoliday: async (id) => {
-        const { error } = await supabase
-            .from('holidays')
-            .delete()
-            .eq('id', id);
-
-        if (error) throw error;
-        return { success: true };
+        // ✓ NEW: Use Backend REST API
+        try {
+            const response = await httpClient.delete(`/holidays/${id}`);
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Delete failed');
+            }
+            return { success: true };
+        } catch (error) {
+            console.error('[adminService] deleteHoliday error:', error);
+            throw error;
+        }
     },
 
     // --- Users ---
@@ -823,105 +870,23 @@ export const adminService = {
      * @returns {Promise<Object>} ผลลัพธ์การบันทึก
      */
     saveUserRoles: async (userId, roles, assignedBy, tenantId = 1) => {
-        console.log('📋 saveUserRoles called with:', { userId, roles, assignedBy, tenantId });
         try {
-            // Step 1: ลบ roles และ scopes เก่า
-            const deleteResult1 = await supabase
-                .from('user_scope_assignments')
-                .delete()
-                .eq('user_id', userId)
-                .eq('tenant_id', tenantId);
+            console.log('💾 Saving roles via Backend API:', { userId, roles, assignedBy, tenantId });
 
-            console.log('✅ Deleted old scope assignments:', deleteResult1);
+            // Call Backend API instead of direct Supabase to avoid RLS issues
+            const response = await httpClient.post(`/users/${userId}/roles`, {
+                roles
+            });
 
-            const deleteResult2 = await supabase
-                .from('user_roles')
-                .delete()
-                .eq('user_id', userId)
-                .eq('tenant_id', tenantId);
-
-            console.log('✅ Deleted old user roles:', deleteResult2);
-
-            // Step 2: Insert roles ใหม่
-            if (roles && roles.length > 0) {
-                const roleRows = roles.map(r => ({
-                    user_id: userId,
-                    tenant_id: tenantId,
-                    role_name: r.name,
-                    assigned_by: assignedBy,
-                    is_active: r.isActive !== false
-                }));
-
-                console.log('📝 Inserting role rows:', roleRows);
-
-                const { error: roleErr, data: roleData } = await supabase
-                    .from('user_roles')
-                    .insert(roleRows);
-
-                if (roleErr) {
-                    console.error('❌ Role insert error:', roleErr);
-                    throw roleErr;
-                }
-
-                console.log('✅ Inserted roles:', roleData);
-
-                // Step 3: Insert scopes ใหม่
-                const scopeRows = [];
-                roles.forEach(role => {
-                    const roleLevel = role.level || 'project'; // ดึง level จาก role config
-                    if (role.scopes && role.scopes.length > 0) {
-                        role.scopes.forEach(scope => {
-                            scopeRows.push({
-                                user_id: userId,
-                                tenant_id: tenantId,
-                                role_type: role.name,
-                                scope_level: roleLevel, // ✅ ใช้ level จาก role config แทน scope
-                                scope_id: scope.scopeId,
-                                scope_name: scope.scopeName || null,
-                                assigned_by: assignedBy,
-                                is_active: true
-                            });
-                        });
-                    }
-                });
-
-                if (scopeRows.length > 0) {
-                    console.log('📝 Inserting scope rows:', scopeRows);
-
-                    const { error: scopeErr, data: scopeData } = await supabase
-                        .from('user_scope_assignments')
-                        .insert(scopeRows);
-
-                    if (scopeErr) {
-                        console.error('❌ Scope insert error:', scopeErr);
-                        throw scopeErr;
-                    }
-
-                    console.log('✅ Inserted scopes:', scopeData);
-                }
-
-                // Step 4: อัปเดต role หลักใน users table (legacy support)
-                const primaryRole = roles[0]?.name || 'requester';
-                console.log('📝 Updating primary role to:', primaryRole);
-
-                const { error: updateErr, data: updateData } = await supabase
-                    .from('users')
-                    .update({
-                        role: primaryRole
-                    })
-                    .eq('id', userId);
-
-                if (updateErr) {
-                    console.error('❌ Update error:', updateErr);
-                } else {
-                    console.log('✅ Updated users table:', updateData);
-                }
+            if (response.data.success) {
+                console.log('✅ Save roles success');
+                return {
+                    success: true,
+                    message: 'บันทึกบทบาทสำเร็จ'
+                };
+            } else {
+                throw new Error(response.data.message || 'Unknown error');
             }
-
-            return {
-                success: true,
-                message: 'บันทึกบทบาทสำเร็จ'
-            };
         } catch (err) {
             console.error('saveUserRoles error:', err);
             throw err;
@@ -1098,6 +1063,43 @@ export const adminService = {
         } catch (err) {
             console.error('getAssigneesByScope error:', err);
             return [];
+        }
+    },
+
+    // --- Department Manager Assignment ---
+    /**
+     * ดึงรายการแผนกที่ User เป็น Manager
+     */
+    getDepartmentsByManager: async (userId) => {
+        try {
+            const response = await httpClient.get(`/departments/by-manager/${userId}`);
+            return response.data.success ? response.data.data : [];
+        } catch (error) {
+            console.error('[adminService] getDepartmentsByManager error:', error);
+            return [];
+        }
+    },
+
+    /**
+     * อัพเดทการกำหนด Manager ของ Department
+     * @param {number} userId - User ID ที่จะเป็น Manager
+     * @param {number[]} departmentIds - Array ของ Department IDs (ส่งแค่ 1 ตัวสำหรับ Single Select)
+     */
+    updateDepartmentManagers: async (userId, departmentIds) => {
+        try {
+            const response = await httpClient.post('/departments/assign-manager', {
+                userId: parseInt(userId),
+                departmentIds: departmentIds.map(id => parseInt(id))
+            });
+
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Failed to update managers');
+            }
+
+            return response.data;
+        } catch (error) {
+            console.error('[adminService] updateDepartmentManagers error:', error);
+            throw error;
         }
     }
 };

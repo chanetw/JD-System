@@ -14,6 +14,7 @@ import { api } from '@shared/services/apiService';
 import { Card, CardHeader } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
+import Swal from 'sweetalert2';
 import { FormInput, FormSelect, FormTextarea } from '@shared/components/FormInput';
 import {
     PlusIcon,
@@ -124,10 +125,25 @@ export default function AdminJobTypeSLA() {
     const fetchData = async () => {
         setIsLoading(true);
         try {
+            console.log('[JobTypeSLA] Fetching data...');
             const data = await api.getJobTypes();
+            console.log('[JobTypeSLA] Raw data received:', data);
+
+            if (data && data.length > 0) {
+                // Log the first item to check field mapping
+                console.log('[JobTypeSLA] First item sample:', {
+                    id: data[0].id,
+                    name: data[0].name,
+                    attachments: data[0].attachments, // Check this specifically
+                    icon: data[0].icon
+                });
+            } else {
+                console.warn('[JobTypeSLA] No data received or empty array');
+            }
+
             setJobTypes(data || []);
         } catch (error) {
-            console.error("เกิดข้อผิดพลาดในการดึงข้อมูลประเภทงาน:", error);
+            console.error("[JobTypeSLA] Fetch error:", error);
         } finally {
             setIsLoading(false);
         }
@@ -173,17 +189,64 @@ export default function AdminJobTypeSLA() {
     };
 
     /** บันทึกข้อมูลประเภทงานลงในฐานข้อมูล */
+    /** บันทึกข้อมูลประเภทงานลงในฐานข้อมูล */
     const handleSave = async () => {
+        // Validation
+        if (!formData.name || !formData.name.trim()) {
+            Swal.fire({ icon: 'warning', title: 'กรุณาระบุชื่อประเภทงาน', confirmButtonText: 'ตกลง' });
+            return;
+        }
+
+        const tempId = Date.now(); // Temporary ID for optimistic update
+        const newItem = {
+            id: selectedId || tempId,
+            ...formData,
+            status: formData.status || 'active'
+        };
+
+        // 1. Optimistic Update: Update UI Immediately
+        const previousJobTypes = [...jobTypes]; // Backup for rollback
+        console.log('[JobTypeSLA] Optimistic adding/updating item:', newItem);
+
+        if (modalMode === 'add') {
+            setJobTypes(prev => [...prev, newItem]);
+            // Optimistic Success Feedback
+            Swal.fire({ icon: 'success', title: 'เพิ่มประเภทงานสำเร็จ', showConfirmButton: false, timer: 1500 });
+        } else {
+            setJobTypes(prev => prev.map(jt => jt.id === selectedId ? newItem : jt));
+            // Optimistic Success Feedback
+            Swal.fire({ icon: 'success', title: 'แก้ไขข้อมูลสำเร็จ', showConfirmButton: false, timer: 1500 });
+        }
+
+        // Close modal immediately
+        setShowModal(false);
+
         try {
+            // 2. Call API in Background
             if (modalMode === 'add') {
-                await api.createJobType(formData);
+                console.log('[JobTypeSLA] Calling API CreateJobType...');
+                const createdItem = await api.createJobType(formData);
+                console.log('[JobTypeSLA] API Create success:', createdItem);
+
+                // Replace temp ID with real ID
+                setJobTypes(prev => prev.map(jt => jt.id === tempId ? createdItem : jt));
             } else {
+                console.log('[JobTypeSLA] Calling API UpdateJobType for ID:', selectedId);
                 await api.updateJobType(selectedId, formData);
+                console.log('[JobTypeSLA] API Update success');
             }
-            setShowModal(false);
-            fetchData(); // โหลดข้อมูลใหม่หลังจากบันทึก
+
         } catch (error) {
-            alert('เกิดข้อผิดพลาดในการบันทึก: ' + error.message);
+            console.error('[JobTypeSLA] Save error:', error);
+            // 3. Rollback on Error
+            setJobTypes(previousJobTypes);
+
+            Swal.fire({
+                icon: 'error',
+                title: 'เกิดข้อผิดพลาด',
+                text: error.message || 'ไม่สามารถบันทึกข้อมูลได้',
+                confirmButtonText: 'ตกลง'
+            });
         }
     };
 
@@ -192,13 +255,44 @@ export default function AdminJobTypeSLA() {
      * @param {string|number} id - ID ของประเภทงานที่ต้องการลบ
      */
     const handleDelete = async (id) => {
-        if (confirm('คุณแน่ใจหรือไม่ว่าต้องการลบประเภทงานนี้? การกระทำนี้ไม่สามารถเรียกคืนได้')) {
-            try {
-                await api.deleteJobType(id);
-                fetchData();
-            } catch (error) {
-                alert('เกิดข้อผิดพลาดในการลบ: ' + error.message);
-            }
+        const result = await Swal.fire({
+            title: 'ยืนยันการลบ?',
+            text: "คุณต้องการลบประเภทงานนี้ใช่หรือไม่? การกระทำนี้ไม่สามารถเรียกคืนได้",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'ลบ',
+            cancelButtonText: 'ยกเลิก'
+        });
+
+        if (!result.isConfirmed) return;
+
+        // 1. Optimistic Update: Update UI Immediately
+        const previousJobTypes = [...jobTypes]; // Backup for rollback
+        console.log('[JobTypeSLA] Optimistic deleting item ID:', id);
+        setJobTypes(prev => prev.filter(item => item.id !== id));
+
+        // Optimistic Success Feedback
+        Swal.fire({ icon: 'success', title: 'ลบข้อมูลสำเร็จ', showConfirmButton: false, timer: 1500 });
+
+        try {
+            // 2. Call API in Background
+            console.log('[JobTypeSLA] Calling API DeleteJobType for ID:', id);
+            await api.deleteJobType(id);
+            console.log('[JobTypeSLA] API Delete success');
+
+        } catch (error) {
+            console.error('[JobTypeSLA] Delete error:', error);
+            // 3. Rollback on Error
+            setJobTypes(previousJobTypes);
+
+            Swal.fire({
+                icon: 'error',
+                title: 'เกิดข้อผิดพลาด',
+                text: error.message || 'ไม่สามารถลบข้อมูลได้',
+                confirmButtonText: 'ตกลง'
+            });
         }
     };
 
@@ -218,15 +312,46 @@ export default function AdminJobTypeSLA() {
 
     /**
      * เปลี่ยนสถานะใช้งาน (Toggle Status)
+     * ✅ FIXED: Only send necessary fields to API (not entire item)
      * @param {string|number} id - ID ของรายการ
      * @param {Object} item - ข้อมูลรายการ
      */
     const handleToggleStatus = async (id, item) => {
+        // 1. Optimistic Update: Update UI Immediately
+        const previousJobTypes = [...jobTypes]; // Backup for rollback
+        const newStatus = item.status === 'active' ? 'inactive' : 'active';
+
+        console.log(`[JobTypeSLA] Toggling status for ID ${id} to ${newStatus}`);
+
+        setJobTypes(prev => prev.map(jt =>
+            jt.id === id ? { ...jt, status: newStatus } : jt
+        ));
+
+        // Optimistic Success Feedback (Toast)
+        const statusText = newStatus === 'active' ? 'เปิดการใช้งาน' : 'ปิดการใช้งาน';
+        Swal.fire({
+            icon: 'success',
+            title: `${statusText}เรียบร้อย`,
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 1500,
+            timerProgressBar: true
+        });
+
         try {
-            const newStatus = item.status === 'active' ? 'inactive' : 'active';
-            await api.updateJobType(id, { ...item, status: newStatus });
-            fetchData();
+            // 2. Call API in Background
+            // ✅ FIXED: Only send necessary fields to prevent Prisma schema conflicts
+            const payload = {
+                isActive: newStatus === 'active'  // Convert status to isActive boolean
+            };
+            console.log('[JobTypeSLA] Sending payload:', payload);
+            await api.updateJobType(id, payload);
+
         } catch (error) {
+            console.error('[JobTypeSLA] Toggle status error:', error);
+            // 3. Rollback on Error
+            setJobTypes(previousJobTypes);
             alert('เกิดข้อผิดพลาดในการเปลี่ยนสถานะ: ' + error.message);
         }
     };
@@ -363,7 +488,7 @@ export default function AdminJobTypeSLA() {
 
             {/* หน้าต่างเพิ่ม/แก้ไข (Add/Edit Modal) */}
             {showModal && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
+                <div className="fixed inset-0 flex items-center justify-center z-50 p-4 animate-fadeIn">
                     <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-100">
                         <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50/50">
                             <h3 className="text-lg font-bold text-gray-900">{modalMode === 'add' ? 'เพิ่มประเภทงานใหม่' : 'แก้ไขข้อมูลประเภทงาน'}</h3>

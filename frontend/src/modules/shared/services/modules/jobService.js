@@ -188,65 +188,108 @@ export const jobService = {
     },
 
     /**
-     * สร้างงานใหม่ (Single Job หรือ Parent-Child)
+     * สร้างงานใหม่ผ่าน Backend API (V2)
+     * 
+     * ใช้ Approval Flow V2 Logic:
+     * - Skip Approval: ถ้า Template กำหนด totalLevels = 0
+     * - Auto-Assign: มอบหมายงานอัตโนมัติตาม Template Config
      * 
      * @param {Object} jobData - ข้อมูลงาน
      * @param {number} jobData.projectId - รหัสโครงการ
      * @param {number|null} jobData.jobTypeId - รหัสประเภทงาน (สำหรับ Single Job)
      * @param {Array|null} jobData.jobTypes - รายการประเภทงาน (สำหรับ Parent-Child)
-     *        รูปแบบ: [{ jobTypeId: 1, assigneeId: 5, note: "หมายเหตุ" }, ...]
      * @param {string} jobData.subject - หัวข้องาน
-     * @param {string} jobData.priority - ความสำคัญ (Low, Normal, Urgent)
+     * @param {string} jobData.priority - ความสำคัญ (low, normal, urgent)
      * @param {Object} jobData.brief - รายละเอียด Brief
      * @param {string} jobData.deadline - วันกำหนดส่ง
      * 
-     * @returns {Object} - { success: true, job: { id, djId }, children?: [...] }
+     * @returns {Object} - { success: true, job: { id, djId, status, flowInfo } }
      */
     createJob: async (jobData) => {
-        // ถ้ามี jobTypes array -> สร้างแบบ Parent-Child
+        // ============================================
+        // ถ้ามี jobTypes array -> สร้างแบบ Parent-Child (Legacy)
+        // TODO: ย้าย Parent-Child Logic ไป Backend ในอนาคต
+        // ============================================
         if (jobData.jobTypes && Array.isArray(jobData.jobTypes) && jobData.jobTypes.length > 0) {
             return await jobService.createParentWithChildren(jobData);
         }
 
-        // Original: Single Job Creation
-        const payload = {
-            tenant_id: jobData.tenantId || 1, // Use from Auth context
-            project_id: parseInt(jobData.projectId),
-            job_type_id: parseInt(jobData.jobTypeId),
-            subject: jobData.subject,
-            objective: jobData.brief?.objective,
-            headline: jobData.brief?.headline,
-            sub_headline: jobData.brief?.subHeadline,
-            priority: jobData.priority,
-            status: 'pending_approval',
-            requester_id: jobData.requesterId, // Use from Auth context
-            assignee_id: jobData.assigneeId || null, // Add assignee
-            due_date: jobData.deadline,
-            is_parent: false,
-            parent_job_id: null
-        };
+        try {
+            // ============================================
+            // V2: เรียก Backend API แทน Supabase โดยตรง
+            // Backend จะจัดการ:
+            // - Flow Assignment Resolution
+            // - Skip Approval Logic
+            // - Auto-Assign Logic
+            // - DJ ID Generation
+            // - Activity Logging
+            // ============================================
+            const response = await httpClient.post('/jobs', {
+                projectId: parseInt(jobData.projectId),
+                jobTypeId: parseInt(jobData.jobTypeId),
+                subject: jobData.subject,
+                priority: jobData.priority?.toLowerCase() || 'normal',
+                dueDate: jobData.deadline,
+                objective: jobData.brief?.objective || null,
+                headline: jobData.brief?.headline || null,
+                subHeadline: jobData.brief?.subHeadline || null,
+                description: jobData.brief?.description || null,
+                assigneeId: jobData.assigneeId || null,
+                items: jobData.items || []
+            });
 
-        const { data, error } = await supabase.from('jobs').insert([payload]).select().single();
+            // ตรวจสอบ Response
+            if (!response.data.success) {
+                console.error('[jobService] Create job failed:', response.data.message);
+                throw new Error(response.data.message || 'Create job failed');
+            }
 
-        if (error) throw error;
+            const jobResult = response.data.data;
+            console.log(`[jobService] Job created: ${jobResult.djId}, status: ${jobResult.status}, skip: ${jobResult.flowInfo?.isSkipped}`);
 
-        // ถ้าเป็นงานด่วน (Urgent) และมี Assignee แล้ว -> Shift SLA ของงานอื่น
-        if (jobData.priority === 'Urgent' && jobData.assigneeId) {
-            // ดึงข้อมูลวันหยุดก่อนส่งเข้าฟังก์ชัน (ใช้ getHolidayDates สำหรับ Date objects)
-            const { adminService } = await import('./adminService');
-            const holidays = await adminService.getHolidayDates();
+            // ============================================
+            // Legacy: ถ้าเป็นงานด่วน และ Backend ยังไม่ได้ Assign
+            // ให้เรียก SLA Shift จาก Frontend (จะย้ายไป Backend ในอนาคต)
+            // ============================================
+            if (jobData.priority?.toLowerCase() === 'urgent' && jobResult.assigneeId) {
+                try {
+                    const { adminService } = await import('./adminService');
+                    const holidays = await adminService.getHolidayDates();
+                    await jobService.shiftSLAIfUrgent(jobResult.id, jobResult.assigneeId, holidays);
+                } catch (slaError) {
+                    console.warn('[jobService] SLA Shift failed (non-critical):', slaError.message);
+                }
+            }
 
-            await jobService.shiftSLAIfUrgent(data.id, jobData.assigneeId, holidays);
+            // ============================================
+            // Legacy: Send Notification (Frontend)
+            // TODO: ย้าย Notification ไป Backend ในอนาคต
+            // ============================================
+            try {
+                const eventType = jobData.priority?.toLowerCase() === 'urgent' ? 'urgent_impact' : 'job_created';
+                await notificationService.sendNotification(eventType, jobResult.id);
+            } catch (notifError) {
+                console.warn('[jobService] Notification failed (non-critical):', notifError.message);
+            }
+
+            return {
+                success: true,
+                job: {
+                    id: jobResult.id,
+                    djId: jobResult.djId,
+                    status: jobResult.status,
+                    assigneeId: jobResult.assigneeId,
+                    flowInfo: jobResult.flowInfo
+                }
+            };
+
+        } catch (error) {
+            console.error('[jobService] createJob error:', error);
+
+            // แปลง Error Response จาก Backend
+            const errorMessage = error.response?.data?.message || error.message || 'ไม่สามารถสร้างงานได้';
+            throw new Error(errorMessage);
         }
-
-        // Send Notification
-        const eventType = jobData.priority === 'Urgent' ? 'urgent_impact' : 'job_created';
-        await notificationService.sendNotification(eventType, data.id);
-
-        return {
-            success: true,
-            job: { id: data.id, djId: data.dj_id }
-        };
     },
 
     /**
@@ -389,139 +432,40 @@ export const jobService = {
      * 4. ถ้าไม่มี (จบ Flow) -> Update status เป็น approved (หรือ in_progress)
      */
     approveJob: async (jobId, approverId, comment) => {
-        // 1. ดึงข้อมูล Job เพื่อดู Project ID และ Status ปัจจุบัน
-        const { data: job, error: jobErr } = await supabase
-            .from('jobs')
-            .select('id, project_id, status, job_type_id')
-            .eq('id', jobId)
-            .single();
+        try {
+            // 1. Call Backend API
+            const response = await httpClient.post(`/jobs/${jobId}/approve`, { comment });
+            if (!response.data.success) throw new Error(response.data.message);
 
-        if (jobErr) throw new Error('Job not found');
+            const { status, isFinal, assignResult } = response.data.data;
 
-        // 2. ดึง Approval Flow ของ Project
-        // Note: เรียกใช้ adminService แบบ Dynamic Import เพื่อเลี่ยง Circular Dependency ถ้ามี
-        const { adminService } = await import('./adminService');
-        const flow = await adminService.getApprovalFlowByProject(job.project_id);
+            // Backend now handles auto-assign logic if isFinal is true.
+            // assignResult contains details of auto-assign (success, needsManualAssign, etc.)
 
-        let nextStatus = 'in_progress'; // Default ถ้าไม่มี Flow
-        let isFinal = true;
-
-        if (flow && flow.levels && flow.levels.length > 0) {
-            // Map Status -> Current Level
-            let currentLevel = 0;
-            if (job.status === 'pending_approval') currentLevel = 1;
-            else if (job.status.startsWith('pending_level_')) {
-                currentLevel = parseInt(job.status.split('_')[2]);
-            }
-
-            // หาดูว่า Level นี้ต้องมีคนอนุมัติกี่คน (Logic ANY/ALL ยังไม่ทำใน Phase นี้ เอาแบบ ANY ไปก่อน)
-            // เช็คว่ามี Level ถัดไปไหม?
-            const nextLevelNode = flow.levels.find(l => l.level === currentLevel + 1);
-
-            if (nextLevelNode) {
-                // ยังไม่จบ -> ไป Level ถัดไป
-                nextStatus = `pending_level_${nextLevelNode.level}`;
-                isFinal = false;
-            } else {
-                // จบ Flow แล้ว -> Approved
-                // เปลี่ยนเป็น approved ก่อน แล้วให้ Auto-Assign Logic จัดการต่อ
-                nextStatus = 'approved';
-                isFinal = true;
-            }
-        }
-
-        console.log(`[Approval Logic] Job ${jobId} Level ${job.status} -> ${nextStatus}`);
-
-        // 3. Update Status
-        const updatePayload = {
-            status: nextStatus,
-            updated_at: new Date().toISOString()
-        };
-
-        // ถ้าจบ Flow ให้บันทึก started_at
-        if (isFinal) {
-            updatePayload.started_at = new Date().toISOString();
-        }
-
-        const { error } = await supabase.from('jobs')
-            .update(updatePayload)
-            .eq('id', jobId);
-
-        if (error) throw error;
-
-        // 4. Log Activity & Notification
-        await supabase.from('activity_logs').insert([{
-            job_id: jobId,
-            user_id: approverId,
-            action: 'approve',
-            message: `Approved (Step -> ${nextStatus}). Comment: ${comment || '-'}`
-        }]);
-
-        await notificationService.sendNotification('job_approved', jobId, {
-            nextStatus,
-            isFinal
-        });
-
-        // 5. ถ้าจบ Flow แล้ว ให้ทำ Auto-Assign
-        if (isFinal && nextStatus === 'approved') {
-            try {
-                const autoAssignResult = await jobService.autoAssignJobAfterApproval(jobId);
-
-                if (autoAssignResult.success) {
-                    console.log(`[Auto-Assign] Job ${jobId} assigned to user ${autoAssignResult.data.assignee_id}`);
-                    return {
-                        success: true,
-                        nextStatus: 'assigned',
-                        isFinal,
-                        autoAssigned: true,
-                        assigneeId: autoAssignResult.data.assignee_id
-                    };
-                } else if (autoAssignResult.needsManualAssign) {
-                    console.log(`[Auto-Assign] Job ${jobId} needs manual assignment`);
-                    return {
-                        success: true,
-                        nextStatus: 'approved',
-                        isFinal,
-                        needsManualAssign: true
-                    };
+            if (isFinal && assignResult) {
+                if (assignResult.success) {
+                    return { success: true, nextStatus: 'assigned', isFinal: true, autoAssigned: true, assigneeId: assignResult.assigneeId };
+                } else if (assignResult.needsManualAssign) {
+                    return { success: true, nextStatus: 'approved', isFinal: true, needsManualAssign: true };
                 }
-            } catch (autoAssignError) {
-                console.error('[Auto-Assign] Error:', autoAssignError);
-                // ถ้า Auto-Assign ล้มเหลว ให้คงสถานะ approved ไว้เพื่อรอ Manual Assign
-                return {
-                    success: true,
-                    nextStatus: 'approved',
-                    isFinal,
-                    needsManualAssign: true,
-                    autoAssignError: autoAssignError.message
-                };
             }
-        }
 
-        return { success: true, nextStatus, isFinal };
+            return { success: true, nextStatus: status, isFinal };
+        } catch (error) {
+            console.error('[jobService] approveJob error:', error);
+            throw error;
+        }
     },
 
-    rejectJob: async (jobId, reason, type, rejecterId) => {
-        const newStatus = type === 'reject' ? 'rejected' : 'rework';
-
-        const { error } = await supabase.from('jobs')
-            .update({ status: newStatus })
-            .eq('id', jobId);
-
-        if (error) throw error;
-
-        // Log Activity
-        await supabase.from('activity_logs').insert([{
-            job_id: jobId,
-            user_id: rejecterId,
-            action: type,
-            message: `Job ${type}: ${reason}`
-        }]);
-
-        // Send Notification
-        await notificationService.sendNotification('job_rejected', jobId, { reason });
-
-        return { success: true };
+    rejectJob: async (jobId, approverId, comment) => {
+        try {
+            const response = await httpClient.post(`/jobs/${jobId}/reject`, { comment });
+            if (!response.data.success) throw new Error(response.data.message);
+            return response.data;
+        } catch (error) {
+            console.error('[jobService] rejectJob error:', error);
+            throw error;
+        }
     },
 
     reassignJob: async (jobId, newAssigneeId, reason, userId) => {
@@ -809,19 +753,10 @@ export const jobService = {
      */
     completeJob: async (jobId, payload) => {
         try {
-            console.log(`[jobService] completeJob: ${jobId}`, payload);
-
-            const isMock = import.meta.env.VITE_USE_MOCK_API === 'true';
-
-            if (isMock) {
-                const { mockApiService } = await import('../../services/mockApi');
-                return await mockApiService.completeJob(jobId, payload);
-            } else {
-                // Real DB Implementation would go here (omitted for brevity)
-                // Reuse finishJob logic or similar
-                // For now, assume finishJob handles it
-                return await jobService.finishJob(jobId, payload.attachments || [], payload.note, 1); // Mock userId 1
-            }
+            // Call Backend API
+            const response = await httpClient.post(`/jobs/${jobId}/complete`, payload);
+            if (!response.data.success) throw new Error(response.data.message);
+            return response.data;
         } catch (err) {
             console.error('[jobService] completeJob error:', err);
             throw err;
@@ -884,75 +819,7 @@ export const jobService = {
      * @param {number} jobId - Job ID to assign
      * @returns {Promise<Object>} - Result with success status and assignee info
      */
-    autoAssignJobAfterApproval: async (jobId) => {
-        try {
-            // Fetch job with project and department relations
-            const { data: job, error: jobErr } = await supabase
-                .from('jobs')
-                .select(`
-                    *,
-                    project:projects(id, name),
-                    requester:users!jobs_requester_id_fkey(id, display_name, department_id)
-                `)
-                .eq('id', jobId)
-                .single();
 
-            if (jobErr || !job) {
-                throw new Error('Job not found');
-            }
-
-            // Step 1: Check Approval Flow Config for Team Lead
-            const { data: flowData, error: flowErr } = await supabase
-                .from('approval_flows')
-                .select('include_team_lead, team_lead_id')
-                .eq('project_id', job.project_id)
-                .not('team_lead_id', 'is', null)
-                .limit(1);
-
-            const flow = flowData && flowData.length > 0 ? flowData[0] : null;
-
-            if (!flowErr && flow?.include_team_lead && flow?.team_lead_id) {
-                console.log('[Auto-Assign] Assigning to Team Lead:', flow.team_lead_id);
-                return await jobService.assignJobManually(
-                    jobId,
-                    flow.team_lead_id,
-                    null,
-                    'auto-assign: team-lead'
-                );
-            }
-
-            // Step 2: Check Department Manager (from requester's department)
-            if (job.requester?.department_id) {
-                const { data: dept, error: deptErr } = await supabase
-                    .from('departments')
-                    .select('id, name, manager_id')
-                    .eq('id', job.requester.department_id)
-                    .single();
-
-                if (!deptErr && dept?.manager_id) {
-                    console.log('[Auto-Assign] Assigning to Department Manager:', dept.manager_id);
-                    return await jobService.assignJobManually(
-                        jobId,
-                        dept.manager_id,
-                        null,
-                        'auto-assign: dept-manager'
-                    );
-                }
-            }
-
-            // Step 3: No auto-assign possible - needs manual selection
-            console.log('[Auto-Assign] No auto-assign available - needs manual selection');
-            return {
-                success: false,
-                needsManualAssign: true,
-                jobId: jobId,
-                message: 'Job approved but needs manual assignment by Department Manager or Admin'
-            };
-        } catch (error) {
-            console.error('[Auto-Assign] Failed:', error);
-            return { success: false, error: error.message };
-        }
-    },
 
     /**
      * Manual assign job (called by Department Manager or Admin)

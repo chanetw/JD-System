@@ -32,7 +32,7 @@ router.use(setRLSContextMiddleware);
 router.get('/', async (req, res) => {
   try {
     const { page, limit, search, isActive, role } = req.query;
-    
+
     const result = await userService.getUsers(req.user.tenantId, {
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 20,
@@ -73,7 +73,7 @@ router.get('/:id', async (req, res) => {
     }
 
     const prisma = userService.prisma;
-    
+
     const user = await prisma.user.findFirst({
       where: {
         id: userId,
@@ -223,7 +223,7 @@ router.put('/:id', async (req, res) => {
     }
 
     const updateData = { ...req.body };
-    
+
     // ถ้าไม่ใช่ admin ไม่สามารถเปลี่ยน isActive ได้
     if (!req.user.roles.includes('admin') && updateData.isActive !== undefined) {
       delete updateData.isActive;
@@ -298,6 +298,67 @@ router.delete('/:id', async (req, res) => {
       success: false,
       error: 'DELETE_USER_FAILED',
       message: 'ไม่สามารถลบผู้ใช้ได้'
+    });
+  }
+});
+
+/**
+ * POST /api/users/:id/roles
+ * อัปเดตบทบาทของผู้ใช้ (Admin Only)
+ * 
+ * @param {number} id - ID ของผู้ใช้
+ * @body {Array} roles - รายการบทบาทและ scope
+ */
+router.post('/:id/roles', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { roles } = req.body;
+    const userId = parseInt(id);
+
+    if (isNaN(userId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_USER_ID',
+        message: 'ID ผู้ใช้ไม่ถูกต้อง'
+      });
+    }
+
+    // ตรวจสอบสิทธิ์ Admin
+    if (!req.user.roles.includes('admin')) {
+      return res.status(403).json({
+        success: false,
+        error: 'INSUFFICIENT_PERMISSIONS',
+        message: 'คุณไม่มีสิทธิ์จัดการบทบาท'
+      });
+    }
+
+    if (!Array.isArray(roles)) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_DATA',
+        message: 'ข้อมูล roles ไม่ถูกต้อง'
+      });
+    }
+
+    console.log(`[Users] Updating roles for user ${userId} by admin ${req.user.id}`);
+
+    const result = await userService.updateUserRoles(userId, roles, {
+      executedBy: req.user.id,
+      tenantId: req.user.tenantId
+    });
+
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+
+  } catch (error) {
+    console.error('[Users] Update roles error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'UPDATE_ROLES_FAILED',
+      message: 'ไม่สามารถบันทึกบทบาทได้'
     });
   }
 });

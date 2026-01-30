@@ -5,7 +5,7 @@
 ## 1. ภาพรวมโปรเจกต์ (Project Overview)
 ระบบ **DJ System** (Design Job Management System) เป็นเว็บแอปพลิเคชันสำหรับบริหารจัดการงานออกแบบภายในองค์กร โดยมีสถาปัตยกรรมที่เน้นความยืดหยุ่นและการขยายตัวได้ง่าย (Modular Architecture)
 
-### Tech Stack
+### Tech Stackป-
 - **Frontend**: React 18, Vite, TailwindCSS (v4), Zustand, React Router v7
 - **Backend**: Node.js, Express, Socket.io (Real-time events)
 - **Database**: MySQL, Prisma (Schema Management)

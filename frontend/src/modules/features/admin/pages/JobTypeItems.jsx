@@ -12,6 +12,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '@shared/services/apiService';
 import { Card, CardHeader } from '@shared/components/Card';
 import Button from '@shared/components/Button';
+import Swal from 'sweetalert2';
 import { FormInput, FormSelect } from '@shared/components/FormInput';
 import {
     PlusIcon, TrashIcon, XMarkIcon, DocumentDuplicateIcon, PencilIcon
@@ -44,7 +45,9 @@ export default function JobTypeItems() {
     useEffect(() => {
         const loadJobTypes = async () => {
             try {
-                const data = await api.getJobTypes();
+                // Force refresh to avoid stale cache issues (Deleted items reappearing)
+                console.warn('[JobTypeItems] Loading job types (Forced Refresh)...');
+                const data = await api.getJobTypes(true);
                 setJobTypes(data);
                 if (data.length > 0) {
                     setSelectedJobTypeId(data[0].id);
@@ -68,16 +71,19 @@ export default function JobTypeItems() {
     /**
      * โหลดรายการชิ้นงานย่อยของ Job Type ที่เลือก
      */
-    const loadItems = async () => {
-        setIsLoading(true);
-        try {
-            const data = await api.getJobTypeItems(selectedJobTypeId);
-            setItems(data);
-        } catch (error) {
-            console.error('โหลดรายการชิ้นงานย่อยไม่สำเร็จ:', error);
+    /**
+     * โหลดรายการชิ้นงานย่อยของ Job Type ที่เลือก
+     * Use pre-loaded items from master data (Optimization)
+     */
+    const loadItems = () => {
+        if (!selectedJobTypeId) return;
+
+        const selectedType = jobTypes.find(jt => String(jt.id) === String(selectedJobTypeId));
+        if (selectedType && selectedType.items) {
+            console.log(`[JobTypeItems] Loaded ${selectedType.items.length} items from cache`);
+            setItems(selectedType.items);
+        } else {
             setItems([]);
-        } finally {
-            setIsLoading(false);
         }
     };
 
@@ -100,32 +106,86 @@ export default function JobTypeItems() {
 
     /**
      * บันทึกข้อมูล (เพิ่ม/แก้ไข)
+     * With improved validation and error handling
      */
     const handleSave = async () => {
-        if (!formData.name.trim()) {
-            alert('กรุณาระบุชื่อชิ้นงาน');
+        // Validation
+        if (!formData.name || !formData.name.trim()) {
+            Swal.fire({ icon: 'warning', title: 'กรุณาระบุชื่อชิ้นงาน', confirmButtonText: 'ตกลง' });
             return;
         }
+
+        if (!selectedJobTypeId) {
+            Swal.fire({ icon: 'warning', title: 'กรุณาเลือกประเภทงาน', confirmButtonText: 'ตกลง' });
+            return;
+        }
+
+        const tempId = Date.now(); // Temporary ID for optimistic update
+        const newItem = {
+            id: selectedId || tempId, // Use existing ID for edit, temp for add
+            jobTypeId: Number(selectedJobTypeId),
+            name: formData.name.trim(),
+            defaultSize: formData.defaultSize || '-',
+            isRequired: false
+        };
+
+        // 1. Optimistic Update: Update UI Immediately
+        const previousItems = [...items]; // Backup for rollback
+        if (modalMode === 'add') {
+            setItems(prev => [...prev, newItem]);
+        } else {
+            setItems(prev => prev.map(item => item.id === selectedId ? newItem : item));
+        }
+
+        // Close modal immediately
+        setShowModal(false);
+        setFormData({ name: '', defaultSize: '' });
+
         try {
+            // 2. Call API in Background
             if (modalMode === 'add') {
-                await api.createJobTypeItem({
-                    jobTypeId: Number(selectedJobTypeId),
-                    name: formData.name,
-                    defaultSize: formData.defaultSize || '-',
-                    isRequired: false
+                const createdItem = await api.createJobTypeItem({
+                    jobTypeId: newItem.jobTypeId,
+                    name: newItem.name,
+                    defaultSize: newItem.defaultSize,
+                    isRequired: newItem.isRequired
                 });
+
+                console.log('[JobTypeItems] Created item from API:', createdItem);
+
+                // Replace temp ID with real ID
+                setItems(prev => prev.map(item => item.id === tempId ? createdItem : item));
+
+                Swal.fire({ icon: 'success', title: 'เพิ่มรายการสำเร็จ', showConfirmButton: false, timer: 1500 });
             } else {
                 await api.updateJobTypeItem(selectedId, {
-                    name: formData.name,
-                    defaultSize: formData.defaultSize || '-',
-                    isRequired: false
+                    name: newItem.name,
+                    defaultSize: newItem.defaultSize,
+                    isRequired: newItem.isRequired
                 });
+                Swal.fire({ icon: 'success', title: 'แก้ไขรายการสำเร็จ', showConfirmButton: false, timer: 1500 });
             }
-            setShowModal(false);
-            setFormData({ name: '', defaultSize: '' });
-            loadItems();
+
+            // Sync with global cache (Optional but good)
+            // Note: We don't need full refresh here because we trust our local update mostly
+            // But to be safe, we can sync quietly later or just leave it since we updated global cache?
+            // Actually, we should update the global jobTypes state as well to persist the change if user switches tabs
+            // But let's stick to the minimal optimistic flow first.
+
         } catch (error) {
-            alert('เกิดข้อผิดพลาด: ' + error.message);
+            console.error('[JobTypeItems] Save error:', error);
+            // 3. Rollback on Error
+            setItems(previousItems);
+
+            const errorMsg = error.response?.data?.message || error.message || 'เกิดข้อผิดพลาดในการบันทึก';
+            Swal.fire({
+                icon: 'error',
+                title: 'เกิดข้อผิดพลาด',
+                text: errorMsg,
+                confirmButtonText: 'ตกลง'
+            });
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -133,13 +193,67 @@ export default function JobTypeItems() {
      * ลบรายการชิ้นงานย่อย
      * @param {number} itemId - รหัสรายการที่ต้องการลบ
      */
+    /**
+     * ลบรายการชิ้นงานย่อย
+     * @param {number} itemId - รหัสรายการที่ต้องการลบ
+     */
     const handleDelete = async (itemId) => {
-        if (!confirm('ยืนยันการลบรายการนี้?')) return;
+        console.log('[JobTypeItems] handleDelete called with:', itemId, typeof itemId);
+        if (typeof itemId === 'object') {
+            console.error('[JobTypeItems] Critical: Object passed as ID!', itemId);
+            alert('Error: ID is an object');
+            return;
+        }
+
+        // Use SweetAlert2 for comfirmation
+        const result = await Swal.fire({
+            title: 'ยืนยันการลบ?',
+            text: "คุณต้องการลบรายการนี้ใช่หรือไม่? การกระทำนี้ไม่สามารถเรียกคืนได้",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'ลบรายการ',
+            cancelButtonText: 'ยกเลิก'
+        });
+
+        if (!result.isConfirmed) return;
+
+        // 1. Optimistic Update: Update UI Immediately
+        const previousItems = [...items]; // Backup for rollback
+        setItems(prev => prev.filter(item => item.id !== itemId));
+
         try {
+            // 2. Call API in Background
             await api.deleteJobTypeItem(itemId);
-            loadItems();
+
+            // Show success alert
+            Swal.fire({
+                icon: 'success',
+                title: 'ลบรายการสำเร็จ',
+                showConfirmButton: false,
+                timer: 1500
+            });
+
+            // No need to reload cache, we are confident!
+            // But we can update global cache silently
+            setJobTypes(prev => prev.map(jt =>
+                String(jt.id) === String(selectedJobTypeId)
+                    ? { ...jt, items: jt.items.filter(i => i.id !== itemId) }
+                    : jt
+            ));
+
         } catch (error) {
-            alert('เกิดข้อผิดพลาด: ' + error.message);
+            console.error('[JobTypeItems] Delete error:', error);
+            // 3. Rollback on Error
+            setItems(previousItems);
+
+            Swal.fire({
+                icon: 'error',
+                title: 'เกิดข้อผิดพลาด',
+                text: error.message,
+                confirmButtonText: 'ตกลง'
+            });
         }
     };
 
@@ -236,7 +350,7 @@ export default function JobTypeItems() {
 
             {/* Add Item Modal */}
             {showModal && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
                         <div className="p-6 border-b border-gray-200 flex justify-between items-center">
                             <h3 className="text-lg font-bold text-gray-900">{modalMode === 'add' ? 'เพิ่มรายการชิ้นงานย่อย' : 'แก้ไขรายการชิ้นงานย่อย'}</h3>

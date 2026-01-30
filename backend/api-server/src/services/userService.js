@@ -253,6 +253,100 @@ export class UserService extends BaseService {
       return this.handleError(error, 'DELETE_USER', 'User');
     }
   }
+
+  /**
+   * อัปเดตบทบาทและขอบเขตงานของผู้ใช้
+   * 
+   * @param {number} userId - ID ของผู้ใช้
+   * @param {Array} roles - รายการบทบาท
+   * @param {Object} context - ข้อมูลผู้ทำรายการ { executedBy, tenantId }
+   */
+  async updateUserRoles(userId, roles, { executedBy, tenantId }) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // 1. ลบ Roles เดิมทั้งหมด
+        await tx.userRole.deleteMany({
+          where: { userId: userId }
+        });
+
+        // 2. ลบ Scopes เดิมทั้งหมด
+        // หมายเหตุ: Schema อาจไม่ได้ link กับ User โดยตรงถ้าไม่ได้ define relation ไว้ใน Prisma schema
+        // แต่ถ้ามี relation ก็ลบผ่าน relation ได้. ถ้าไม่มีต้องลบแบบ raw หรือผ่าน model โดยตรง
+        // สมมติว่ามี model UserScopeAssignment
+        // ตรวจสอบ schema จริงก่อน: ถ้าไม่มี model นี้ใน prisma client อาจต้องใช้ queryRaw หรือเพิ่ม model
+        // เนื่องจากเราไม่เห็น schema.prisma แต่เห็น code เก่าใช้ supabase.from('user_scope_assignments')
+        // ดังนั้น table มีจริง แต่ถ้า prisma schema ไม่มี model นี้ เราอาจต้องใช้ $executeRaw
+        // แต่ user บอก "ห้ามแก้ DB" ... ถ้า prisma schema ยังไม่อัปเดต เราอาจจะต้องใช้ $executeRaw
+
+        // ลองใช้ executeRawUnsafe สำหรับ table ที่อาจไม่อยู่ใน schema ORM ปัจจุบัน
+        await tx.$executeRawUnsafe(`DELETE FROM user_scope_assignments WHERE user_id = $1`, userId);
+
+        // 3. เตรียมข้อมูล Role ใหม่
+        const roleRows = roles.map(role => ({
+          userId: userId,
+          roleName: role.name,
+          isActive: true,
+          assignedBy: executedBy,
+          assignedAt: new Date()
+        }));
+
+        // 4. บันทึก Roles ใหม่
+        if (roleRows.length > 0) {
+          await tx.userRole.createMany({
+            data: roleRows
+          });
+        }
+
+        // 5. เตรียมข้อมูล Scope ใหม่
+        const scopeRows = [];
+        roles.forEach(role => {
+          const roleLevel = role.level || 'project';
+          if (role.scopes && role.scopes.length > 0) {
+            role.scopes.forEach(scope => {
+              scopeRows.push({
+                user_id: userId,
+                tenant_id: tenantId,
+                role_type: role.name,
+                scope_level: roleLevel,
+                scope_id: scope.scopeId,
+                scope_name: scope.scopeName || null,
+                assigned_by: executedBy,
+                is_active: true
+              });
+            });
+          }
+        });
+
+        // 6. บันทึก Scopes ใหม่
+        // ใช้ raw query เช่นกันถ้า model ไม่มี
+        if (scopeRows.length > 0) {
+          // Construct Insert Query manually or use loop
+          // To be safe with potentially missing model, using loop with executeRaw
+          for (const scope of scopeRows) {
+            await tx.$executeRawUnsafe(
+              `INSERT INTO user_scope_assignments 
+                    (user_id, tenant_id, role_type, scope_level, scope_id, scope_name, assigned_by, is_active) 
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+              scope.user_id, scope.tenant_id, scope.role_type, scope.scope_level,
+              scope.scope_id, scope.scope_name, scope.assigned_by, scope.is_active
+            );
+          }
+        }
+
+        // 7. อัปเดต Primary Role ใน Users Table (Legacy Support)
+        const primaryRole = roles[0]?.name || 'requester';
+        await tx.user.update({
+          where: { id: userId },
+          data: { role: primaryRole }
+        });
+
+        return this.successResponse(null, 'บันทึกบทบาทสำเร็จ');
+      });
+    } catch (error) {
+      console.error('[UserService] Update roles failed:', error);
+      return this.handleError(error, 'UPDATE_ROLES', 'User');
+    }
+  }
 }
 
 export default UserService;

@@ -16,12 +16,15 @@ import { useAuthStore } from '@core/stores/authStore';
 
 // Core Modules (loaded immediately)
 import { Layout } from '@core/layout';
-import { Login, Register, ForgotPassword, ChangePassword, ProtectedRoute } from '@core/auth';
+import { Login, LoginDemo, Register, ForgotPassword, ChangePassword, ProtectedRoute } from '@core/auth';
+
+// V2 Auth Pages (TypeScript - Production-ready)
+import { LoginV2, RegisterV2, ForgotPasswordV2, ResetPasswordV2 } from '@core/auth-v2';
 
 // Lazy-loaded Feature Modules (Code Splitting)
 const Dashboard = lazy(() => import('@features/dashboard/pages/Dashboard'));
-const UserPortal = lazy(() => import('@features/portals/pages/UserPortal'));
-const MediaPortal = lazy(() => import('@features/portals/pages/MediaPortal'));
+const UserPortal = lazy(() => import('@features/portals/pages/UserPortal.jsx'));
+const MediaPortal = lazy(() => import('@features/portals/pages/MediaPortal.jsx'));
 
 // Module Registry
 import { getAllRoutes } from './moduleRegistry';
@@ -82,9 +85,17 @@ function App() {
       <Routes>
 
         {/* Public Pages (No Login Required) */}
-        <Route path="/login" element={<Login />} />
+        <Route path="/login" element={<LoginV2 />} />
+        <Route path="/login_demo" element={<LoginDemo />} />
+
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+
+        {/* V2 Auth Pages (Production-ready with Sequelize + RBAC) */}
+        {/* <Route path="/login-v2" element={<LoginV2 />} /> -> Moved to /login */}
+        <Route path="/register-v2" element={<RegisterV2 />} />
+        <Route path="/forgot-password-v2" element={<ForgotPasswordV2 />} />
+        <Route path="/reset-password-v2" element={<ResetPasswordV2 />} />
 
         {/* Change Password (Requires Login) */}
         <Route path="/change-password" element={

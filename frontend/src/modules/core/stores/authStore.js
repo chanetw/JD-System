@@ -12,7 +12,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import api from '@shared/services/apiService';
-import { supabase } from '@shared/services/supabaseClient';
+import { supabase, setSupabaseToken, clearSupabaseToken } from '@shared/services/supabaseClient';
 
 /**
  * useAuthStore: คลังข้อมูลสำหรับการยืนยันตัวตน
@@ -59,45 +59,55 @@ export const useAuthStore = create(
             // Actions - ฟังก์ชันที่ใช้เปลี่ยน State
             // ============================================
 
-            /**
-             * @method initialize
-             * @description ตรวจสอบ session ที่มีอยู่เมื่อเปิดแอพ
-             */
             initialize: async () => {
+                console.log('[Auth] Initialize started');
                 set({ isLoading: true });
-                
+
+                // Safety timeout
+                setTimeout(() => {
+                    if (get().isLoading) {
+                        console.warn('[Auth] Timeout');
+                        set({ isLoading: false });
+                    }
+                }, 5000);
+
                 try {
-                    // Get current session from Supabase
-                    const { data: { session }, error } = await supabase.auth.getSession();
-                    
-                    if (error) throw error;
-                    
-                    if (session?.user) {
-                        // Load user data from users table
-                        const { data: userData, error: userError } = await supabase
-                            .from('users')
-                            .select('*')
-                            .eq('email', session.user.email)
-                            .single();
-                        
-                        if (userError) throw userError;
-                        
+                    // 1. ตรวจสอบว่ามี Token ใน localStorage หรือไม่
+                    const token = localStorage.getItem('token');
+
+                    if (!token) {
+                        set({ user: null, session: null, isAuthenticated: false, isLoading: false });
+                        return;
+                    }
+
+                    // 2. ดึงข้อมูลผู้ใช้จาก API Server ผ่าน endpoint /me
+                    const { userService } = await import('@shared/services/modules/userService');
+                    const response = await userService.getMe();
+
+                    if (response.success && response.data) {
+                        // Sync with Supabase Client (Critical for RLS)
+                        setSupabaseToken(token); // <--- Inject Custom Header
+                        await supabase.auth.setSession({
+                            access_token: token,
+                            refresh_token: token // Use access token as dummy refresh if needed, or null
+                        });
+
+                        // รูปแบบข้อมูลจาก /me ผ่านการ map roles มาเรียบร้อยแล้ว
                         set({
-                            user: userData,
-                            session,
+                            user: { ...response.data, token }, // Keep token in user object
                             isAuthenticated: true,
                             isLoading: false
                         });
+                        console.log('[Auth] Initialized user:', response.data.email);
                     } else {
-                        set({
-                            user: null,
-                            session: null,
-                            isAuthenticated: false,
-                            isLoading: false
-                        });
+                        // ถ้า Token หมดอายุหรือ Session หาย
+                        localStorage.removeItem('token');
+                        await supabase.auth.signOut();
+                        set({ user: null, session: null, isAuthenticated: false, isLoading: false });
                     }
                 } catch (error) {
                     console.error('Auth initialization error:', error);
+                    localStorage.removeItem('token');
                     set({
                         user: null,
                         session: null,
@@ -112,11 +122,11 @@ export const useAuthStore = create(
              * @method setUser
              * @description ตั้งค่า user โดยตรง
              */
-            setUser: (user) => set({ 
-                user, 
-                isAuthenticated: !!user 
+            setUser: (user) => set({
+                user,
+                isAuthenticated: !!user
             }),
-            
+
             /**
              * @method setSession
              * @description ตั้งค่า session โดยตรง
@@ -159,9 +169,28 @@ export const useAuthStore = create(
                     let user;
 
                     if (typeof emailOrUser === 'object') {
-                        user = emailOrUser;
+                        // Check if it is a User Object (Mock) or Credentials (Real)
+                        // User Object has 'id', Credentials has 'password'
+                        if (emailOrUser.id && !emailOrUser.password) {
+                            user = emailOrUser;
+                        } else {
+                            // Assume credentials object
+                            user = await api.login(emailOrUser);
+                        }
                     } else {
+                        // Legacy string (email) support -> Assume Mock/Test login via API
                         user = await api.login(emailOrUser);
+                    }
+
+                    // บันทึก token แยกใน localStorage (สำหรับ API calls)
+                    if (user?.token) {
+                        localStorage.setItem('token', user.token);
+                        // Sync Supabase Session
+                        setSupabaseToken(user.token); // <--- Inject Custom Header
+                        await supabase.auth.setSession({
+                            access_token: user.token,
+                            refresh_token: user.token
+                        });
                     }
 
                     set({
@@ -185,9 +214,13 @@ export const useAuthStore = create(
              * @description ออกจากระบบ
              */
             logout: async () => {
+                // ลบ token จาก localStorage
+                localStorage.removeItem('token');
+
                 // ออกจากระบบใน Supabase
                 await supabase.auth.signOut();
-                
+                clearSupabaseToken(); // <--- Clear Custom Header
+
                 set({
                     user: null,
                     session: null,
@@ -198,26 +231,49 @@ export const useAuthStore = create(
 
             /**
              * @method switchRole
-             * @description เปลี่ยนบทบาทผู้ใช้ (สำหรับ Demo)
+             * @description เปลี่ยนบทบาทผู้ใช้ (Admin Impersonation - Real Data)
              * 
              * @param {string} role - บทบาทใหม่ ('requester', 'approver', 'assignee', 'admin')
+             * 
+             * Security: ต้องเป็น Admin เท่านั้นถึงจะใช้ได้ (Backend จะตรวจสอบ)
              */
             switchRole: async (role) => {
-                set({ isLoading: true });
+                set({ isLoading: true, error: null });
 
                 try {
-                    const user = await api.getUserByRole(role);
+                    // เรียก API impersonate เพื่อสลับไปเป็น User จริงตาม Role
+                    const { userService } = await import('@shared/services/modules/userService');
+                    const result = await userService.impersonate(role);
 
-                    if (user) {
+                    if (result.user && result.token) {
+                        // บันทึก Token ใหม่
+                        localStorage.setItem('token', result.token);
+                        // Sync Supabase Session
+                        setSupabaseToken(result.token); // <--- Inject Custom Header
+                        await supabase.auth.setSession({
+                            access_token: result.token,
+                            refresh_token: result.token
+                        });
+
+                        // อัปเดต State
                         set({
-                            user,
+                            user: {
+                                ...result.user,
+                                impersonatedBy: result.impersonatedBy,
+                                isImpersonating: !!result.impersonatedBy,
+                                token: result.token // Persist token in state too
+                            },
                             isAuthenticated: true,
                             isLoading: false,
                         });
+
+                        console.log(`[Auth] สลับเป็น ${result.user.displayName || result.user.email} (Role: ${role}) สำเร็จ`);
+                        return result.user;
                     }
 
-                    return user;
+                    throw new Error('ไม่ได้รับข้อมูลผู้ใช้จาก API');
                 } catch (error) {
+                    console.error('[Auth] Switch role error:', error);
                     set({
                         error: error.message,
                         isLoading: false,

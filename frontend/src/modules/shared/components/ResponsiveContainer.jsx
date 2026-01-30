@@ -80,7 +80,7 @@ export const ResponsiveGrid = ({
     children
 }) => {
     const breakpoint = useBreakpoint();
-    
+
     let columns;
     switch (breakpoint) {
         case 'mobile':
@@ -114,11 +114,11 @@ export const ResponsiveStack = ({
     children
 }) => {
     const isMobile = useIsMobile();
-    
+
     const direction = isMobile
         ? (reverse ? 'flex-col-reverse' : 'flex-col')
         : (reverse ? 'flex-row-reverse' : 'flex-row');
-    
+
     const gap = isMobile ? `gap-${mobileGap}` : `gap-${desktopGap}`;
 
     return (
@@ -141,7 +141,7 @@ export const ResponsiveText = ({
     ...props
 }) => {
     const breakpoint = useBreakpoint();
-    
+
     let sizeClass;
     switch (breakpoint) {
         case 'mobile':
@@ -206,7 +206,7 @@ export const MobileMenu = ({
             {isOpen && (
                 <>
                     <div
-                        className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+                        className="fixed inset-0 z-40 md:hidden"
                         onClick={onToggle}
                     />
                     <div className={`fixed top-0 left-0 w-64 h-full bg-white z-50 transform transition-transform duration-300 ease-in-out md:hidden ${className}`}>
@@ -227,7 +227,7 @@ export const TouchFriendlyButton = ({
     ...props
 }) => {
     const isMobile = useIsMobile();
-    
+
     const sizeClass = isMobile
         ? 'min-h-[44px] min-w-[44px] px-4 py-3'
         : 'px-3 py-2';

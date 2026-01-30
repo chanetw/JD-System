@@ -11,6 +11,9 @@
 import express from 'express';
 import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import { getDatabase } from '../config/database.js';
+import ApprovalService from '../services/approvalService.js';
+
+const approvalService = new ApprovalService();
 
 const router = express.Router();
 
@@ -74,7 +77,17 @@ router.get('/', async (req, res) => {
     const [jobs, total] = await Promise.all([
       prisma.job.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          djId: true,
+          subject: true,
+          status: true,
+          priority: true,
+          dueDate: true,
+          startedAt: true,
+          completedAt: true,
+          createdAt: true,
+          // Relations with selected fields only
           project: {
             select: { id: true, name: true, code: true }
           },
@@ -142,6 +155,275 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * POST /api/jobs
+ * สร้างงานใหม่พร้อม Approval Flow V2 Logic
+ * 
+ * Logic Flow:
+ * 1. Validate Input - ตรวจสอบข้อมูลที่จำเป็น
+ * 2. Get Flow Assignment V2 - หา Template ที่ใช้กับ Project+JobType นี้
+ * 3. Check Skip Approval - ถ้า Template มี totalLevels = 0 ให้ข้ามการอนุมัติ
+ * 4. Create Job - สร้างงานพร้อม Status ที่เหมาะสม
+ * 5. Auto-Assign (ถ้า Skip) - มอบหมายงานอัตโนมัติตาม Template Config
+ * 6. Create Job Items - สร้างรายการงานย่อย (ถ้ามี)
+ * 7. Send Notifications - แจ้งเตือนผู้ที่เกี่ยวข้อง
+ * 
+ * @body {number} projectId - รหัสโปรเจกต์ (Required)
+ * @body {number} jobTypeId - รหัสประเภทงาน (Required)
+ * @body {string} subject - หัวข้องาน (Required)
+ * @body {string} dueDate - วันกำหนดส่ง ISO 8601 (Required)
+ * @body {string} priority - ความเร่งด่วน: 'low' | 'normal' | 'urgent'
+ * @body {string} objective - วัตถุประสงค์
+ * @body {string} headline - หัวข้อหลัก
+ * @body {string} subHeadline - หัวข้อรอง
+ * @body {string} description - รายละเอียด
+ * @body {number} assigneeId - ระบุผู้รับผิดชอบโดยตรง (ถ้าต้องการ)
+ * @body {Array} items - รายการงานย่อย [{name, quantity, size}]
+ * 
+ * @returns {Object} - ข้อมูลงานที่สร้างพร้อม flowInfo
+ */
+router.post('/', async (req, res) => {
+  try {
+    const prisma = getDatabase();
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
+
+    // ============================================
+    // Step 1: Validate Input - ตรวจสอบข้อมูลที่จำเป็น
+    // ============================================
+    const {
+      projectId,
+      jobTypeId,
+      subject,
+      dueDate,
+      priority = 'normal',
+      objective,
+      headline,
+      subHeadline,
+      description,
+      assigneeId,
+      items = []
+    } = req.body;
+
+    // ตรวจสอบ Required Fields
+    if (!projectId || !jobTypeId || !subject || !dueDate) {
+      return res.status(400).json({
+        success: false,
+        error: 'MISSING_REQUIRED_FIELDS',
+        message: 'กรุณาระบุ projectId, jobTypeId, subject และ dueDate'
+      });
+    }
+
+    // ตรวจสอบว่า Project มีอยู่จริงและอยู่ใน Tenant เดียวกัน
+    const project = await prisma.project.findFirst({
+      where: { id: parseInt(projectId), tenantId }
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'PROJECT_NOT_FOUND',
+        message: 'ไม่พบโปรเจกต์ที่ระบุ หรือไม่มีสิทธิ์เข้าถึง'
+      });
+    }
+
+    // ตรวจสอบว่า JobType มีอยู่จริง
+    const jobType = await prisma.jobType.findFirst({
+      where: { id: parseInt(jobTypeId), tenantId }
+    });
+
+    if (!jobType) {
+      return res.status(404).json({
+        success: false,
+        error: 'JOB_TYPE_NOT_FOUND',
+        message: 'ไม่พบประเภทงานที่ระบุ'
+      });
+    }
+
+    // ============================================
+    // Step 2: Get Flow Assignment V2
+    // หา Template ที่ใช้กับ Project+JobType นี้
+    // Priority: Specific (Project+JobType) > Default (Project+NULL)
+    // ============================================
+    const assignment = await approvalService.getFlowAssignmentV2(projectId, jobTypeId);
+
+    // ============================================
+    // Step 3: Check Skip Approval
+    // ถ้า Template มี totalLevels = 0 หมายถึงไม่ต้องผ่านการอนุมัติ
+    // ============================================
+    const isSkip = approvalService.isSkipApprovalV2(assignment);
+
+    // กำหนด Status เริ่มต้นตาม Skip Logic
+    // - Skip = true → status = 'approved' (พร้อมมอบหมายงาน)
+    // - Skip = false → status = 'pending_approval' (รอการอนุมัติ)
+    let initialStatus = isSkip ? 'approved' : 'pending_approval';
+
+    // ============================================
+    // Step 4: Generate DJ ID
+    // รูปแบบ: DJ-YYYY-XXXX (เช่น DJ-2026-0001)
+    // ============================================
+    const year = new Date().getFullYear();
+    const jobCount = await prisma.job.count({
+      where: {
+        tenantId,
+        djId: { startsWith: `DJ-${year}-` }
+      }
+    });
+    const djId = `DJ-${year}-${String(jobCount + 1).padStart(4, '0')}`;
+
+    // ============================================
+    // Step 5: Create Job (Transaction)
+    // ใช้ Transaction เพื่อรับประกันความสมบูรณ์ของข้อมูล
+    // ============================================
+    const result = await prisma.$transaction(async (tx) => {
+      // สร้างงานหลัก
+      const newJob = await tx.job.create({
+        data: {
+          tenantId,
+          projectId: parseInt(projectId),
+          jobTypeId: parseInt(jobTypeId),
+          djId,
+          subject,
+          status: initialStatus,
+          priority,
+          requesterId: userId,
+          dueDate: new Date(dueDate),
+          objective: objective || null,
+          headline: headline || null,
+          subHeadline: subHeadline || null,
+          description: description || null,
+          assigneeId: assigneeId ? parseInt(assigneeId) : null
+        }
+      });
+
+      // ============================================
+      // Step 6: Create Job Items (ถ้ามี)
+      // สร้างรายการงานย่อย เช่น ขนาดและจำนวนชิ้นงาน
+      // ============================================
+      if (items && items.length > 0) {
+        await tx.designJobItem.createMany({
+          data: items.map(item => ({
+            jobId: newJob.id,
+            name: item.name,
+            quantity: item.quantity || 1,
+            status: 'pending'
+          }))
+        });
+      }
+
+      // ============================================
+      // Step 7: Auto-Assign Logic (ถ้า Skip Approval)
+      // ถ้าไม่ต้องอนุมัติ และ Template กำหนดให้ Auto-Assign
+      // ============================================
+      let finalAssigneeId = assigneeId ? parseInt(assigneeId) : null;
+      let autoAssigned = false;
+
+      if (isSkip && !finalAssigneeId) {
+        // เรียก Auto-Assign Service ตาม Template Config
+        // Template อาจกำหนดให้มอบหมายให้ Team Lead, Dept Manager, หรือ Specific User
+        const assignResult = await approvalService.autoAssignJobV2(newJob.id, assignment, userId);
+
+        if (assignResult.success && assignResult.assigneeId) {
+          finalAssigneeId = assignResult.assigneeId;
+          autoAssigned = true;
+
+          // อัปเดตงานให้เป็น 'assigned' พร้อมระบุผู้รับผิดชอบ
+          await tx.job.update({
+            where: { id: newJob.id },
+            data: {
+              status: 'assigned',
+              assigneeId: finalAssigneeId,
+              // ถ้ามอบหมายแล้ว ถือว่าเริ่มงานทันที
+              startedAt: new Date()
+            }
+          });
+
+          // อัปเดต Status ใน result
+          newJob.status = 'assigned';
+          newJob.assigneeId = finalAssigneeId;
+        }
+      }
+
+      return {
+        job: newJob,
+        assigneeId: finalAssigneeId,
+        autoAssigned
+      };
+    });
+
+    // ============================================
+    // Step 8: Create Activity Log
+    // บันทึกประวัติการสร้างงาน
+    // ============================================
+    try {
+      await prisma.activityLog.create({
+        data: {
+          jobId: result.job.id,
+          userId,
+          action: 'job_created',
+          message: isSkip
+            ? `สร้างงาน ${djId} (Skip Approval)`
+            : `สร้างงาน ${djId} รอการอนุมัติ`,
+          detail: {
+            isSkip,
+            templateName: assignment?.template?.name || 'Default',
+            autoAssigned: result.autoAssigned
+          }
+        }
+      });
+    } catch (logError) {
+      // ถ้า Log ไม่สำเร็จไม่ต้องหยุดการทำงาน
+      console.warn('[Jobs] Activity log failed:', logError.message);
+    }
+
+    // ============================================
+    // Step 9: Send Notifications (Future Enhancement)
+    // TODO: แจ้งเตือนผู้ที่เกี่ยวข้อง
+    // - pending_approval → แจ้ง Approver
+    // - assigned → แจ้ง Assignee
+    // ============================================
+    // await notificationService.sendJobCreatedNotification(result.job);
+
+    // ============================================
+    // Step 10: Return Response
+    // ส่งข้อมูลงานที่สร้างกลับไปพร้อม Flow Info
+    // ============================================
+    console.log(`[Jobs] Created job ${djId} with status: ${result.job.status}, skip: ${isSkip}, autoAssigned: ${result.autoAssigned}`);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: result.job.id,
+        djId: result.job.djId,
+        subject: result.job.subject,
+        status: result.job.status,
+        priority: result.job.priority,
+        projectId: result.job.projectId,
+        jobTypeId: result.job.jobTypeId,
+        requesterId: result.job.requesterId,
+        assigneeId: result.assigneeId,
+        dueDate: result.job.dueDate,
+        createdAt: result.job.createdAt,
+        // Flow Info - ข้อมูลเกี่ยวกับ Approval Flow ที่ใช้
+        flowInfo: {
+          templateName: assignment?.template?.name || 'Default (No Template)',
+          isSkipped: isSkip,
+          autoAssigned: result.autoAssigned
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('[Jobs] Create job error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'CREATE_JOB_FAILED',
+      message: 'ไม่สามารถสร้างงานได้ กรุณาลองใหม่อีกครั้ง',
+      detail: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+/**
  * GET /api/jobs/:id
  * ดึงรายละเอียดงานเดี่ยว
  *
@@ -195,8 +477,8 @@ router.get('/:id', async (req, res) => {
 
     // Check permission
     const hasAccess = job.requesterId === req.user.userId ||
-                     job.assigneeId === req.user.userId ||
-                     req.user.roles.includes('admin');
+      job.assigneeId === req.user.userId ||
+      req.user.roles.includes('admin');
 
     if (!hasAccess) {
       return res.status(403).json({
@@ -254,6 +536,98 @@ router.get('/:id', async (req, res) => {
       error: 'GET_JOB_FAILED',
       message: 'ไม่สามารถดึงข้อมูลงานได้'
     });
+  }
+});
+
+
+/**
+ * POST /api/jobs/:id/approve
+ * อนุมัติงาน (Web Action)
+ */
+router.post('/:id/approve', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { comment } = req.body;
+    const userId = req.user.userId;
+    const ipAddress = req.ip || req.connection.remoteAddress || 'unknown';
+
+    const result = await approvalService.approveJobViaWeb({
+      jobId: parseInt(id),
+      approverId: userId,
+      comment,
+      ipAddress
+    });
+
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('[Jobs] Approve error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'APPROVE_FAILED',
+      message: 'ไม่สามารถอนุมัติงานได้'
+    });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/reject
+ * ปฏิเสธงาน (Web Action)
+ */
+router.post('/:id/reject', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { comment } = req.body;
+    const userId = req.user.userId;
+    const ipAddress = req.ip || req.connection.remoteAddress || 'unknown';
+
+    const result = await approvalService.rejectJobViaWeb({
+      jobId: parseInt(id),
+      approverId: userId,
+      comment,
+      ipAddress
+    });
+
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('[Jobs] Reject error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'REJECT_FAILED',
+      message: 'ไม่สามารถปฏิเสธงานได้'
+    });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/complete
+ * Complete a job (Assignee action)
+ */
+router.post('/:id/complete', async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    const userId = req.user.userId;
+    const { note, attachments } = req.body;
+
+    // Use ApprovalService (or rename it to JobWorkflowService later)
+    const result = await approvalService.completeJob({
+      jobId,
+      userId,
+      note,
+      attachments
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('[Jobs] Complete error:', error);
+    res.status(500).json({ success: false, message: 'Failed to complete job' });
   }
 });
 

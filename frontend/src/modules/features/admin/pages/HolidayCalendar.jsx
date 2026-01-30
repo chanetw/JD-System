@@ -160,8 +160,11 @@ export default function AdminHoliday() {
      * @param {Object} holiday - ข้อมูลวันหยุดที่เลือก
      */
     const handleEditClick = (holiday) => {
+        // Format date to YYYY-MM-DD for input[type="date"]
+        const formattedDate = holiday.date ? new Date(holiday.date).toISOString().split('T')[0] : '';
+
         setFormData({
-            date: holiday.date,
+            date: formattedDate,
             name: holiday.name,
             type: holiday.type,
             recurring: holiday.recurring || false
@@ -375,7 +378,7 @@ export default function AdminHoliday() {
 
             {/* หน้าต่างแก้ไข/เพิ่มข้อมูล (Add/Edit Modal) */}
             {showModal && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn">
+                <div className="fixed inset-0 flex items-center justify-center z-50 p-4 animate-fadeIn">
                     <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-100">
                         <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50/50">
                             <h3 className="text-lg font-bold text-gray-900">{editingId ? 'แก้ไขข้อมูลวันหยุด' : 'เพิ่มข้อมูลวันหยุดใหม่'}</h3>

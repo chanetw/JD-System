@@ -24,6 +24,11 @@
 - [ ] **Feature:** Job Type Specific Approval Logic (Bypass or Custom Flow) [NEW] (ฟีเจอร์: Logic การอนุมัติตามประเภทงาน - ข้ามหรือ Custom Flow)
 - [ ] **Feature:** Enhance User Hierarchy (Add `manager_id` / Reports To) [NEW] (ฟีเจอร์: เพิ่มลำดับขั้นผู้ใช้ - หัวหน้า/สายงาน)
 - [ ] **Feature:** BU-Level Assignment Scope (Filter Assignees by BU) [NEW] (ฟีเจอร์: ขอบเขตงานระดับ BU - กรองคนตาม BU)
+- [ ] **Bug Fix: Organize Data:** (แก้บั๊กจัดการโครงสร้างองค์กร)
+    - [x] **Tenant:** Fix Save Error (Schema Cache) & Active Toggle
+    - [x] **Data:** Fix BUD/Project Save 500 Errors
+    - [x] **UI:** Department Update Refresh & Pagination
+    - [x] **UX:** Implement Optimistic UI for Instant Toggles & Updates (แก้เรื่องปุ่ม Active/Inactive ให้ตอบสนองทันที)
 
 
 ## 🔵 Completed (Phase 2)

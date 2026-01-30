@@ -39,6 +39,148 @@
   3. Calculate `actual_hours` = `completed_at` - `started_at`.
   4. Save `design_job_items` status if needed.
 
+### 1.4 Create Job (V2: Template-Based Approval Flow)
+- **Endpoint:** `POST /api/jobs`
+- **Description:** สร้างใบงานใหม่พร้อมตรวจสอบ Approval Flow V2 และ Auto-Assign
+- **Authentication:** Required (`Bearer Token`)
+- **Payload:**
+  ```json
+  {
+      "projectId": 1,
+      "jobTypeId": 2,
+      "subject": "New Social Media Post",
+      "priority": "normal",
+      "dueDate": "2026-02-15T17:00:00Z",
+      "objective": "สร้าง Content สำหรับ Campaign",
+      "headline": "Valentine Campaign 2026",
+      "subHeadline": "Sweet Moments",
+      "description": "รายละเอียดเพิ่มเติม...",
+      "assigneeId": null,
+      "items": [
+          {
+              "name": "Facebook Post",
+              "quantity": 3,
+              "size": "1080x1080"
+          }
+      ]
+  }
+  ```
+- **Response (Success):**
+  ```json
+  {
+      "success": true,
+      "data": {
+          "id": 123,
+          "djId": "DJ-2026-0123",
+          "status": "pending_approval",
+          "assigneeId": null,
+          "flowInfo": {
+              "templateName": "Single Level Approval",
+              "isSkipped": false,
+              "autoAssigned": false
+          }
+      }
+  }
+  ```
+- **Logic (Pseudocode - Thai):**
+  ```
+  1. Security & Validation
+     - ตรวจสอบ tenant_id ของ User กับ Project ว่าตรงกันหรือไม่
+     - Validate Required Fields (projectId, jobTypeId, subject, dueDate)
+     - ตรวจสอบว่า User มีสิทธิ์สร้างงานใน Project นี้หรือไม่
+
+  2. Get Flow Assignment (V2)
+     assignment = await approvalService.getFlowAssignmentV2(projectId, jobTypeId)
+     // Priority: Specific (Project+JobType) > Default (Project+NULL)
+     
+  3. Check Skip Approval
+     isSkip = approvalService.isSkipApprovalV2(assignment)
+     // isSkip = true ถ้า assignment.template.totalLevels === 0
+     
+  4. Determine Initial Status
+     IF isSkip = true THEN
+       initialStatus = 'approved'
+     ELSE
+       initialStatus = 'pending_approval'
+     END IF
+     
+  5. Create Job Record (Transaction Start)
+     BEGIN TRANSACTION
+       INSERT INTO jobs (
+         tenant_id, project_id, job_type_id, 
+         subject, status, priority, requester_id, 
+         due_date, objective, headline, sub_headline, 
+         description, created_at
+       ) VALUES (...)
+       RETURNING id, dj_id
+       
+  6. Auto-Assign Logic (If Skip Approval)
+     IF isSkip = true AND assigneeId IS NULL THEN
+       result = await approvalService.autoAssignJobV2(jobId, assignment, requesterId)
+       
+       IF result.success THEN
+         UPDATE jobs 
+         SET status = 'assigned', 
+             assignee_id = result.assigneeId,
+             started_at = NOW()
+         WHERE id = jobId
+       ELSE
+         // Keep status = 'approved' (Manual Assign Required)
+       END IF
+     END IF
+     
+  7. Create Job Items (If Provided)
+     FOR EACH item IN request.items DO
+       INSERT INTO design_job_items (
+         job_id, name, quantity, size, status
+       ) VALUES (jobId, item.name, item.quantity, item.size, 'pending')
+     END FOR
+     
+  8. Handle Urgent Priority (SLA Shift)
+     IF priority = 'urgent' AND assigneeId IS NOT NULL THEN
+       await jobService.shiftSLAIfUrgent(jobId, assigneeId, holidays)
+     END IF
+     
+  COMMIT TRANSACTION
+  
+  9. Send Notifications
+     IF status = 'pending_approval' THEN
+       // แจ้ง Approver Level 1
+       approver = await approvalService.getApproverForLevelV2(assignment, 1, requesterId)
+       await notificationService.sendNotification({
+         type: 'job_approval_request',
+         userIds: [approver.id],
+         jobId: jobId
+       })
+     ELSE IF status = 'assigned' THEN
+       // แจ้ง Assignee
+       await notificationService.sendNotification({
+         type: 'job_assigned',
+         userIds: [assigneeId],
+         jobId: jobId
+       })
+     END IF
+     
+  10. Return Response
+      RETURN {
+        success: true,
+        data: {
+          id, djId, status, assigneeId,
+          flowInfo: {
+            templateName: assignment.template.name,
+            isSkipped: isSkip,
+            autoAssigned: (status === 'assigned')
+          }
+        }
+      }
+  ```
+- **Error Codes:**
+  - `400 BAD_REQUEST`: Missing required fields หรือ Invalid data
+  - `403 FORBIDDEN`: User ไม่มีสิทธิ์สร้างงานใน Project นี้
+  - `404 NOT_FOUND`: Project หรือ JobType ไม่พบ
+  - `500 INTERNAL_ERROR`: Database error หรือ Transaction failed
+
+
 ---
 
 ## 2. Background Jobs (Scheduler)

@@ -63,6 +63,9 @@ export default function UserManagementNew() {
         allowedProjects: [],
         assignedProjects: []
     });
+    // New: Department Manager State
+    const [managedDeptId, setManagedDeptId] = useState('');
+    const [userCurrentManagedDeptId, setUserCurrentManagedDeptId] = useState(null);
 
     // Multi-Role: Role configs with scopes
     const [approvalRoleConfigs, setApprovalRoleConfigs] = useState({});
@@ -267,7 +270,21 @@ export default function UserManagementNew() {
                 console.warn("Could not load user scopes:", scopeError.message);
             }
 
+            // New: Fetch Managed Department (Single)
+            let currentManagedDeptId = '';
+            try {
+                const managedDepts = await adminService.getDepartmentsByManager(userToEdit.id);
+                // เพราะเราเปลี่ยนเป็น Single Select ตาม Requirement
+                if (managedDepts && managedDepts.length > 0) {
+                    currentManagedDeptId = managedDepts[0].id;
+                }
+            } catch (deptError) {
+                console.warn("Could not load managed departments:", deptError.message);
+            }
+
             // Set states
+            setManagedDeptId(currentManagedDeptId); // Sets the form value
+            setUserCurrentManagedDeptId(currentManagedDeptId); // Remembers original value for change detection
             // Set states
             setEditScopeData(initialScopeData);
             setEditRoleConfigs(loadedRoleConfigs);
@@ -311,6 +328,49 @@ export default function UserManagementNew() {
                 return;
             }
         }
+
+        // --- NEW: Deparment Manager Confirmation Logic ---
+        const targetDeptId = managedDeptId ? parseInt(managedDeptId) : null;
+        const currentDeptId = userCurrentManagedDeptId ? parseInt(userCurrentManagedDeptId) : null;
+        const warnings = [];
+
+        // Case 1: User จะถูกย้ายออกจากแผนกเดิม (User is currently manager of A, but removing or changing to B)
+        if (currentDeptId && currentDeptId !== targetDeptId) {
+            const currentDeptName = masterData.departments.find(d => d.id === currentDeptId)?.name || 'Unknown';
+            // ถ้า targetDeptId เป็น null แปลว่า "ปลดออก" // ถ้าเปลี่ยนเป็น ID อื่น แปลว่า "ย้ายแผนก"
+            const action = targetDeptId ? 'จะถูกย้ายออกจาก' : 'จะถูกปลดออกจาก';
+            warnings.push(`👤 User นี้เป็น Manager ของแผนก "<b>${currentDeptName}</b>" อยู่ ${action}แผนกเดิม`);
+        }
+
+        // Case 2: แผนกเป้าหมายมี Manager คนอื่นอยู่แล้ว (Target dept already has a DIFFERENT manager)
+        if (targetDeptId) {
+            const targetDept = masterData.departments.find(d => d.id === targetDeptId);
+            if (targetDept?.managerId && targetDept.managerId !== editModal.user.id) {
+                // หาชื่อ Manager เดิมจาก users list หรือจาก dept.manager (ขึ้นอยู่กับ frontend data structure)
+                // เนื่องจาก masterData.departments อาจไม่มี obj manager เราอาจต้องดูจาก field text ถ้ามี หรือหาจาก users
+                const oldManagerName = targetDept.manager?.displayName || targetDept.manager?.first_name || 'Manager เดิม';
+                warnings.push(`⚠️ แผนก "<b>${targetDept.name}</b>" มี Manager อยู่แล้ว (<b>${oldManagerName}</b>) จะถูกแทนที่`);
+            }
+        }
+
+        // Show Confirmation if warnings exist
+        if (warnings.length > 0) {
+            // ต้อง Import Swal หรือใช้ confirm browser แบบง่าย ถ้าไม่มี Swal
+            // ในที่นี้สมมติว่าใช้ confirm แบบง่ายไปก่อน หรือถ้ามี component AlertModal
+            // แต่เนื่องจาก User Request เจาะจง "Popup แจ้งเตือน" เราใช้ window.confirm แบบสวยๆ หรือ Alert ดีกว่า
+            // เพื่อความชัวร์และเร็ว ขอใช้ React State Alert ที่มี หรือ window.confirm + formatting
+            // แต่เดี๋ยวก่อน... เรามี Swal ไหม? ในไฟล์ไม่มี import Swal
+            // งั้นใช้ window.confirm แบบบ้านๆ ไปก่อน หรือสร้าง Modal ซ้อน?
+            // "Notification Popup" user might mean SweetAlert.
+            // Let's check imports. No Swal imported.
+            // I will use standard window.confirm but format text for readability (plaintext)
+
+            const confirmMessage = warnings.map(w => w.replace(/<b>|<\/b>/g, '')).join('\n\n') + '\n\nยืนยันที่จะบันทึกหรือไม่?';
+            if (!window.confirm(confirmMessage)) {
+                return;
+            }
+        }
+        // --------------------------------------------------
 
         try {
             setIsSubmitting(true);
@@ -370,12 +430,23 @@ export default function UserManagementNew() {
                 tenantId
             );
 
+            // 4. Update Department Manager (NEW)
+            // เช็คว่ามีการเปลี่ยนแปลงค่าหรือไม่ (เพื่อลด call ไม่จำเป็น)
+            if (managedDeptId !== userCurrentManagedDeptId) {
+                await adminService.updateDepartmentManagers(
+                    editModal.user.id,
+                    managedDeptId ? [managedDeptId] : []
+                );
+                console.log('✅ Updated Department Manager');
+            }
+
             console.log('✅ Saved user roles successfully');
             showAlert('success', 'บันทึกข้อมูลสำเร็จ');
             setEditModal({ show: false, user: null });
             setEditRoleConfigs({});
             setEditSelectedRoles([]);
             loadUsers();
+            loadMasterData(); // Reload master data to reflect manager changes in list
         } catch (error) {
             console.error('❌ Error saving user:', error);
             showAlert('error', `ไม่สามารถบันทึกข้อมูลได้: ${error.message}`);
@@ -766,7 +837,7 @@ export default function UserManagementNew() {
 
             {/* Edit User Modal */}
             {editModal.show && editModal.user && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+                <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl shadow-xl p-6 max-w-lg w-full">
                         <div className="flex justify-between items-center mb-6 border-b pb-4">
                             <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
@@ -884,7 +955,40 @@ export default function UserManagementNew() {
                                 />
                             )}
 
-                            <div className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg bg-gray-50">
+                            {/* Department Manager Assignment (New) */}
+                            <div>
+                                <label className="block text-sm font-bold text-gray-900 mb-2">
+                                    ผู้จัดการแผนก (Department Manager)
+                                </label>
+                                <div className="p-3 border border-gray-200 rounded-lg bg-gray-50 space-y-2">
+                                    <p className="text-xs text-gray-500 mb-2">
+                                        กำหนดให้ User นี้เป็นผู้จัดการแผนก (เลือกได้ 1 แผนก)
+                                    </p>
+                                    <select
+                                        value={managedDeptId || ''}
+                                        onChange={(e) => setManagedDeptId(e.target.value ? parseInt(e.target.value) : '')}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                    >
+                                        <option value="">-- ไม่ได้เป็นผู้จัดการ --</option>
+                                        {masterData.departments.map(dept => (
+                                            <option key={dept.id} value={dept.id}>
+                                                {dept.name}
+                                                {/* Show warning if dept already has a DIFFERENT manager */}
+                                                {dept.manager && dept.manager.id !== editModal.user.id
+                                                    ? ` (⚠️ ปัจจุบัน: ${dept.manager.displayName || dept.manager.first_name})`
+                                                    : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <div className="flex items-start gap-2 mt-2">
+                                        <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">
+                                            ⚠️ การเปลี่ยนผู้จัดการจะทับคนเดิมทันที และบันทึก Log การเปลี่ยนแปลง
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 p-3 mt-4 border border-gray-200 rounded-lg bg-gray-50">
                                 <label className="flex items-center gap-2 cursor-pointer">
                                     <input
                                         type="checkbox"
@@ -911,7 +1015,7 @@ export default function UserManagementNew() {
 
             {/* Reassign Modal */}
             {approveModal.show && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+                <div className="fixed inset-0 flex items-center justify-center z-50 p-4 overflow-y-auto">
                     <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full my-6">
                         <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-green-100 sticky top-0">
                             <div className="flex items-center gap-3">
@@ -972,7 +1076,7 @@ export default function UserManagementNew() {
 
             {/* Reject Modal */}
             {rejectModal.show && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
                         <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-red-50 to-red-100">
                             <div className="flex items-center gap-3">

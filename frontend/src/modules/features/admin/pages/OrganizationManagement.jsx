@@ -14,6 +14,7 @@ import {
     PlusIcon, PencilIcon, TrashIcon, XMarkIcon,
     BuildingOfficeIcon, FolderIcon, BuildingLibraryIcon, UserGroupIcon
 } from '@heroicons/react/24/outline';
+import Swal from 'sweetalert2';
 
 /**
  * แถบเมนูสำหรับเลือกจัดการข้อมูลแต่ละประเภท (Tabs Configuration)
@@ -45,6 +46,8 @@ export default function OrganizationManagement() {
     const [projects, setProjects] = useState([]);
     /** รายการแผนกทั้งหมด (Departments) */
     const [departments, setDepartments] = useState([]);
+    /** รายการผู้ใช้ทั้งหมด (Users) สำหรับเลือก Manager */
+    const [users, setUsers] = useState([]);
     /** สถานะการโหลดข้อมูล (Loading State) */
     const [isLoading, setIsLoading] = useState(false);
 
@@ -57,6 +60,10 @@ export default function OrganizationManagement() {
     const [selectedItem, setSelectedItem] = useState(null);
     /** ข้อมูลในฟอร์ม (Form Data) */
     const [formData, setFormData] = useState({});
+    /** สถานะกำลังบันทึกข้อมูล (Saving State) */
+    const [isSaving, setIsSaving] = useState(false);
+    /** รายการที่กำลังเปลี่ยนสถานะ (Toggling Items) - ป้องกันการรัวปุ่ม */
+    const [togglingItems, setTogglingItems] = useState(new Set());
 
     /**
      * ดึงข้อมูล Master Data จาก API
@@ -66,20 +73,41 @@ export default function OrganizationManagement() {
      * @function fetchData
      * @returns {Promise<void>}
      */
-    const fetchData = async () => {
-        setIsLoading(true);
+    const fetchData = async (shouldRefresh = false, isBackground = false) => {
+        console.log('[OrgManagement] Fetching data...', { shouldRefresh, isBackground });
+        if (!isBackground) setIsLoading(true);
         try {
-            const masterData = await api.getMasterData();
+            const masterData = await api.getMasterData(shouldRefresh);
+            console.log('[OrgManagement] MasterData loaded:', masterData);
             setTenants(masterData.tenants || []);
-            setBuds(masterData.buds || []);
-            setProjects(masterData.projects || []);
-            // โหลดข้อมูลแผนกแยกต่างหาก
-            const deptData = await api.getDepartments();
-            setDepartments(deptData || []);
+
+            // 1. Tenants: Show All, Sort Active First
+            try {
+                const allTenants = await api.getTenants();
+                if (allTenants && allTenants.length > 0) {
+                    setTenants(allTenants.sort((a, b) => Number(b.isActive) - Number(a.isActive)));
+                }
+            } catch (err) {
+                console.warn('[OrgManagement] Failed to fetch all tenants');
+            }
+
+            // 2. Sort other lists (Active First)
+            const sortActiveFirst = (list) => [...list].sort((a, b) => Number(b.isActive) - Number(a.isActive));
+
+            setBuds(sortActiveFirst(masterData.buds || []));
+            setProjects(sortActiveFirst(masterData.projects || []));
+            setDepartments(sortActiveFirst(masterData.departments || []));
+
+            // Backend API master-data might not include users to reduce payload size
+            // Fetch users separately or if masterData has it
+            const usersData = await api.getUsers();
+            setUsers(usersData || []);
+
+            console.log('[OrgManagement] All data loaded successfully');
         } catch (error) {
-            console.error('เกิดข้อผิดพลาดในการโหลดข้อมูล:', error);
+            console.error('[OrgManagement] Error loading data:', error);
         } finally {
-            setIsLoading(false);
+            if (!isBackground) setIsLoading(false);
         }
     };
 
@@ -88,6 +116,7 @@ export default function OrganizationManagement() {
      * โหลดข้อมูลเมื่อคอมโพเน็นต์ถูกสร้างขึ้น (Mount)
      */
     useEffect(() => {
+        console.log('[OrgManagement] Component Mounted');
         fetchData();
     }, []);
 
@@ -125,52 +154,243 @@ export default function OrganizationManagement() {
     /**
      * บันทึกข้อมูล (เพิ่มใหม่ หรือ อัปเดต)
      * เรียกใช้ API ตามประเภทข้อมูลในแท็บที่เลือกอยู่
-     * 
+     *
      * @async
      * @function handleSave
      * @returns {Promise<void>}
      */
     const handleSave = async () => {
+        // Prevent double submission
+        if (isSaving) return;
+
+        // Optimistic Data Snapshots (for Revert)
+        const originalProjects = [...projects];
+        const originalBuds = [...buds];
+        const originalDepts = [...departments];
+        const originalTenants = [...tenants];
+
         try {
-            if (activeTab === 'projects') {
-                if (modalMode === 'add') await api.createProject(formData);
-                else await api.updateProject(selectedItem.id, formData);
-            } else if (activeTab === 'buds') {
-                if (modalMode === 'add') await api.createBud(formData);
-                else await api.updateBud(selectedItem.id, formData);
-            } else if (activeTab === 'departments') {
-                if (modalMode === 'add') await api.createDepartment(formData);
-                else await api.updateDepartment(selectedItem.id, formData);
-            } else if (activeTab === 'tenants') {
-                if (modalMode === 'add') await api.createTenant(formData);
-                else await api.updateTenant(selectedItem.id, formData);
+            console.log('[handleSave] Saving data:', { mode: modalMode, tab: activeTab, data: formData });
+
+            // ✅ Client-side validation for tenants
+            if (activeTab === 'tenants') {
+                if (!formData.name || !formData.name.trim()) {
+                    alert('กรุณากรอก "ชื่อบริษัท"');
+                    return;
+                }
+                if (!formData.code || !formData.code.trim()) {
+                    alert('กรุณากรอก "รหัสบริษัท"');
+                    return;
+                }
             }
-            setShowModal(false);
-            fetchData(); // โหลดข้อมูลใหม่หลังจากบันทึกสำเร็จ
+
+            // ✅ Client-side validation for buds
+            if (activeTab === 'buds') {
+                if (!formData.name || !formData.name.trim()) {
+                    alert('กรุณากรอก "ชื่อสายงาน"');
+                    return;
+                }
+                if (!formData.tenantId) {
+                    alert('กรุณาเลือก "บริษัท"');
+                    return;
+                }
+            }
+
+            // ✅ Client-side validation for departments
+            if (activeTab === 'departments') {
+                if (!formData.name || !formData.name.trim()) {
+                    alert('กรุณากรอก "ชื่อแผนก"');
+                    return;
+                }
+                if (!formData.budId) {
+                    alert('กรุณาเลือก "สายงาน"');
+                    return;
+                }
+            }
+
+            // ✅ Client-side validation for projects
+            if (activeTab === 'projects') {
+                if (!formData.name || !formData.name.trim()) {
+                    alert('กรุณากรอก "ชื่อโครงการ"');
+                    return;
+                }
+                if (!formData.tenantId) {
+                    alert('กรุณาเลือก "บริษัท"');
+                    return;
+                }
+                if (!formData.budId) {
+                    alert('กรุณาเลือก "สายงาน"');
+                    return;
+                }
+            }
+
+            setIsSaving(true); // START SAVING
+
+            // ⚡ Optimistic UI: For Edit Mode, Update Local State Immediately
+            if (modalMode === 'edit') {
+                const id = selectedItem.id;
+                // Helper to merge form data into list items
+                const updateList = (list) => list.map(item => item.id === id ? { ...item, ...formData } : item);
+
+                if (activeTab === 'projects') setProjects(updateList(projects));
+                else if (activeTab === 'buds') setBuds(updateList(buds));
+                else if (activeTab === 'departments') setDepartments(updateList(departments));
+                else if (activeTab === 'tenants') setTenants(updateList(tenants));
+
+                setShowModal(false); // Close immediately for perceived speed
+            }
+
+            let result;
+            if (activeTab === 'projects') {
+                if (modalMode === 'add') result = await api.createProject(formData);
+                else result = await api.updateProject(selectedItem.id, formData);
+            } else if (activeTab === 'buds') {
+                if (modalMode === 'add') result = await api.createBud(formData);
+                else result = await api.updateBud(selectedItem.id, formData);
+            } else if (activeTab === 'departments') {
+                if (modalMode === 'add') result = await api.createDepartment(formData);
+                else result = await api.updateDepartment(selectedItem.id, formData);
+            } else if (activeTab === 'tenants') {
+                if (modalMode === 'add') result = await api.createTenant(formData);
+                else result = await api.updateTenant(selectedItem.id, formData);
+            }
+
+            console.log('[handleSave] Save result:', result);
+
+            // For Add Mode: Close after success (since we didn't optimistic update)
+            if (modalMode === 'add') {
+                setShowModal(false);
+                Swal.fire({
+                    icon: 'success',
+                    title: 'บันทึกข้อมูลเรียบร้อย',
+                    showConfirmButton: false,
+                    timer: 1500
+                });
+            } else {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'แก้ไขข้อมูลเรียบร้อย',
+                    showConfirmButton: false,
+                    timer: 1500
+                });
+            }
+
+            // Final Sync
+            fetchData(true, true);
+
         } catch (error) {
-            alert('เกิดข้อผิดพลาดในการบันทึก: ' + error.message);
+            // Revert Optimistic UI if Edit Failed
+            if (modalMode === 'edit') {
+                console.error('Save failed, reverting UI:', error);
+                if (activeTab === 'projects') setProjects(originalProjects);
+                else if (activeTab === 'buds') setBuds(originalBuds);
+                else if (activeTab === 'departments') setDepartments(originalDepts);
+                else if (activeTab === 'tenants') setTenants(originalTenants);
+                // Re-open modal to allow user to correct and retry
+                setShowModal(true);
+            }
+
+            // Display detailed error message
+            const errorMessage = error.response?.data?.message || error.message || 'เกิดข้อผิดพลาดในการบันทึก';
+            Swal.fire({
+                icon: 'error',
+                title: 'บันทึกไม่สำเร็จ',
+                text: errorMessage,
+                confirmButtonText: 'ตกลง'
+            });
+        } finally {
+            setIsSaving(false); // STOP SAVING
         }
     };
 
     /**
      * ลบข้อมูล (Delete)
      * แสดงหน้าต่างยืนยันก่อนลบ และเรียกใช้ API ลบตามประเภทข้อมูล
-     * 
-     * @async
-     * @function handleDelete
-     * @param {string|number} id - ID ของไอเทมที่ต้องการลบ
-     * @returns {Promise<void>}
      */
     const handleDelete = async (id) => {
-        if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการนี้? การกระทำนี้ไม่สามารถย้อนกลับได้')) return;
+        // Use SweetAlert2 for confirmation
+        const result = await Swal.fire({
+            title: 'ยืนยันการลบ?',
+            text: "ข้อมูลจะถูกลบและไม่สามารถกู้คืนได้ (Soft Delete)",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'ลบข้อมูล',
+            cancelButtonText: 'ยกเลิก'
+        });
+
+        if (!result.isConfirmed) return;
+
         try {
-            if (activeTab === 'projects') await api.deleteProject(id);
-            else if (activeTab === 'buds') await api.deleteBud(id);
-            else if (activeTab === 'departments') await api.deleteDepartment(id);
-            else if (activeTab === 'tenants') await api.deleteTenant(id);
-            fetchData(); // โหลดข้อมูลใหม่หลังจากลบสำเร็จ
+            // Call API
+            let response;
+            if (activeTab === 'projects') response = await api.deleteProject(id);
+            else if (activeTab === 'buds') response = await api.deleteBud(id);
+            else if (activeTab === 'departments') response = await api.deleteDepartment(id);
+            else if (activeTab === 'tenants') response = await api.deleteTenant(id);
+
+            const isSoftDelete = response?.type === 'soft_delete' ||
+                (response?.message && /deleted \(soft\)/i.test(response.message)) ||
+                (response?.message && /soft delete/i.test(response.message));
+
+            const message = response?.message || 'ลบข้อมูลสำเร็จ';
+
+            // --- DEBUG LOGS (Requested by User) ---
+            console.group('🛑 Delete Operation Debug');
+            console.log('Target ID:', id);
+            console.log('Target Type:', activeTab);
+            console.log('API Response:', response);
+            console.log('Is Soft Delete?', isSoftDelete);
+            console.log('Action Taken:', isSoftDelete ? 'Update to Inactive' : 'Remove from List');
+            console.groupEnd();
+            // --------------------------------------
+
+            if (isSoftDelete) {
+                // Soft Delete: Mark as inactive instead of removing
+                const updateList = (list) => list.map(item => item.id === id ? { ...item, isActive: false, status: 'Inactive' } : item)
+                    .sort((a, b) => Number(b.isActive) - Number(a.isActive)); // Re-sort Active first
+
+                if (activeTab === 'projects') setProjects(prev => updateList(prev));
+                else if (activeTab === 'buds') setBuds(prev => updateList(prev));
+                else if (activeTab === 'departments') setDepartments(prev => updateList(prev));
+                else if (activeTab === 'tenants') setTenants(prev => updateList(prev));
+
+                Swal.fire({
+                    icon: 'info',
+                    title: 'ปิดการใช้งาน (Soft Delete)',
+                    text: `ข้อมูลมีการใช้งานอยู่ จึงเปลี่ยนสถานะเป็น Inactive แทนการลบถาวร\n(API Message: ${message})`,
+                    confirmButtonText: 'ตกลง'
+                });
+            } else {
+                // Hard Delete: Remove from UI
+                if (activeTab === 'projects') setProjects(prev => prev.filter(item => item.id !== id));
+                else if (activeTab === 'buds') setBuds(prev => prev.filter(item => item.id !== id));
+                else if (activeTab === 'departments') setDepartments(prev => prev.filter(item => item.id !== id));
+                else if (activeTab === 'tenants') setTenants(prev => prev.filter(item => item.id !== id));
+
+                Swal.fire({
+                    icon: 'success',
+                    title: 'ลบข้อมูลถาวรสำเร็จ',
+                    showConfirmButton: false,
+                    timer: 1500
+                });
+            }
+
+            // Sync silently
+            fetchData(true, true);
+
         } catch (error) {
-            alert('เกิดข้อผิดพลาดในการลบ: ' + error.message);
+            console.error('Delete failed:', error);
+            // Revert State (Simplest way is to fetch freshly)
+            fetchData(true, true);
+
+            Swal.fire({
+                icon: 'error',
+                title: 'เกิดข้อผิดพลาด',
+                text: error.message || 'ไม่สามารถลบข้อมูลได้',
+                confirmButtonText: 'ตกลง'
+            });
         }
     };
 
@@ -180,11 +400,11 @@ export default function OrganizationManagement() {
      * แสดงตารางรายการโครงการ (Projects Table)
      * @returns {JSX.Element} ตารางโครงการ
      */
-    const renderProjectsTable = () => (
+    const renderProjectsTable = (data) => (
         <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">ชื่อโครงการ (Project Name)</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">โครงการ (Project)</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">รหัส (Code)</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">บริษัท (Tenant)</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">สายงาน (BUD)</th>
@@ -193,9 +413,10 @@ export default function OrganizationManagement() {
                 </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-                {projects.map((item) => {
+                {data.map((item) => {
                     // ค้นหาข้อมูลสายงาน (BUD) ที่เกี่ยวข้อง
-                    const bud = buds.find(b => b.id === (typeof item.bud === 'object' ? item.bud.id : item.budId)) || {};
+                    const bud = buds.find(b => b.id === (item.bud?.id || item.budId)) || {};
+                    const tenant = tenants.find(t => t.id === item.tenantId) || {};
                     return (
                         <tr key={item.id} className="hover:bg-gray-50">
                             <td className="px-6 py-4">
@@ -207,12 +428,13 @@ export default function OrganizationManagement() {
                                 </div>
                             </td>
                             <td className="px-6 py-4 text-sm font-mono text-gray-600">{item.code || '-'}</td>
-                            <td className="px-6 py-4 text-sm text-gray-600">{item.tenantName || '-'}</td>
+                            <td className="px-6 py-4 text-sm text-gray-600">{tenant.name || (item.tenantId ? `(ID: ${item.tenantId})` : '-')}</td>
                             <td className="px-6 py-4 text-sm text-gray-600">{bud.name || item.bud?.name || '-'}</td>
                             <td className="px-6 py-4 text-center">
                                 <StatusBadge
                                     isActive={item.status === 'Active'}
                                     onClick={() => handleToggleStatus(item.id, item)}
+                                    disabled={togglingItems.has(item.id)}
                                 />
                             </td>
                             <td className="px-6 py-4 text-center">
@@ -229,7 +451,7 @@ export default function OrganizationManagement() {
      * แสดงตารางรายการสายงาน (BUDs Table)
      * @returns {JSX.Element} ตารางสายงาน
      */
-    const renderBudsTable = () => (
+    const renderBudsTable = (data) => (
         <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
@@ -241,18 +463,27 @@ export default function OrganizationManagement() {
                 </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-                {buds.map((item) => {
+                {data.map((item) => {
                     // ค้นหาชื่อบริษัทที่สายงานสังกัดอยู่
                     const tenant = tenants.find(t => t.id === item.tenantId) || {};
+                    // Debug Log for Tenant Display
+                    if (!tenant.name) {
+                        console.warn('[renderBudsTable] Tenant lookup failed for BUD:', item.name, {
+                            budTenantId: item.tenantId,
+                            tenantsAvailable: tenants.map(t => ({ id: t.id, name: t.name }))
+                        });
+                    }
+                    const tenantName = tenant.name || (item.tenantId ? `(ID: ${item.tenantId})` : '-');
                     return (
                         <tr key={item.id} className="hover:bg-gray-50">
                             <td className="px-6 py-4 font-medium text-gray-900">{item.name}</td>
                             <td className="px-6 py-4 text-sm font-mono text-gray-600">{item.code}</td>
-                            <td className="px-6 py-4 text-sm text-gray-600">{tenant.name || '-'}</td>
+                            <td className="px-6 py-4 text-sm text-gray-600">{tenantName}</td>
                             <td className="px-6 py-4 text-center">
                                 <StatusBadge
                                     isActive={item.isActive}
                                     onClick={() => handleToggleStatus(item.id, item)}
+                                    disabled={togglingItems.has(item.id)}
                                 />
                             </td>
                             <td className="px-6 py-4 text-center">
@@ -269,20 +500,22 @@ export default function OrganizationManagement() {
      * แสดงตารางรายการแผนก (Departments Table)
      * @returns {JSX.Element} ตารางแผนก
      */
-    const renderDepartmentsTable = () => (
+    const renderDepartmentsTable = (data) => (
         <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">ชื่อแผนก (Dept Name)</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">รหัส (Code)</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">สังกัดสายงาน (BUD)</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">ผู้จัดการ (Manager)</th>
                     <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">สถานะ (Status)</th>
                     <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">จัดการ (Actions)</th>
                 </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-                {departments.map((item) => {
+                {data.map((item) => {
                     const bud = buds.find(b => b.id === item.budId) || {};
+                    const manager = users.find(u => u.id === item.managerId) || {};
                     return (
                         <tr key={item.id} className="hover:bg-gray-50">
                             <td className="px-6 py-4">
@@ -295,10 +528,19 @@ export default function OrganizationManagement() {
                             </td>
                             <td className="px-6 py-4 text-sm font-mono text-gray-600">{item.code || '-'}</td>
                             <td className="px-6 py-4 text-sm text-gray-600">{bud.name || '-'}</td>
+                            <td className="px-6 py-4 text-sm text-gray-600">
+                                {manager.name ? (
+                                    <div className="flex items-center gap-2">
+                                        {manager.avatar && <img src={manager.avatar} alt="" className="w-6 h-6 rounded-full" />}
+                                        <span>{manager.name}</span>
+                                    </div>
+                                ) : '-'}
+                            </td>
                             <td className="px-6 py-4 text-center">
                                 <StatusBadge
                                     isActive={item.isActive}
                                     onClick={() => handleToggleStatus(item.id, item)}
+                                    disabled={togglingItems.has(item.id)}
                                 />
                             </td>
                             <td className="px-6 py-4 text-center">
@@ -315,7 +557,7 @@ export default function OrganizationManagement() {
      * แสดงตารางรายการบริษัท (Tenants Table)
      * @returns {JSX.Element} ตารางบริษัท
      */
-    const renderTenantsTable = () => (
+    const renderTenantsTable = (data) => (
         <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
@@ -327,7 +569,7 @@ export default function OrganizationManagement() {
                 </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-                {tenants.map((item) => (
+                {data.map((item) => (
                     <tr key={item.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 font-medium text-gray-900">{item.name}</td>
                         <td className="px-6 py-4 text-sm font-mono text-gray-600">{item.code}</td>
@@ -336,6 +578,7 @@ export default function OrganizationManagement() {
                             <StatusBadge
                                 isActive={item.isActive}
                                 onClick={() => handleToggleStatus(item.id, item)}
+                                disabled={togglingItems.has(item.id)}
                             />
                         </td>
                         <td className="px-6 py-4 text-center">
@@ -370,20 +613,74 @@ export default function OrganizationManagement() {
      * @param {Object} item - ข้อมูลไอเทมปัจจุบัน
      */
     const handleToggleStatus = async (id, item) => {
+        // 🔒 Prevent Double Click / Debounce
+        if (togglingItems.has(id)) return;
+
+        // Add to locking set
+        setTogglingItems(prev => new Set(prev).add(id));
+
+        // ⚡ Optimistic Update: เปลี่ยนสถานะทันทีไม่ต้องรอเซิร์ฟเวอร์
+        const toggleValue = (current) => !current;
+        const toggleStatusStr = (current) => current === 'Active' ? 'Inactive' : 'Active';
+
+        // เก็บค่าเดิมไว้สำหรับ Revert กรณี Error
+        const originalProjects = [...projects];
+        const originalBuds = [...buds];
+        const originalDepts = [...departments];
+        const originalTenants = [...tenants];
+
         try {
             if (activeTab === 'projects') {
+                // Update Local UI
+                setProjects(prev => prev.map(p => p.id === id ? { ...p, status: toggleStatusStr(p.status), isActive: !p.isActive } : p));
                 const newStatus = item.status === 'Active' ? 'Inactive' : 'Active';
                 await api.updateProject(id, { ...item, status: newStatus });
             } else if (activeTab === 'buds') {
+                setBuds(prev => prev.map(b => b.id === id ? { ...b, isActive: toggleValue(b.isActive) } : b));
                 await api.updateBud(id, { ...item, isActive: !item.isActive });
             } else if (activeTab === 'departments') {
+                setDepartments(prev => prev.map(d => d.id === id ? { ...d, isActive: toggleValue(d.isActive) } : d));
                 await api.updateDepartment(id, { ...item, isActive: !item.isActive });
             } else if (activeTab === 'tenants') {
+                setTenants(prev => prev.map(t => t.id === id ? { ...t, isActive: toggleValue(t.isActive) } : t));
                 await api.updateTenant(id, { ...item, isActive: !item.isActive });
             }
-            fetchData();
+
+            // Sync with Server silently to ensure correctness
+            fetchData(true, true);
+
+            // ✅ Success Alert (ตามที่ขอ: แจ้งเมื่อสำเร็จ)
+            await Swal.fire({
+                icon: 'success',
+                title: 'เปลี่ยนสถานะเรียบร้อย',
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 1500,
+                timerProgressBar: true
+            });
+
         } catch (error) {
-            alert('เกิดข้อผิดพลาดในการเปลี่ยนสถานะ: ' + error.message);
+            // Revert on Failure
+            console.error('Toggle failed, reverting UI:', error);
+            if (activeTab === 'projects') setProjects(originalProjects);
+            else if (activeTab === 'buds') setBuds(originalBuds);
+            else if (activeTab === 'departments') setDepartments(originalDepts);
+            else if (activeTab === 'tenants') setTenants(originalTenants);
+
+            Swal.fire({
+                icon: 'error',
+                title: 'เกิดข้อผิดพลาด',
+                text: 'ไม่สามารถเปลี่ยนสถานะได้: ' + error.message,
+                confirmButtonText: 'ตกลง'
+            });
+        } finally {
+            // 🔓 Unlock button
+            setTogglingItems(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
         }
     };
 
@@ -393,11 +690,13 @@ export default function OrganizationManagement() {
      * @param {boolean} props.isActive - สถานะใช้งานอยู่หรือไม่
      * @param {Function} props.onClick - ฟังก์ชันจัดการเมื่อคลิก
      */
-    const StatusBadge = ({ isActive, onClick }) => (
+    const StatusBadge = ({ isActive, onClick, disabled }) => (
         <button
             onClick={onClick}
+            disabled={disabled}
             className={`
-                inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer
+                inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
+                ${disabled ? 'cursor-wait opacity-50' : 'cursor-pointer'}
                 ${isActive
                     ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
                     : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
@@ -410,6 +709,85 @@ export default function OrganizationManagement() {
         </button>
     );
 
+    // Filter Active Data for Select Options
+    const activeTenants = tenants.filter(t => t.isActive);
+    const activeBuds = buds.filter(b => b.isActive);
+    const activeDepts = departments.filter(d => d.isActive);
+
+    // === Pagination Logic ===
+    const [currentPage, setCurrentPage] = useState(1);
+    const ITEMS_PER_PAGE = 20;
+
+    // Reset pagination when tab changes
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [activeTab]);
+
+    // Helper to get current data list
+    const getCurrentList = () => {
+        if (activeTab === 'projects') return projects;
+        if (activeTab === 'buds') return buds;
+        if (activeTab === 'departments') return departments;
+        if (activeTab === 'tenants') return tenants;
+        return [];
+    };
+
+    const currentList = getCurrentList();
+    const totalPages = Math.ceil(currentList.length / ITEMS_PER_PAGE);
+    const paginatedList = currentList.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+    const Pagination = () => {
+        if (totalPages <= 1) return null;
+        return (
+            <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6 mt-4">
+                <div className="flex flex-1 justify-between sm:hidden">
+                    <Button variant="secondary" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Previous</Button>
+                    <Button variant="secondary" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
+                </div>
+                <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                    <div>
+                        <p className="text-sm text-gray-700">
+                            Showing <span className="font-medium">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> to <span className="font-medium">{Math.min(currentPage * ITEMS_PER_PAGE, currentList.length)}</span> of <span className="font-medium">{currentList.length}</span> results
+                        </p>
+                    </div>
+                    <div>
+                        <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                            <button
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                                className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
+                            >
+                                <span className="sr-only">Previous</span>
+                                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                    <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
+                                </svg>
+                            </button>
+                            {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                <button
+                                    key={page}
+                                    onClick={() => setCurrentPage(page)}
+                                    className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${currentPage === page ? 'bg-rose-600 text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600' : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'}`}
+                                >
+                                    {page}
+                                </button>
+                            ))}
+                            <button
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages}
+                                className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
+                            >
+                                <span className="sr-only">Next</span>
+                                <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                    <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+                                </svg>
+                            </button>
+                        </nav>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -418,24 +796,6 @@ export default function OrganizationManagement() {
                     <p className="text-gray-500">จัดการข้อมูลบริษัท, สายงาน (BUD), และโครงการต่างๆ ในระบบ</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    {/* ปุ่มโหลดข้อมูลใหม่ (สำหรับ Debug เมื่อข้อมูลหาย) */}
-                    {tenants.length === 0 && buds.length === 0 && projects.length === 0 && (
-                        <Button
-                            variant="secondary"
-                            onClick={() => {
-                                localStorage.removeItem('dj_system_tenants');
-                                localStorage.removeItem('dj_system_buds');
-                                localStorage.removeItem('dj_system_projects');
-                                window.location.reload();
-                            }}
-                            className="bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200"
-                        >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                            </svg>
-                            โหลดข้อมูลใหม่
-                        </Button>
-                    )}
                     <Button onClick={() => handleOpenModal('add')}>
                         <PlusIcon className="w-5 h-5" /> เพิ่ม {TABS.find(t => t.id === activeTab)?.label.split(' ')[0]}
                     </Button>
@@ -468,18 +828,20 @@ export default function OrganizationManagement() {
             </div>
 
             <Card className="overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto min-h-[400px]">
                     {/* แสดงตารางตามแท็บที่เลือกอยู่ (Render table based on active tab) */}
-                    {activeTab === 'projects' && renderProjectsTable()}
-                    {activeTab === 'buds' && renderBudsTable()}
-                    {activeTab === 'departments' && renderDepartmentsTable()}
-                    {activeTab === 'tenants' && renderTenantsTable()}
+                    {activeTab === 'projects' && renderProjectsTable(paginatedList)}
+                    {activeTab === 'buds' && renderBudsTable(paginatedList)}
+                    {activeTab === 'departments' && renderDepartmentsTable(paginatedList)}
+                    {activeTab === 'tenants' && renderTenantsTable(paginatedList)}
                 </div>
+                {/* Pagination Controls */}
+                <Pagination />
             </Card>
 
             {/* หน้าต่างแก้ไขข้อมูล (Modal) */}
             {showModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-xl max-w-lg w-full">
                         <div className="p-6 border-b border-gray-200 flex justify-between items-center">
                             <h3 className="text-lg font-semibold text-gray-900">
@@ -510,7 +872,7 @@ export default function OrganizationManagement() {
                                     <FormInput label="รหัสสายงาน" value={formData.code || ''} onChange={(e) => setFormData({ ...formData, code: e.target.value })} placeholder="เช่น SALES-01" />
                                     <FormSelect label="สังกัดบริษัท (Tenant)" value={formData.tenantId || ''} onChange={(e) => setFormData({ ...formData, tenantId: parseInt(e.target.value) })}>
                                         <option value="">-- เลือกบริษัท --</option>
-                                        {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                        {tenants.filter(t => t.isActive).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                     </FormSelect>
                                 </>
                             )}
@@ -522,8 +884,23 @@ export default function OrganizationManagement() {
                                     <FormInput label="รหัสแผนก" value={formData.code || ''} onChange={(e) => setFormData({ ...formData, code: e.target.value })} placeholder="เช่น MKT, GFX" />
                                     <FormSelect label="สังกัดสายงาน (BUD)" value={formData.budId || ''} onChange={(e) => setFormData({ ...formData, budId: parseInt(e.target.value) })}>
                                         <option value="">-- เลือกสายงาน (หรือเป็นแผนกกลาง) --</option>
-                                        {buds.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                        {activeBuds.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                                     </FormSelect>
+
+                                    <FormSelect
+                                        label="ผู้จัดการแผนก (Manager)"
+                                        value={formData.managerId || ''}
+                                        onChange={(e) => setFormData({
+                                            ...formData,
+                                            managerId: e.target.value ? parseInt(e.target.value) : null
+                                        })}
+                                    >
+                                        <option value="">-- ไม่มีผู้จัดการ --</option>
+                                        {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
+                                    </FormSelect>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        💡 ถ้าไม่มี Manager, Admin สามารถมอบหมายงานเองได้
+                                    </p>
                                 </>
                             )}
 
@@ -536,12 +913,12 @@ export default function OrganizationManagement() {
                                     {/* Dropdown ที่มีความเกี่ยวข้องกัน (Dependent Dropdowns) */}
                                     <FormSelect label="สังกัดบริษัท (Tenant)" value={formData.tenantId || ''} onChange={(e) => setFormData({ ...formData, tenantId: parseInt(e.target.value) })}>
                                         <option value="">-- เลือกบริษัท --</option>
-                                        {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                        {tenants.filter(t => t.isActive).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                     </FormSelect>
 
                                     <FormSelect label="สังกัดสายงาน (BUD)" value={formData.budId || ''} onChange={(e) => setFormData({ ...formData, budId: parseInt(e.target.value) })}>
                                         <option value="">-- เลือกสายงาน --</option>
-                                        {buds.
+                                        {activeBuds.
                                             filter(b => !formData.tenantId || b.tenantId === formData.tenantId)
                                             .map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                                     </FormSelect>
@@ -555,8 +932,10 @@ export default function OrganizationManagement() {
 
                         </div>
                         <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
-                            <Button variant="secondary" onClick={() => setShowModal(false)}>ยกเลิก (Cancel)</Button>
-                            <Button onClick={handleSave}>บันทึกข้อมูล (Save)</Button>
+                            <Button variant="secondary" onClick={() => setShowModal(false)} disabled={isSaving}>ยกเลิก (Cancel)</Button>
+                            <Button onClick={handleSave} disabled={isSaving} icon={isSaving ? undefined : null}>
+                                {isSaving ? 'กำลังบันทึก...' : 'บันทึกข้อมูล (Save)'}
+                            </Button>
                         </div>
                     </div>
                 </div>
