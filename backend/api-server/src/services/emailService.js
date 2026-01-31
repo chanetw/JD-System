@@ -1,57 +1,61 @@
 /**
  * @file emailService.js
- * @description Email Service Integration
+ * @description Email Service Integration (SMTP Version)
  * 
- * จัดการการส่ง email ผ่าน Email API
+ * จัดการการส่ง email ผ่าน SMTP (Nodemailer)
  * รองรับ templates ต่างๆ สำหรับระบบ DJ System
  */
 
-import axios from 'axios';
+import nodemailer from 'nodemailer';
 
 export class EmailService {
   constructor() {
-    this.emailApiUrl = process.env.EMAIL_API_URL || 'http://localhost:3001';
-    this.apiKey = process.env.EMAIL_API_KEY;
+    this.smtpHost = process.env.SMTP_HOST;
+    this.smtpPort = parseInt(process.env.SMTP_PORT || '587');
+    this.smtpSecure = process.env.SMTP_SECURE === 'true'; // true for 465, false for other ports
+    this.smtpUser = process.env.SMTP_USER;
+    this.smtpPass = process.env.SMTP_PASS;
+    this.smtpFrom = process.env.SMTP_FROM || '"DJ System" <no-reply@djsystem.com>';
+
+    // Create reusable transporter object using the default SMTP transport
+    this.transporter = nodemailer.createTransport({
+      host: this.smtpHost,
+      port: this.smtpPort,
+      secure: this.smtpSecure,
+      auth: {
+        user: this.smtpUser,
+        pass: this.smtpPass,
+      },
+      tls: {
+        rejectUnauthorized: false // Allow self-signed certs (useful for some dev environments)
+      }
+    });
+
+    // Log configuration (without password)
+    console.log('[EmailService] SMTP Configured:', {
+      host: this.smtpHost,
+      port: this.smtpPort,
+      user: this.smtpUser,
+      from: this.smtpFrom
+    });
   }
 
   /**
-   * ส่ง email ผ่าน Email API
-   * 
-   * @param {string} to - Email ผู้รับ
-   * @param {string} template - ชื่อ template
-   * @param {Object} data - ข้อมูลสำหรับ template
-   * @returns {Promise<Object>} - ผลลัพธ์การส่ง email
+   * Verify SMTP connection
    */
-  async sendEmail(to, template, data = {}) {
+  async verifyConnection() {
     try {
-      const response = await axios.post(`${this.emailApiUrl}/api/send-email`, {
-        to,
-        template,
-        data
-      }, {
-        headers: {
-          'X-API-Key': this.apiKey,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      return {
-        success: true,
-        messageId: response.data.messageId,
-        template: response.data.template
-      };
+      await this.transporter.verify();
+      console.log('[EmailService] SMTP Connection Verified ✅');
+      return true;
     } catch (error) {
-      console.error('[EmailService] Send email failed:', error.response?.data || error.message);
-      return {
-        success: false,
-        error: error.response?.data?.error || 'EMAIL_SEND_FAILED',
-        message: 'ไม่สามารถส่ง email ได้'
-      };
+      console.error('[EmailService] SMTP Connection Failed ❌:', error);
+      return false;
     }
   }
 
   /**
-   * ส่ง email แบบ custom (ไม่ใช้ template)
+   * ส่ง email ผ่าน SMTP
    * 
    * @param {string} to - Email ผู้รับ
    * @param {string} subject - หัวข้อ email
@@ -59,32 +63,45 @@ export class EmailService {
    * @param {string} text - เนื้อหา Text (optional)
    * @returns {Promise<Object>} - ผลลัพธ์การส่ง email
    */
-  async sendCustomEmail(to, subject, html, text) {
+  async sendEmail(to, subject, html, text) {
+    // Check if SMTP is configured
+    if (!this.smtpHost || !this.smtpUser) {
+      console.warn('[EmailService] SMTP not configured, skipping email to:', to);
+      return {
+        success: false,
+        error: 'SMTP_NOT_CONFIGURED',
+        message: 'ไม่ได้ตั้งค่า SMTP'
+      };
+    }
+
     try {
-      const response = await axios.post(`${this.emailApiUrl}/api/send-custom`, {
-        to,
-        subject,
-        html,
-        text
-      }, {
-        headers: {
-          'X-API-Key': this.apiKey,
-          'Content-Type': 'application/json'
-        }
+      const info = await this.transporter.sendMail({
+        from: this.smtpFrom,
+        to: to,
+        subject: subject,
+        text: text || "โปรดเปิดอ่านในรูปแบบ HTML",
+        html: html,
       });
+
+      console.log('[EmailService] Email sent:', info.messageId);
 
       return {
         success: true,
-        messageId: response.data.messageId
+        messageId: info.messageId
       };
     } catch (error) {
-      console.error('[EmailService] Send custom email failed:', error.response?.data || error.message);
+      console.error('[EmailService] Send email failed:', error);
       return {
         success: false,
-        error: error.response?.data?.error || 'EMAIL_SEND_FAILED',
+        error: error.message || 'EMAIL_SEND_FAILED',
         message: 'ไม่สามารถส่ง email ได้'
       };
     }
+  }
+
+  // Wrapper for backward compatibility with 'sendCustomEmail' calls
+  async sendCustomEmail(to, subject, html, text) {
+    return this.sendEmail(to, subject, html, text);
   }
 
   // ==========================================
@@ -93,42 +110,36 @@ export class EmailService {
 
   /**
    * แจ้งเตือนเมื่อมีการมอบหมายงาน
-   * 
-   * @param {Object} data - ข้อมูลงาน
-   * @param {string} data.assigneeEmail - Email ของผู้รับมอบหมาย
-   * @param {string} data.assigneeName - ชื่อผู้รับมอบหมาย
-   * @param {string} data.jobId - ID ของงาน
-   * @param {string} data.jobSubject - หัวข้องาน
-   * @param {string} data.requesterName - ชื่อผู้ขอ
    */
   async notifyJobAssigned({ assigneeEmail, assigneeName, jobId, jobSubject, requesterName }) {
-    return await this.sendEmail(assigneeEmail, 'job_assigned', {
-      assigneeName,
-      jobId,
-      jobSubject,
-      requesterName
-    });
+    // TODO: Use Template Engine if complex
+    const subject = `📋 งานใหม่: ${jobId} - ${jobSubject}`;
+    const html = `
+      <h2>คุณได้รับมอบหมายงานใหม่</h2>
+      <p>เรียน ${assigneeName},</p>
+      <p>คุณได้รับมอบหมายงาน <strong>${jobId} - ${jobSubject}</strong></p>
+      <p>ผู้ขอ: ${requesterName}</p>
+      <br>
+      <p>กรุณาตรวจสอบในระบบ DJ System</p>
+    `;
+    return await this.sendEmail(assigneeEmail, subject, html);
   }
 
   /**
    * แจ้งเตือนเมื่อสถานะงานเปลี่ยน
-   * 
-   * @param {Object} data - ข้อมูลงาน
-   * @param {string[]} data.recipients - รายชื่อ email ผู้รับ
-   * @param {string} data.jobId - ID ของงาน
-   * @param {string} data.newStatus - สถานะใหม่
-   * @param {string} data.jobSubject - หัวข้องาน
-   * @param {string} data.updatedBy - ชื่อผู้อัปเดต
    */
   async notifyJobStatusChanged({ recipients, jobId, newStatus, jobSubject, updatedBy }) {
-    const promises = recipients.map(email => 
-      this.sendEmail(email, 'job_status_update', {
-        recipientName: email.split('@')[0], // ใช้ส่วนแรกของ email ชั่วคราว
-        jobId,
-        newStatus,
-        jobSubject,
-        updatedBy
-      })
+    const promises = recipients.map(email =>
+      this.sendEmail(
+        email,
+        `UPDATED: งาน ${jobId} เปลี่ยนสถานะเป็น ${newStatus}`,
+        `
+          <h2>อัปเดตสถานะงาน</h2>
+          <p>งาน <strong>${jobId} - ${jobSubject}</strong></p>
+          <p>สถานะใหม่: <strong>${newStatus}</strong></p>
+          <p>โดย: ${updatedBy}</p>
+        `
+      )
     );
 
     const results = await Promise.allSettled(promises);
@@ -137,13 +148,6 @@ export class EmailService {
 
   /**
    * แจ้งเตือนเมื่องานใกล้ deadline
-   * 
-   * @param {Object} data - ข้อมูลงาน
-   * @param {string} data.assigneeEmail - Email ของผู้รับมอบหมาย
-   * @param {string} data.assigneeName - ชื่อผู้รับมอบหมาย
-   * @param {string} data.jobId - ID ของงาน
-   * @param {string} data.jobSubject - หัวข้องาน
-   * @param {Date} data.deadline - วันที่ deadline
    */
   async notifyJobDeadline({ assigneeEmail, assigneeName, jobId, jobSubject, deadline }) {
     const subject = `⏰ งาน ${jobId} ใกล้ถึง deadline`;
@@ -156,16 +160,11 @@ export class EmailService {
       <p>ขอบคุณครับ,<br>DJ System</p>
     `;
 
-    return await this.sendCustomEmail(assigneeEmail, subject, html);
+    return await this.sendEmail(assigneeEmail, subject, html);
   }
 
   /**
    * แจ้งเตือนเมื่อมีการสร้างผู้ใช้ใหม่
-   *
-   * @param {Object} data - ข้อมูลผู้ใช้
-   * @param {string} data.userEmail - Email ของผู้ใช้
-   * @param {string} data.userName - ชื่อผู้ใช้
-   * @param {string} data.tempPassword - รหัสผ่านชั่วคราว (ถ้ามี)
    */
   async notifyUserCreated({ userEmail, userName, tempPassword }) {
     const subject = '👋 ยินดีต้อนรับสู่ DJ System';
@@ -179,18 +178,11 @@ export class EmailService {
       <p>ขอบคุณครับ,<br>DJ System</p>
     `;
 
-    return await this.sendCustomEmail(userEmail, subject, html);
+    return await this.sendEmail(userEmail, subject, html);
   }
 
   /**
    * แจ้งเตือนเมื่อการลงทะเบียนได้รับการอนุมัติ
-   * ส่ง email พร้อมรหัสผ่านชั่วคราวให้ผู้ใช้
-   *
-   * @param {Object} data - ข้อมูลการอนุมัติ
-   * @param {string} data.userEmail - Email ของผู้ใช้
-   * @param {string} data.userName - ชื่อผู้ใช้
-   * @param {string} data.temporaryPassword - รหัสผ่านชั่วคราว
-   * @param {string} data.loginUrl - URL สำหรับเข้าสู่ระบบ
    */
   async notifyRegistrationApproved({ userEmail, userName, temporaryPassword, loginUrl }) {
     const subject = '✅ การลงทะเบียนได้รับการอนุมัติแล้ว - DJ System';
@@ -268,16 +260,11 @@ export class EmailService {
 DJ System
     `;
 
-    return await this.sendCustomEmail(userEmail, subject, html, text);
+    return await this.sendEmail(userEmail, subject, html, text);
   }
 
   /**
    * แจ้งเตือนเมื่อการลงทะเบียนถูกปฏิเสธ
-   *
-   * @param {Object} data - ข้อมูลการปฏิเสธ
-   * @param {string} data.userEmail - Email ของผู้ใช้
-   * @param {string} data.userName - ชื่อผู้ใช้
-   * @param {string} data.reason - เหตุผลในการปฏิเสธ
    */
   async notifyRegistrationRejected({ userEmail, userName, reason }) {
     const subject = '❌ การลงทะเบียนไม่ได้รับการอนุมัติ - DJ System';
@@ -293,7 +280,7 @@ DJ System
       </div>
     `;
 
-    return await this.sendCustomEmail(userEmail, subject, html);
+    return await this.sendEmail(userEmail, subject, html);
   }
 }
 

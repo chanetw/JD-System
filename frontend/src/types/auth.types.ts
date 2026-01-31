@@ -66,6 +66,7 @@ export interface IUser {
   roleId: number;
   roleName: RoleName;
   isActive: boolean;
+  mustChangePassword?: boolean; // TRUE after admin generates password on approval
   lastLoginAt?: string;
   createdAt: string;
   updatedAt: string;

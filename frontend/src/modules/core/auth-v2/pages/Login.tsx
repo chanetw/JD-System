@@ -43,8 +43,14 @@ const LoginV2: React.FC = () => {
     }
 
     try {
-      await login(email, password, tenantId);
-      navigate(from, { replace: true });
+      const user = await login(email, password, tenantId);
+
+      // If user must change password (forced change after approval), redirect to that page
+      if (user?.mustChangePassword) {
+        navigate('/force-change-password', { replace: true });
+      } else {
+        navigate(from, { replace: true });
+      }
     } catch (err) {
       // Error is handled by store
       console.error('Login failed:', err);
@@ -162,7 +168,7 @@ const LoginV2: React.FC = () => {
           {/* Links */}
           <div className="flex justify-between text-sm pt-2">
             <Link
-              to="/register-v2"
+              to="/register"
               className="font-medium text-rose-600 hover:text-rose-500"
             >
               สมัครใช้งาน

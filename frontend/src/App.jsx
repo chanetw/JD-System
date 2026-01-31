@@ -19,7 +19,7 @@ import { Layout } from '@core/layout';
 import { Login, LoginDemo, Register, ForgotPassword, ChangePassword, ProtectedRoute } from '@core/auth';
 
 // V2 Auth Pages (TypeScript - Production-ready)
-import { LoginV2, RegisterV2, ForgotPasswordV2, ResetPasswordV2 } from '@core/auth-v2';
+import { LoginV2, RegisterV2, ForgotPasswordV2, ResetPasswordV2, ForceChangePassword } from '@core/auth-v2';
 
 // Lazy-loaded Feature Modules (Code Splitting)
 const Dashboard = lazy(() => import('@features/dashboard/pages/Dashboard'));
@@ -101,6 +101,13 @@ function App() {
         <Route path="/change-password" element={
           <ProtectedRoute>
             <ChangePassword />
+          </ProtectedRoute>
+        } />
+
+        {/* Force Change Password (After Admin Approval) */}
+        <Route path="/force-change-password" element={
+          <ProtectedRoute>
+            <ForceChangePassword />
           </ProtectedRoute>
         } />
 

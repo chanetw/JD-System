@@ -37,9 +37,9 @@ class PrismaV1Adapter {
       displayName: prismaUser.displayName,
       avatarUrl: prismaUser.avatarUrl,
       roleName: primaryRole?.roleName || 'Member',
-      roleId: primaryRole?.id || 0, // For V2 compatibility
+      roleId: 0, // For V2 compatibility (no actual role FK)
       isActive: prismaUser.isActive,
-      lastLoginAt: prismaUser.lastLoginAt,
+      // lastLoginAt: prismaUser.lastLoginAt, // TEMP: Field doesn't exist
       createdAt: prismaUser.createdAt,
       updatedAt: prismaUser.updatedAt
     };
@@ -54,19 +54,13 @@ class PrismaV1Adapter {
   static async findUserByEmail(email, tenantId) {
     const prisma = getDatabase();
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.user.findFirst({
       where: {
-        email_tenantId: {
-          email: email.toLowerCase(),
-          tenantId
-        }
+        email: email.toLowerCase(),
+        tenantId
       },
       include: {
-        userRoles: {
-          include: {
-            role: true
-          }
-        },
+        userRoles: true,
         department: true
       }
     });
@@ -89,11 +83,7 @@ class PrismaV1Adapter {
         tenantId
       },
       include: {
-        userRoles: {
-          include: {
-            role: true
-          }
-        },
+        userRoles: true,
         department: true
       }
     });
@@ -118,11 +108,7 @@ class PrismaV1Adapter {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {
-        userRoles: {
-          include: {
-            role: true
-          }
-        },
+        userRoles: true,
         department: true
       }
     });
@@ -179,11 +165,7 @@ class PrismaV1Adapter {
         isActive
       },
       include: {
-        userRoles: {
-          include: {
-            role: true
-          }
-        },
+        userRoles: true,
         department: true
       }
     });
@@ -202,11 +184,7 @@ class PrismaV1Adapter {
     const user = await prisma.user.findUnique({
       where: { id: newUser.id },
       include: {
-        userRoles: {
-          include: {
-            role: true
-          }
-        },
+        userRoles: true,
         department: true
       }
     });
@@ -220,12 +198,15 @@ class PrismaV1Adapter {
    * @returns {void}
    */
   static async updateLastLogin(userId) {
+    // TEMP: Field doesn't exist in DB - commented out
+    /*
     const prisma = getDatabase();
 
     await prisma.user.update({
       where: { id: userId },
       data: { lastLoginAt: new Date() }
     });
+    */
   }
 
   /**
@@ -237,12 +218,10 @@ class PrismaV1Adapter {
   static async emailExists(email, tenantId) {
     const prisma = getDatabase();
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.user.findFirst({
       where: {
-        email_tenantId: {
-          email: email.toLowerCase(),
-          tenantId
-        }
+        email: email.toLowerCase(),
+        tenantId
       }
     });
 
@@ -401,12 +380,10 @@ class PrismaV1Adapter {
     }
 
     // Check if email already exists
-    const existingUser = await prisma.user.findUnique({
+    const existingUser = await prisma.user.findFirst({
       where: {
-        email_tenantId: {
-          email: email.toLowerCase(),
-          tenantId
-        }
+        email: email.toLowerCase(),
+        tenantId
       }
     });
 
@@ -463,7 +440,8 @@ class PrismaV1Adapter {
     const pendingUsers = await prisma.user.findMany({
       where: {
         tenantId,
-        status: 'PENDING'
+        // status: 'PENDING'  // TEMP: Use isActive: false instead
+        isActive: false
       },
       include: {
         department: true
@@ -482,7 +460,7 @@ class PrismaV1Adapter {
       displayName: user.displayName,
       departmentId: user.departmentId,
       departmentName: user.department?.name || null,
-      status: user.status,
+      // status: user.status,  // TEMP: Field doesn't exist in DB yet
       registeredAt: user.registeredAt,
       createdAt: user.createdAt
     }));
@@ -508,9 +486,10 @@ class PrismaV1Adapter {
       throw new Error('USER_NOT_FOUND');
     }
 
-    if (user.status !== 'PENDING') {
-      throw new Error('USER_NOT_PENDING');
-    }
+    // TEMP: Status check disabled - field doesn't exist in DB
+    // if (user.status !== 'PENDING') {
+    //   throw new Error('USER_NOT_PENDING');
+    // }
 
     // Generate temporary password
     const temporaryPassword = this.generateRandomPassword(12);
@@ -520,7 +499,7 @@ class PrismaV1Adapter {
     const approvedUser = await prisma.user.update({
       where: { id: userId },
       data: {
-        status: 'APPROVED',
+        // status: 'APPROVED',  // TEMP: Field doesn't exist in DB yet
         isActive: true,
         approvedAt: new Date(),
         approvedById,
@@ -557,7 +536,7 @@ class PrismaV1Adapter {
       displayName: approvedUser.displayName,
       departmentId: approvedUser.departmentId,
       departmentName: approvedUser.department?.name || null,
-      status: approvedUser.status,
+      // status: approvedUser.status,  // TEMP: Field doesn't exist in DB yet
       isActive: approvedUser.isActive,
       roleName,
       approvedAt: approvedUser.approvedAt,
@@ -584,14 +563,15 @@ class PrismaV1Adapter {
       throw new Error('USER_NOT_FOUND');
     }
 
-    if (user.status !== 'PENDING') {
-      throw new Error('USER_NOT_PENDING');
-    }
+    // TEMP: Status check disabled - field doesn't exist in DB
+    // if (user.status !== 'PENDING') {
+    //   throw new Error('USER_NOT_PENDING');
+    // }
 
     const rejectedUser = await prisma.user.update({
       where: { id: userId },
       data: {
-        status: 'REJECTED',
+        // status: 'REJECTED',  // TEMP: Field doesn't exist in DB yet
         isActive: false,
         approvedAt: new Date(), // Use approvedAt as the decision timestamp
         approvedById: rejectedById,
@@ -604,7 +584,7 @@ class PrismaV1Adapter {
       email: rejectedUser.email,
       firstName: rejectedUser.firstName,
       lastName: rejectedUser.lastName,
-      status: rejectedUser.status,
+      // status: rejectedUser.status,  // TEMP: Field doesn't exist in DB yet
       rejectionReason: rejectedUser.rejectionReason
     };
   }
@@ -641,7 +621,7 @@ class PrismaV1Adapter {
     }
 
     if (!user.isActive) {
-      return { canAuth: false, reason: 'USER_INACTIVE', status: user.status };
+      return { canAuth: false, reason: 'USER_INACTIVE' };
     }
 
     if (user.status !== 'APPROVED') {
@@ -650,7 +630,6 @@ class PrismaV1Adapter {
 
     return {
       canAuth: true,
-      status: user.status,
       mustChangePassword: user.mustChangePassword || false
     };
   }

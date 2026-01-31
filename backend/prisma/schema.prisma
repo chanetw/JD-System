@@ -106,8 +106,8 @@ model User {
 
   tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   department     Department? @relation("UserDepartment", fields: [departmentId], references: [id])
-  approvedByUser User?    @relation("ApprovedByUser", fields: [approvedById], references: [id])
-  approvedUsers  User[]   @relation("ApprovedByUser")
+  // approvedByUser User?    @relation("ApprovedByUser", fields: [approvedById], references: [id]) // TEMP
+  // approvedUsers  User[]   @relation("ApprovedByUser") // TEMP
 
   // Relations
   userRoles      UserRole[]
