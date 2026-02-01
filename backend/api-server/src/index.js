@@ -41,7 +41,7 @@ import projectsRoutes from './routes/projects.js';
 import holidaysRoutes from './routes/holidays.js';
 import jobTypesRoutes from './routes/job-types.js'; // ✓ NEW: Job Types Management
 import approvalFlowsRoutes from './routes/approval-flows.js';
-import approvalFlowTemplatesRoutes from './routes/approval-flow-templates.js'; // V2: Flow Templates
+// V2 Flow Templates REMOVED - Using V1 Extended instead
 
 // V2 Auth System Routes (Production-ready with Sequelize + RBAC)
 import v2Routes from './v2/index.js';
@@ -257,7 +257,7 @@ app.use('/api/holidays', holidaysRoutes);
 app.use('/api/job-types', jobTypesRoutes); // ✓ NEW: Job Types API
 app.use('/api/approvals', approvalRoutes);
 app.use('/api/approval-flows', approvalFlowsRoutes);
-app.use('/api/approval-flow-templates', approvalFlowTemplatesRoutes); // V2: Flow Templates API
+// V2 Flow Templates API REMOVED - Using V1 Extended instead
 app.use('/api/reports', reportsRoutes);
 app.use('/api/storage', storageRoutes);
 

@@ -73,9 +73,6 @@ model Tenant {
   holidays      Holiday[]
   mediaFiles    MediaFile[]
   auditLogs     AuditLog[]
-  // Approval Flow V2 Relations
-  flowTemplates     ApprovalFlowTemplate[]
-  flowAssignments   ProjectFlowAssignment[]
 
   @@map("tenants")
 }
@@ -128,10 +125,8 @@ model User {
   mediaFiles     MediaFile[]
   passwordResets PasswordResetRequest[]
   jobActivities  JobActivity[]
-  // Approval Flow V2 Relations
-  templateAutoAssigns  ApprovalFlowTemplate[] @relation("TemplateAutoAssign")
-  assignmentAutoAssigns ProjectFlowAssignment[] @relation("AssignmentAutoAssign")
-  projectApprovers      ProjectFlowApprover[] @relation("ProjectApprover")
+  // V1 Extended: Auto-assign relation
+  autoAssignFlows ApprovalFlow[] @relation("FlowAutoAssign")
 
   @@unique([tenantId, email])
   @@index([departmentId])
@@ -206,8 +201,7 @@ model Project {
   jobs        Job[]
   jobAssignments ProjectJobAssignment[]
   mediaFiles  MediaFile[]
-  approvalFlows ApprovalFlow[] // 🔥 Added: Reverse relation
-  flowAssignments ProjectFlowAssignment[] // V2: Flow Assignment per Project
+  approvalFlows ApprovalFlow[]
 
   @@unique([tenantId, code])
   @@index([budId])
@@ -232,7 +226,7 @@ model JobType {
   jobs                Job[]
   jobTypeItems        JobTypeItem[]
   jobAssignments      ProjectJobAssignment[]
-  flowAssignments     ProjectFlowAssignment[] // V2: Flow Assignment per JobType
+  approvalFlows       ApprovalFlow[]
 
   @@index([tenantId])
   @@map("job_types")
@@ -372,7 +366,15 @@ model JobDeliverable {
 model ApprovalFlow {
   id            Int      @id @default(autoincrement())
   tenantId      Int      @map("tenant_id")
-  projectId     Int?     @map("project_id") // 🔥 Added: Direct link to project
+  projectId     Int?     @map("project_id")
+
+  // V1 Extended: Job Type specific flow support
+  jobTypeId         Int?     @map("job_type_id")
+  level             Int      @default(0) // Level field (legacy, kept for DB compatibility)
+  skipApproval      Boolean  @default(false) @map("skip_approval")
+  autoAssignType    String?  @map("auto_assign_type") @db.VarChar(50)
+  autoAssignUserId  Int?     @map("auto_assign_user_id")
+
   name          String   @db.VarChar(200)
   description   String?  @db.Text
   conditions    Json?
@@ -385,99 +387,23 @@ model ApprovalFlow {
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
 
   tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  project       Project? @relation(fields: [projectId], references: [id], onDelete: Cascade) // 🔥 Added
+  project       Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  jobType       JobType? @relation(fields: [jobTypeId], references: [id], onDelete: Cascade)
+  autoAssignUser User?   @relation("FlowAutoAssign", fields: [autoAssignUserId], references: [id], onDelete: SetNull)
 
+  @@unique([projectId, jobTypeId])
   @@index([tenantId])
-  @@index([projectId]) // 🔥 Added for faster lookup
+  @@index([projectId])
+  @@index([projectId, jobTypeId])
   @@map("approval_flows")
 }
 
 // ========================================
-// Approval Flow V2 (Template System)
+// Approval Flow V2 - REMOVED
 // ========================================
-
-/// Master Template สำหรับ Approval Flow
-/// สร้างครั้งเดียว Apply ได้หลาย Project
-model ApprovalFlowTemplate {
-  id              Int      @id @default(autoincrement())
-  tenantId        Int      @map("tenant_id")
-  name            String   @db.VarChar(200)
-  description     String?  @db.Text
-  totalLevels     Int      @default(1) @map("total_levels") // 0 = Skip Approval
-  autoAssignType  String   @default("manual") @map("auto_assign_type") @db.VarChar(50)
-  autoAssignUserId Int?    @map("auto_assign_user_id")
-  isActive        Boolean  @default(true) @map("is_active")
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
-
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  autoAssignUser  User?    @relation("TemplateAutoAssign", fields: [autoAssignUserId], references: [id], onDelete: SetNull)
-  steps           ApprovalFlowStep[]
-  assignments     ProjectFlowAssignment[]
-
-  @@index([tenantId])
-  @@map("approval_flow_templates")
-}
-
-/// ขั้นตอนใน Template
-model ApprovalFlowStep {
-  id                Int      @id @default(autoincrement())
-  templateId        Int      @map("template_id")
-  level             Int      // 1, 2, 3...
-  name              String?  @db.VarChar(100)
-  approverType      String   @default("dept_manager") @map("approver_type") @db.VarChar(50)
-  requiredApprovals Int      @default(1) @map("required_approvals")
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  template          ApprovalFlowTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-
-  @@index([templateId])
-  @@map("approval_flow_steps")
-}
-
-/// การผูก Project + JobType กับ Template
-/// ถ้า jobTypeId = NULL แสดงว่าใช้กับทุก JobType (Default)
-model ProjectFlowAssignment {
-  id                Int      @id @default(autoincrement())
-  tenantId          Int      @map("tenant_id")
-  projectId         Int      @map("project_id")
-  jobTypeId         Int?     @map("job_type_id") // NULL = Default for all JobTypes
-  templateId        Int      @map("template_id")
-  overrideAutoAssign Boolean @default(false) @map("override_auto_assign")
-  autoAssignType    String?  @map("auto_assign_type") @db.VarChar(50)
-  autoAssignUserId  Int?     @map("auto_assign_user_id")
-  isActive          Boolean  @default(true) @map("is_active")
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  jobType           JobType? @relation(fields: [jobTypeId], references: [id], onDelete: Cascade)
-  template          ApprovalFlowTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  autoAssignUser    User?    @relation("AssignmentAutoAssign", fields: [autoAssignUserId], references: [id], onDelete: SetNull)
-  approvers         ProjectFlowApprover[]
-
-  @@unique([projectId, jobTypeId])
-  @@index([projectId])
-  @@index([jobTypeId])
-  @@map("project_flow_assignments")
-}
-
-/// ระบุ Approver เฉพาะ Project (Override Template Default)
-model ProjectFlowApprover {
-  id           Int      @id @default(autoincrement())
-  assignmentId Int      @map("assignment_id")
-  level        Int      // ตรงกับ ApprovalFlowStep.level
-  approverId   Int      @map("approver_id")
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  assignment   ProjectFlowAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
-  approver     User     @relation("ProjectApprover", fields: [approverId], references: [id], onDelete: Cascade)
-
-  @@unique([assignmentId, level, approverId])
-  @@index([assignmentId])
-  @@map("project_flow_approvers")
-}
+// V2 Template System has been removed in favor of V1 Extended
+// See migration: 016_extend_v1_remove_v2_approval_flow.sql
+// Archive tables: approval_flow_templates_archive, etc.
 
 model Approval {
   id            Int            @id @default(autoincrement())

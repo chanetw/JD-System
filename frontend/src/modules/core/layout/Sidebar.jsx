@@ -130,6 +130,8 @@ export default function Sidebar() {
                             ผังการอนุมัติ (Flow)
                         </SidebarLink>
 
+                        {/* V2 Templates link REMOVED - Using V1 Extended instead */}
+
                         <SidebarLink to="/admin/users" icon={UserGroupIcon}>
                             จัดการผู้ใช้งาน
                         </SidebarLink>
@@ -279,6 +281,15 @@ function FlowIcon({ className }) {
         <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+        </svg>
+    );
+}
+
+function TemplateIcon({ className }) {
+    return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
         </svg>
     );
 }

@@ -424,46 +424,34 @@ export const adminService = {
 
     // --- Approval Flows ---
     getApprovalFlows: async () => {
-        const { data: flows, error } = await supabase.from('approval_flows')
-            .select(`*, approver:users!approver_id(*)`)
-            .order('level');
-        if (error) throw error;
+        // V1 Extended: Get all flows from database (default flows only, jobTypeId = null)
+        try {
+            const { data: flows, error } = await supabase.from('approval_flows')
+                .select('*')
+                .is('job_type_id', null) // Only get default flows
+                .eq('is_active', true)
+                .order('project_id');
 
-        const grouped = {};
-        flows.forEach(f => {
-            if (!grouped[f.project_id]) {
-                grouped[f.project_id] = {
-                    projectId: f.project_id,
-                    levels: [],
-                    includeTeamLead: f.include_team_lead || false,
-                    teamLeadId: f.team_lead_id || null,
-                    updatedAt: f.updated_at
-                };
-            }
-            // Update includeTeamLead and teamLeadId if any row has it
-            if (f.include_team_lead) {
-                grouped[f.project_id].includeTeamLead = true;
-            }
-            if (f.team_lead_id) {
-                grouped[f.project_id].teamLeadId = f.team_lead_id;
-            }
+            if (error) throw error;
 
-            let lvl = grouped[f.project_id].levels.find(l => l.level === f.level);
-            if (!lvl) {
-                lvl = { level: f.level, approvers: [], logic: 'any' };
-                grouped[f.project_id].levels.push(lvl);
-            }
-            if (f.approver) {
-                lvl.approvers.push({
-                    id: f.approver.id,
-                    userId: f.approver.id,
-                    name: f.approver.display_name,
-                    role: f.approver.role,
-                    avatar: f.approver.avatar_url
-                });
-            }
-        });
-        return Object.values(grouped);
+            // Transform V1 Extended structure to frontend format
+            return flows.map(f => ({
+                id: f.id,
+                projectId: f.project_id,
+                jobTypeId: f.job_type_id,
+                skipApproval: f.skip_approval,
+                autoAssignType: f.auto_assign_type,
+                autoAssignUserId: f.auto_assign_user_id,
+                name: f.name,
+                levels: f.approver_steps || [], // approverSteps stored as JSON
+                includeTeamLead: f.conditions?.includeTeamLead || false,
+                teamLeadId: f.conditions?.teamLeadId || null,
+                updatedAt: f.updated_at
+            }));
+        } catch (error) {
+            console.error('[adminService] getApprovalFlows error:', error);
+            return [];
+        }
     },
 
     getApprovalFlowByProject: async (projectIdentifier) => {
@@ -491,6 +479,10 @@ export const adminService = {
             return { success: true };
         } catch (error) {
             console.error('[adminService] saveApprovalFlow error:', error);
+            if (error.response) {
+                console.error('[adminService] Error Status:', error.response.status);
+                console.error('[adminService] Error Data:', JSON.stringify(error.response.data, null, 2));
+            }
             throw error;
         }
     },
@@ -501,6 +493,43 @@ export const adminService = {
 
     createApprovalFlow: async (flowData) => {
         return adminService.saveApprovalFlow(flowData.projectId, flowData);
+    },
+
+    /**
+     * Get job assignments for a project (which job types have which assignees)
+     * @param {number} projectId
+     * @returns {Promise<Array>}
+     */
+    getProjectJobAssignments: async (projectId) => {
+        try {
+            const response = await httpClient.get(`/projects/${projectId}/job-assignments`);
+            if (!response.data.success) return [];
+            return response.data.data || [];
+        } catch (error) {
+            console.error('[adminService] getProjectJobAssignments error:', error);
+            return [];
+        }
+    },
+
+    /**
+     * Create bulk flows from job assignments
+     * @param {Object} params - { projectId, jobTypeIds, skipApproval, name }
+     * @returns {Promise<Object>}
+     */
+    createBulkFlowsFromAssignments: async ({ projectId, jobTypeIds, skipApproval, name }) => {
+        try {
+            const response = await httpClient.post('/approval-flows/bulk-from-assignments', {
+                projectId,
+                jobTypeIds,
+                skipApproval,
+                name
+            });
+            if (!response.data.success) throw new Error(response.data.message);
+            return response.data;
+        } catch (error) {
+            console.error('[adminService] createBulkFlowsFromAssignments error:', error);
+            throw error;
+        }
     },
 
     // --- Assignment Matrix ---

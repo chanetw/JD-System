@@ -445,51 +445,38 @@ export class ApprovalService extends BaseService {
    */
   async getApprovalFlowByProject(projectId) {
     try {
-      // Use raw query due to Schema/DB mismatch (ApprovalFlow model missing projectId in schema)
-      const flows = await this.prisma.$queryRaw`
-        SELECT af.*, 
-               u.id as "userId", u.first_name as "firstName", u.last_name as "lastName", 
-               u.display_name as "displayName", u.email, u.avatar_url as "avatarUrl"
-        FROM approval_flows af
-        LEFT JOIN users u ON af.approver_id = u.id
-        WHERE af.project_id = ${parseInt(projectId)}
-        ORDER BY af.level ASC
-      `;
-
-      if (!flows || flows.length === 0) return null;
-
-      const levels = [];
-      let includeTeamLead = false;
-      let teamLeadId = null;
-
-      flows.forEach(f => {
-        if (f.include_team_lead) includeTeamLead = true;
-        if (f.team_lead_id) teamLeadId = f.team_lead_id;
-
-        let lvl = levels.find(l => l.level === f.level);
-        if (!lvl) {
-          lvl = { level: f.level, approvers: [], logic: 'any' };
-          levels.push(lvl);
-        }
-
-        // approver_id from raw query
-        if (f.approver_id) {
-          lvl.approvers.push({
-            id: f.approver_id,
-            userId: f.userId,
-            name: f.displayName || `${f.firstName} ${f.lastName}`.trim(),
-            email: f.email,
-            avatar: f.avatarUrl
-          });
-        }
+      // V1 Extended: Get ALL active flows for the project (Default + Job Type Specific)
+      const flows = await this.prisma.approvalFlow.findMany({
+        where: {
+          projectId: parseInt(projectId),
+          isActive: true
+        },
+        orderBy: { createdAt: 'desc' }
       });
 
-      return {
-        projectId,
-        levels,
-        includeTeamLead,
-        teamLeadId
-      };
+      if (!flows || flows.length === 0) return [];
+
+      return flows.map(flow => {
+        // Extract approverSteps from JSON
+        const levels = flow.approverSteps || [];
+
+        // Extract legacy fields from conditions JSON
+        const includeTeamLead = flow.conditions?.includeTeamLead || false;
+        const teamLeadId = flow.conditions?.teamLeadId || null;
+
+        return {
+          id: flow.id,
+          projectId: flow.projectId,
+          jobTypeId: flow.jobTypeId,
+          skipApproval: flow.skipApproval,
+          autoAssignType: flow.autoAssignType,
+          autoAssignUserId: flow.autoAssignUserId,
+          name: flow.name,
+          levels,
+          includeTeamLead,
+          teamLeadId
+        };
+      });
     } catch (error) {
       console.error('[ApprovalService] Get flow error:', error);
       return null;
@@ -526,8 +513,8 @@ export class ApprovalService extends BaseService {
         };
       }
 
-      // 2. ✨ V2: Get Flow Assignment using Template System
-      const assignment = await this.getFlowAssignmentV2(job.projectId, job.jobTypeId);
+      // 2. Get Flow using V1 Extended
+      const flow = await this.getApprovalFlow(job.projectId, job.jobTypeId);
 
       let nextStatus = 'approved';
       let isFinal = true;
@@ -539,21 +526,15 @@ export class ApprovalService extends BaseService {
         currentLevel = parseInt(job.status.split('_')[2]);
       }
 
-      // V2: Check Next Step based on Template
-      if (assignment && assignment.template && assignment.template.totalLevels > 0) {
-        const totalLevels = assignment.template.totalLevels;
+      // V1 Extended: Check Next Step based on approverSteps
+      const totalLevels = this.getApprovalLevels(flow);
 
-        if (currentLevel < totalLevels) {
-          // ยังมี Level ถัดไป
-          nextStatus = `pending_level_${currentLevel + 1}`;
-          isFinal = false;
-        } else {
-          // Level สุดท้ายแล้ว
-          nextStatus = 'approved';
-          isFinal = true;
-        }
+      if (totalLevels > 0 && currentLevel < totalLevels) {
+        // ยังมี Level ถัดไป
+        nextStatus = `pending_level_${currentLevel + 1}`;
+        isFinal = false;
       } else {
-        // ไม่มี Flow Assignment หรือ Skip Approval (totalLevels = 0)
+        // Level สุดท้ายแล้ว หรือ Skip Approval
         nextStatus = 'approved';
         isFinal = true;
       }
@@ -573,10 +554,10 @@ export class ApprovalService extends BaseService {
         data: updateData
       });
 
-      // V2: Auto-Assign Logic if Final Approval
+      // V1 Extended: Auto-Assign Logic if Final Approval
       let assignResult = null;
       if (isFinal) {
-        assignResult = await this.autoAssignJobV2(jobId, assignment, job.requesterId);
+        assignResult = await this.autoAssignJob(jobId, flow, job.requesterId);
         if (assignResult.success) {
           nextStatus = 'assigned';
         }
@@ -587,13 +568,14 @@ export class ApprovalService extends BaseService {
         jobId,
         approverId,
         activityType: 'job_approved',
-        description: `อนุมัติงาน ${job.djId} (Web Action V2) -> ${nextStatus}`,
+        description: `อนุมัติงาน ${job.djId} -> ${nextStatus}`,
         ipAddress,
         metadata: {
           comment,
           previousStatus: job.status,
           newStatus: nextStatus,
-          templateName: assignment?.template?.name || 'No Template'
+          flowName: flow?.name || 'Default',
+          skipApproval: flow?.skipApproval || false
         }
       });
 
@@ -880,38 +862,51 @@ export class ApprovalService extends BaseService {
 
   async saveApprovalFlow(projectId, flowData) {
     try {
-      // Transaction
-      await this.prisma.$transaction(async (tx) => {
-        // 1. Delete old
-        // Note: Raw delete because of potential schema mismatch (if ApprovalFlow model issues exist)
-        // But if we trust Prisma:
-        await tx.approvalFlow.deleteMany({ where: { projectId: parseInt(projectId) } });
+      // Get tenantId from flowData (passed from route) or fallback to 1
+      const tenantId = flowData.tenantId || 1;
 
-        // 2. Insert new
-        if (flowData.levels && flowData.levels.length > 0) {
-          for (const lvl of flowData.levels) {
-            for (const appr of lvl.approvers) {
-              await tx.approvalFlow.create({
-                data: {
-                  projectId: parseInt(projectId),
-                  level: lvl.level,
-                  approverId: appr.userId,
-                  includeTeamLead: flowData.includeTeamLead || false,
-                  teamLeadId: flowData.teamLeadId || null
-                }
-              });
+      // V1 Extended: Store approval flow as single record with JSON approverSteps
+      await this.prisma.$transaction(async (tx) => {
+        // 1. Delete old default flow (jobTypeId = null)
+        await tx.approvalFlow.deleteMany({
+          where: {
+            projectId: parseInt(projectId),
+            jobTypeId: null // Only delete default flow
+          }
+        });
+
+        // 2. Create new flow record with V1 Extended structure
+        const flowName = flowData.name || flowData.projectName || `Approval Flow - Project ${projectId}`;
+
+        await tx.approvalFlow.create({
+          data: {
+            tenantId: parseInt(tenantId),
+            projectId: parseInt(projectId),
+            jobTypeId: flowData.jobTypeId || null, // null = default flow for all job types
+            level: 0, // Fix: Add default level (required by DB schema)
+            skipApproval: flowData.skipApproval || false,
+            autoAssignType: flowData.autoAssignType || null,
+            autoAssignUserId: flowData.autoAssignUserId || null,
+            name: flowName,
+            description: flowData.description || null,
+            approverSteps: flowData.levels || [], // Store levels as JSON
+            allowOverride: flowData.allowOverride || false,
+            isActive: true,
+            // Legacy fields stored in JSON for backward compatibility
+            conditions: {
+              includeTeamLead: flowData.includeTeamLead || false,
+              teamLeadId: flowData.teamLeadId || null
             }
           }
-        } else if (flowData.includeTeamLead) {
-          // Create at least one entry to store config if no approvers
-          // Use level 0 or handled by schema?
-          // Usually flow has levels. If only team lead, maybe it's level 1?
-          // Assuming caller handles structure.
-        }
+        });
       });
+
       return { success: true };
     } catch (error) {
-      return this.handleError(error, 'SAVE_FLOW', 'Approval');
+      console.error('[ApprovalService] saveApprovalFlow error:', error.message);
+      console.error('[ApprovalService] Error code:', error.code);
+      console.error('[ApprovalService] Error meta:', error.meta);
+      return { success: false, message: error.message };
     }
   }
 
@@ -969,179 +964,125 @@ export class ApprovalService extends BaseService {
 
 
   // ========================================
-  // ✨ Approval Flow V2 (Template System)
+  // V1 Extended: Job Type + Skip Approval Support
   // ========================================
 
   /**
-   * ดึง Flow Assignment สำหรับ Project + JobType
-   * Logic Priority:
+   * ดึง Approval Flow สำหรับ Project + JobType (V1 Extended)
+   * Priority:
    * 1. หา project_id + job_type_id ตรงๆ (เฉพาะเจาะจง)
    * 2. หา project_id + job_type_id = NULL (Default ของ Project)
-   * 3. Return null (ใช้ Skip Approval หรือ Tenant Default)
-   * 
+   * 3. Return null (ไม่มี Flow)
+   *
    * @param {number} projectId - Project ID
-   * @param {number} jobTypeId - JobType ID
-   * @returns {Promise<Object|null>} - Flow Assignment with Template และ Steps
+   * @param {number} jobTypeId - JobType ID (nullable)
+   * @returns {Promise<Object|null>} - ApprovalFlow object
    */
-  async getFlowAssignmentV2(projectId, jobTypeId) {
+  async getApprovalFlow(projectId, jobTypeId) {
     try {
-      // 1. หา project_id + job_type_id ตรงๆ
-      let assignment = await this.prisma.projectFlowAssignment.findFirst({
+      // 1. หา flow เฉพาะ JobType ก่อน
+      let flow = await this.prisma.approvalFlow.findFirst({
         where: {
-          projectId: projectId,
-          jobTypeId: jobTypeId,
+          projectId: parseInt(projectId),
+          jobTypeId: jobTypeId ? parseInt(jobTypeId) : null,
           isActive: true
         },
         include: {
-          template: {
-            include: {
-              steps: { orderBy: { level: 'asc' } }
-            }
+          autoAssignUser: {
+            select: { id: true, firstName: true, lastName: true, email: true }
           },
-          approvers: { where: { isActive: true } }
+          jobType: {
+            select: { id: true, name: true }
+          }
         }
       });
 
-      // 2. ถ้าไม่เจอ → หา Default (jobTypeId = null)
-      if (!assignment) {
-        assignment = await this.prisma.projectFlowAssignment.findFirst({
+      // 2. ถ้าไม่เจอ และมี jobTypeId → หา Default (jobTypeId = NULL)
+      if (!flow && jobTypeId) {
+        flow = await this.prisma.approvalFlow.findFirst({
           where: {
-            projectId: projectId,
+            projectId: parseInt(projectId),
             jobTypeId: null, // Default for all JobTypes
             isActive: true
           },
           include: {
-            template: {
-              include: {
-                steps: { orderBy: { level: 'asc' } }
-              }
-            },
-            approvers: { where: { isActive: true } }
+            autoAssignUser: {
+              select: { id: true, firstName: true, lastName: true, email: true }
+            }
           }
         });
       }
 
-      return assignment;
+      return flow;
     } catch (error) {
-      console.error('[ApprovalService] getFlowAssignmentV2 error:', error);
+      console.error('[ApprovalService] getApprovalFlow error:', error);
       return null;
     }
   }
 
   /**
-   * หา Approver สำหรับ Level นั้นๆ (V2)
-   * Logic:
-   * 1. เช็ค project_flow_approvers (Custom Approver)
-   * 2. ถ้าไม่มี → ใช้ตาม step.approver_type
-   * 
-   * @param {Object} assignment - Flow Assignment with approvers
-   * @param {number} level - Step Level
-   * @param {number} requesterId - Requester User ID (สำหรับหา Dept Manager)
-   * @returns {Promise<number|null>} - Approver User ID
+   * ตรวจสอบว่า Flow นี้ต้อง Skip Approval หรือไม่
+   *
+   * @param {Object} flow - ApprovalFlow from getApprovalFlow
+   * @returns {boolean} - true = Skip, false = ต้องอนุมัติ
    */
-  async getApproverForLevelV2(assignment, level, requesterId) {
-    try {
-      // 1. เช็ค Custom Approver ก่อน
-      const customApprover = assignment.approvers?.find(a => a.level === level);
-      if (customApprover) {
-        return customApprover.approverId;
-      }
-
-      // 2. หา Step Definition
-      const step = assignment.template?.steps?.find(s => s.level === level);
-      if (!step) return null;
-
-      // 3. หา Approver ตาม approver_type
-      switch (step.approverType) {
-        case 'dept_manager':
-          // หาหัวหน้าแผนกของ Requester
-          const user = await this.prisma.user.findUnique({
-            where: { id: requesterId },
-            select: { departmentId: true }
-          });
-          if (user?.departmentId) {
-            const dept = await this.prisma.department.findUnique({
-              where: { id: user.departmentId },
-              select: { managerId: true }
-            });
-            return dept?.managerId || null;
-          }
-          return null;
-
-        case 'team_lead':
-          // ใช้ค่าจาก assignment (ถ้ามี override)
-          // หรือจาก template.autoAssignUserId (ถ้าเป็น Team Lead)
-          return assignment.autoAssignUserId || assignment.template?.autoAssignUserId || null;
-
-        case 'specific_user':
-          // ต้องตั้งค่าใน Custom Approver หรือ step (ยังไม่มี field นี้ใน step)
-          return null;
-
-        default:
-          return null;
-      }
-    } catch (error) {
-      console.error('[ApprovalService] getApproverForLevelV2 error:', error);
-      return null;
+  isSkipApproval(flow) {
+    if (!flow) {
+      // ไม่มี flow → ใช้ค่าเริ่มต้น: ต้องอนุมัติ (safe default)
+      return false;
     }
+    return flow.skipApproval === true;
   }
 
   /**
-   * คำนวณ Auto-Assign Type สำหรับ Job (V2)
-   * Logic:
-   * 1. ถ้า assignment.overrideAutoAssign = true → ใช้ค่าใน assignment
-   * 2. ถ้าไม่ → ใช้ค่าใน template
-   * 
-   * @param {Object} assignment - Flow Assignment
-   * @returns {{type: string, userId: number|null}}
+   * นับจำนวน Approval Levels จาก Flow
+   *
+   * @param {Object} flow - ApprovalFlow from getApprovalFlow
+   * @returns {number} - จำนวน levels (0 = skip)
    */
-  getAutoAssignConfigV2(assignment) {
-    if (!assignment) {
-      return { type: 'manual', userId: null };
+  getApprovalLevels(flow) {
+    if (!flow) return 1; // Default: 1 level
+    if (flow.skipApproval) return 0;
+
+    // นับจาก approverSteps JSON array
+    if (flow.approverSteps && Array.isArray(flow.approverSteps)) {
+      return flow.approverSteps.length;
     }
 
-    if (assignment.overrideAutoAssign) {
-      return {
-        type: assignment.autoAssignType || 'manual',
-        userId: assignment.autoAssignUserId
-      };
-    }
-
-    return {
-      type: assignment.template?.autoAssignType || 'manual',
-      userId: assignment.template?.autoAssignUserId
-    };
+    return 1; // Default: 1 level
   }
 
   /**
-   * Auto-assign job หลังอนุมัติเสร็จ (V2)
+   * Auto-assign job หลังอนุมัติเสร็จ หรือ Skip Approval
    * รองรับ: manual, team_lead, dept_manager, specific_user
-   * 
+   *
    * @param {number} jobId - Job ID
-   * @param {Object} assignment - Flow Assignment (from getFlowAssignmentV2)
+   * @param {Object} flow - ApprovalFlow from getApprovalFlow
    * @param {number} requesterId - Requester User ID
+   * @returns {Promise<Object>} - { success, assigneeId, needsManualAssign }
    */
-  async autoAssignJobV2(jobId, assignment, requesterId) {
+  async autoAssignJob(jobId, flow, requesterId) {
     try {
-      const config = this.getAutoAssignConfigV2(assignment);
+      if (!flow) {
+        return { success: false, needsManualAssign: true };
+      }
 
+      const autoAssignType = flow.autoAssignType || 'manual';
       let assigneeId = null;
 
-      switch (config.type) {
+      switch (autoAssignType) {
         case 'specific_user':
-          assigneeId = config.userId;
-          break;
-
         case 'team_lead':
-          assigneeId = config.userId;
+          assigneeId = flow.autoAssignUserId;
           break;
 
         case 'dept_manager':
           // หาหัวหน้าแผนกของ Requester
           const user = await this.prisma.user.findUnique({
-            where: { id: requesterId },
+            where: { id: parseInt(requesterId) },
             select: { departmentId: true }
           });
+
           if (user?.departmentId) {
             const dept = await this.prisma.department.findUnique({
               where: { id: user.departmentId },
@@ -1157,30 +1098,339 @@ export class ApprovalService extends BaseService {
       }
 
       if (assigneeId) {
-        return await this.assignJobManually(jobId, assigneeId, null, `auto-assign: ${config.type}`);
+        const result = await this.assignJobManually(
+          jobId,
+          assigneeId,
+          null,
+          `auto-assign: ${autoAssignType}`
+        );
+        return { ...result, assigneeId };
       }
 
+      // ไม่เจอ assignee → ต้อง manual
+      console.warn(`[ApprovalService] autoAssignJob: No assignee found for type=${autoAssignType}, jobId=${jobId}`);
       return { success: false, needsManualAssign: true };
 
     } catch (error) {
-      console.error('[ApprovalService] autoAssignJobV2 error:', error);
+      console.error('[ApprovalService] autoAssignJob error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // ========================================
+  // V1 Extended: Bulk Flow Creation & Validation
+  // ========================================
+
+  /**
+   * สร้าง Approval Flows หลายรายการพร้อมกัน จาก Project Job Assignments
+   * ดึงคนรับผิดชอบจาก project_job_assignments โดยอัตโนมัติ
+   *
+   * @param {Object} params
+   * @param {number} params.tenantId
+   * @param {number} params.projectId
+   * @param {Array<number>} params.jobTypeIds
+   * @param {boolean} params.skipApproval
+   * @param {string} params.name
+   * @returns {Promise<Object>}
+   */
+  async createBulkFlowsFromAssignments({ tenantId, projectId, jobTypeIds, skipApproval, name }) {
+    try {
+      // 1. ดึง job assignments สำหรับ job types ที่เลือก
+      const assignments = await this.prisma.projectJobAssignment.findMany({
+        where: {
+          projectId,
+          jobTypeId: { in: jobTypeIds },
+          isActive: true
+        },
+        include: {
+          jobType: { select: { id: true, name: true } },
+          assignee: { select: { id: true, firstName: true, lastName: true } }
+        }
+      });
+
+      // สร้าง map ของ jobTypeId -> assignment
+      const assignmentMap = new Map();
+      assignments.forEach(a => assignmentMap.set(a.jobTypeId, a));
+
+      const createdFlows = [];
+      const updatedFlows = [];
+      const errors = [];
+
+      // 2. สร้าง/อัพเดต flows สำหรับแต่ละ job type
+      for (const jobTypeId of jobTypeIds) {
+        const assignment = assignmentMap.get(jobTypeId);
+        const assigneeId = assignment?.assigneeId || null;
+        const jobTypeName = assignment?.jobType?.name || `JobType#${jobTypeId}`;
+
+        try {
+          // ตรวจสอบว่ามี flow อยู่แล้วหรือไม่
+          const existing = await this.prisma.approvalFlow.findFirst({
+            where: {
+              projectId,
+              jobTypeId,
+              isActive: true
+            }
+          });
+
+          if (existing) {
+            // Update existing flow
+            const updated = await this.prisma.approvalFlow.update({
+              where: { id: existing.id },
+              data: {
+                skipApproval,
+                autoAssignType: assigneeId ? 'specific_user' : 'manual',
+                autoAssignUserId: assigneeId,
+                updatedAt: new Date()
+              }
+            });
+            updatedFlows.push({ ...updated, jobTypeName });
+          } else {
+            // Create new flow
+            const created = await this.prisma.approvalFlow.create({
+              data: {
+                tenantId: tenantId || 1, // Fix: Add tenantId if missing in schema default (schema has default 1 but safe to add)
+                projectId,
+                jobTypeId: jobTypeId || null,
+                level: 0, // Fix: Add default level if required by DB schema but unused in V1 Extended
+                name: `${name} - ${jobTypeName}`,
+                skipApproval,
+                autoAssignType: assigneeId ? 'specific_user' : 'manual',
+                autoAssignUserId: assigneeId,
+                approverSteps: [],
+                isActive: true
+              }
+            });
+            createdFlows.push({ ...created, jobTypeName });
+          }
+        } catch (err) {
+          errors.push({ jobTypeId, jobTypeName, error: err.message });
+        }
+      }
+
+      return {
+        success: true,
+        created: createdFlows.length,
+        updated: updatedFlows.length,
+        errors: errors.length,
+        data: { created: createdFlows, updated: updatedFlows, errors },
+        message: `สร้าง ${createdFlows.length} อัพเดต ${updatedFlows.length} flows สำเร็จ`
+      };
+    } catch (error) {
+      console.error('[ApprovalService] createBulkFlowsFromAssignments error:', error);
       return { success: false, error: error.message };
     }
   }
 
   /**
-   * ตรวจสอบว่างานนี้ต้อง Skip Approval หรือไม่ (V2)
-   * 
-   * @param {Object} assignment - Flow Assignment from getFlowAssignmentV2
-   * @returns {boolean} - true = Skip, false = ต้องอนุมัติ
+   * ตรวจสอบว่าสามารถสร้างงาน Skip Approval ได้หรือไม่
+   * - ต้องมี assignee กำหนดไว้ใน project_job_assignments
+   * - หรือ flow.autoAssignUserId ต้องมีค่า
+   * - หรือ Requester มี Department Manager
+   *
+   * @param {number} projectId
+   * @param {number} jobTypeId
+   * @param {number} requesterId
+   * @returns {Promise<Object>} - { canCreate, assigneeId, source, message }
+   */
+  async validateSkipApprovalJobCreation(projectId, jobTypeId, requesterId) {
+    try {
+      // 1. ดึง flow
+      const flow = await this.getApprovalFlow(projectId, jobTypeId);
+
+      // ถ้าไม่ skip approval ก็ไม่ต้องตรวจ
+      if (!flow || !flow.skipApproval) {
+        return { canCreate: true, requiresApproval: true };
+      }
+
+      // 2. หา assignee จาก flow.autoAssignUserId
+      if (flow.autoAssignUserId) {
+        return {
+          canCreate: true,
+          assigneeId: flow.autoAssignUserId,
+          source: 'flow_config'
+        };
+      }
+
+      // 3. หา assignee จาก project_job_assignments
+      const assignment = await this.prisma.projectJobAssignment.findFirst({
+        where: {
+          projectId: parseInt(projectId),
+          jobTypeId: parseInt(jobTypeId),
+          isActive: true
+        },
+        select: { assigneeId: true }
+      });
+
+      if (assignment?.assigneeId) {
+        return {
+          canCreate: true,
+          assigneeId: assignment.assigneeId,
+          source: 'project_assignment'
+        };
+      }
+
+      // 4. หา Department Manager ของ Requester
+      const user = await this.prisma.user.findUnique({
+        where: { id: parseInt(requesterId) },
+        select: { departmentId: true }
+      });
+
+      if (user?.departmentId) {
+        const dept = await this.prisma.department.findUnique({
+          where: { id: user.departmentId },
+          select: { managerId: true }
+        });
+
+        if (dept?.managerId) {
+          return {
+            canCreate: true,
+            assigneeId: dept.managerId,
+            source: 'dept_manager'
+          };
+        }
+      }
+
+      // 5. ไม่พบ assignee → ไม่ให้สร้างงาน
+      return {
+        canCreate: false,
+        message: 'ไม่สามารถสร้างงานได้ เนื่องจากยังไม่มีผู้รับผิดชอบ กรุณาตั้งค่าที่ Project → Job Assignments ก่อน'
+      };
+    } catch (error) {
+      console.error('[ApprovalService] validateSkipApprovalJobCreation error:', error);
+      return { canCreate: false, message: error.message };
+    }
+  }
+
+  /**
+   * Auto-assign job with fallback logic:
+   * 1. flow.autoAssignUserId (specific_user/team_lead)
+   * 2. project_job_assignments.assignee_id
+   * 3. dept_manager ของ requester
+   * 4. ไม่มี → ต้อง manual assign
+   *
+   * @param {number} jobId
+   * @param {Object} flow
+   * @param {number} requesterId
+   * @param {number} projectId - Project ID for lookup
+   * @param {number} jobTypeId - Job Type ID for lookup
+   * @returns {Promise<Object>}
+   */
+  async autoAssignJobWithFallback(jobId, flow, requesterId, projectId, jobTypeId) {
+    try {
+      let assigneeId = null;
+      let source = null;
+
+      // 1. ตรวจสอบจาก flow config
+      if (flow?.autoAssignUserId && ['specific_user', 'team_lead'].includes(flow.autoAssignType)) {
+        assigneeId = flow.autoAssignUserId;
+        source = 'flow_config';
+      }
+
+      // 2. ถ้าไม่มี → หาจาก project_job_assignments
+      if (!assigneeId && projectId && jobTypeId) {
+        const assignment = await this.prisma.projectJobAssignment.findFirst({
+          where: {
+            projectId: parseInt(projectId),
+            jobTypeId: parseInt(jobTypeId),
+            isActive: true
+          },
+          select: { assigneeId: true }
+        });
+        if (assignment?.assigneeId) {
+          assigneeId = assignment.assigneeId;
+          source = 'project_assignment';
+        }
+      }
+
+      // 3. ถ้าไม่มี → หา dept_manager ของ requester
+      if (!assigneeId && requesterId) {
+        const user = await this.prisma.user.findUnique({
+          where: { id: parseInt(requesterId) },
+          select: { departmentId: true }
+        });
+
+        if (user?.departmentId) {
+          const dept = await this.prisma.department.findUnique({
+            where: { id: user.departmentId },
+            select: { managerId: true }
+          });
+
+          if (dept?.managerId) {
+            assigneeId = dept.managerId;
+            source = 'dept_manager';
+          }
+        }
+      }
+
+      // 4. Assign ถ้าเจอ
+      if (assigneeId) {
+        const result = await this.assignJobManually(
+          jobId,
+          assigneeId,
+          null,
+          `auto-assign: ${source}`
+        );
+        return { ...result, assigneeId, source };
+      }
+
+      // 5. ไม่เจอเลย → ต้อง manual
+      console.warn(`[ApprovalService] autoAssignJobWithFallback: No assignee found for jobId=${jobId}`);
+      return { success: false, needsManualAssign: true };
+    } catch (error) {
+      console.error('[ApprovalService] autoAssignJobWithFallback error:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // ========================================
+  // V2 Methods - DEPRECATED (Kept for backward compatibility during migration)
+  // ========================================
+
+  /**
+   * @deprecated Use getApprovalFlow instead
+   */
+  async getFlowAssignmentV2(projectId, jobTypeId) {
+    console.warn('[ApprovalService] getFlowAssignmentV2 is deprecated. Use getApprovalFlow instead.');
+    const flow = await this.getApprovalFlow(projectId, jobTypeId);
+    // Convert V1 flow to V2-like format for compatibility
+    if (!flow) return null;
+    return {
+      ...flow,
+      template: {
+        totalLevels: this.getApprovalLevels(flow),
+        autoAssignType: flow.autoAssignType,
+        autoAssignUserId: flow.autoAssignUserId
+      }
+    };
+  }
+
+  /**
+   * @deprecated Use isSkipApproval instead
    */
   isSkipApprovalV2(assignment) {
-    if (!assignment || !assignment.template) {
-      // ไม่มี flow assignment → Skip Approval หรือ ใช้ Tenant Default
-      // ตอนนี้เราจะให้ Skip ถ้าไม่มี assignment
-      return true;
+    console.warn('[ApprovalService] isSkipApprovalV2 is deprecated. Use isSkipApproval instead.');
+    if (!assignment) return false;
+    // Handle both V1 flow and V2 assignment
+    if (assignment.skipApproval !== undefined) {
+      return assignment.skipApproval === true;
     }
-    return assignment.template.totalLevels === 0;
+    if (assignment.template) {
+      return assignment.template.totalLevels === 0;
+    }
+    return false;
+  }
+
+  /**
+   * @deprecated Use autoAssignJob instead
+   */
+  async autoAssignJobV2(jobId, assignment, requesterId) {
+    console.warn('[ApprovalService] autoAssignJobV2 is deprecated. Use autoAssignJob instead.');
+    // Convert V2 assignment to V1 flow format
+    const flow = assignment ? {
+      autoAssignType: assignment.autoAssignType || assignment.template?.autoAssignType || 'manual',
+      autoAssignUserId: assignment.autoAssignUserId || assignment.template?.autoAssignUserId
+    } : null;
+    return this.autoAssignJob(jobId, flow, requesterId);
   }
 
 }

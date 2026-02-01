@@ -240,17 +240,37 @@ router.post('/', async (req, res) => {
     }
 
     // ============================================
-    // Step 2: Get Flow Assignment V2
-    // หา Template ที่ใช้กับ Project+JobType นี้
+    // Step 2: Get Approval Flow (V1 Extended)
+    // หา Flow ที่ใช้กับ Project+JobType นี้
     // Priority: Specific (Project+JobType) > Default (Project+NULL)
     // ============================================
-    const assignment = await approvalService.getFlowAssignmentV2(projectId, jobTypeId);
+    const flow = await approvalService.getApprovalFlow(projectId, jobTypeId);
 
     // ============================================
     // Step 3: Check Skip Approval
-    // ถ้า Template มี totalLevels = 0 หมายถึงไม่ต้องผ่านการอนุมัติ
+    // ถ้า flow.skipApproval = true หมายถึงไม่ต้องผ่านการอนุมัติ
     // ============================================
-    const isSkip = approvalService.isSkipApprovalV2(assignment);
+    const isSkip = approvalService.isSkipApproval(flow);
+
+    // ============================================
+    // Step 3.1: Validate Skip Approval (ต้องมี Assignee)
+    // ถ้า Skip = true ต้องตรวจสอบว่ามีคนรับผิดชอบหรือไม่
+    // ============================================
+    if (isSkip) {
+      const validation = await approvalService.validateSkipApprovalJobCreation(
+        projectId,
+        jobTypeId,
+        userId
+      );
+
+      if (!validation.canCreate) {
+        return res.status(400).json({
+          success: false,
+          error: 'NO_ASSIGNEE_CONFIGURED',
+          message: validation.message || 'ไม่สามารถสร้างงานได้ เนื่องจากยังไม่มีผู้รับผิดชอบ กรุณาตั้งค่าที่ Project → Job Assignments ก่อน'
+        });
+      }
+    }
 
     // กำหนด Status เริ่มต้นตาม Skip Logic
     // - Skip = true → status = 'approved' (พร้อมมอบหมายงาน)
@@ -318,9 +338,17 @@ router.post('/', async (req, res) => {
       let autoAssigned = false;
 
       if (isSkip && !finalAssigneeId) {
-        // เรียก Auto-Assign Service ตาม Template Config
-        // Template อาจกำหนดให้มอบหมายให้ Team Lead, Dept Manager, หรือ Specific User
-        const assignResult = await approvalService.autoAssignJobV2(newJob.id, assignment, userId);
+        // เรียก Auto-Assign Service with Fallback:
+        // 1. flow.autoAssignUserId
+        // 2. project_job_assignments
+        // 3. dept_manager ของ requester
+        const assignResult = await approvalService.autoAssignJobWithFallback(
+          newJob.id,
+          flow,
+          userId,
+          parseInt(projectId),
+          parseInt(jobTypeId)
+        );
 
         if (assignResult.success && assignResult.assigneeId) {
           finalAssigneeId = assignResult.assigneeId;
@@ -365,7 +393,9 @@ router.post('/', async (req, res) => {
             : `สร้างงาน ${djId} รอการอนุมัติ`,
           detail: {
             isSkip,
-            templateName: assignment?.template?.name || 'Default',
+            flowName: flow?.name || 'Default',
+            skipApproval: flow?.skipApproval || false,
+            autoAssignType: flow?.autoAssignType || 'manual',
             autoAssigned: result.autoAssigned
           }
         }

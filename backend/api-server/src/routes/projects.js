@@ -148,6 +148,64 @@ router.put('/:id', async (req, res) => {
 });
 
 /**
+ * GET /api/projects/:projectId/job-assignments
+ * Get job assignments for a project (which job types have which assignees)
+ */
+router.get('/:projectId/job-assignments', async (req, res) => {
+    try {
+        const prisma = getDatabase();
+        const projectId = parseInt(req.params.projectId);
+        const tenantId = req.user.tenantId;
+
+        // Verify project belongs to tenant
+        const project = await prisma.project.findFirst({
+            where: { id: projectId, tenantId }
+        });
+        if (!project) {
+            return res.status(404).json({ success: false, message: 'Project not found' });
+        }
+
+        // Get job assignments with job type and assignee info
+        const assignments = await prisma.projectJobAssignment.findMany({
+            where: {
+                projectId,
+                isActive: true
+            },
+            include: {
+                jobType: {
+                    select: { id: true, name: true, icon: true, colorTheme: true }
+                },
+                assignee: {
+                    select: { id: true, firstName: true, lastName: true, email: true, displayName: true }
+                }
+            },
+            orderBy: { jobType: { name: 'asc' } }
+        });
+
+        // Transform for frontend
+        const transformed = assignments.map(a => ({
+            id: a.id,
+            projectId: a.projectId,
+            jobTypeId: a.jobTypeId,
+            jobTypeName: a.jobType?.name,
+            jobTypeIcon: a.jobType?.icon,
+            jobTypeColor: a.jobType?.colorTheme,
+            assigneeId: a.assigneeId,
+            assigneeName: a.assignee
+                ? `${a.assignee.firstName || ''} ${a.assignee.lastName || ''}`.trim() || a.assignee.displayName || a.assignee.email
+                : null,
+            assignee: a.assignee,
+            isActive: a.isActive
+        }));
+
+        res.json({ success: true, data: transformed });
+    } catch (error) {
+        console.error('[Projects] Get job assignments error:', error);
+        res.status(500).json({ success: false, message: 'Failed to get job assignments' });
+    }
+});
+
+/**
  * DELETE /api/projects/:id
  */
 router.delete('/:id', async (req, res) => {
