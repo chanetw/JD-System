@@ -729,43 +729,6 @@ export const adminService = {
         }
     },
 
-    // --- Users ---
-    getUsers: async () => {
-        // Fetch all users with department relation
-        const { data, error } = await supabase.from('users')
-            .select(`
-                id, 
-                display_name, 
-                email, 
-                role, 
-                title, 
-                phone_number, 
-                department_id,
-                department:departments!users_department_id_fkey(id, name),
-                is_active, 
-                avatar_url
-            `)
-            .order('display_name');
-
-        if (error) {
-            console.error('Error fetching users:', error);
-            return [];
-        }
-
-        return data.map(u => ({
-            id: u.id,
-            name: u.display_name,
-            email: u.email,
-            role: u.role,
-            title: u.title,
-            department: u.department?.name,
-            departmentId: u.department_id,
-            phone: u.phone_number,
-            avatar: u.avatar_url,
-            isActive: u.is_active
-        }));
-    },
-
     updateUser: async (id, userData) => {
         const payload = {
             phone_number: userData.phone,
@@ -798,92 +761,19 @@ export const adminService = {
      */
     getUserWithRoles: async (userId, tenantId = 1) => {
         try {
-            // ดึงข้อมูล user พื้นฐาน
-            const { data: user, error: userError } = await supabase
-                .from('users')
-                .select(`
-                    id, 
-                    display_name, 
-                    email, 
-                    first_name,
-                    last_name,
-                    role, 
-                    title, 
-                    phone_number, 
-                    department_id,
-                    department:departments!users_department_id_fkey(id, name),
-                    is_active, 
-                    avatar_url,
-                    tenant_id
-                `)
-                .eq('id', userId)
-                .single();
+            console.log(`[adminService] Getting user with roles (Backend API): ${userId}`);
 
-            if (userError) throw userError;
-            if (!user) return null;
+            // Call Backend API instead of direct Supabase
+            // Because RLS might block access to user_roles/scopes
+            const response = await httpClient.get(`/users/${userId}/roles`);
 
-            console.log('[adminService] Raw user from DB:', user); // Debug Log
-
-            // ดึง roles
-            const { data: roles, error: rolesError } = await supabase
-                .from('user_roles')
-                .select('*')
-                .eq('user_id', userId)
-                .eq('tenant_id', tenantId)
-                .eq('is_active', true);
-
-            if (rolesError) {
-                console.warn('Error fetching user_roles:', rolesError);
+            if (response.data && response.data.success) {
+                console.log('[adminService] getUserWithRoles Returns:', response.data.data);
+                return response.data.data;
+            } else {
+                console.warn('Backend returned error:', response.data);
+                throw new Error(response.data?.message || 'Failed to fetch user roles');
             }
-
-            // ดึง scope assignments
-            const { data: scopes, error: scopesError } = await supabase
-                .from('user_scope_assignments')
-                .select('*')
-                .eq('user_id', userId)
-                .eq('tenant_id', tenantId)
-                .eq('is_active', true);
-
-            if (scopesError) {
-                console.warn('Error fetching user_scope_assignments:', scopesError);
-            }
-
-            // จัด structure ใหม่: group scopes by role
-            const rolesWithScopes = (roles || []).map(role => ({
-                id: role.id,
-                name: role.role_name,
-                isActive: role.is_active,
-                assignedBy: role.assigned_by,
-                assignedAt: role.assigned_at,
-                scopes: (scopes || [])
-                    .filter(s => s.role_type === role.role_name)
-                    .map(s => ({
-                        id: s.id,
-                        level: s.scope_level?.toLowerCase(),
-                        scopeId: s.scope_id,
-                        scopeName: s.scope_name
-                    }))
-            }));
-
-            const result = {
-                id: user.id,
-                name: user.display_name,
-                email: user.email,
-                firstName: user.first_name, // Added
-                lastName: user.last_name,   // Added
-                role: user.role, // Legacy field
-                title: user.title,
-                department: user.department?.name,
-                departmentId: user.department_id,
-                phone: user.phone_number,
-                avatar: user.avatar_url,
-                isActive: user.is_active,
-                tenantId: user.tenant_id,
-                roles: rolesWithScopes // Multi-role data
-            };
-
-            console.log('[adminService] getUserWithRoles Returns:', result); // Debug Log
-            return result;
         } catch (err) {
             console.error('getUserWithRoles error:', err);
             throw err;

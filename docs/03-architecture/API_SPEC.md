@@ -213,3 +213,38 @@
       }
   }
   ```
+
+---
+
+## 3. User Management Endpoints
+
+### 3.1 Get All Users (Paginated)
+- **Endpoint:** `GET /api/users`
+- **Query Params:**
+  - `page`: Page number (default: 1)
+  - `limit`: Items per page (default: 20)
+  - `search`: Search keyword (optional)
+- **Response (Success):**
+  ```json
+  {
+      "success": true,
+      "data": {
+          "data": [
+              {
+                  "id": 1,
+                  "email": "admin@sena.co.th",
+                  "firstName": "Admin",
+                  "lastName": "System",
+                  "department": { "name": "IT" },
+                  "scope_assignments": [ ... ]
+              }
+          ],
+          "pagination": {
+              "page": 1,
+              "limit": 20,
+              "total": 50,
+              "totalPages": 3
+          }
+      }
+  }
+  ```

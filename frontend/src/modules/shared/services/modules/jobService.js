@@ -309,14 +309,30 @@ export const jobService = {
         console.log('[Parent-Child] Creating Parent Job with', jobData.jobTypes.length, 'children');
 
         // 1. หา ID ของ PARENT_GROUP Job Type (ใช้ชื่อแทน code)
-        const { data: parentType } = await supabase
+        let { data: parentType } = await supabase
             .from('job_types')
             .select('id')
             .eq('name', 'Project Group (Parent)')
-            .single();
+            .maybeSingle();
 
         if (!parentType) {
-            throw new Error('PARENT_GROUP job type not found. Please run database migration first.');
+            console.log('[Parent-Child] PARENT_GROUP not found. Auto-creating...');
+            const { data: newType, error: createError } = await supabase
+                .from('job_types')
+                .insert({
+                    name: 'Project Group (Parent)',
+                    tenant_id: jobData.tenantId || 1,
+                    sla_days: 0,
+                    is_active: true
+                })
+                .select('id')
+                .single();
+
+            if (createError) {
+                console.error('[Parent-Child] Auto-create failed:', createError);
+                throw new Error('PARENT_GROUP job type not found and could not be created.');
+            }
+            parentType = newType;
         }
 
         // 2. สร้าง Parent Job

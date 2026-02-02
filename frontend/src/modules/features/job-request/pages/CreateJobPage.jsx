@@ -200,7 +200,12 @@ export default function CreateDJ() {
                 // ดึงข้อมูลลำดับการอนุมัติ (Approval Flow) ประจำโครงการ
                 // Pass Project ID if possible, or value (name) if API handles it. My API handles ID or Name.
                 // But safer to pass ID if I have it.
-                api.getApprovalFlowByProject(selectedProject.id).then(flow => {
+                api.getApprovalFlowByProject(selectedProject.id).then(response => {
+                    // Backend might return an array of flows (Default + Skip logic)
+                    // We need the Default Flow for the general preview
+                    const flow = Array.isArray(response)
+                        ? response.find(f => !f.jobTypeId) || response[0]
+                        : response;
                     setApprovalFlow(flow);
                 });
             } else {
@@ -1033,7 +1038,7 @@ export default function CreateDJ() {
 
                                     <div className="space-y-6">
                                         {/* รายการแต่ละลำดับ (Levels) */}
-                                        {approvalFlow.levels.map((level, idx) => (
+                                        {approvalFlow.levels?.map((level, idx) => (
                                             <div key={idx} className="relative pl-8">
                                                 <div className={`absolute left-0 top-1 w-4 h-4 rounded-full border-2 z-10 bg-white ${idx === 0 ? 'border-blue-500' : 'border-purple-500'
                                                     }`}></div>

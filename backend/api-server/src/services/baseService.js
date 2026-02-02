@@ -140,15 +140,21 @@ export class BaseService {
     const skip = (page - 1) * limit;
 
     try {
+      const queryOptions = {
+        where,
+        orderBy,
+        skip,
+        take: limit
+      };
+
+      if (select) {
+        queryOptions.select = select;
+      } else if (Object.keys(include).length > 0) {
+        queryOptions.include = include;
+      }
+
       const [data, total] = await Promise.all([
-        this.prisma[model].findMany({
-          where,
-          orderBy,
-          include,
-          select,
-          skip,
-          take: limit
-        }),
+        this.prisma[model].findMany(queryOptions),
         this.prisma[model].count({ where })
       ]);
 

@@ -1,33 +1,92 @@
 
 import { supabase } from '../supabaseClient';
 import { handleResponse, generateOTP } from '../utils';
+import httpClient from '../httpClient';
 
 export const userService = {
     // --- Users CRUD ---
+    /**
+     * ดึงรายการ User ทั้งหมดผ่าน Backend API
+     * ใช้ Backend API แทน Supabase โดยตรงเพื่อ:
+     * - Bypass RLS (Backend ใช้ service role)
+     * - รวม Business Logic ไว้ที่ Backend
+     * - ง่ายต่อการย้าย Database ในอนาคต
+     */
     getUsers: async () => {
         try {
-            const data = handleResponse(
-                await supabase.from('users').select('*').order('id')
-            );
-            return data.map(u => {
-                const firstName = u.first_name || '';
-                const lastName = u.last_name || '';
+            // 1. Fetch Users via Backend API
+            const response = await httpClient.get('/users?limit=1000');
+
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Failed to fetch users');
+            }
+
+            const result = response.data.data;
+            const usersData = Array.isArray(result) ? result : result.data;
+
+            // 2. Map to Frontend format directly using data from backend join
+            return usersData.map(u => {
+                const firstName = u.firstName || '';
+                const lastName = u.lastName || '';
+
+                // Map assigned scopes by type using scope_name directly
+                const assignedScopes = {
+                    tenants: [],
+                    buds: [],
+                    projects: []
+                };
+
+                // FIX: Use camelCase 'scopeAssignments' as returned by Backend (Prisma)
+                const scopes = u.scopeAssignments || u.scope_assignments || [];
+
+                scopes.forEach(s => {
+                    // Use scopeName/scopeId (camelCase from Prisma) or fallback to snake_case if mixed
+                    const scopeId = s.scopeId || s.scope_id;
+                    const scopeName = s.scopeName || s.scope_name || `ID: ${scopeId}`;
+                    const scopeLevel = s.scopeLevel || s.scope_level;
+
+                    const scopeObj = {
+                        id: scopeId,
+                        name: scopeName,
+                        code: ''
+                    };
+
+                    if (scopeLevel === 'tenant') {
+                        assignedScopes.tenants.push(scopeObj);
+                    } else if (scopeLevel === 'bud') {
+                        assignedScopes.buds.push(scopeObj);
+                    } else if (scopeLevel === 'project') {
+                        assignedScopes.projects.push(scopeObj);
+                    }
+                });
+
+                // Deduplicate
+                assignedScopes.tenants = [...new Map(assignedScopes.tenants.map(item => [item.id, item])).values()];
+                assignedScopes.buds = [...new Map(assignedScopes.buds.map(item => [item.id, item])).values()];
+                assignedScopes.projects = [...new Map(assignedScopes.projects.map(item => [item.id, item])).values()];
+
+                // Legacy support
+                const assignedProjects = assignedScopes.projects;
+
                 return {
                     id: u.id,
                     firstName: firstName,
                     lastName: lastName,
                     name: `${firstName} ${lastName}`.trim() || u.email,
-                    displayName: u.display_name || `${firstName} ${lastName}`.trim(),
+                    displayName: u.displayName || `${firstName} ${lastName}`.trim(),
                     email: u.email,
-                    roles: [u.role],
-                    role: u.role,
-                    avatar: u.avatar_url,
-                    isActive: u.is_active,
-                    tenantId: u.tenant_id,
+                    roles: (u.userRoles || []).map(r => r.roleName),
+                    role: u.userRoles?.[0]?.roleName || null,
+                    avatar: u.avatarUrl,
+                    isActive: u.isActive,
+                    tenantId: u.tenantId,
                     title: u.title,
-                    phone: u.phone || u.phone_number,
+                    phone: u.phone,
                     department: u.department,
-                    departmentId: u.department_id
+                    departmentId: u.department?.id,
+                    managedDepartments: u.managedDepartments || [], // Add this field for Manager Badge
+                    assignedProjects: assignedProjects,
+                    assignedScopes: assignedScopes
                 };
             });
         } catch (error) {
@@ -508,7 +567,7 @@ export const userService = {
 
         if (error) throw error;
 
-        console.log(`[DEV] OTP for ${email}: ${otp}`);
+        console.log(`[DEV] OTP for ${email}: ${otp} `);
         return { success: true, message: 'OTP sent to email' };
     },
 
@@ -587,7 +646,7 @@ export const userService = {
             const response = await fetch(`${API_URL}/auth/me`, {
                 method: 'GET',
                 headers: {
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token} `
                 }
             });
 
@@ -636,7 +695,7 @@ export const userService = {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': `Bearer ${token} `
                 },
                 body: JSON.stringify({ role })
             });

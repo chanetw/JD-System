@@ -407,7 +407,7 @@ export default function OrganizationManagement() {
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">โครงการ (Project)</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">รหัส (Code)</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">บริษัท (Tenant)</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">สายงาน (BUD)</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">ฝ่าย (Business Unit)</th>
                     <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">สถานะ (Status)</th>
                     <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">จัดการ (Actions)</th>
                 </tr>
@@ -506,7 +506,7 @@ export default function OrganizationManagement() {
                 <tr>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">ชื่อแผนก (Dept Name)</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">รหัส (Code)</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">สังกัดสายงาน (BUD)</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">ฝ่าย (Business Unit)</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">ผู้จัดการ (Manager)</th>
                     <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">สถานะ (Status)</th>
                     <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">จัดการ (Actions)</th>

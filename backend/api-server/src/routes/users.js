@@ -19,6 +19,26 @@ const userService = new UserService();
 router.use(authenticateToken);
 router.use(setRLSContextMiddleware);
 
+// ✅ GET User data with Roles (Admin/Secure) - Moved to top to avoid conflict
+router.get('/:id/roles', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = parseInt(id);
+    const tenantId = req.user.tenantId || 1;
+
+    // TODO: Add permission check (Only Admin?)
+
+    const result = await userService.getUserWithRoles(userId, tenantId);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'SERVER_ERROR',
+      message: error.message
+    });
+  }
+});
+
 /**
  * GET /api/users
  * ดึงรายการผู้ใช้ทั้งหมด (แบบ paginated)
@@ -309,6 +329,9 @@ router.delete('/:id', async (req, res) => {
  * @param {number} id - ID ของผู้ใช้
  * @body {Array} roles - รายการบทบาทและ scope
  */
+// ✅ GET User data with Roles (Admin/Secure)
+
+
 router.post('/:id/roles', async (req, res) => {
   try {
     const { id } = req.params;
@@ -322,6 +345,12 @@ router.post('/:id/roles', async (req, res) => {
         message: 'ID ผู้ใช้ไม่ถูกต้อง'
       });
     }
+
+    console.log('🔍 [DEBUG] /users/:id/roles payload:', {
+      userId,
+      user: req.user,
+      bodyRoles: roles
+    });
 
     // ตรวจสอบสิทธิ์ Admin
     if (!req.user.roles.includes('admin')) {

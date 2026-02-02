@@ -49,7 +49,6 @@ export class UserService extends BaseService {
           firstName: true,
           lastName: true,
           displayName: true,
-          phone: true,
           isActive: true,
           createdAt: true
         }
@@ -85,7 +84,6 @@ export class UserService extends BaseService {
           firstName: true,
           lastName: true,
           displayName: true,
-          phone: true,
           isActive: true,
           createdAt: true,
           userRoles: {
@@ -182,16 +180,57 @@ export class UserService extends BaseService {
           firstName: true,
           lastName: true,
           displayName: true,
-          phone: true,
           isActive: true,
           createdAt: true,
+          department: {
+            select: {
+              id: true,
+              name: true,
+              bud: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              }
+            }
+          },
+          managedDepartments: {
+            select: {
+              id: true
+            }
+          },
           userRoles: {
             select: {
               roleName: true
             }
+          },
+          // Use Prisma relation instead of raw SQL
+          scopeAssignments: {
+            where: { isActive: true },
+            select: {
+              id: true,
+              scopeId: true,
+              scopeLevel: true,
+              scopeName: true,
+              roleType: true
+            }
           }
         }
       });
+
+      // Map scopeAssignments to snake_case for frontend compatibility
+      if (result.data && result.data.length > 0) {
+        result.data.forEach(user => {
+          user.scope_assignments = (user.scopeAssignments || []).map(s => ({
+            user_id: user.id,
+            scope_id: s.scopeId,
+            scope_level: s.scopeLevel,
+            scope_name: s.scopeName,
+            role_type: s.roleType
+          }));
+          delete user.scopeAssignments;
+        });
+      }
 
       return result;
     } catch (error) {
@@ -223,7 +262,6 @@ export class UserService extends BaseService {
           firstName: true,
           lastName: true,
           displayName: true,
-          phone: true,
           isActive: true,
           updatedAt: true
         }
@@ -255,6 +293,87 @@ export class UserService extends BaseService {
   }
 
   /**
+   * ดึงข้อมูลผู้ใช้พร้อมบทบาทและขอบเขตงาน
+   * 
+   * @param {number} userId - ID ของผู้ใช้
+   * @param {number} tenantId - ID ของ tenant
+   * @returns {Promise<Object>} - ข้อมูลผู้ใช้พร้อมบทบาท
+   */
+  async getUserWithRoles(userId, tenantId) {
+    try {
+      // 1. ดึงข้อมูล User หลัก
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          department: {
+            select: { id: true, name: true }
+          }
+        }
+      });
+
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // 2. ดึง Roles
+      const roles = await this.prisma.userRole.findMany({
+        where: {
+          userId: userId,
+          tenantId: tenantId,
+          isActive: true
+        }
+      });
+
+      // 3. ดึง Scopes via Prisma relation
+      const scopes = await this.prisma.userScopeAssignment.findMany({
+        where: {
+          userId: userId,
+          tenantId: tenantId,
+          isActive: true
+        }
+      });
+
+      // 4. จัด format ให้ตรงกับ frontend adminService ที่เคยทำ
+      const rolesWithScopes = roles.map(role => ({
+        id: role.id,
+        name: role.roleName,
+        isActive: role.isActive,
+        assignedBy: role.assignedBy,
+        assignedAt: role.assignedAt,
+        scopes: scopes
+          .filter(s => s.roleType === role.roleName)
+          .map(s => ({
+            id: s.id,
+            level: s.scopeLevel?.toLowerCase(),
+            scopeId: s.scopeId,
+            scopeName: s.scopeName
+          }))
+      }));
+
+      return this.successResponse({
+        id: user.id,
+        name: user.displayName,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role, // Legacy
+        title: user.title,
+        department: user.department?.name,
+        departmentId: user.department?.id,
+        phone: user.phone,
+        avatar: user.avatar, // Prisma map to avatar (check schema if it map("avatar_url"))
+        isActive: user.isActive,
+        tenantId: user.tenantId, // Prisma map tenant_id
+        roles: rolesWithScopes
+      }, 'ดึงข้อมูลผู้ใช้สําเร็จ');
+
+    } catch (error) {
+      console.error('[UserService] Get user with roles failed:', error);
+      return this.handleError(error, 'GET_USER_WITH_ROLES', 'User');
+    }
+  }
+
+  /**
    * อัปเดตบทบาทและขอบเขตงานของผู้ใช้
    * 
    * @param {number} userId - ID ของผู้ใช้
@@ -269,21 +388,15 @@ export class UserService extends BaseService {
           where: { userId: userId }
         });
 
-        // 2. ลบ Scopes เดิมทั้งหมด
-        // หมายเหตุ: Schema อาจไม่ได้ link กับ User โดยตรงถ้าไม่ได้ define relation ไว้ใน Prisma schema
-        // แต่ถ้ามี relation ก็ลบผ่าน relation ได้. ถ้าไม่มีต้องลบแบบ raw หรือผ่าน model โดยตรง
-        // สมมติว่ามี model UserScopeAssignment
-        // ตรวจสอบ schema จริงก่อน: ถ้าไม่มี model นี้ใน prisma client อาจต้องใช้ queryRaw หรือเพิ่ม model
-        // เนื่องจากเราไม่เห็น schema.prisma แต่เห็น code เก่าใช้ supabase.from('user_scope_assignments')
-        // ดังนั้น table มีจริง แต่ถ้า prisma schema ไม่มี model นี้ เราอาจต้องใช้ $executeRaw
-        // แต่ user บอก "ห้ามแก้ DB" ... ถ้า prisma schema ยังไม่อัปเดต เราอาจจะต้องใช้ $executeRaw
-
-        // ลองใช้ executeRawUnsafe สำหรับ table ที่อาจไม่อยู่ใน schema ORM ปัจจุบัน
-        await tx.$executeRawUnsafe(`DELETE FROM user_scope_assignments WHERE user_id = $1`, userId);
+        // 2. ลบ Scopes เดิมทั้งหมด (ใช้ Prisma model)
+        await tx.userScopeAssignment.deleteMany({
+          where: { userId: userId }
+        });
 
         // 3. เตรียมข้อมูล Role ใหม่
         const roleRows = roles.map(role => ({
           userId: userId,
+          tenantId: tenantId, // ✅ Add Missing TenantID
           roleName: role.name,
           isActive: true,
           assignedBy: executedBy,
@@ -297,48 +410,37 @@ export class UserService extends BaseService {
           });
         }
 
-        // 5. เตรียมข้อมูล Scope ใหม่
+        // 5. เตรียมข้อมูล Scope ใหม่ (ใช้ Prisma camelCase)
         const scopeRows = [];
         roles.forEach(role => {
+          console.log(`[UserService] Processing role: ${role.name}`, role);
           const roleLevel = role.level || 'project';
           if (role.scopes && role.scopes.length > 0) {
             role.scopes.forEach(scope => {
               scopeRows.push({
-                user_id: userId,
-                tenant_id: tenantId,
-                role_type: role.name,
-                scope_level: roleLevel,
-                scope_id: scope.scopeId,
-                scope_name: scope.scopeName || null,
-                assigned_by: executedBy,
-                is_active: true
+                userId: userId,
+                tenantId: tenantId,
+                roleType: role.name,
+                scopeLevel: roleLevel,
+                scopeId: scope.scopeId,
+                scopeName: scope.scopeName || null,
+                assignedBy: executedBy,
+                isActive: true
               });
             });
           }
         });
 
-        // 6. บันทึก Scopes ใหม่
-        // ใช้ raw query เช่นกันถ้า model ไม่มี
+        console.log(`[UserService] Prepared ${scopeRows.length} scope rows for insertion:`, scopeRows);
+
+        // 6. บันทึก Scopes ใหม่ (ใช้ Prisma createMany)
         if (scopeRows.length > 0) {
-          // Construct Insert Query manually or use loop
-          // To be safe with potentially missing model, using loop with executeRaw
-          for (const scope of scopeRows) {
-            await tx.$executeRawUnsafe(
-              `INSERT INTO user_scope_assignments 
-                    (user_id, tenant_id, role_type, scope_level, scope_id, scope_name, assigned_by, is_active) 
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-              scope.user_id, scope.tenant_id, scope.role_type, scope.scope_level,
-              scope.scope_id, scope.scope_name, scope.assigned_by, scope.is_active
-            );
-          }
+          await tx.userScopeAssignment.createMany({
+            data: scopeRows
+          });
         }
 
-        // 7. อัปเดต Primary Role ใน Users Table (Legacy Support)
-        const primaryRole = roles[0]?.name || 'requester';
-        await tx.user.update({
-          where: { id: userId },
-          data: { role: primaryRole }
-        });
+
 
         return this.successResponse(null, 'บันทึกบทบาทสำเร็จ');
       });

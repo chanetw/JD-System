@@ -362,9 +362,9 @@ router.post('/assign-manager', requireAdmin, async (req, res) => {
           tenantId,
           userId: req.user.id, // Admin who performed action
           action: 'UPDATE_MANAGER',
-          resource: 'department',
-          resourceId: parseInt(userId),
-          details: {
+          entityType: 'department', // Correct field name (was tableName)
+          entityId: parseInt(userId), // Correct field name (was recordId)
+          newValues: { // Correct field name (was newValue)
             previousDepartments: oldDepts.map(d => ({ id: d.id, name: d.name, code: d.code })),
             newDepartmentId: targetDeptId,
             reason: 'Manual Assignment via User Management'
