@@ -68,6 +68,28 @@ export const userService = {
                 // Legacy support
                 const assignedProjects = assignedScopes.projects;
 
+                // Correctly map roles to objects expected by permission.utils.js
+                // Each role should have its own scopes based on roleType in scopeAssignments
+                const userRoles = (u.userRoles || []).map(r => {
+                    const roleName = r.roleName;
+
+                    // Filter scopes that belong to this role
+                    const roleScopes = scopes.filter(s => {
+                        const sRoleType = s.roleType || s.role_type;
+                        return sRoleType === roleName;
+                    }).map(s => ({
+                        level: s.scopeLevel || s.scope_level,
+                        scopeId: s.scopeId || s.scope_id,
+                        scopeName: s.scopeName || s.scope_name || `ID: ${s.scopeId || s.scope_id}`
+                    }));
+
+                    return {
+                        name: roleName,
+                        isActive: true,
+                        scopes: roleScopes
+                    };
+                });
+
                 return {
                     id: u.id,
                     firstName: firstName,
@@ -75,7 +97,7 @@ export const userService = {
                     name: `${firstName} ${lastName}`.trim() || u.email,
                     displayName: u.displayName || `${firstName} ${lastName}`.trim(),
                     email: u.email,
-                    roles: (u.userRoles || []).map(r => r.roleName),
+                    roles: userRoles, // Return complete role objects with scopes
                     role: u.userRoles?.[0]?.roleName || null,
                     avatar: u.avatarUrl,
                     isActive: u.isActive,

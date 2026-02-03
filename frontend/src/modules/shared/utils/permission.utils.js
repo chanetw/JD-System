@@ -72,15 +72,15 @@ export const ROLE_DESCRIPTIONS = {
  */
 export const hasRole = (user, roleName) => {
     if (!user) return false;
-    
+
     // ✅ Multi-Role: ตรวจสอบจาก roles array
     if (user.roles && Array.isArray(user.roles)) {
-        return user.roles.some(r => 
-            r.name === roleName && 
+        return user.roles.some(r =>
+            r.name === roleName &&
             r.isActive !== false
         );
     }
-    
+
     // ⚠️ Legacy fallback: ตรวจสอบจาก role field เดิม
     return user.role === roleName;
 };
@@ -126,21 +126,21 @@ export const hasAllRoles = (user, roleNames) => {
  */
 export const getAllUserRoles = (user) => {
     if (!user) return [];
-    
+
     // ✅ Multi-Role
     if (user.roles && Array.isArray(user.roles)) {
         return user.roles.filter(r => r.isActive !== false);
     }
-    
+
     // ⚠️ Legacy fallback: สร้าง array จาก role field เดิม
     if (user.role) {
-        return [{ 
-            name: user.role, 
-            isActive: true, 
-            scopes: [] 
+        return [{
+            name: user.role,
+            isActive: true,
+            scopes: []
         }];
     }
-    
+
     return [];
 };
 
@@ -174,16 +174,16 @@ export const getUserRoleNames = (user) => {
  */
 export const getRoleScopes = (user, roleName) => {
     if (!user) return [];
-    
+
     // ✅ Multi-Role
     if (user.roles && Array.isArray(user.roles)) {
-        const role = user.roles.find(r => 
-            r.name === roleName && 
+        const role = user.roles.find(r =>
+            r.name === roleName &&
             r.isActive !== false
         );
         return role?.scopes || [];
     }
-    
+
     return [];
 };
 
@@ -201,20 +201,20 @@ export const getRoleScopes = (user, roleName) => {
  */
 export const hasRoleWithScope = (user, roleName, scopeLevel, scopeId) => {
     if (!user) return false;
-    
+
     const scopes = getRoleScopes(user, roleName);
     if (scopes.length === 0) {
         // ถ้าไม่มี scopes แต่มี role → Legacy mode (full access)
         return hasRole(user, roleName);
     }
-    
+
     return scopes.some(scope => {
         // Tenant-level → full access
         if (scope.level === SCOPE_LEVELS.TENANT) return true;
-        
+
         // ตรวจสอบ level และ scopeId ตรงกัน
-        return scope.level === scopeLevel && 
-               (scope.scopeId == scopeId || scope.scope_id == scopeId);
+        return scope.level === scopeLevel &&
+            (scope.scopeId == scopeId || scope.scope_id == scopeId);
     });
 };
 
@@ -253,32 +253,32 @@ export const hasTenantLevelScope = (user, roleName) => {
  */
 export const canCreateJobInProject = (user, projectId, projectBudId = null) => {
     if (!user) return false;
-    
+
     // Admin สามารถทำได้ทุกอย่าง
     if (hasRole(user, ROLES.ADMIN)) return true;
-    
+
     // ต้องมี role 'requester'
     if (!hasRole(user, ROLES.REQUESTER)) return false;
-    
+
     const scopes = getRoleScopes(user, ROLES.REQUESTER);
-    
+
     // ถ้าไม่มี scopes (legacy) → full access
     if (scopes.length === 0) return true;
-    
+
     return scopes.some(scope => {
         // Tenant-level → full access
         if (scope.level === SCOPE_LEVELS.TENANT) return true;
-        
+
         // BUD-level → ตรวจสอบ budId
         if (scope.level === SCOPE_LEVELS.BUD && projectBudId) {
             return scope.scopeId == projectBudId || scope.scope_id == projectBudId;
         }
-        
+
         // Project-level → ตรวจสอบ projectId
         if (scope.level === SCOPE_LEVELS.PROJECT) {
             return scope.scopeId == projectId || scope.scope_id == projectId;
         }
-        
+
         return false;
     });
 };
@@ -295,27 +295,27 @@ export const canCreateJobInProject = (user, projectId, projectBudId = null) => {
  */
 export const canApproveInBud = (user, budId) => {
     if (!user) return false;
-    
+
     // Admin สามารถทำได้ทุกอย่าง
     if (hasRole(user, ROLES.ADMIN)) return true;
-    
+
     // ต้องมี role 'approver'
     if (!hasRole(user, ROLES.APPROVER)) return false;
-    
+
     const scopes = getRoleScopes(user, ROLES.APPROVER);
-    
+
     // ถ้าไม่มี scopes (legacy) → full access
     if (scopes.length === 0) return true;
-    
+
     return scopes.some(scope => {
         // Tenant-level → full access
         if (scope.level === SCOPE_LEVELS.TENANT) return true;
-        
+
         // BUD-level → ตรวจสอบ budId
         if (scope.level === SCOPE_LEVELS.BUD) {
             return scope.scopeId == budId || scope.scope_id == budId;
         }
-        
+
         return false;
     });
 };
@@ -330,32 +330,32 @@ export const canApproveInBud = (user, budId) => {
  */
 export const canApproveInProject = (user, projectId, projectBudId = null) => {
     if (!user) return false;
-    
+
     // Admin สามารถทำได้ทุกอย่าง
     if (hasRole(user, ROLES.ADMIN)) return true;
-    
+
     // ต้องมี role 'approver'
     if (!hasRole(user, ROLES.APPROVER)) return false;
-    
+
     const scopes = getRoleScopes(user, ROLES.APPROVER);
-    
+
     // ถ้าไม่มี scopes (legacy) → full access
     if (scopes.length === 0) return true;
-    
+
     return scopes.some(scope => {
         // Tenant-level → full access
         if (scope.level === SCOPE_LEVELS.TENANT) return true;
-        
+
         // BUD-level → ตรวจสอบ budId
         if (scope.level === SCOPE_LEVELS.BUD && projectBudId) {
             return scope.scopeId == projectBudId || scope.scope_id == projectBudId;
         }
-        
+
         // Project-level → ตรวจสอบ projectId
         if (scope.level === SCOPE_LEVELS.PROJECT) {
             return scope.scopeId == projectId || scope.scope_id == projectId;
         }
-        
+
         return false;
     });
 };
@@ -367,29 +367,34 @@ export const canApproveInProject = (user, projectId, projectBudId = null) => {
  * @param {number|string} budId - ID ของ BUD
  * @returns {boolean} true ถ้าสามารถรับงานได้
  */
-export const canBeAssignedInBud = (user, budId) => {
+export const canBeAssignedInBud = (user, budId, projectId = null) => {
     if (!user) return false;
-    
+
     // Admin สามารถทำได้ทุกอย่าง
     if (hasRole(user, ROLES.ADMIN)) return true;
-    
+
     // ต้องมี role 'assignee'
     if (!hasRole(user, ROLES.ASSIGNEE)) return false;
-    
+
     const scopes = getRoleScopes(user, ROLES.ASSIGNEE);
-    
+
     // ถ้าไม่มี scopes (legacy) → full access
     if (scopes.length === 0) return true;
-    
+
     return scopes.some(scope => {
         // Tenant-level → full access
         if (scope.level === SCOPE_LEVELS.TENANT) return true;
-        
+
         // BUD-level → ตรวจสอบ budId
         if (scope.level === SCOPE_LEVELS.BUD) {
             return scope.scopeId == budId || scope.scope_id == budId;
         }
-        
+
+        // Project-level → ตรวจสอบ projectId
+        if (scope.level === SCOPE_LEVELS.PROJECT && projectId) {
+            return scope.scopeId == projectId || scope.scope_id == projectId;
+        }
+
         return false;
     });
 };
@@ -431,16 +436,16 @@ export const getRoleDescription = (roleName) => {
  */
 export const getPrimaryRole = (user) => {
     if (!user) return null;
-    
+
     const roles = getUserRoleNames(user);
-    
+
     // Priority order
     const priority = [ROLES.ADMIN, ROLES.APPROVER, ROLES.REQUESTER, ROLES.ASSIGNEE];
-    
+
     for (const role of priority) {
         if (roles.includes(role)) return role;
     }
-    
+
     return roles[0] || user.role || null;
 };
 
@@ -493,23 +498,23 @@ export const isAssignee = (user) => hasRole(user, ROLES.ASSIGNEE);
  */
 export const getScopeSummary = (user, roleName) => {
     const scopes = getRoleScopes(user, roleName);
-    
+
     if (scopes.length === 0) return 'ทุกโครงการ (legacy)';
-    
+
     // Check for tenant-level
     const hasTenant = scopes.some(s => s.level === SCOPE_LEVELS.TENANT);
     if (hasTenant) return 'ทั้งบริษัท';
-    
+
     // List scope names
     const scopeNames = scopes
         .map(s => s.scopeName || s.scope_name || `ID: ${s.scopeId || s.scope_id}`)
         .filter(Boolean);
-    
+
     if (scopeNames.length === 0) return 'ไม่ระบุ';
     if (scopeNames.length > 3) {
         return `${scopeNames.slice(0, 3).join(', ')} และอีก ${scopeNames.length - 3} รายการ`;
     }
-    
+
     return scopeNames.join(', ');
 };
 
@@ -522,18 +527,18 @@ export const getScopeSummary = (user, roleName) => {
  */
 export const getAccessibleProjects = (user, allProjects = []) => {
     if (!user || !Array.isArray(allProjects)) return [];
-    
+
     // Admin → all projects
     if (hasRole(user, ROLES.ADMIN)) return allProjects;
-    
+
     // ไม่มี requester role → ไม่มี projects
     if (!hasRole(user, ROLES.REQUESTER)) return [];
-    
+
     const scopes = getRoleScopes(user, ROLES.REQUESTER);
-    
+
     // Legacy mode (no scopes) → all projects
     if (scopes.length === 0) return allProjects;
-    
+
     return allProjects.filter(project => {
         return scopes.some(scope => {
             if (scope.level === SCOPE_LEVELS.TENANT) return true;
