@@ -25,8 +25,18 @@ const httpClient = axios.create({
 // Request interceptor: Add authorization token
 httpClient.interceptors.request.use(
   (config) => {
-    // Get token from localStorage
-    const token = localStorage.getItem('token');
+    // Get token from localStorage (Support both V1 and V2)
+    const tokenV1 = localStorage.getItem('token');
+    const tokenV2 = localStorage.getItem('auth_token_v2');
+    const token = tokenV1 || tokenV2;
+
+    // 🔍 DEBUG: Log token source for troubleshooting
+    console.log('[httpClient] 🔐 Token Check:', {
+      hasV1Token: !!tokenV1,
+      hasV2Token: !!tokenV2,
+      usingToken: token ? `${token.substring(0, 20)}...` : 'NONE',
+      requestUrl: config.url
+    });
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;

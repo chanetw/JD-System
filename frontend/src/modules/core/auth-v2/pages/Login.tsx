@@ -16,7 +16,6 @@ const LoginV2: React.FC = () => {
   // Form state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [tenantId, setTenantId] = useState(1); // Default tenant
   const [showPassword, setShowPassword] = useState(false);
 
   // Get redirect destination
@@ -43,7 +42,7 @@ const LoginV2: React.FC = () => {
     }
 
     try {
-      const user = await login(email, password, tenantId);
+      const user = await login(email, password);
 
       // If user must change password (forced change after approval), redirect to that page
       if (user?.mustChangePassword) {
@@ -141,9 +140,6 @@ const LoginV2: React.FC = () => {
                 </button>
               </div>
             </div>
-
-            {/* Tenant ID (hidden for now, can be shown for multi-tenant) */}
-            <input type="hidden" value={tenantId} onChange={(e) => setTenantId(Number(e.target.value))} />
           </div>
 
           {/* Submit Button */}

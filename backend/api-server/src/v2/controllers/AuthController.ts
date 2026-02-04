@@ -84,9 +84,9 @@ class AuthController {
       const { email, password, tenantId }: ILoginRequest = req.body;
 
       // Validate required fields
-      if (!email || !password || !tenantId) {
+      if (!email || !password) {
         res.status(400).json(
-          errorResponse(ErrorCodes.MISSING_FIELDS, 'Email, password, and tenantId are required')
+          errorResponse(ErrorCodes.MISSING_FIELDS, 'Email and password are required')
         );
         return;
       }

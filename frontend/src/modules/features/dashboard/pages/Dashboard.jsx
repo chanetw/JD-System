@@ -13,7 +13,7 @@
 
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuthStore } from '@core/stores/authStore';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import api from '@shared/services/apiService';
 
 /**
@@ -22,7 +22,9 @@ import api from '@shared/services/apiService';
  */
 export default function Dashboard() {
     // ดึงข้อมูล user จาก authStore
-    const { user } = useAuthStore();
+    const { user } = useAuthStoreV2();
+    console.log('[Dashboard] Current User:', user);
+    console.log('[Dashboard] User Role:', user?.roleName);
 
     // ============================================
     // State - ข้อมูลที่ใช้ใน Component
@@ -110,12 +112,12 @@ export default function Dashboard() {
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
                     <p className="text-gray-500">
-                        สวัสดี, {user?.displayName || user?.firstName || 'ผู้ใช้งาน'} <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full text-gray-600">({user?.roles?.[0] || 'User'})</span>
+                        สวัสดี, {user?.displayName || user?.firstName || 'ผู้ใช้งาน'} <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full text-gray-600">({user?.roleName || 'User'})</span>
                     </p>
                 </div>
 
-                {/* ปุ่ม Create DJ (เฉพาะ Admin และ Requester) */}
-                {['admin', 'requester'].includes(user?.roles?.[0]) && (
+                {/* ปุ่ม Create DJ (เฉพาะ Admin และ OrgAdmin) */}
+                {(['SuperAdmin', 'OrgAdmin', 'admin'].includes(user?.roleName) || user?.role === 'admin') && (
                     <Link
                         to="/create"
                         className="flex items-center gap-2 px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors shadow-sm"

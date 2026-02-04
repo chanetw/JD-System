@@ -35,7 +35,19 @@ export const jobService = {
     getJobsByRole: async (user) => {
         try {
             // ✓ NEW: Use Backend REST API with RLS context
-            const role = user.role || (user.roles && (user.roles[0]?.name || user.roles[0]?.roleName || user.roles[0])) || 'requester';
+            // Handle V1 (roles array) and V2 (role object or roleName string)
+            let role = 'requester';
+
+            if (typeof user.role === 'string') {
+                role = user.role;
+            } else if (user.role && user.role.name) {
+                role = user.role.name;
+            } else if (user.roleName) {
+                role = user.roleName;
+            } else if (user.roles && user.roles.length > 0) {
+                role = user.roles[0]?.name || user.roles[0]?.roleName || user.roles[0];
+            }
+
             const userId = user.id;
 
             console.log(`[getJobsByRole] Filtering for Role: ${role}, UserID: ${userId}`);
@@ -145,46 +157,51 @@ export const jobService = {
         }
     },
 
+    /**
+     * ดึงรายละเอียดงานเดี่ยวผ่าน Backend API (V2)
+     * @param {number} id - รหัสงาน
+     */
     getJobById: async (id) => {
-        // Try Complex Query
-        let { data, error } = await supabase.from('jobs')
-            .select(`
-            *,
-            project:projects(*),
-            job_type:job_types(*),
-            requester:users!jobs_requester_id_fkey(*),
-            assignee:users!jobs_assignee_id_fkey(*)
-         `)
-            .eq('id', id)
-            .single();
+        try {
+            console.log(`[jobService] getJobById: ${id}`);
+            const response = await httpClient.get(`/jobs/${id}`);
 
-        if (error) {
-            console.error('[apiDatabase] getJobById Complex Query Error:', error);
-            // Fallback: Simple Query
-            const simpleResult = await supabase.from('jobs').select('*').eq('id', id).single();
-            if (simpleResult.error) return null;
-            data = simpleResult.data;
+            if (!response.data.success) {
+                console.error('[jobService] getJobById failed:', response.data.message);
+                return null;
+            }
+
+            const data = response.data.data;
+
+            // Map Backend V2 data to Frontend component expectation
+            return {
+                ...data,
+                // Ensure field names match what JobDetail.jsx expects
+                brief: {
+                    objective: data.objective,
+                    headline: data.headline,
+                    subHeadline: data.subHeadline,
+                    sellingPoints: data.sellingPoints || []
+                },
+                // Flatten relation names for InfoRow
+                project: data.project, // Backend already returns name as 'project'
+                jobType: data.jobType, // Backend already returns name as 'jobType'
+                slaWorkingDays: data.slaWorkingDays,
+                assigneeName: data.assignee?.name || null,
+                requesterName: data.requester?.name || null,
+                // Support both snake_case and camelCase for legacy compatibility
+                dj_id: data.djId,
+                due_date: data.deadline,
+                requester_id: data.requesterId,
+                assignee_id: data.assigneeId,
+                project_id: data.projectId,
+                job_type_id: data.jobTypeId
+            };
+
+        } catch (error) {
+            console.error('[jobService] getJobById error:', error);
+            return null;
         }
-
-        if (!data) return null;
-
-        return {
-            id: data.id,
-            djId: data.dj_id,
-            subject: data.subject,
-            status: data.status,
-            priority: data.priority,
-            deadline: data.due_date,
-            brief: {
-                objective: data.objective,
-                headline: data.headline,
-                subHeadline: data.sub_headline
-            },
-            requesterId: data.requester_id,
-            assigneeId: data.assignee_id,
-            projectId: data.project_id,
-            jobTypeId: data.job_type_id
-        };
     },
 
     /**
@@ -335,20 +352,42 @@ export const jobService = {
             parentType = newType;
         }
 
-        // 2. สร้าง Parent Job
+        // 2. Generate DJ ID and Create Parent Job
+        // Strategy: Get latest created DJ ID to avoid collision (Count is not reliable with gaps/RLS)
+        const { data: latestJob } = await supabase
+            .from('jobs')
+            .select('dj_id')
+            .ilike('dj_id', `DJ-${new Date().getFullYear()}-%`)
+            .order('dj_id', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        const year = new Date().getFullYear();
+        let runningNumber = 1;
+
+        if (latestJob && latestJob.dj_id) {
+            const parts = latestJob.dj_id.split('-');
+            if (parts.length === 3) {
+                runningNumber = parseInt(parts[2]) + 1;
+            }
+        }
+
+        const djId = `DJ-${year}-${String(runningNumber).padStart(4, '0')}`;
+
         const parentPayload = {
             tenant_id: jobData.tenantId || 1,
             project_id: parseInt(jobData.projectId),
             job_type_id: parentType.id, // Dummy Job Type
+            dj_id: djId,
             subject: jobData.subject,
             objective: jobData.brief?.objective,
             headline: jobData.brief?.headline,
             sub_headline: jobData.brief?.subHeadline,
-            priority: jobData.priority,
+            priority: jobData.priority?.toLowerCase() || 'normal', // Normalize priority
             status: 'pending_approval',
             requester_id: jobData.requesterId, // Use from Auth context
             assignee_id: null, // Parent ไม่มี Assignee
-            due_date: null, // จะคำนวณหลังจากสร้าง Children
+            due_date: jobData.deadline || new Date().toISOString(), // Initial deadline
             is_parent: true,
             parent_job_id: null
         };
@@ -359,7 +398,11 @@ export const jobService = {
             .select()
             .single();
 
-        if (parentError) throw parentError;
+        if (parentError) {
+            console.error('[Parent-Child] Create Parent Job FAILED:', parentError);
+            console.error('Payload:', parentPayload);
+            throw parentError;
+        }
         console.log('[Parent-Child] Parent Job created:', parentJob.dj_id);
 
         // 3. สร้าง Child Jobs
@@ -371,19 +414,25 @@ export const jobService = {
             // ดึง SLA ของ Job Type นี้
             const { data: jobTypeInfo } = await supabase
                 .from('job_types')
-                .select('id, sla_working_days')
+                .select('id, sla_days')
                 .eq('id', childType.jobTypeId)
                 .single();
 
             // คำนวณ Due Date จาก SLA
-            const { addWorkDays } = await import('../../utils/slaCalculator');
-            const childDueDate = addWorkDays(new Date(), jobTypeInfo?.sla_working_days || 7, holidays);
+            const { calculateDueDate } = await import('../../utils/slaCalculator');
+            const childDueDate = calculateDueDate(new Date(), jobTypeInfo?.sla_days || 7, holidays);
+
+            // Generate Child DJ ID
+            // Note: This logic assumes no other jobs created in between. In high concurrency this is risky but acceptable for legacy client-side creation.
+            // Better approach: (parent ID) + current index + 1
+            const childDjId = `DJ-${year}-${String(runningNumber + 1 + childJobs.length).padStart(4, '0')}`;
 
             // สร้าง Child Job
             const childPayload = {
                 tenant_id: jobData.tenantId || 1,
                 project_id: parseInt(jobData.projectId),
                 job_type_id: parseInt(childType.jobTypeId),
+                dj_id: childDjId,
                 subject: `${jobData.subject} - Child #${childJobs.length + 1}`,
                 objective: jobData.brief?.objective,
                 headline: jobData.brief?.headline,

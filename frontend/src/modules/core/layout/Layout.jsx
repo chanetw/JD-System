@@ -10,8 +10,8 @@
 
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
-import { useAuthStore } from '@core/stores/authStore';
-import { checkConnection } from '@shared/services/supabaseClient';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
+import httpClient from '@shared/services/httpClient';
 import Sidebar from './Sidebar';
 import Header from './Header';
 
@@ -20,8 +20,8 @@ import Header from './Header';
  * @description โครงสร้างหลักของแอป
  */
 export default function Layout() {
-    // ดึง state จาก authStore
-    const { isAuthenticated } = useAuthStore();
+    // ดึง state จาก authStoreV2 (Updated to V2)
+    const { isAuthenticated } = useAuthStoreV2();
     const location = useLocation();
 
     // ============================================
@@ -29,11 +29,15 @@ export default function Layout() {
     // ============================================
     useEffect(() => {
         const verifyDB = async () => {
-            const status = await checkConnection();
-            if (status.success) {
-                console.log(`[DB Check] Page: ${location.pathname} - ✅ Database Connected`);
-            } else {
-                console.error(`[DB Check] Page: ${location.pathname} - ❌ Database Error:`, status.message);
+            try {
+                const response = await httpClient.get('/v2/health');
+                if (response.status === 200 && (response.data.status === 'ok' || response.data.success)) {
+                    console.log(`[Backend Check] Page: ${location.pathname} - ✅ API Server Connected`);
+                } else {
+                    console.warn(`[Backend Check] Page: ${location.pathname} - ⚠️ API Server Issue:`, response.data);
+                }
+            } catch (error) {
+                console.error(`[Backend Check] Page: ${location.pathname} - ❌ API Server Error:`, error.message);
             }
         };
 

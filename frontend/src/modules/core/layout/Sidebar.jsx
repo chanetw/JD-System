@@ -9,7 +9,7 @@
  */
 
 import { NavLink } from 'react-router-dom';
-import { useAuthStore } from '@core/stores/authStore';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { FolderIcon, Cog6ToothIcon, UserGroupIcon, BuildingOfficeIcon } from '@heroicons/react/24/outline';
 
 /**
@@ -18,33 +18,23 @@ import { FolderIcon, Cog6ToothIcon, UserGroupIcon, BuildingOfficeIcon } from '@h
  */
 export default function Sidebar() {
     /** ข้อมูลผู้ใช้งานปัจจุบันจาก store */
-    const { user } = useAuthStore();
-
-    // Helper to safely get role name
-    const getRoleName = (r) => {
-        if (typeof r === 'string') return r.toLowerCase();
-        if (typeof r === 'object' && r) {
-            const val = r.name || r.roleName || r.id || '';
-            return String(val).toLowerCase();
-        }
-        return '';
-    };
+    const { user } = useAuthStoreV2();
 
     /** ตรวจสอบสิทธิ์ว่าเป็นผู้ดูแลระบบ (Admin) หรือไม่ */
-    const isAdmin = user?.roles?.some(r => getRoleName(r) === 'admin') ||
-        getRoleName(user?.role) === 'admin';
+    const isAdmin =
+        user?.roleName === 'SuperAdmin' ||
+        user?.roleName === 'OrgAdmin' ||
+        user?.roleName === 'admin' ||
+        user?.role === 'admin';
 
     /** ตรวจสอบสิทธิ์ Assignee (Graphic/Editor) */
-    const isAssignee = user?.roles?.some(r => ['assignee', 'graphic', 'editor'].includes(getRoleName(r))) ||
-        ['assignee', 'graphic', 'editor'].includes(getRoleName(user?.role));
+    const isAssignee = ['TeamLead', 'Member'].includes(user?.roleName);
 
     /** ตรวจสอบสิทธิ์ Manager (Department Head) */
-    const isManager = user?.roles?.some(r => ['manager', 'head'].includes(getRoleName(r))) ||
-        ['manager', 'head'].includes(getRoleName(user?.role));
+    const isManager = user?.roleName === 'TeamLead';
 
     /** ตรวจสอบสิทธิ์ Supervisor */
-    const isSupervisor = user?.roles?.some(r => getRoleName(r) === 'supervisor') ||
-        getRoleName(user?.role) === 'supervisor';
+    const isSupervisor = user?.roleName === 'OrgAdmin';
 
     /** ตรวจสอบสิทธิ์เข้าถึง Analytics Dashboard (Admin, Manager, Supervisor) */
     const canAccessAnalytics = isAdmin || isManager || isSupervisor;

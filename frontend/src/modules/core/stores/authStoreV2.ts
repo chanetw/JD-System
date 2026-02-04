@@ -7,6 +7,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { authServiceV2, type IRegisterRequestData, type IPendingUser, type IRegistrationCounts } from '../../shared/services/modules/authServiceV2';
+import { supabase } from '../../shared/services/supabaseClient';
 import type { IUser, IRegisterRequest } from '../../../types/auth.types';
 
 // Registration request result type
@@ -34,7 +35,7 @@ interface AuthState {
 // Auth Actions Interface
 interface AuthActions {
   initialize: () => Promise<void>;
-  login: (email: string, password: string, tenantId: number) => Promise<IUser>;
+  login: (email: string, password: string, tenantId?: number) => Promise<IUser>;
   register: (data: IRegisterRequest) => Promise<IUser>;
   registerRequest: (data: IRegisterRequestData) => Promise<IRegisterRequestResult>;
   logout: () => void;
@@ -92,6 +93,12 @@ export const useAuthStoreV2 = create<AuthStore>()(
           const response = await authServiceV2.verifyToken(token);
 
           if (response.success && response.data) {
+            // setSupabaseToken(token);
+            // await supabase.auth.setSession({
+            //   access_token: token,
+            //   refresh_token: token,
+            // });
+
             set({
               user: response.data,
               token,
@@ -107,6 +114,7 @@ export const useAuthStoreV2 = create<AuthStore>()(
         } catch (error) {
           console.error('[AuthStoreV2] Initialize error:', error);
           localStorage.removeItem('auth_token_v2');
+          // clearSupabaseToken();
           set({ ...initialState, isLoading: false });
         }
       },
@@ -114,7 +122,7 @@ export const useAuthStoreV2 = create<AuthStore>()(
       /**
        * Login with email and password
        */
-      login: async (email: string, password: string, tenantId: number) => {
+      login: async (email: string, password: string, tenantId?: number) => {
         set({ isLoading: true, error: null });
 
         try {
@@ -129,7 +137,16 @@ export const useAuthStoreV2 = create<AuthStore>()(
           const { user, token } = response.data;
 
           // Store token
+          // Store token
           localStorage.setItem('auth_token_v2', token);
+
+          // Sync Supabase Session
+          // Sync Supabase Session
+          // setSupabaseToken(token);
+          // await supabase.auth.setSession({
+          //   access_token: token,
+          //   refresh_token: token,
+          // });
 
           set({
             user,
@@ -165,7 +182,16 @@ export const useAuthStoreV2 = create<AuthStore>()(
           const { user, token } = response.data;
 
           // Store token
+          // Store token
           localStorage.setItem('auth_token_v2', token);
+
+          // Sync Supabase Session
+          // Sync Supabase Session
+          // setSupabaseToken(token);
+          // await supabase.auth.setSession({
+          //   access_token: token,
+          //   refresh_token: token,
+          // });
 
           set({
             user,
@@ -230,6 +256,8 @@ export const useAuthStoreV2 = create<AuthStore>()(
 
         // Clear stored token
         localStorage.removeItem('auth_token_v2');
+        // clearSupabaseToken();
+        // supabase.auth.signOut().catch(console.error);
 
         // Reset state
         set(initialState);

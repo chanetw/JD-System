@@ -91,7 +91,7 @@ export interface ITokenPayload {
 export interface ILoginRequest {
   email: string;
   password: string;
-  tenantId: number;
+  tenantId?: number;
 }
 
 // Login response

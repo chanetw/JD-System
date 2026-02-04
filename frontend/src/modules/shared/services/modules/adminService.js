@@ -749,6 +749,34 @@ export const adminService = {
         return data;
     },
 
+    /**
+     * ดึงรายการผู้ใช้ทั้งหมดผ่าน Backend API
+     * @returns {Promise<Array>} รายการผู้ใช้
+     */
+    getUsers: async () => {
+        try {
+            const response = await httpClient.get('/users');
+            if (!response.data.success) {
+                console.warn('[adminService] getUsers failed:', response.data.message);
+                return [];
+            }
+            // Backend returns paginated result: { data: { data: [], pagination: {} } }
+            // So we need response.data.data.data
+            const users = response.data.data.data || [];
+            return users.map(u => ({
+                id: u.id,
+                name: u.displayName || `${u.firstName} ${u.lastName}`.trim(),
+                email: u.email,
+                avatar: u.avatarUrl,
+                role: u.roles?.[0]?.roleName || u.role || 'User',
+                isActive: u.isActive
+            }));
+        } catch (error) {
+            console.error('[adminService] getUsers error:', error);
+            return [];
+        }
+    },
+
     // ============================================
     // Multi-Role API Functions
     // ============================================

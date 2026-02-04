@@ -36,7 +36,7 @@ export class AuthService {
       throw new Error('ORGANIZATION_NOT_FOUND');
     }
 
-    const effectiveTenantId = tenantId || organization.tenantId;
+    const effectiveTenantId = tenantId || 1; // Default to SENA Group (1)
 
     // Check if email already exists for this tenant
     const existingUser = await User.findOne({
@@ -116,11 +116,14 @@ export class AuthService {
   async login(data: ILoginRequest): Promise<ILoginResponse> {
     const { email, password, tenantId } = data;
 
+    // Default to Tenant 1 (SENA Group) if not provided
+    const targetTenantId = tenantId || 1;
+
     // Find user with password (using scope)
     const user = await User.scope('withPassword').findOne({
       where: {
         email: email.toLowerCase(),
-        tenantId,
+        tenantId: targetTenantId,
       },
       include: [
         { model: Role, as: 'role' },

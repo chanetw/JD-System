@@ -12,7 +12,7 @@
 
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useEffect, Suspense, lazy } from 'react';
-import { useAuthStore } from '@core/stores/authStore';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 
 // Core Modules (loaded immediately)
 import { Layout } from '@core/layout';
@@ -59,8 +59,8 @@ const PageLoadingFallback = () => (
  */
 function App() {
   const dynamicRoutes = getAllRoutes();
-  const initialize = useAuthStore((state) => state.initialize);
-  const isLoading = useAuthStore((state) => state.isLoading);
+  const initialize = useAuthStoreV2((state) => state.initialize);
+  const isLoading = useAuthStoreV2((state) => state.isLoading);
 
   // Initialize auth on app start
   useEffect(() => {

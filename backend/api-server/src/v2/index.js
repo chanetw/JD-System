@@ -52,21 +52,21 @@ const config = getDatabaseConfig();
 
 const sequelize = 'url' in config && config.url
   ? new Sequelize(config.url, {
-      dialect: 'postgres',
-      dialectOptions: config.dialectOptions,
-      logging: process.env.NODE_ENV === 'development' ? console.log : false,
-      pool: { max: 5, min: 0, acquire: 30000, idle: 10000 },
-      define: { timestamps: true, underscored: true, freezeTableName: true }
-    })
+    dialect: 'postgres',
+    dialectOptions: config.dialectOptions,
+    logging: process.env.NODE_ENV === 'development' ? console.log : false,
+    pool: { max: 5, min: 0, acquire: 30000, idle: 10000 },
+    define: { timestamps: true, underscored: true, freezeTableName: true }
+  })
   : new Sequelize(config.database, config.username, config.password, {
-      host: config.host,
-      port: config.port,
-      dialect: 'postgres',
-      dialectOptions: config.dialectOptions,
-      logging: process.env.NODE_ENV === 'development' ? console.log : false,
-      pool: { max: 5, min: 0, acquire: 30000, idle: 10000 },
-      define: { timestamps: true, underscored: true, freezeTableName: true }
-    });
+    host: config.host,
+    port: config.port,
+    dialect: 'postgres',
+    dialectOptions: config.dialectOptions,
+    logging: process.env.NODE_ENV === 'development' ? console.log : false,
+    pool: { max: 5, min: 0, acquire: 30000, idle: 10000 },
+    define: { timestamps: true, underscored: true, freezeTableName: true }
+  });
 
 // ============================================================================
 // Models
@@ -171,7 +171,8 @@ const formatUserResponse = (user) => ({
   lastName: user.lastName,
   fullName: `${user.firstName} ${user.lastName}`,
   roleId: user.roleId,
-  roleName: user.role?.name || 'Member',
+  // Use role object if available, otherwise check roleName property, or default to Member
+  roleName: user.role?.name || user.roleName || 'Member',
   isActive: user.isActive,
   lastLoginAt: user.lastLoginAt,
   createdAt: user.createdAt,
@@ -309,8 +310,8 @@ router.post('/auth/register', async (req, res, next) => {
 router.post('/auth/login', async (req, res, next) => {
   try {
     const { email, password, tenantId } = req.body;
-    if (!email || !password || !tenantId) {
-      return res.status(400).json(errorResponse('MISSING_FIELDS', 'Email, password, and tenantId are required'));
+    if (!email || !password) {
+      return res.status(400).json(errorResponse('MISSING_FIELDS', 'Email and password are required'));
     }
 
     // Find user in V1 users table via adapter
@@ -674,10 +675,11 @@ router.post('/auth/reset-password', async (req, res, next) => {
 // GET /api/v2/auth/verify
 router.get('/auth/verify', authenticateToken, async (req, res, next) => {
   try {
-    const user = await User.findByPk(req.user.userId, {
-      include: [{ model: Role, as: 'role' }, { model: Organization, as: 'organization' }]
-    });
+    // Use Adapter instead of Sequelize Model
+    const user = await PrismaV1Adapter.findUserById(req.user.userId);
+
     if (!user) return res.status(404).json(errorResponse('NOT_FOUND', 'User not found'));
+
     res.json(successResponse(formatUserResponse(user), 'Token is valid'));
   } catch (error) {
     next(error);
@@ -697,13 +699,12 @@ router.post('/auth/refresh', async (req, res, next) => {
       return res.status(401).json(errorResponse('TOKEN_INVALID', 'Invalid token'));
     }
 
-    const user = await User.findByPk(decoded?.userId, {
-      include: [{ model: Role, as: 'role' }, { model: Organization, as: 'organization' }]
-    });
+    // Use Adapter instead of Sequelize Model
+    const user = await PrismaV1Adapter.findUserById(decoded?.userId);
 
     if (!user || !user.isActive) return res.status(401).json(errorResponse('TOKEN_INVALID', 'Invalid token'));
 
-    const token = generateToken(user.id, user.tenantId, user.organizationId, user.email, user.roleId, user.role.name);
+    const token = generateToken(user.id, user.tenantId, user.organizationId, user.email, user.roleId, user.roleName || 'Member');
     res.json(successResponse({ token, expiresIn: JWT_EXPIRES_IN }, 'Token refreshed'));
   } catch (error) {
     next(error);
@@ -721,9 +722,9 @@ router.post('/auth/logout', authenticateToken, (req, res) => {
 // GET /api/v2/users/me
 router.get('/users/me', authenticateToken, async (req, res, next) => {
   try {
-    const user = await User.findByPk(req.user.userId, {
-      include: [{ model: Role, as: 'role' }, { model: Organization, as: 'organization' }]
-    });
+    // Use Adapter instead of Sequelize Model
+    const user = await PrismaV1Adapter.findUserById(req.user.userId);
+
     if (!user) return res.status(404).json(errorResponse('NOT_FOUND', 'User not found'));
     res.json(successResponse(formatUserResponse(user)));
   } catch (error) {

@@ -19,6 +19,7 @@ const userService = new UserService();
 
 /**
  * Middleware สำหรับตรวจสอบ JWT token
+ * Supports both V1 and V2 token formats
  *
  * @param {Object} req - Express request
  * @param {Object} res - Express response
@@ -36,16 +37,79 @@ export function authenticateToken(req, res, next) {
     });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+  // Debug JWT verification
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    console.error('[Auth] ⚠️ JWT_SECRET is not set in environment variables!');
+    return res.status(500).json({
+      success: false,
+      error: 'SERVER_CONFIG_ERROR',
+      message: 'JWT Secret not configured on server'
+    });
+  }
+
+  jwt.verify(token, jwtSecret, (err, user) => {
     if (err) {
+      console.error('[Auth] JWT Verification Error:', {
+        errorName: err.name,
+        errorMessage: err.message,
+        tokenLength: token.length,
+        secretExists: !!jwtSecret
+      });
       return res.status(403).json({
         success: false,
         error: 'TOKEN_INVALID',
-        message: 'Token ไม่ถูกต้องหรือหมดอายุ'
+        message: 'Token ไม่ถูกต้องหรือหมดอายุ',
+        details: process.env.NODE_ENV === 'development' ? err.message : undefined
       });
     }
 
-    req.user = user;
+    if (!user) {
+      console.warn('[Auth] Token payload is empty or invalid');
+      return res.status(403).json({
+        success: false,
+        error: 'INVALID_TOKEN_PAYLOAD',
+        message: 'Token payload is invalid'
+      });
+    }
+
+    // Normalize token payload to support both V1 and V2 formats
+    // V1: { sub, userId, tenantId, email, roles: [] }
+    // V2: { sub, userId, tenantId, organizationId, email, roleId, role }
+    const normalizedUser = {
+      sub: user.sub || user.userId,
+      userId: user.userId || user.id,
+      tenantId: user.tenantId,
+      email: user.email,
+      // Support both V1 (roles array) and V2 (role string)
+      roles: user.roles || (user.role ? [user.role] : []),
+      // Add V2 specific fields if present
+      organizationId: user.organizationId,
+      roleId: user.roleId,
+      role: user.role
+    };
+
+    // Validate required fields
+    if (!normalizedUser.tenantId || !normalizedUser.userId) {
+      console.warn('[Auth] Token missing required fields:', {
+        userId: normalizedUser.userId,
+        tenantId: normalizedUser.tenantId
+      });
+      return res.status(403).json({
+        success: false,
+        error: 'INVALID_TOKEN_PAYLOAD',
+        message: 'Token payload is invalid (missing userId or tenantId)'
+      });
+    }
+
+    console.log('[Auth] ✅ Token verified successfully:', {
+      userId: normalizedUser.userId,
+      tenantId: normalizedUser.tenantId,
+      roles: normalizedUser.roles,
+      isV2Token: !!user.roleId // Check if it's a V2 token
+    });
+
+    req.user = normalizedUser;
     next();
   });
 }
@@ -53,32 +117,62 @@ export function authenticateToken(req, res, next) {
 /**
  * Middleware to set RLS context for authenticated requests
  * Must be used AFTER authenticateToken middleware
+ * Supports both V1 and V2 token formats
  */
 export async function setRLSContextMiddleware(req, res, next) {
   try {
     if (req.user && req.user.tenantId) {
       const prisma = getDatabase();
-      await setRLSContext(prisma, req.user.tenantId);
+      const tenantId = req.user.tenantId;
+
+      console.log('[RLS Middleware] Setting RLS context:', {
+        userId: req.user.userId,
+        tenantId: tenantId,
+        hasOrganizationId: !!req.user.organizationId
+      });
+
+      await setRLSContext(prisma, tenantId);
+    } else {
+      console.warn('[RLS Middleware] User or tenantId not available:', {
+        hasUser: !!req.user,
+        tenantId: req.user?.tenantId
+      });
     }
     next();
   } catch (error) {
-    console.error('[RLS Middleware] Error:', error);
-    // Continue even if setting fails
+    console.error('[RLS Middleware] Error setting RLS context:', error.message);
+    // Continue even if setting fails - don't block the request
     next();
   }
 }
 
 /**
  * Middleware สำหรับตรวจสอบความเป็น Admin
+ * Supports both V1 (roles array) and V2 (role string) token formats
  */
 export function requireAdmin(req, res, next) {
-  if (req.user && req.user.roles && req.user.roles.includes('admin')) {
+  if (!req.user) {
+    return res.status(403).json({
+      success: false,
+      error: 'FORBIDDEN',
+      message: 'Authentication required'
+    });
+  }
+
+  // Check V1 format (roles array)
+  if (req.user.roles && Array.isArray(req.user.roles) && req.user.roles.includes('admin')) {
     return next();
   }
+
+  // Check V2 format (role string) - Admin roles in V2: SuperAdmin, OrgAdmin
+  if (req.user.role && ['SuperAdmin', 'OrgAdmin', 'admin'].includes(req.user.role)) {
+    return next();
+  }
+
   return res.status(403).json({
     success: false,
     error: 'FORBIDDEN',
-    message: 'เฉพาะ Admin เท่านั้นที่สามารถเข้าถึงได้'
+    message: 'Admin access required'
   });
 }
 
@@ -403,6 +497,63 @@ router.get('/me', authenticateToken, setRLSContextMiddleware, async (req, res) =
       success: false,
       error: 'GET_USER_FAILED',
       message: 'ไม่สามารถดึงข้อมูลผู้ใช้ได้'
+    });
+  }
+});
+
+/**
+ * GET /api/v2/auth/verify
+ * Verify token and return user (Frontend V2 auth system)
+ * Alias for /me endpoint
+ */
+router.get('/verify', authenticateToken, setRLSContextMiddleware, async (req, res) => {
+  try {
+    const prisma = getDatabase();
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.userId },
+      include: {
+        userRoles: {
+          select: {
+            roleName: true
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'USER_NOT_FOUND',
+        message: 'ไม่พบข้อมูลผู้ใช้'
+      });
+    }
+
+    // Map user data to IUser format for frontend
+    const formattedUser = {
+      id: user.id,
+      tenantId: user.tenantId,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      fullName: `${user.firstName} ${user.lastName}`.trim(),
+      displayName: user.displayName || `${user.firstName} ${user.lastName}`.trim(),
+      roleName: user.userRoles?.[0]?.roleName || 'Member',
+      isActive: user.isActive,
+      createdAt: user.createdAt
+    };
+
+    res.json({
+      success: true,
+      data: formattedUser
+    });
+
+  } catch (error) {
+    console.error('[Auth] Verify token error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'VERIFY_FAILED',
+      message: 'ไม่สามารถตรวจสอบ token ได้'
     });
   }
 });
