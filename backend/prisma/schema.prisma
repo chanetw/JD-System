@@ -247,6 +247,8 @@ model Job {
   description String? @db.Text
   headline    String? @db.VarChar(255)
   subHeadline String? @map("sub_headline") @db.VarChar(255)
+  briefLink   String? @map("brief_link") @db.VarChar(1000)
+  briefFiles  Json?   @default("[]") @map("brief_files")
 
   // Status & Priority
   status   String @default("draft") @db.VarChar(50)
@@ -258,6 +260,10 @@ model Job {
   closeRequestedBy Int? @map("close_requested_by")
   closedBy         Int? @map("closed_by")
   completedBy      Int? @map("completed_by")
+
+  // Parent-Child Relationship
+  isParent    Boolean @default(false) @map("is_parent")
+  parentJobId Int?    @map("parent_job_id")
 
   // Dates
   dueDate          DateTime? @map("due_date") @db.Timestamptz
@@ -282,6 +288,10 @@ model Job {
   closedByUser    User?   @relation("ClosedJobs", fields: [closedBy], references: [id])
   completedByUser User?   @relation("CompletedJobs", fields: [completedBy], references: [id])
 
+  // Parent-Child Self-Relation
+  parentJob  Job?  @relation("ParentChildJobs", fields: [parentJobId], references: [id], onDelete: SetNull)
+  childJobs  Job[] @relation("ParentChildJobs")
+
   jobItems        DesignJobItem[]
   attachments     JobAttachment[]
   deliverables    JobDeliverable[]
@@ -300,6 +310,7 @@ model Job {
   @@index([assigneeId])
   @@index([dueDate])
   @@index([createdAt])
+  @@index([parentJobId]) // Parent-Child lookup
   // ⚡ Performance: Composite Indexes for common queries
   @@index([tenantId, status, dueDate]) // Dashboard: งานตาม status และ due date
   @@index([assigneeId, status]) // My Queue: งานของฉันตาม status

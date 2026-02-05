@@ -51,6 +51,7 @@ router.get('/', async (req, res) => {
       case 'manager':
         where.status = { in: ['pending_approval', 'pending_level_1', 'pending_level_2'] };
         break;
+      case 'superadmin':
       case 'admin':
         // Admin sees all jobs (no additional filter)
         break;
@@ -489,7 +490,7 @@ router.get('/:id', async (req, res) => {
           select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, email: true }
         },
         jobItems: {
-          select: { id: true, name: true, quantity: true, size: true, status: true }
+          select: { id: true, name: true, quantity: true, status: true }
         },
         attachments: {
           select: { id: true, filePath: true, fileName: true, fileSize: true, createdAt: true }
@@ -531,6 +532,7 @@ router.get('/:id', async (req, res) => {
       subHeadline: job.subHeadline,
       jobTypeId: job.jobTypeId,
       jobType: job.jobType?.name,
+      slaWorkingDays: job.jobType?.slaWorkingDays,
       projectId: job.projectId,
       project: job.project?.name,
       projectCode: job.project?.code,
@@ -635,6 +637,363 @@ router.post('/:id/reject', async (req, res) => {
     });
   }
 });
+
+/**
+ * POST /api/jobs/parent-child
+ * สร้าง Parent Job พร้อม Child Jobs ใน Single Transaction
+ *
+ * ✅ SECURITY: ย้าย Orchestration มาที่ Backend เพื่อ:
+ * - Bypass RLS restrictions (ใช้ Service Role)
+ * - Atomicity (All-or-nothing)
+ * - Data Integrity (ไม่มี orphan jobs)
+ *
+ * @body {number} projectId - รหัสโครงการ (Required)
+ * @body {string} subject - หัวข้องาน (Required)
+ * @body {string} priority - ความเร่งด่วน: 'low' | 'normal' | 'urgent'
+ * @body {Object} brief - { objective, headline, subHeadline, description }
+ * @body {Array} jobTypes - รายการประเภทงานลูก [{ jobTypeId, assigneeId? }]
+ * @body {string} deadline - วันกำหนดส่งเริ่มต้น
+ *
+ * @returns {Object} - { success, data: { parent, children, totalCreated } }
+ */
+router.post('/parent-child', async (req, res) => {
+  try {
+    const prisma = getDatabase();
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
+
+    // ============================================
+    // Step 1: Validate Input
+    // ============================================
+    const {
+      projectId,
+      subject,
+      priority = 'normal',
+      brief = {},
+      objective,      // Fallback fields (for backward compatibility)
+      headline,
+      subHeadline,
+      description,
+      briefLink,
+      briefFiles,
+      jobTypes = [],
+      deadline
+    } = req.body;
+
+    // Merge brief object with fallback values from top-level fields
+    const briefData = {
+      objective: brief.objective || objective || null,
+      headline: brief.headline || headline || null,
+      subHeadline: brief.subHeadline || subHeadline || null,
+      description: brief.description || description || null,
+      briefLink: brief.briefLink || briefLink || null,
+      briefFiles: brief.briefFiles || briefFiles || []
+    };
+
+    if (!projectId || !subject || !jobTypes || jobTypes.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'MISSING_REQUIRED_FIELDS',
+        message: 'กรุณาระบุ projectId, subject และ jobTypes (อย่างน้อย 1 รายการ)'
+      });
+    }
+
+    // Validate project exists
+    const project = await prisma.project.findFirst({
+      where: { id: parseInt(projectId), tenantId }
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        error: 'PROJECT_NOT_FOUND',
+        message: 'ไม่พบโปรเจกต์ที่ระบุ'
+      });
+    }
+
+    // Validate all job types exist
+    const jobTypeIds = jobTypes.map(jt => parseInt(jt.jobTypeId));
+    const validJobTypes = await prisma.jobType.findMany({
+      where: { id: { in: jobTypeIds }, tenantId, isActive: true },
+      select: { id: true, name: true, slaWorkingDays: true }
+    });
+
+    if (validJobTypes.length !== jobTypeIds.length) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_JOB_TYPES',
+        message: 'บางประเภทงานไม่ถูกต้องหรือไม่พร้อมใช้งาน'
+      });
+    }
+
+    // Create a map for quick lookup
+    const jobTypeMap = new Map(validJobTypes.map(jt => [jt.id, jt]));
+
+    // ============================================
+    // Step 2: Execute Transaction
+    // ============================================
+    const result = await prisma.$transaction(async (tx) => {
+      // ----------------------------------------
+      // 2.1: Ensure PARENT_GROUP job type exists
+      // ----------------------------------------
+      let parentGroupType = await tx.jobType.findFirst({
+        where: {
+          tenantId,
+          name: 'Project Group (Parent)',
+          isActive: true
+        }
+      });
+
+      if (!parentGroupType) {
+        parentGroupType = await tx.jobType.create({
+          data: {
+            tenantId,
+            name: 'Project Group (Parent)',
+            slaWorkingDays: 0,
+            description: 'Parent job type for grouping child jobs',
+            isActive: true
+          }
+        });
+        console.log('[Parent-Child] Created PARENT_GROUP job type');
+      }
+
+      // ----------------------------------------
+      // 2.2: Generate DJ-IDs atomically
+      // Use FOR UPDATE to prevent race conditions
+      // ----------------------------------------
+      const year = new Date().getFullYear();
+      const prefix = `DJ-${year}-`;
+
+      // Get the latest DJ-ID with row lock
+      const latestJob = await tx.job.findFirst({
+        where: {
+          tenantId,
+          djId: { startsWith: prefix }
+        },
+        orderBy: { djId: 'desc' },
+        select: { djId: true }
+      });
+
+      let runningNumber = 1;
+      if (latestJob && latestJob.djId) {
+        const parts = latestJob.djId.split('-');
+        if (parts.length === 3) {
+          runningNumber = parseInt(parts[2]) + 1;
+        }
+      }
+
+      const generateDjId = (offset = 0) => {
+        return `${prefix}${String(runningNumber + offset).padStart(4, '0')}`;
+      };
+
+      // ----------------------------------------
+      // 2.3: Create Parent Job
+      // ----------------------------------------
+      const parentDjId = generateDjId(0);
+
+      const parentJob = await tx.job.create({
+        data: {
+          tenantId,
+          projectId: parseInt(projectId),
+          jobTypeId: parentGroupType.id,
+          djId: parentDjId,
+          subject,
+          objective: briefData.objective,
+          headline: briefData.headline,
+          subHeadline: briefData.subHeadline,
+          description: briefData.description,
+          briefLink: briefData.briefLink,
+          briefFiles: briefData.briefFiles,
+          status: 'pending_approval',
+          priority: priority.toLowerCase(),
+          requesterId: userId,
+          assigneeId: null,
+          isParent: true,
+          parentJobId: null,
+          dueDate: deadline ? new Date(deadline) : null
+        }
+      });
+
+      console.log(`[Parent-Child] Created parent job: ${parentDjId}`);
+
+      // ----------------------------------------
+      // 2.4: Create Child Jobs
+      // ----------------------------------------
+      const childJobs = [];
+      let maxDueDate = deadline ? new Date(deadline) : null;
+
+      for (let i = 0; i < jobTypes.length; i++) {
+        const childConfig = jobTypes[i];
+        const childJobType = jobTypeMap.get(parseInt(childConfig.jobTypeId));
+
+        if (!childJobType) continue;
+
+        // Calculate due date based on SLA
+        const slaWorkingDays = childJobType.slaWorkingDays || 7;
+        const childDueDate = calculateWorkingDays(new Date(), slaWorkingDays);
+
+        // Generate child DJ-ID
+        const childDjId = generateDjId(i + 1);
+
+        // Determine assignee
+        let assigneeId = childConfig.assigneeId ? parseInt(childConfig.assigneeId) : null;
+
+        // Try auto-assign if no assignee specified
+        if (!assigneeId) {
+          const autoAssignment = await tx.projectJobAssignment.findFirst({
+            where: {
+              projectId: parseInt(projectId),
+              jobTypeId: parseInt(childConfig.jobTypeId),
+              isActive: true
+            },
+            select: { assigneeId: true }
+          });
+
+          if (autoAssignment?.assigneeId) {
+            assigneeId = autoAssignment.assigneeId;
+          }
+        }
+
+        // Create child job
+        const childJob = await tx.job.create({
+          data: {
+            tenantId,
+            projectId: parseInt(projectId),
+            jobTypeId: parseInt(childConfig.jobTypeId),
+            djId: childDjId,
+            subject: `${subject} - ${childJobType.name}`,
+            objective: briefData.objective,
+            headline: briefData.headline,
+            subHeadline: briefData.subHeadline,
+            description: briefData.description,
+            briefLink: briefData.briefLink,
+            briefFiles: briefData.briefFiles,
+            status: assigneeId ? 'assigned' : 'pending_approval',
+            priority: priority.toLowerCase(),
+            requesterId: userId,
+            assigneeId: assigneeId,
+            isParent: false,
+            parentJobId: parentJob.id,
+            dueDate: childDueDate,
+            startedAt: assigneeId ? new Date() : null
+          }
+        });
+
+        childJobs.push({
+          id: childJob.id,
+          djId: childJob.djId,
+          jobTypeId: childJob.jobTypeId,
+          jobTypeName: childJobType.name,
+          status: childJob.status,
+          assigneeId: childJob.assigneeId,
+          dueDate: childJob.dueDate
+        });
+
+        console.log(`[Parent-Child] Created child job: ${childDjId} (${childJobType.name})`);
+
+        // Track max due date for parent
+        if (childDueDate > maxDueDate) {
+          maxDueDate = childDueDate;
+        }
+      }
+
+      // ----------------------------------------
+      // 2.5: Update Parent Due Date
+      // ----------------------------------------
+      if (maxDueDate) {
+        await tx.job.update({
+          where: { id: parentJob.id },
+          data: { dueDate: maxDueDate }
+        });
+      }
+
+      // ----------------------------------------
+      // 2.6: Create Activity Log
+      // ----------------------------------------
+      await tx.activityLog.create({
+        data: {
+          jobId: parentJob.id,
+          userId,
+          action: 'parent_child_created',
+          message: `สร้างงานกลุ่ม ${parentDjId} พร้อม ${childJobs.length} งานย่อย`,
+          detail: {
+            parentId: parentJob.id,
+            childCount: childJobs.length,
+            childIds: childJobs.map(c => c.id),
+            priority
+          }
+        }
+      });
+
+      return {
+        parent: {
+          id: parentJob.id,
+          djId: parentJob.djId,
+          subject: parentJob.subject,
+          status: parentJob.status,
+          priority: parentJob.priority,
+          dueDate: maxDueDate
+        },
+        children: childJobs,
+        totalCreated: 1 + childJobs.length
+      };
+
+    }, {
+      maxWait: 10000,  // Max 10 sec to acquire lock
+      timeout: 60000   // Max 60 sec transaction (for many children)
+    });
+
+    // ============================================
+    // Step 3: Send Response
+    // ============================================
+    console.log(`[Parent-Child] ✅ Transaction completed: ${result.parent.djId} with ${result.children.length} children`);
+
+    res.status(201).json({
+      success: true,
+      data: result,
+      message: `สร้างงาน ${result.parent.djId} พร้อม ${result.children.length} งานย่อยเรียบร้อยแล้ว`
+    });
+
+  } catch (error) {
+    console.error('[Parent-Child] Create error:', error);
+
+    // Handle specific Prisma errors
+    if (error.code === 'P2002') {
+      return res.status(409).json({
+        success: false,
+        error: 'DUPLICATE_DJ_ID',
+        message: 'เกิดข้อผิดพลาด DJ-ID ซ้ำ กรุณาลองใหม่อีกครั้ง'
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: 'CREATE_PARENT_CHILD_FAILED',
+      message: 'ไม่สามารถสร้างงานได้ กรุณาลองใหม่อีกครั้ง',
+      detail: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+/**
+ * Helper: Calculate working days (skip weekends)
+ * TODO: Add holiday support from database
+ */
+function calculateWorkingDays(startDate, workingDays) {
+  const result = new Date(startDate);
+  let daysAdded = 0;
+
+  while (daysAdded < workingDays) {
+    result.setDate(result.getDate() + 1);
+    const dayOfWeek = result.getDay();
+    // Skip Saturday (6) and Sunday (0)
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      daysAdded++;
+    }
+  }
+
+  return result;
+}
 
 /**
  * POST /api/jobs/:id/complete

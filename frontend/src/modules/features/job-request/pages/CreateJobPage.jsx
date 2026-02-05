@@ -78,6 +78,8 @@ export default function CreateDJ() {
         objective: '',       // วัตถุประสงค์และรายละเอียด (Brief)
         headline: '',        // พาดหัวหลัก
         subHeadline: '',     // พาดหัวรอง
+        briefLink: '',       // ลิงค์ Brief (เช่น Google Drive link)
+        briefFiles: [],      // ไฟล์ Brief attachments
         sellingPoints: [],   // จุดเด่นที่ต้องการเน้น (Tags)
         price: '',           // ราคา/โปรโมชั่น
         attachments: [],     // รายการไฟล์แนบ
@@ -602,7 +604,18 @@ export default function CreateDJ() {
         try {
             // เตรียม Payload
             const jobPayload = {
-                ...formData,
+                projectId: parseInt(formData.project),
+                subject: formData.subject,
+                priority: formData.priority,
+                deadline: formData.deadline,
+                brief: {
+                    objective: formData.objective || '',
+                    headline: formData.headline || '',
+                    subHeadline: formData.subHeadline || '',
+                    description: formData.description || formData.objective || '',
+                    briefLink: formData.briefLink || null,
+                    briefFiles: formData.briefFiles || []
+                },
                 requesterId: user?.id,
                 tenantId: user?.tenant_id || 1,
                 requesterName: user?.displayName || user?.display_name || 'Unknown User',
@@ -613,8 +626,8 @@ export default function CreateDJ() {
             // ถ้าเลือกหลาย Job Type -> ใช้ Parent-Child Mode
             if (selectedJobTypes.length > 0) {
                 jobPayload.jobTypes = selectedJobTypes;
-                // ลบ jobTypeId เดี่ยว (ใช้ jobTypes array แทน)
-                delete jobPayload.jobTypeId;
+            } else {
+                jobPayload.jobTypeId = parseInt(formData.jobTypeId);
             }
 
             await api.createJob(jobPayload);
@@ -976,6 +989,18 @@ export default function CreateDJ() {
                                     value={formData.objective}
                                     onChange={handleChange}
                                 />
+                            </div>
+
+                            <div>
+                                <FormInput
+                                    label="ลิงค์รายละเอียด (Brief Link) - เช่น Google Drive"
+                                    name="briefLink"
+                                    type="url"
+                                    placeholder="https://drive.google.com/file/d/... หรือลิงค์เอกสารอื่น"
+                                    value={formData.briefLink}
+                                    onChange={handleChange}
+                                />
+                                <p className="text-xs text-gray-500 mt-1">สำหรับใส่ลิงค์ Google Drive หรือเอกสารออนไลน์ที่มีรายละเอียดงาน</p>
                             </div>
 
                             {/* ส่วน Headline, Sub-headline, Selling Points, Price ถูกลบออกตาม implementation plan */}
