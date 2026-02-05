@@ -42,6 +42,7 @@ import projectsRoutes from './routes/projects.js';
 import holidaysRoutes from './routes/holidays.js';
 import jobTypesRoutes from './routes/job-types.js'; // ✓ NEW: Job Types Management
 import approvalFlowsRoutes from './routes/approval-flows.js';
+import commentsRoutes from './routes/comments.js'; // ✓ NEW: Job Comments with @mentions
 // V2 Flow Templates REMOVED - Using V1 Extended instead
 
 // V2 Auth System Routes (Production-ready with Sequelize + RBAC)
@@ -258,6 +259,7 @@ app.use('/api/holidays', holidaysRoutes);
 app.use('/api/job-types', jobTypesRoutes); // ✓ NEW: Job Types API
 app.use('/api/approvals', approvalRoutes);
 app.use('/api/approval-flows', approvalFlowsRoutes);
+app.use('/api', commentsRoutes); // ✓ NEW: Comments API (routes: /api/jobs/:jobId/comments)
 // V2 Flow Templates API REMOVED - Using V1 Extended instead
 app.use('/api/reports', reportsRoutes);
 app.use('/api/storage', storageRoutes);

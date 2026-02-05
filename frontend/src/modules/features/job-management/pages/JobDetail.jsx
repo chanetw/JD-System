@@ -174,7 +174,7 @@ export default function JobDetail() {
                 }
 
                 setJob(jobData);
-                setComments(jobData.comments || []);
+                // Comments will be loaded separately via loadComments() when job.id is set
             }
         } catch (err) {
             console.error('Failed to load job:', err);
@@ -422,40 +422,99 @@ export default function JobDetail() {
     };
 
     // ============================================
-    // Comment System
+    // Comment System (Real API)
     // ============================================
+
+    // Load comments from real API
+    const loadComments = async () => {
+        try {
+            const result = await api.getJobComments(id);
+            if (result.success) {
+                // Map API response to display format
+                const mappedComments = result.data.map(c => ({
+                    id: c.id,
+                    author: c.user?.displayName || 'Unknown',
+                    authorRole: 'User',
+                    message: c.comment,
+                    timestamp: c.createdAt,
+                    mentions: c.mentions,
+                    userId: c.userId
+                }));
+                setComments(mappedComments);
+            }
+        } catch (error) {
+            console.error('Failed to load comments:', error);
+        }
+    };
+
+    // Load comments when job is loaded
+    useEffect(() => {
+        if (job?.id) {
+            loadComments();
+        }
+    }, [job?.id]);
+
     const handleAddComment = async () => {
         if (!newComment.trim()) return;
 
-        const comment = {
-            id: `comment-${Date.now()}`,
-            author: user?.displayName || 'Unknown',
-            authorRole: user?.currentRole || user?.roles?.[0] || 'User',
-            message: newComment,
-            timestamp: new Date().toISOString()
-        };
-
         try {
-            const updatedComments = [...comments, comment];
-            const updatedJob = await updateJob(id, {
-                comments: updatedComments,
-                timeline: [
-                    ...(job.timeline || []),
-                    {
-                        action: 'commented',
-                        by: comment.author,
-                        timestamp: comment.timestamp,
-                        detail: comment.message
-                    }
-                ]
-            });
+            const result = await api.addJobComment(id, newComment);
 
-            setComments(updatedComments);
-            setJob(updatedJob);
-            setNewComment('');
+            if (result.success) {
+                // Add new comment to the list
+                const newCommentData = {
+                    id: result.data.id,
+                    author: result.data.user?.displayName || user?.displayName || 'Unknown',
+                    authorRole: 'User',
+                    message: result.data.comment,
+                    timestamp: result.data.createdAt,
+                    mentions: result.data.mentions,
+                    userId: result.data.userId
+                };
+                setComments(prev => [...prev, newCommentData]);
+                setNewComment('');
+
+                // Show success message with mention info
+                if (result.meta?.mentionsFound > 0) {
+                    setAlertState({
+                        isOpen: true,
+                        title: 'เพิ่ม Comment สำเร็จ',
+                        message: `ส่งการแจ้งเตือนถึง ${result.meta.notificationsSent} คน`,
+                        type: 'success'
+                    });
+                }
+            } else {
+                setAlertState({
+                    isOpen: true,
+                    title: 'เกิดข้อผิดพลาด',
+                    message: result.error || 'ไม่สามารถเพิ่มความคิดเห็นได้',
+                    type: 'error'
+                });
+            }
         } catch (error) {
             console.error('Failed to add comment:', error);
-            alert('เกิดข้อผิดพลาดในการเพิ่มความคิดเห็น');
+            setAlertState({
+                isOpen: true,
+                title: 'เกิดข้อผิดพลาด',
+                message: 'ไม่สามารถเพิ่มความคิดเห็นได้',
+                type: 'error'
+            });
+        }
+    };
+
+    const handleDeleteComment = async (commentId) => {
+        if (!window.confirm('ต้องการลบความคิดเห็นนี้หรือไม่?')) return;
+
+        try {
+            const result = await api.deleteJobComment(id, commentId);
+            if (result.success) {
+                setComments(prev => prev.filter(c => c.id !== commentId));
+            } else {
+                alert(result.error || 'ไม่สามารถลบความคิดเห็นได้');
+            }
+        } catch (error) {
+            console.error('Failed to delete comment:', error);
+            alert('เกิดข้อผิดพลาดในการลบความคิดเห็น');
         }
     };
 

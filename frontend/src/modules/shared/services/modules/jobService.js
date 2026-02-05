@@ -311,180 +311,58 @@ export const jobService = {
 
     /**
      * สร้าง Parent Job พร้อม Child Jobs
-     * 
-     * @param {Object} jobData - ข้อมูลงาน (ดูรายละเอียดใน createJob)
-     * 
-     * หลักการ:
-     * 1. สร้าง Parent Job ก่อน (ใช้ job_type = PARENT_GROUP)
-     * 2. Loop สร้าง Child Jobs ทั้งหมด (ผูก parent_job_id)
-     * 3. ถ้า Priority = Urgent -> ส่งต่อให้ลูกทุกตัว และ Shift SLA ของ Assignee แต่ละคน
-     * 4. คำนวณ Due Date ของ Parent จาก Max(Child Due Dates)
-     * 
+     *
+     * ✅ V2: ใช้ Backend API แทน Supabase โดยตรง
+     * - Security: Bypass RLS restrictions (ใช้ Service Role)
+     * - Atomicity: All-or-nothing (Transaction)
+     * - Data Integrity: ไม่มี orphan jobs
+     *
+     * @param {Object} jobData - ข้อมูลงาน
+     * @param {number} jobData.projectId - รหัสโครงการ
+     * @param {string} jobData.subject - หัวข้องาน
+     * @param {string} jobData.priority - ความเร่งด่วน
+     * @param {Object} jobData.brief - รายละเอียด Brief
+     * @param {Array} jobData.jobTypes - รายการประเภทงาน [{ jobTypeId, assigneeId? }]
+     * @param {string} jobData.deadline - วันกำหนดส่ง
+     *
      * @returns {Object} - { success: true, job: { id, djId }, children: [...] }
      */
     createParentWithChildren: async (jobData) => {
-        console.log('[Parent-Child] Creating Parent Job with', jobData.jobTypes.length, 'children');
+        // New Backend V2 Implementation (Atomic Transaction)
+        console.log('[Parent-Child] Creating via Backend API:', jobData.jobTypes.length, 'children');
 
-        // 1. หา ID ของ PARENT_GROUP Job Type (ใช้ชื่อแทน code)
-        let { data: parentType } = await supabase
-            .from('job_types')
-            .select('id')
-            .eq('name', 'Project Group (Parent)')
-            .maybeSingle();
+        try {
+            const response = await httpClient.post('/jobs/parent-child', {
+                projectId: jobData.projectId,
+                subject: jobData.subject,
+                priority: jobData.priority,
+                deadline: jobData.deadline || new Date().toISOString(),
+                brief: jobData.brief,
+                jobTypes: jobData.jobTypes // [{ jobTypeId, assigneeId }]
+            });
 
-        if (!parentType) {
-            console.log('[Parent-Child] PARENT_GROUP not found. Auto-creating...');
-            const { data: newType, error: createError } = await supabase
-                .from('job_types')
-                .insert({
-                    name: 'Project Group (Parent)',
-                    tenant_id: jobData.tenantId || 1,
-                    sla_days: 0,
-                    is_active: true
-                })
-                .select('id')
-                .single();
-
-            if (createError) {
-                console.error('[Parent-Child] Auto-create failed:', createError);
-                throw new Error('PARENT_GROUP job type not found and could not be created.');
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Failed to create parent-child jobs');
             }
-            parentType = newType;
-        }
 
-        // 2. Generate DJ ID and Create Parent Job
-        // Strategy: Get latest created DJ ID to avoid collision (Count is not reliable with gaps/RLS)
-        const { data: latestJob } = await supabase
-            .from('jobs')
-            .select('dj_id')
-            .ilike('dj_id', `DJ-${new Date().getFullYear()}-%`)
-            .order('dj_id', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+            // Map backend response { data: { parent, children } } to frontend expectation
+            const { parent, children } = response.data.data;
 
-        const year = new Date().getFullYear();
-        let runningNumber = 1;
+            console.log('[Parent-Child] ✅ Complete:', parent.djId, 'children:', children.length);
 
-        if (latestJob && latestJob.dj_id) {
-            const parts = latestJob.dj_id.split('-');
-            if (parts.length === 3) {
-                runningNumber = parseInt(parts[2]) + 1;
-            }
-        }
-
-        const djId = `DJ-${year}-${String(runningNumber).padStart(4, '0')}`;
-
-        const parentPayload = {
-            tenant_id: jobData.tenantId || 1,
-            project_id: parseInt(jobData.projectId),
-            job_type_id: parentType.id, // Dummy Job Type
-            dj_id: djId,
-            subject: jobData.subject,
-            objective: jobData.brief?.objective,
-            headline: jobData.brief?.headline,
-            sub_headline: jobData.brief?.subHeadline,
-            priority: jobData.priority?.toLowerCase() || 'normal', // Normalize priority
-            status: 'pending_approval',
-            requester_id: jobData.requesterId, // Use from Auth context
-            assignee_id: null, // Parent ไม่มี Assignee
-            due_date: jobData.deadline || new Date().toISOString(), // Initial deadline
-            is_parent: true,
-            parent_job_id: null
-        };
-
-        const { data: parentJob, error: parentError } = await supabase
-            .from('jobs')
-            .insert([parentPayload])
-            .select()
-            .single();
-
-        if (parentError) {
-            console.error('[Parent-Child] Create Parent Job FAILED:', parentError);
-            console.error('Payload:', parentPayload);
-            throw parentError;
-        }
-        console.log('[Parent-Child] Parent Job created:', parentJob.dj_id);
-
-        // 3. สร้าง Child Jobs
-        const childJobs = [];
-        const holidays = await (await import('./adminService')).adminService.getHolidayDates();
-        let maxDueDate = null;
-
-        for (const childType of jobData.jobTypes) {
-            // ดึง SLA ของ Job Type นี้
-            const { data: jobTypeInfo } = await supabase
-                .from('job_types')
-                .select('id, sla_days')
-                .eq('id', childType.jobTypeId)
-                .single();
-
-            // คำนวณ Due Date จาก SLA
-            const { calculateDueDate } = await import('../../utils/slaCalculator');
-            const childDueDate = calculateDueDate(new Date(), jobTypeInfo?.sla_days || 7, holidays);
-
-            // Generate Child DJ ID
-            // Note: This logic assumes no other jobs created in between. In high concurrency this is risky but acceptable for legacy client-side creation.
-            // Better approach: (parent ID) + current index + 1
-            const childDjId = `DJ-${year}-${String(runningNumber + 1 + childJobs.length).padStart(4, '0')}`;
-
-            // สร้าง Child Job
-            const childPayload = {
-                tenant_id: jobData.tenantId || 1,
-                project_id: parseInt(jobData.projectId),
-                job_type_id: parseInt(childType.jobTypeId),
-                dj_id: childDjId,
-                subject: `${jobData.subject} - Child #${childJobs.length + 1}`,
-                objective: jobData.brief?.objective,
-                headline: jobData.brief?.headline,
-                sub_headline: jobData.brief?.subHeadline,
-                priority: jobData.priority, // สืบทอด Priority จาก Parent
-                status: 'pending_approval',
-                requester_id: jobData.requesterId, // Use from Auth context
-                assignee_id: childType.assigneeId || null,
-                due_date: childDueDate.toISOString(),
-                is_parent: false,
-                parent_job_id: parentJob.id // ผูก Parent
+            return {
+                success: true,
+                job: { id: parent.id, djId: parent.djId },
+                children: children.map(c => ({ id: c.id, djId: c.djId }))
             };
 
-            const { data: childJob, error: childError } = await supabase
-                .from('jobs')
-                .insert([childPayload])
-                .select()
-                .single();
+        } catch (error) {
+            console.error('[jobService] createParentWithChildren error:', error);
 
-            if (childError) throw childError;
-            childJobs.push(childJob);
-            console.log('[Parent-Child] Child Job created:', childJob.dj_id, 'Type:', childType.jobTypeId);
-
-            // Track Max Due Date for Parent
-            if (!maxDueDate || childDueDate > maxDueDate) {
-                maxDueDate = childDueDate;
-            }
-
-            // ถ้า Urgent และมี Assignee -> Shift SLA
-            if (jobData.priority === 'Urgent' && childType.assigneeId) {
-                await jobService.shiftSLAIfUrgent(childJob.id, childType.assigneeId, holidays);
-            }
+            // Enhance error message for UI
+            const msg = error.response?.data?.message || error.message || 'Error running parent-child transaction';
+            throw new Error(msg);
         }
-
-        // 4. Update Parent Due Date
-        if (maxDueDate) {
-            await supabase.from('jobs')
-                .update({ due_date: maxDueDate.toISOString() })
-                .eq('id', parentJob.id);
-        }
-
-        // 5. Send Notification
-        const eventType = jobData.priority === 'Urgent' ? 'urgent_impact' : 'job_created';
-        await notificationService.sendNotification(eventType, parentJob.id);
-
-        console.log('[Parent-Child] ✅ Complete:', parentJob.dj_id, 'with', childJobs.length, 'children');
-
-        return {
-            success: true,
-            job: { id: parentJob.id, djId: parentJob.dj_id },
-            children: childJobs.map(c => ({ id: c.id, djId: c.dj_id }))
-        };
     },
 
     /**
@@ -765,46 +643,38 @@ export const jobService = {
         try {
             console.log(`[jobService] startJob: ${jobId}, trigger: ${triggerType}`);
 
-            // Check Environment (Mock vs Real)
-            const isMock = import.meta.env.VITE_USE_MOCK_API === 'true';
+            // Real Supabase Implementation
+            // 1. Get current status to validate
+            const { data: job, error: fetchErr } = await supabase
+                .from('jobs')
+                .select('status')
+                .eq('id', jobId)
+                .single();
 
-            if (isMock) {
-                const { mockApiService } = await import('../../services/mockApi');
-                return await mockApiService.startJob(jobId, triggerType);
-            } else {
-                // Real Supabase Implementation
-                // 1. Get current status to validate
-                const { data: job, error: fetchErr } = await supabase
-                    .from('jobs')
-                    .select('status')
-                    .eq('id', jobId)
-                    .single();
+            if (fetchErr || !job) throw new Error('Job not found');
+            if (job.status !== 'assigned') return { message: 'Job already started or not ready' };
 
-                if (fetchErr || !job) throw new Error('Job not found');
-                if (job.status !== 'assigned') return { message: 'Job already started or not ready' };
+            // 2. Update status and log
+            const { data, error } = await supabase
+                .from('jobs')
+                .update({
+                    status: 'in_progress',
+                    started_at: new Date().toISOString()
+                })
+                .eq('id', jobId)
+                .select()
+                .single();
 
-                // 2. Update status and log
-                const { data, error } = await supabase
-                    .from('jobs')
-                    .update({
-                        status: 'in_progress',
-                        started_at: new Date().toISOString()
-                    })
-                    .eq('id', jobId)
-                    .select()
-                    .single();
+            if (error) throw error;
 
-                if (error) throw error;
+            // 3. Log Activity
+            await supabase.from('activity_logs').insert([{
+                job_id: jobId,
+                action: 'started',
+                message: `Job started (${triggerType})`
+            }]);
 
-                // 3. Log Activity
-                await supabase.from('activity_logs').insert([{
-                    job_id: jobId,
-                    action: 'started',
-                    message: `Job started (${triggerType})`
-                }]);
-
-                return data;
-            }
+            return data;
         } catch (err) {
             console.error('[jobService] startJob error:', err);
             throw err;
@@ -867,14 +737,10 @@ export const jobService = {
 
     /**
      * จำลองการทำงานของ Background Job (Auto-Start)
+     * Note: Requires Edge Functions for production implementation
      */
     checkAutoJobStart: async () => {
-        const isMock = true; // Force check mock for simulation
-        if (isMock) {
-            const { mockApiService } = await import('../../services/mockApi');
-            return await mockApiService.simulateAutoStartCheck();
-        }
-        return { message: 'Not implemented for Real DB yet (Requires Edge Functions)' };
+        return { message: 'Not implemented yet (Requires Edge Functions)' };
     },
 
     /**
@@ -938,6 +804,120 @@ export const jobService = {
             return { success: true, data: updatedJob };
         } catch (error) {
             console.error('[Assign] Failed:', error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    // ============================================
+    // Job Comments API
+    // ============================================
+
+    /**
+     * Get comments for a job
+     * @param {number} jobId - Job ID
+     * @param {object} options - Pagination options { page, limit }
+     * @returns {Promise<object>} - { success, data, pagination }
+     */
+    getJobComments: async (jobId, options = {}) => {
+        try {
+            const { page = 1, limit = 50 } = options;
+            const response = await httpClient.get(`/jobs/${jobId}/comments`, {
+                params: { page, limit }
+            });
+
+            if (!response.data.success) {
+                console.warn('[jobService] Get comments failed:', response.data.message);
+                return { success: false, data: [], error: response.data.message };
+            }
+
+            return {
+                success: true,
+                data: response.data.data || [],
+                pagination: response.data.pagination
+            };
+        } catch (error) {
+            console.error('[jobService] getJobComments error:', error);
+            return { success: false, data: [], error: error.message };
+        }
+    },
+
+    /**
+     * Add a comment to a job
+     * @param {number} jobId - Job ID
+     * @param {string} comment - Comment text (supports @mentions)
+     * @returns {Promise<object>} - { success, data, meta }
+     */
+    addJobComment: async (jobId, comment) => {
+        try {
+            const response = await httpClient.post(`/jobs/${jobId}/comments`, {
+                comment
+            });
+
+            if (!response.data.success) {
+                console.warn('[jobService] Add comment failed:', response.data.message);
+                return { success: false, error: response.data.message };
+            }
+
+            return {
+                success: true,
+                data: response.data.data,
+                meta: response.data.meta
+            };
+        } catch (error) {
+            console.error('[jobService] addJobComment error:', error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    /**
+     * Update a comment
+     * @param {number} jobId - Job ID
+     * @param {number} commentId - Comment ID
+     * @param {string} comment - Updated comment text
+     * @returns {Promise<object>} - { success, data }
+     */
+    updateJobComment: async (jobId, commentId, comment) => {
+        try {
+            const response = await httpClient.put(`/jobs/${jobId}/comments/${commentId}`, {
+                comment
+            });
+
+            if (!response.data.success) {
+                console.warn('[jobService] Update comment failed:', response.data.message);
+                return { success: false, error: response.data.message };
+            }
+
+            return {
+                success: true,
+                data: response.data.data
+            };
+        } catch (error) {
+            console.error('[jobService] updateJobComment error:', error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    /**
+     * Delete a comment
+     * @param {number} jobId - Job ID
+     * @param {number} commentId - Comment ID
+     * @returns {Promise<object>} - { success, message }
+     */
+    deleteJobComment: async (jobId, commentId) => {
+        try {
+            const response = await httpClient.delete(`/jobs/${jobId}/comments/${commentId}`);
+
+            if (!response.data.success) {
+                console.warn('[jobService] Delete comment failed:', response.data.message);
+                return { success: false, error: response.data.message };
+            }
+
+            return {
+                success: true,
+                message: response.data.message
+            };
+        } catch (error) {
+            console.error('[jobService] deleteJobComment error:', error);
             return { success: false, error: error.message };
         }
     }
