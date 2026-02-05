@@ -146,7 +146,8 @@ export default function AdminApprovalFlow() {
             // }
 
             try {
-                usersData = await api.getUsers() || [];
+                const usersResponse = await api.getUsers() || {};
+                usersData = usersResponse.data || [];
             } catch (e) {
                 console.warn('Error loading users:', e.message);
             }
@@ -160,7 +161,7 @@ export default function AdminApprovalFlow() {
             setProjects(projectsData);
             // setApprovalFlows(flowsData); // REMOVED: Managed by useEffect based on selectedProject
             setAllUsers(usersData);
-            setJobTypes(jobTypesData); // เก็บข้อมูลผู้ใช้ทั้งหมดไว้สำหรับคัดกรองตามโครงการ
+            setJobTypes((jobTypesData || []).filter(t => t.name !== 'Project Group (Parent)')); // เก็บข้อมูลผู้ใช้ทั้งหมดไว้สำหรับคัดกรองตามโครงการ
 
             // คัดกรองผู้ใช้งานตามบทบาทพื้นฐาน เพื่อความสะดวกรวดเร็ว
             setApprovers(usersData.filter(u => hasRole(u, 'approver') || hasRole(u, 'admin')));
@@ -239,6 +240,14 @@ export default function AdminApprovalFlow() {
                 approvers: apps,
                 assignees: asgs
             });
+
+            console.log('[ApprovalFlow] Loaded Users:', allUsers.length);
+            if (allUsers.length > 0) {
+                console.log('[ApprovalFlow] User Sample:', JSON.stringify(allUsers[0], null, 2));
+            }
+            console.log('[ApprovalFlow] Filtered Requesters:', reqs.length);
+            console.log('[ApprovalFlow] Filtered Approvers:', apps.length);
+            console.log('[ApprovalFlow] Filtered Assignees:', asgs.length);
         }
     }, [selectedProject, allUsers]);
 

@@ -141,7 +141,7 @@ export default function AdminJobTypeSLA() {
                 console.warn('[JobTypeSLA] No data received or empty array');
             }
 
-            setJobTypes(data || []);
+            setJobTypes((data || []).filter(t => t.name !== 'Project Group (Parent)'));
         } catch (error) {
             console.error("[JobTypeSLA] Fetch error:", error);
         } finally {
@@ -377,8 +377,9 @@ export default function AdminJobTypeSLA() {
     );
 
     // Stats Calculation
-    const activeCount = jobTypes.filter(j => j.status === 'active').length;
-    const avgSLA = jobTypes.length ? (jobTypes.reduce((acc, curr) => acc + Number(curr.sla), 0) / jobTypes.length).toFixed(1) : 0;
+    const filteredJobTypes = jobTypes.filter(j => j.name !== 'Project Group (Parent)');
+    const activeCount = filteredJobTypes.filter(j => j.status === 'active').length;
+    const avgSLA = filteredJobTypes.length ? (filteredJobTypes.reduce((acc, curr) => acc + Number(curr.sla), 0) / filteredJobTypes.length).toFixed(1) : 0;
 
     return (
         <div className="space-y-6">

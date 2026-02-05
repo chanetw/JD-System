@@ -50,6 +50,16 @@ router.get('/', async (req, res) => {
       case 'approver':
       case 'manager':
         where.status = { in: ['pending_approval', 'pending_level_1', 'pending_level_2'] };
+        // Visibility Logic: Hide children if parent is still pending (Show only Parent)
+        where.AND = [
+          {
+            OR: [
+              { isParent: true },
+              { parentJobId: null },
+              { parentJob: { status: { notIn: ['pending_approval'] } } }
+            ]
+          }
+        ];
         break;
       case 'superadmin':
       case 'admin':
@@ -100,7 +110,10 @@ router.get('/', async (req, res) => {
           },
           assignee: {
             select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true }
-          }
+          },
+          // Parent-Child relationship fields
+          isParent: true,
+          parentJobId: true
         },
         orderBy: { dueDate: 'asc' },
         skip,
@@ -131,7 +144,10 @@ router.get('/', async (req, res) => {
       requesterAvatar: j.requester?.avatarUrl,
       assigneeId: j.assigneeId,
       assignee: j.assignee?.displayName || (j.assignee ? `${j.assignee?.firstName} ${j.assignee?.lastName}`.trim() : null),
-      assigneeAvatar: j.assignee?.avatarUrl
+      assigneeAvatar: j.assignee?.avatarUrl,
+      // Parent-Child relationship metadata
+      isParent: j.isParent || false,
+      parentJobId: j.parentJobId || null
     }));
 
     res.json({
@@ -494,6 +510,28 @@ router.get('/:id', async (req, res) => {
         },
         attachments: {
           select: { id: true, filePath: true, fileName: true, fileSize: true, createdAt: true }
+        },
+        // Include child jobs if this is a parent job
+        childJobs: {
+          select: {
+            id: true,
+            djId: true,
+            subject: true,
+            status: true,
+            jobType: { select: { id: true, name: true } },
+            assignee: { select: { id: true, displayName: true } },
+            dueDate: true
+          },
+          orderBy: { createdAt: 'asc' }
+        },
+        // Include parent job if this is a child job
+        parentJob: {
+          select: {
+            id: true,
+            djId: true,
+            subject: true,
+            status: true
+          }
         }
       }
     });
@@ -506,10 +544,11 @@ router.get('/:id', async (req, res) => {
       });
     }
 
-    // Check permission
+    // Check permission (null-safe roles check)
     const hasAccess = job.requesterId === req.user.userId ||
       job.assigneeId === req.user.userId ||
-      req.user.roles.includes('admin');
+      req.user.roles?.includes('admin') ||
+      req.user.roles?.includes('manager');
 
     if (!hasAccess) {
       return res.status(403).json({
@@ -530,6 +569,8 @@ router.get('/:id', async (req, res) => {
       description: job.description,
       headline: job.headline,
       subHeadline: job.subHeadline,
+      briefLink: job.briefLink,
+      briefFiles: job.briefFiles || [],
       jobTypeId: job.jobTypeId,
       jobType: job.jobType?.name,
       slaWorkingDays: job.jobType?.slaWorkingDays,
@@ -551,6 +592,25 @@ router.get('/:id', async (req, res) => {
         name: job.assignee.displayName || `${job.assignee.firstName} ${job.assignee.lastName}`.trim(),
         email: job.assignee.email,
         avatar: job.assignee.avatarUrl
+      } : null,
+      isParent: job.isParent,
+      parentJobId: job.parentJobId,
+      // Child jobs for parent
+      childJobs: job.childJobs?.map(child => ({
+        id: child.id,
+        djId: child.djId,
+        subject: child.subject,
+        status: child.status,
+        jobType: child.jobType?.name,
+        assignee: child.assignee?.displayName,
+        deadline: child.dueDate
+      })) || [],
+      // Parent job for child
+      parentJob: job.parentJob ? {
+        id: job.parentJob.id,
+        djId: job.parentJob.djId,
+        subject: job.parentJob.subject,
+        status: job.parentJob.status
       } : null,
       items: job.jobItems || [],
       attachments: job.attachments || []
@@ -787,6 +847,22 @@ router.post('/parent-child', async (req, res) => {
       };
 
       // ----------------------------------------
+      // Smart Initial Status Logic
+      // ----------------------------------------
+      let allChildrenSkip = true;
+      for (const childConfig of jobTypes) {
+        // Use global approvalService to check flow config (outside transaction ok for reading config)
+        const childFlow = await approvalService.getApprovalFlow(parseInt(projectId), parseInt(childConfig.jobTypeId));
+        const levels = approvalService.getApprovalLevels(childFlow);
+        if (levels > 0) {
+          allChildrenSkip = false;
+          break;
+        }
+      }
+      const parentStatus = allChildrenSkip ? 'assigned' : 'pending_approval';
+      console.log(`[Smart Status] All children skip? ${allChildrenSkip} => Parent Status: ${parentStatus}`);
+
+      // ----------------------------------------
       // 2.3: Create Parent Job
       // ----------------------------------------
       const parentDjId = generateDjId(0);
@@ -804,7 +880,8 @@ router.post('/parent-child', async (req, res) => {
           description: briefData.description,
           briefLink: briefData.briefLink,
           briefFiles: briefData.briefFiles,
-          status: 'pending_approval',
+          // Smart Status: If all children skip approval, parent is auto-assigned
+          status: parentStatus,
           priority: priority.toLowerCase(),
           requesterId: userId,
           assigneeId: null,

@@ -750,27 +750,86 @@ export const adminService = {
     },
 
     /**
-     * ดึงรายการผู้ใช้ทั้งหมดผ่าน Backend API
-     * @returns {Promise<Array>} รายการผู้ใช้
+     * ดึงรายการผู้ใช้ทั้งหมดผ่าน Backend API (Support Pagination)
+     * @param {number} page - หน้าที่ต้องการ (default 1)
+     * @param {number} limit - จำนวนต่อหน้า (default 20)
+     * @returns {Promise<Object>} Object containing { data: usersArray, pagination: paginationMeta }
      */
-    getUsers: async () => {
+    getUsers: async (page = 1, limit = 20) => {
         try {
-            const response = await httpClient.get('/users');
+            const response = await httpClient.get('/users', {
+                params: { page, limit }
+            });
+
             if (!response.data.success) {
                 console.warn('[adminService] getUsers failed:', response.data.message);
-                return [];
+                return { data: [], pagination: {} };
             }
-            // Backend returns paginated result: { data: { data: [], pagination: {} } }
-            // So we need response.data.data.data
-            const users = response.data.data.data || [];
-            return users.map(u => ({
-                id: u.id,
-                name: u.displayName || `${u.firstName} ${u.lastName}`.trim(),
-                email: u.email,
-                avatar: u.avatarUrl,
-                role: u.roles?.[0]?.roleName || u.role || 'User',
-                isActive: u.isActive
-            }));
+
+            // Backend returns: { success: true, data: { data: [...], pagination: {...} } }
+            const resultData = response.data.data;
+            const usersRaw = resultData.data || [];
+            const pagination = resultData.pagination || {};
+
+            const users = usersRaw.map(u => {
+                // Process scope assignments to match UI expectations
+                const scopeAssignments = u.scope_assignments || [];
+
+                // Group scopes by type
+                const tenantScopes = [];
+                const budScopes = [];
+                const projectScopes = [];
+
+                scopeAssignments.forEach(scope => {
+                    const scopeObj = {
+                        id: scope.scope_id,
+                        name: scope.scope_name,
+                        level: scope.scope_level
+                    };
+
+                    if (scope.scope_level === 'tenant') {
+                        tenantScopes.push(scopeObj);
+                    } else if (scope.scope_level === 'bud') {
+                        budScopes.push(scopeObj);
+                    } else if (scope.scope_level === 'project') {
+                        projectScopes.push(scopeObj);
+                    }
+                });
+
+                return {
+                    id: u.id,
+                    name: u.displayName || `${u.firstName} ${u.lastName}`.trim(),
+                    displayName: u.displayName || `${u.firstName} ${u.lastName}`.trim(),
+                    firstName: u.firstName,
+                    lastName: u.lastName,
+                    email: u.email,
+                    avatar: u.avatarUrl,
+                    phone: u.phone,
+                    title: u.title,
+                    department: u.department,
+                    role: u.role, // Legacy role
+                    roles: u.roles || [], // New multi-roles
+                    isActive: u.isActive,
+                    tenantId: u.tenantId,
+                    departmentId: u.department?.id,
+                    // Managed departments for manager badge
+                    managedDepartments: u.managedDepartments || [],
+                    // Assigned Scopes for UI
+                    assignedScopes: {
+                        tenants: tenantScopes,
+                        buds: budScopes,
+                        projects: projectScopes
+                    },
+                    assignedProjects: projectScopes,
+                    scope_assignments: scopeAssignments
+                };
+            });
+
+            return {
+                data: users,
+                pagination
+            };
+
         } catch (error) {
             console.error('[adminService] getUsers error:', error);
             return [];

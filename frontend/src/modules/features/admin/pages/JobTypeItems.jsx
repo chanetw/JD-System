@@ -48,9 +48,10 @@ export default function JobTypeItems() {
                 // Force refresh to avoid stale cache issues (Deleted items reappearing)
                 console.warn('[JobTypeItems] Loading job types (Forced Refresh)...');
                 const data = await api.getJobTypes(true);
-                setJobTypes(data);
-                if (data.length > 0) {
-                    setSelectedJobTypeId(data[0].id);
+                const filteredData = data.filter(t => t.name !== 'Project Group (Parent)');
+                setJobTypes(filteredData);
+                if (filteredData.length > 0) {
+                    setSelectedJobTypeId(filteredData[0].id);
                 }
             } catch (error) {
                 console.error('โหลดประเภทงานไม่สำเร็จ:', error);

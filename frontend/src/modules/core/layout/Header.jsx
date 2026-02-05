@@ -10,8 +10,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { useAuthStore } from '@core/stores/authStore';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { useNotificationStore } from '@core/stores/notificationStore';
 import api from '@shared/services/apiService';
 
@@ -21,11 +21,11 @@ import api from '@shared/services/apiService';
  */
 export default function Header() {
     // ดึงสถานะและฟังก์ชันการจัดการจาก Store (Auth และ Notifications)
-    const { user, switchRole, logout } = useAuthStore();
+    const { user, logout } = useAuthStoreV2();
     const { notifications, unreadCount, fetchNotifications, markAsRead, markAllAsRead, isLoading } = useNotificationStore();
+    const navigate = useNavigate();
 
     // === สถานะการแสดงผลเมนู Dropdown (UI States) ===
-    const [showRoleMenu, setShowRoleMenu] = useState(false);    // เมนูสลับบทบาท
     const [showProfileMenu, setShowProfileMenu] = useState(false); // เมนูโปรไฟล์
     const [showNoti, setShowNoti] = useState(false);               // เมนูแจ้งเตือน
 
@@ -33,9 +33,6 @@ export default function Header() {
     useEffect(() => {
         fetchNotifications();
     }, [user, fetchNotifications]);
-
-    // สถานะ Loading สำหรับการสลับ Role
-    const [isSwitchingRole, setIsSwitchingRole] = useState(false);
 
     // Toast State สำหรับแสดงข้อความแจ้งเตือน
     const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
@@ -51,96 +48,13 @@ export default function Header() {
     }, [toast.show]);
 
     /**
-     * เปลี่ยนบทบาทผู้ใช้งาน (Admin Impersonation - Real Data)
-     * @param {string} role - ชื่อบทบาทที่ต้องการเปลี่ยนไป (e.g., 'admin', 'requester')
-     * 
-     * Security: ต้องเป็น Admin เท่านั้นถึงจะใช้ได้ (Backend จะตรวจสอบ)
+     * Handle logout
      */
-    const handleSwitchRole = async (role) => {
-        setIsSwitchingRole(true);
-        try {
-            await switchRole(role);
-            setShowRoleMenu(false);
-            setToast({ show: true, message: `สลับเป็น ${role} สำเร็จ`, type: 'success' });
-        } catch (error) {
-            setToast({ show: true, message: error.message || 'ไม่สามารถสลับ Role ได้', type: 'error' });
-        } finally {
-            setIsSwitchingRole(false);
-        }
+    const handleLogout = () => {
+        logout();
+        navigate('/login', { replace: true });
     };
 
-    // รายการ Role ที่เลือกได้ (ตาม mockup - ภาษาไทย)
-    const roles = [
-        {
-            id: 'requester',
-            label: 'Requester',
-            labelTh: 'ผู้ขอใช้บริการ',
-            badgeText: 'requester',
-            color: 'bg-blue-100 text-blue-700'
-        },
-        {
-            id: 'approver',
-            label: 'Approver (Head)',
-            labelTh: 'ผู้อนุมัติ',
-            badgeText: 'approver',
-            color: 'bg-amber-100 text-amber-700'
-        },
-        {
-            id: 'assignee',
-            label: 'Assignee (Graphic)',
-            labelTh: 'ผู้ปฏิบัติงาน',
-            badgeText: 'assignee',
-            color: 'bg-green-100 text-green-700'
-        },
-        {
-            id: 'admin',
-            label: 'Admin',
-            labelTh: 'ผู้ดูแลระบบ',
-            badgeText: 'admin',
-            color: 'bg-purple-100 text-purple-700'
-        },
-    ];
-
-    // Multi-Role Support: หา roles ทั้งหมดของ user (lowercase for comparison)
-    const getUserRoleNames = () => {
-        if (!user) return ['requester'];
-
-        const safeRoles = [];
-
-        // 1. Check user.roles (Array)
-        if (Array.isArray(user.roles)) {
-            user.roles.forEach(r => {
-                if (typeof r === 'string') {
-                    safeRoles.push(r.toLowerCase());
-                } else if (typeof r === 'object' && r) {
-                    const name = r.name || r.roleName || r.id;
-                    if (name) safeRoles.push(String(name).toLowerCase());
-                }
-            });
-        }
-
-        // 2. Check user.role (Single)
-        if (user.role) {
-            if (typeof user.role === 'string') {
-                safeRoles.push(user.role.toLowerCase());
-            } else if (typeof user.role === 'object' && user.role) {
-                const name = user.role.name || user.role.roleName || user.role.id;
-                if (name) safeRoles.push(String(name).toLowerCase());
-            }
-        }
-
-        // 3. Fallback
-        if (safeRoles.length === 0) return ['requester'];
-
-        // Remove duplicates
-        return [...new Set(safeRoles)];
-    };
-
-    const userRoleNames = getUserRoleNames();
-    // หา role ปัจจุบัน (ใช้ตัวแรกเป็น primary) - case insensitive
-    const currentRole = roles.find(r => userRoleNames.includes(r.id.toLowerCase())) || roles[0];
-    // หา roles ทั้งหมดที่ user มี - case insensitive
-    const userRoles = roles.filter(r => userRoleNames.includes(r.id.toLowerCase()));
 
     return (
         // ============================================
@@ -166,130 +80,6 @@ export default function Header() {
           Right Section - ด้านขวา
           ============================================ */}
             <div className="flex items-center gap-4">
-
-                {/* ============================================
-            Role Switcher - เปลี่ยนบทบาท (Demo)
-            ============================================ */}
-                <div className="relative">
-                    <button
-                        onClick={() => setShowRoleMenu(!showRoleMenu)}
-                        className="flex items-center gap-3 px-4 py-2 rounded-lg hover:opacity-90 transition-all border-2 shadow-sm"
-                        style={{
-                            backgroundColor: currentRole.id === 'requester' ? '#DBEAFE' :
-                                currentRole.id === 'approver' ? '#FEF3C7' :
-                                    currentRole.id === 'assignee' ? '#D1FAE5' :
-                                        '#F3E8FF',
-                            borderColor: currentRole.id === 'requester' ? '#3B82F6' :
-                                currentRole.id === 'approver' ? '#F59E0B' :
-                                    currentRole.id === 'assignee' ? '#10B981' :
-                                        '#9333EA',
-                            color: currentRole.id === 'requester' ? '#1E40AF' :
-                                currentRole.id === 'approver' ? '#92400E' :
-                                    currentRole.id === 'assignee' ? '#065F46' :
-                                        '#6B21A8'
-                        }}
-                    >
-                        {/* Multi-Role: แสดง badges ของ roles ทั้งหมด */}
-                        <div className="flex items-center gap-1.5">
-                            {userRoles.length > 1 ? (
-                                // แสดงหลาย roles
-                                userRoles.slice(0, 2).map((role, idx) => (
-                                    <span key={role.id} className={`px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wide ${role.color}`}>
-                                        {role.badgeText}
-                                    </span>
-                                ))
-                            ) : (
-                                // แสดง role เดียว
-                                <span className={`px-2.5 py-1 rounded text-xs font-bold uppercase tracking-wide ${currentRole.color}`}>
-                                    {currentRole.badgeText}
-                                </span>
-                            )}
-                            {userRoles.length > 2 && (
-                                <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                                    +{userRoles.length - 2}
-                                </span>
-                            )}
-                        </div>
-                        {/* Label Thai */}
-                        <span className="text-sm font-semibold">
-                            {userRoles.length > 1 ? 'หลายบทบาท' : currentRole.labelTh}
-                        </span>
-                        <ChevronDownIcon className="w-4 h-4 ml-1" />
-                    </button>
-
-                    {/* Dropdown Menu - แสดง roles ของ user */}
-                    {showRoleMenu && (
-                        <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-20">
-                            {/* หัวเรื่อง - บทบาทของฉัน */}
-                            {userRoles.length > 0 && (
-                                <>
-                                    <div className="px-4 py-2 border-b border-gray-100">
-                                        <p className="text-sm font-medium text-gray-900">
-                                            👤 บทบาทของฉัน
-                                        </p>
-                                    </div>
-                                    <div className="py-1">
-                                        {userRoles.map(role => (
-                                            <button
-                                                key={role.id}
-                                                onClick={() => handleSwitchRole(role.id)}
-                                                className={`w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors ${role.id === currentRole.id ? 'bg-blue-50' : ''
-                                                    }`}
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <span className={`px-2.5 py-1 rounded text-xs font-medium ${role.color}`}>
-                                                        {role.badgeText}
-                                                    </span>
-                                                    <span className="text-sm text-gray-900 flex-1">
-                                                        {role.labelTh}
-                                                    </span>
-                                                    {role.id === currentRole.id && (
-                                                        <span className="text-xs text-blue-600">✓ กำลังใช้</span>
-                                                    )}
-                                                </div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </>
-                            )}
-
-                            {/* Admin Impersonation - สลับเป็น User จริงตาม Role */}
-                            <div className="px-4 py-2 border-t border-b border-gray-100">
-                                <p className="text-sm font-medium text-gray-900">
-                                    🎭 สลับบทบาท (Admin Only)
-                                </p>
-                                <p className="text-xs text-gray-500 mt-0.5">
-                                    สลับไปเป็น User จริงในระบบ
-                                </p>
-                            </div>
-                            <div className="py-1">
-                                {isSwitchingRole ? (
-                                    <div className="px-4 py-3 text-center">
-                                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-rose-600 mx-auto"></div>
-                                        <p className="text-xs text-gray-500 mt-2">กำลังสลับ Role...</p>
-                                    </div>
-                                ) : (
-                                    roles.filter(r => !userRoleNames.includes(r.id)).map(role => (
-                                        <button
-                                            key={role.id}
-                                            onClick={() => handleSwitchRole(role.id)}
-                                            className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors"
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <span className={`px-2.5 py-1 rounded text-xs font-medium ${role.color}`}>
-                                                    {role.badgeText}
-                                                </span>
-                                                <span className="text-sm text-gray-900">
-                                                    {role.label}
-                                                </span>
-                                            </div>
-                                        </button>
-                                    ))
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
 
                 {/* ============================================
             Notifications - การแจ้งเตือน
@@ -384,7 +174,7 @@ export default function Header() {
                                 <p className="text-xs text-gray-500">{user?.email}</p>
                             </div>
                             <button
-                                onClick={logout}
+                                onClick={handleLogout}
                                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                             >
                                 ออกจากระบบ

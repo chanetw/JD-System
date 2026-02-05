@@ -23,8 +23,18 @@ export const jobService = {
             }
 
             const jobs = response.data.data || [];
-            console.log(`[jobService] getJobs: Fetched ${jobs.length} jobs`);
-            return jobs;
+
+            // Normalize data for UI
+            const normalizedJobs = jobs.map(job => ({
+                ...job,
+                // Ensure fields exist for UI Logic
+                isParent: job.isParent || job.is_parent || false,
+                parentJobId: job.parentJobId || job.parent_job_id || null,
+                children: job.children || [] // If backend populates children
+            }));
+
+            console.log(`[jobService] getJobs: Fetched ${normalizedJobs.length} jobs`);
+            return normalizedJobs;
 
         } catch (error) {
             console.error('[jobService] getJobs error:', error);

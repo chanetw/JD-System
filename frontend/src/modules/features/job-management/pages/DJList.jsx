@@ -373,6 +373,8 @@ export default function DJList() {
                                         deadline={job.deadline ? formatDateToThai(new Date(job.deadline)) : '-'}
                                         sla={calculateSLA(job)}
                                         assignee={job.assigneeName || '-'}
+                                        isParent={job.isParent}
+                                        parentJobId={job.parentJobId}
                                         rowClass={job.status === 'scheduled' ? 'bg-violet-50/30' : 'hover:bg-gray-50'}
                                     />
                                 ))}
@@ -474,7 +476,7 @@ function Th({ children }) {
 /**
  * JobRow Component: แสดงแถวข้อมูลงาน DJ ในตาราง
  */
-function JobRow({ id, pkId, project, type, subject, status, submitDate, deadline, sla, assignee, rowClass = 'hover:bg-gray-50' }) {
+function JobRow({ id, pkId, project, type, subject, status, submitDate, deadline, sla, assignee, isParent, parentJobId, rowClass = 'hover:bg-gray-50' }) {
     // แยก ID จริงสำหรับการ Link (กรณีแสดงผลเป็น DJ-XXXX แต่ ID จริงคือเลข)
     // const actualId = id.toString().replace('DJ-', ''); 
     // ^ OLD logic: unreliable if id format changes. Now using pkId directly.
@@ -483,9 +485,13 @@ function JobRow({ id, pkId, project, type, subject, status, submitDate, deadline
     return (
         <tr className={rowClass}>
             <td className="px-4 py-3">
-                <Link to={`/jobs/${pkId}`} className="text-rose-600 font-medium hover:underline">
-                    {id}
-                </Link>
+                <div className="flex flex-col">
+                    <Link to={`/jobs/${pkId}`} className="text-rose-600 font-medium hover:underline">
+                        {id}
+                    </Link>
+                    {isParent && <span className="text-[10px] text-blue-600 bg-blue-50 px-1 rounded inline-block w-fit mt-1">Parent Job</span>}
+                    {parentJobId && <span className="text-[10px] text-gray-500 bg-gray-100 px-1 rounded inline-block w-fit mt-1">Child Job</span>}
+                </div>
             </td>
             <td className="px-4 py-3 text-sm">{project}</td>
             <td className="px-4 py-3 text-sm">{type}</td>

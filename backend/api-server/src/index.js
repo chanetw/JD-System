@@ -95,6 +95,7 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+
 // ==========================================
 // ขั้นตอนที่ 4: สร้าง HTTP Server สำหรับ Socket.io
 // ==========================================
@@ -259,14 +260,18 @@ app.use('/api/holidays', holidaysRoutes);
 app.use('/api/job-types', jobTypesRoutes); // ✓ NEW: Job Types API
 app.use('/api/approvals', approvalRoutes);
 app.use('/api/approval-flows', approvalFlowsRoutes);
+
+// V2 Auth System Routes (Production-ready with Sequelize + RBAC)
+// Endpoints: /api/v2/auth/*, /api/v2/users/*
+// IMPORTANT: Must be mounted BEFORE /api routes to prevent comments router from blocking V2 auth endpoints
+app.use('/api/v2', v2Routes);
+
+// Comments API - Must be AFTER V2 routes to avoid blocking unauthenticated V2 endpoints
 app.use('/api', commentsRoutes); // ✓ NEW: Comments API (routes: /api/jobs/:jobId/comments)
 // V2 Flow Templates API REMOVED - Using V1 Extended instead
 app.use('/api/reports', reportsRoutes);
 app.use('/api/storage', storageRoutes);
 
-// V2 Auth System Routes (Production-ready with Sequelize + RBAC)
-// Endpoints: /api/v2/auth/*, /api/v2/users/*
-app.use('/api/v2', v2Routes);
 
 // Routes will be added here in the future
 // app.use('/api/notifications', notificationsRouter);

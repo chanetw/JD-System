@@ -28,7 +28,9 @@ httpClient.interceptors.request.use(
     // Get token from localStorage (Support both V1 and V2)
     const tokenV1 = localStorage.getItem('token');
     const tokenV2 = localStorage.getItem('auth_token_v2');
-    const token = tokenV1 || tokenV2;
+
+    // Prioritize V2 token as it's the modern auth system
+    const token = tokenV2 || tokenV1;
 
     // 🔍 DEBUG: Log token source for troubleshooting
     console.log('[httpClient] 🔐 Token Check:', {

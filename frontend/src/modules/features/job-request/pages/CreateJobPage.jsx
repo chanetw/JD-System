@@ -19,7 +19,7 @@ import Button from '@shared/components/Button';
 import Modal from '@shared/components/Modal';
 import { calculateDueDate, formatDateToThai } from '@shared/utils/slaCalculator';
 import { getAccessibleProjects, hasRole, isAdmin } from '@shared/utils/permission.utils';
-import { XMarkIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, ClockIcon, LinkIcon, PlusIcon } from '@heroicons/react/24/outline';
 
 /**
  * CreateDJ Component
@@ -88,6 +88,9 @@ export default function CreateDJ() {
 
     /** ข้อความสำหรับเพิ่ม Selling Point ใหม่ลงใน Tags */
     const [newTag, setNewTag] = useState('');
+
+    /** สถานะแสดง/ซ่อน Brief Link Input (สำหรับ Add Link button) */
+    const [showBriefLinkInput, setShowBriefLinkInput] = useState(false);
 
     // === สถานะการตรวจสอบและแจ้งเตือน (States: Validation & Feedback) ===
     /** รายการข้อผิดพลาดที่พบจากฟอร์ม */
@@ -188,7 +191,7 @@ export default function CreateDJ() {
 
         // เติมข้อมูล BUD อัตโนมัติเมื่อมีการเปลี่ยนโครงการ
         if (name === 'project') {
-            const selectedProject = masterData.projects.find(p => p.name === value);
+            const selectedProject = masterData.projects.find(p => p.id === parseInt(value));
             if (selectedProject) {
                 const budValue = selectedProject.bud;
                 const budName = typeof budValue === 'object' ? budValue.name : budValue;
@@ -238,8 +241,8 @@ export default function CreateDJ() {
         if (name === 'project' || name === 'jobType') {
             setTimeout(async () => {
                 const currentProject = name === 'project'
-                    ? masterData.projects.find(p => p.name === value)
-                    : masterData.projects.find(p => p.name === formData.project);
+                    ? masterData.projects.find(p => p.id === parseInt(value))
+                    : masterData.projects.find(p => p.id === parseInt(formData.project));
                 const currentJobType = name === 'jobType'
                     ? masterData.jobTypes.find(t => t.name === value)
                     : masterData.jobTypes.find(t => t.name === formData.jobType);
@@ -531,16 +534,21 @@ export default function CreateDJ() {
 
         // กฎข้อที่ 4: โควต้างานต่อวัน (จำกัดที่ 10 งานต่อหนึ่งโครงการต่อวัน)
         if (formData.project) {
+            const selectedProject = masterData.projects.find(p => p.id === parseInt(formData.project));
+            const projectId = parseInt(formData.project);
             const jobs = await api.getJobs();
             const todayJobs = jobs.filter(j => {
                 const jobDate = new Date(j.createdAt).toISOString().split('T')[0];
-                return j.project === formData.project && jobDate === todayStr;
+                // Compare by projectId (handle both j.projectId and j.project)
+                const jobProjectId = j.projectId || j.project_id;
+                return jobProjectId === projectId && jobDate === todayStr;
             });
 
             if (todayJobs.length >= 10) {
+                const projectName = selectedProject?.name || formData.project;
                 return {
                     allowed: false,
-                    reason: `โครงการ "${formData.project}" ได้ส่งงานครบโควต้าประจำวันแล้ว (สูงสุด 10 งาน/วัน)`,
+                    reason: `โครงการ "${projectName}" ได้ส่งงานครบโควต้าประจำวันแล้ว (สูงสุด 10 งาน/วัน)`,
                     canSchedule: false
                 };
             }
@@ -559,7 +567,10 @@ export default function CreateDJ() {
         if (!formData.jobType && selectedJobTypes.length === 0) newErrors.push("กรุณาเลือกประเภทงาน (Job Type)");
         if (!formData.subject) newErrors.push("กรุณาระบุหัวข้องาน (Subject)");
         // Objective ไม่บังคับแล้ว (ลบ validation 20 ตัวอักษร)
-        if (formData.attachments.length === 0) newErrors.push("กรุณาแนบไฟล์รายละเอียดงานอย่างน้อย 1 ไฟล์");
+        // ต้องมี briefLink ถึงจะส่งงานได้
+        if (!formData.briefLink) {
+            newErrors.push("กรุณาใส่ลิงค์รายละเอียด (Brief Link) เพื่อส่งงาน");
+        }
 
         setErrors(newErrors);
         return newErrors.length === 0;
@@ -664,8 +675,8 @@ export default function CreateDJ() {
     const calculateCompletion = () => {
         const fields = ['project', 'jobType', 'subject'];
         const filled = fields.filter(f => formData[f]).length;
-        const hasFiles = formData.attachments.length > 0 ? 1 : 0;
-        return Math.round(((filled + hasFiles) / (fields.length + 1)) * 100);
+        const hasBriefLink = formData.briefLink ? 1 : 0;
+        return Math.round(((filled + hasBriefLink) / (fields.length + 1)) * 100);
     };
 
     return (
@@ -715,7 +726,7 @@ export default function CreateDJ() {
                                 >
                                     <option value="">-- เลือกโครงการ --</option>
                                     {masterData.projects.map(p => (
-                                        <option key={p.id} value={p.name}>{p.name}</option>
+                                        <option key={p.id} value={p.id}>{p.name}</option>
                                     ))}
                                 </FormSelect>
                                 <div>
@@ -991,60 +1002,64 @@ export default function CreateDJ() {
                                 />
                             </div>
 
-                            <div>
-                                <FormInput
-                                    label="ลิงค์รายละเอียด (Brief Link) - เช่น Google Drive"
-                                    name="briefLink"
-                                    type="url"
-                                    placeholder="https://drive.google.com/file/d/... หรือลิงค์เอกสารอื่น"
-                                    value={formData.briefLink}
-                                    onChange={handleChange}
-                                />
-                                <p className="text-xs text-gray-500 mt-1">สำหรับใส่ลิงค์ Google Drive หรือเอกสารออนไลน์ที่มีรายละเอียดงาน</p>
-                            </div>
-
                             {/* ส่วน Headline, Sub-headline, Selling Points, Price ถูกลบออกตาม implementation plan */}
+                            {/* Brief Link ย้ายไปอยู่ส่วน Attachments แล้ว */}
                         </CardBody>
                     </Card >
 
-                    {/* ส่วนที่ 3: ไฟล์แนบ (Attachments) */}
+                    {/* ส่วนที่ 3: ลิงค์รายละเอียด (Brief Link) - บังคับกรอก */}
                     < Card >
-                        <CardHeader title="ไฟล์แนบประกอบงาน (Attachments)" badge="3" />
+                        <CardHeader title="ลิงค์รายละเอียด (Brief Link)" badge="3" />
                         <CardBody className="space-y-4">
-                            {/* พื้นที่อัปโหลดไฟล์ */}
-                            <div
-                                onClick={handleFileUpload}
-                                className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-rose-400 transition-colors cursor-pointer bg-gray-50 hover:bg-white"
-                            >
-                                <div className="text-gray-400 mx-auto mb-4">
-                                    <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                                </div>
-                                <p className="text-gray-600 mb-1">คลิกที่นี่เพื่อเลือกอัปโหลดไฟล์รายละเอียด หรือรูปภาพตัวอย่าง</p>
-                                <p className="text-xs text-gray-400">(ระบบจำลองการอัปโหลดไฟล์)</p>
-                            </div>
-
-                            {/* รายการไฟล์ที่อัปโหลดแล้ว */}
-                            {formData.attachments.map((file, idx) => (
-                                <div key={idx} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
+                            {/* Brief Link - แสดงเป็น Card เมื่อมีลิงค์ */}
+                            {formData.briefLink ? (
+                                <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600 font-bold text-xs">
-                                            DOC
+                                        <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center text-green-600">
+                                            <LinkIcon className="w-5 h-5" />
                                         </div>
-                                        <div>
-                                            <p className="text-sm font-medium text-gray-900">{file.name}</p>
-                                            <p className="text-xs text-gray-400">{file.size}</p>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-green-800">✓ เพิ่มลิงค์แล้ว</p>
+                                            <a
+                                                href={formData.briefLink}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-xs text-green-600 hover:underline truncate block"
+                                            >
+                                                {formData.briefLink}
+                                            </a>
                                         </div>
                                     </div>
                                     <button
                                         type="button"
-                                        onClick={() => removeFile(idx)}
-                                        className="text-gray-400 hover:text-red-500"
-                                        title="ลบไฟล์"
+                                        onClick={() => {
+                                            setFormData(prev => ({ ...prev, briefLink: '' }));
+                                            setShowBriefLinkInput(true);
+                                        }}
+                                        className="text-gray-400 hover:text-red-500 ml-2"
+                                        title="เปลี่ยนลิงค์"
                                     >
                                         <TrashIcon className="w-5 h-5" />
                                     </button>
                                 </div>
-                            ))}
+                            ) : (
+                                /* Brief Link Input - แสดงตลอดเมื่อยังไม่มีลิงค์ */
+                                <div className="space-y-3">
+                                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                                        <p className="text-sm text-amber-800 font-medium mb-2">⚠️ จำเป็นต้องใส่ลิงค์เพื่อส่งงาน</p>
+                                        <p className="text-xs text-amber-600">กรุณาใส่ลิงค์ Google Drive, Notion หรือเอกสารออนไลน์ที่มีรายละเอียดงาน</p>
+                                    </div>
+                                    <FormInput
+                                        label="ลิงค์รายละเอียด (Brief Link) *"
+                                        name="briefLink"
+                                        type="url"
+                                        placeholder="https://drive.google.com/file/d/... หรือลิงค์เอกสารอื่น"
+                                        value={formData.briefLink}
+                                        onChange={handleChange}
+                                        required
+                                    />
+                                </div>
+                            )}
                         </CardBody>
                     </Card >
                 </div >
@@ -1437,7 +1452,7 @@ export default function CreateDJ() {
                                 <CheckItem label="ประเภทงาน" checked={!!formData.jobType} />
                                 <CheckItem label="หัวข้อรายการ" checked={!!formData.subject} />
 
-                                <CheckItem label="ไฟล์แนบ" checked={formData.attachments.length > 0} />
+                                <CheckItem label="ลิงค์รายละเอียด" checked={!!formData.briefLink} />
                             </div>
 
                             <div className="mt-4 pt-4 border-t border-gray-200">

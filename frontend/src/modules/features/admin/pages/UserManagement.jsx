@@ -22,7 +22,8 @@ import RoleSelectionCheckbox from '@shared/components/RoleSelectionCheckbox';
 import ScopeConfigPanel from '@shared/components/ScopeConfigPanel';
 import {
     CheckIcon, XMarkIcon,
-    UserIcon, EnvelopeIcon, BuildingOfficeIcon
+    UserIcon, EnvelopeIcon, BuildingOfficeIcon,
+    ChevronLeftIcon, ChevronRightIcon
 } from '@heroicons/react/24/outline';
 
 // ROLE_OPTIONS และ SCOPE_LEVELS ย้ายไปใช้จาก permission.utils.js แล้ว
@@ -103,6 +104,16 @@ export default function UserManagementNew() {
 
     const [users, setUsers] = useState([]);
 
+    // Pagination State
+    const [pagination, setPagination] = useState({
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 0,
+        hasNext: false,
+        hasPrev: false
+    });
+
     // Filter State
     const [searchTerm, setSearchTerm] = useState('');
     const [filterRole, setFilterRole] = useState('');
@@ -120,11 +131,23 @@ export default function UserManagementNew() {
         }
     }, [activeTab]);
 
-    const loadUsers = async () => {
+    const loadUsers = async (page = 1) => {
         try {
             setIsLoading(true);
-            const data = await apiDatabase.getUsers();
-            setUsers(data);
+            console.log('[UserManagement] calling apiDatabase.getUsers', apiDatabase.getUsers);
+            // Pass page and limit (default 20)
+            const result = await apiDatabase.getUsers(page, pagination.limit);
+            console.log('[UserManagement] getUsers result:', result);
+
+            setUsers(result?.data || []);
+            setPagination({
+                page: result?.pagination?.page || page,
+                limit: result?.pagination?.limit || 20,
+                total: result?.pagination?.total || 0,
+                totalPages: result?.pagination?.totalPages || 1,
+                hasNext: result?.pagination?.hasNext || false,
+                hasPrev: result?.pagination?.hasPrev || false
+            });
         } catch (error) {
             console.error('Error loading users:', error);
             showAlert('error', 'ไม่สามารถโหลดข้อมูลผู้ใช้ได้');
@@ -914,6 +937,79 @@ export default function UserManagementNew() {
                                     })}
                                 </tbody>
                             </table>
+                        </div>
+                    )}
+
+                    {/* Pagination Controls */}
+                    {users.length > 0 && (
+                        <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
+                            <div className="flex flex-1 justify-between sm:hidden">
+                                <button
+                                    onClick={() => loadUsers(pagination.page - 1)}
+                                    disabled={!pagination.hasPrev}
+                                    className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
+                                >
+                                    Previous
+                                </button>
+                                <button
+                                    onClick={() => loadUsers(pagination.page + 1)}
+                                    disabled={!pagination.hasNext}
+                                    className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                            <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                                <div>
+                                    <p className="text-sm text-gray-700">
+                                        Showing <span className="font-medium">{(pagination.page - 1) * pagination.limit + 1}</span> to <span className="font-medium">{Math.min(pagination.page * pagination.limit, pagination.total)}</span> of <span className="font-medium">{pagination.total}</span> results
+                                    </p>
+                                </div>
+                                <div>
+                                    <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                                        <button
+                                            onClick={() => loadUsers(pagination.page - 1)}
+                                            disabled={!pagination.hasPrev}
+                                            className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                        >
+                                            <span className="sr-only">Previous</span>
+                                            <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                                        </button>
+
+                                        {/* Page Numbers */}
+                                        {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                                            // Simple logic to show window of pages around current page
+                                            // For now just show 1..5 or adjust based on page
+                                            let pageNum = pagination.page - 2 + i;
+                                            if (pagination.page < 3) pageNum = i + 1;
+                                            if (pageNum > pagination.totalPages) return null;
+                                            if (pageNum < 1) return null;
+
+                                            return (
+                                                <button
+                                                    key={pageNum}
+                                                    onClick={() => loadUsers(pageNum)}
+                                                    className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${pagination.page === pageNum
+                                                        ? 'bg-rose-600 text-white focus:z-20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600'
+                                                        : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'
+                                                        }`}
+                                                >
+                                                    {pageNum}
+                                                </button>
+                                            );
+                                        })}
+
+                                        <button
+                                            onClick={() => loadUsers(pagination.page + 1)}
+                                            disabled={!pagination.hasNext}
+                                            className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                        >
+                                            <span className="sr-only">Next</span>
+                                            <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                                        </button>
+                                    </nav>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>

@@ -1,36 +1,20 @@
-
 /**
  * @file apiService.js
- * @description API Service Layer - ตัวกลางระหว่าง UI และ API (Supabase Integration Updated)
- * 
+ * @description API Service Layer - ใช้ Supabase Database เท่านั้น
+ *
  * Senior Programmer Notes:
- * - ปัจจุบัน: ใช้ Database จริง (Supabase) เป็นหลัก
- * - สามารถสลับกลับเป็น Mock ได้ (เผื่อ Dev Offline)
+ * - ใช้ Database จริง (Supabase) เป็นหลัก
+ * - Mock Data ถูกลบออกแล้ว (v1.0.0-before-senx-cleanup)
  */
 
-import { mockApiService as mockApi } from './mockApi';
 import apiDatabase from './apiDatabase';
 
 // ============================================
-// Configuration
+// API Service - Real Database Only
 // ============================================
 
-/**
- * TOGGLE THIS FLAG
- * true  = ใช้ Supabase Database จริง 🟢
- * false = ใช้ Local Mock Data 🟡
- */
-const USE_REAL_DB = true;
-// const USE_REAL_DB = false; 
+console.log('[API Service] Mode: REAL DB (Supabase)');
 
-// ============================================
-// API Service Selection
-// ============================================
-
-console.log(`[API Service] Selected Mode: ${USE_REAL_DB ? 'REAL DB (Supabase)' : 'MOCK DATA'}`);
-
-// เลือก Service ตาม Config
-export const api = USE_REAL_DB ? apiDatabase : mockApi;
-
-// Export default เพื่อความสะดวกในการ import
+// Export API Service
+export const api = apiDatabase;
 export default api;

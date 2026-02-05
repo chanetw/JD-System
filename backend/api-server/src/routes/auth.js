@@ -17,6 +17,7 @@ import crypto from 'crypto';
 const router = express.Router();
 const userService = new UserService();
 
+
 /**
  * Middleware สำหรับตรวจสอบ JWT token
  * Supports both V1 and V2 token formats
@@ -93,26 +94,33 @@ export function authenticateToken(req, res, next) {
     if (!normalizedUser.tenantId || !normalizedUser.userId) {
       console.warn('[Auth] Token missing required fields:', {
         userId: normalizedUser.userId,
-        tenantId: normalizedUser.tenantId
+        tenantId: normalizedUser.tenantId,
+        fullPayload: user
       });
       return res.status(403).json({
         success: false,
         error: 'INVALID_TOKEN_PAYLOAD',
-        message: 'Token payload is invalid (missing userId or tenantId)'
+        message: 'Token ไม่สมบูรณ์ (ขาด tenantId หรือ userId)'
       });
     }
 
-    console.log('[Auth] ✅ Token verified successfully:', {
-      userId: normalizedUser.userId,
-      tenantId: normalizedUser.tenantId,
-      roles: normalizedUser.roles,
-      isV2Token: !!user.roleId // Check if it's a V2 token
-    });
+    // DEBUG: Log successful auth
+    // console.log('[Auth] Authenticated:', { 
+    //   userId: normalizedUser.userId, 
+    //   tenantId: normalizedUser.tenantId,
+    //   method: req.method,
+    //   path: req.path
+    // });
 
     req.user = normalizedUser;
+
+    // Setup RLS context if needed (will be handled by next middleware)
+
     next();
   });
 }
+
+
 
 /**
  * Middleware to set RLS context for authenticated requests

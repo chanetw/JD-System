@@ -560,7 +560,15 @@ export default function JobDetail() {
                                 <h1 className="text-xl font-bold text-gray-900">{job.djId || job.id}</h1>
                                 <Badge status={job.status} />
                             </div>
-                            <p className="text-sm text-gray-500 mt-1">{job.subject} • {job.project}</p>
+                            <p className="text-sm text-gray-500 mt-1">
+                                {job.subject} • {job.project}
+                                {job.parentJob && (
+                                    <Link to={`/jobs/${job.parentJob.id}`} className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 hover:underline text-xs font-medium border border-blue-100 transition-colors">
+                                        <DocumentTextIcon className="w-3 h-3" />
+                                        Parent: {job.parentJob.djId}
+                                    </Link>
+                                )}
+                            </p>
                         </div>
                     </div>
 
@@ -604,6 +612,24 @@ export default function JobDetail() {
                         <p className="text-sm text-amber-700 mt-1">"งานถูกส่งกลับแก้ไข กรุณาตรวจสอบ Comment ล่าสุด"</p>
                     </div>
                     <button className="text-amber-600 hover:text-amber-800 text-sm font-medium">ดูรายละเอียด</button>
+                </div>
+            )}
+
+            {/* Parent Rejected Alert */}
+            {job.parentJob?.status === 'rejected' && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3 animate-pulse">
+                    <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <XMarkIcon className="w-6 h-6 text-red-600" />
+                    </div>
+                    <div className="flex-1">
+                        <h3 className="font-bold text-red-800">⚠️ งานแม่ถูกยกเลิก/ปฏิเสธ (Parent Job Rejected)</h3>
+                        <p className="text-sm text-red-700 mt-1">
+                            งานแม่ <strong>{job.parentJob.djId}</strong> ถูกปฏิเสธ โปรดตรวจสอบกับหัวหน้าทีมหรือผู้มอบหมายงานก่อนดำเนินการต่อ
+                        </p>
+                    </div>
+                    <Link to={`/jobs/${job.parentJob.id}`} className="text-red-700 hover:text-red-900 text-sm font-bold underline px-3 py-1">
+                        ดูงานแม่
+                    </Link>
                 </div>
             )}
 
@@ -694,6 +720,36 @@ export default function JobDetail() {
                             </div>
                         );
                     })()}
+
+
+                    {/* Child Jobs List (For Parent Job) */}
+                    {job.childJobs && job.childJobs.length > 0 && (
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                                <h2 className="font-semibold text-gray-900">Child Jobs ({job.childJobs.length})</h2>
+                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Group Management</span>
+                            </div>
+                            <div className="divide-y divide-gray-100">
+                                {job.childJobs.map(child => (
+                                    <div key={child.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                                        <Link to={`/jobs/${child.id}`} className="flex items-center gap-4 group flex-1">
+                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold
+                                                ${child.status === 'approved' ? 'bg-green-100 text-green-700' :
+                                                    child.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                                                        'bg-gray-100 text-gray-700'}`}>
+                                                {child.jobType?.[0] || 'J'}
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-gray-900 group-hover:text-rose-600">{child.djId}</p>
+                                                <p className="text-xs text-gray-500">{child.jobType} • {child.assignee || 'Unassigned'}</p>
+                                            </div>
+                                        </Link>
+                                        <Badge status={child.status} />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Manual Assignment Section - สำหรับ Jobs ที่ Approved แต่ยังไม่ Assign */}
                     {job.status === 'approved' && !job.assigneeId && (

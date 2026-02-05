@@ -218,9 +218,18 @@ export class UserService extends BaseService {
         }
       });
 
-      // Map scopeAssignments to snake_case for frontend compatibility
-      if (result.data && result.data.length > 0) {
-        result.data.forEach(user => {
+      // Map scopeAssignments and userRoles for frontend compatibility
+      const users = result.data?.data;
+      if (users && users.length > 0) {
+        users.forEach(user => {
+          // Map userRoles -> roles
+          user.roles = (user.userRoles || []).map(r => ({
+            name: r.roleName,
+            isActive: true,
+            scopes: [] // Initial empty scopes, populated below via scope_assignments logic if needed
+          }));
+
+          // Map scopeAssignments -> scope_assignments (snake_case)
           user.scope_assignments = (user.scopeAssignments || []).map(s => ({
             user_id: user.id,
             scope_id: s.scopeId,
@@ -228,7 +237,20 @@ export class UserService extends BaseService {
             scope_name: s.scopeName,
             role_type: s.roleType
           }));
+
+          // Populate scopes back into roles for full compatibility
+          user.roles.forEach(role => {
+            role.scopes = user.scope_assignments
+              .filter(s => s.role_type === role.name)
+              .map(s => ({
+                level: s.scope_level,
+                scopeId: s.scope_id,
+                scopeName: s.scope_name
+              }));
+          });
+
           delete user.scopeAssignments;
+          // Note: we keep userRoles for reference or delete if strict
         });
       }
 

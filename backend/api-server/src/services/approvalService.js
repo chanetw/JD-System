@@ -13,10 +13,12 @@
 import { BaseService } from './baseService.js';
 import crypto from 'crypto';
 import { getDatabase } from '../config/database.js';
+import NotificationService from './notificationService.js';
 
 export class ApprovalService extends BaseService {
   constructor() {
     super();
+    this.notificationService = new NotificationService();
   }
 
   /**
@@ -497,7 +499,7 @@ export class ApprovalService extends BaseService {
       // 1. Get Job & Current Status
       const job = await this.prisma.job.findUnique({
         where: { id: jobId },
-        select: { id: true, projectId: true, jobTypeId: true, status: true, requesterId: true, djId: true, subject: true }
+        select: { id: true, projectId: true, jobTypeId: true, status: true, requesterId: true, djId: true, subject: true, isParent: true }
       });
 
       if (!job) throw new Error('Job not found');
@@ -541,8 +543,7 @@ export class ApprovalService extends BaseService {
 
       // 3. Update Job
       const updateData = {
-        status: nextStatus,
-        updatedAt: new Date()
+        status: nextStatus
       };
 
       if (isFinal) {
@@ -560,6 +561,50 @@ export class ApprovalService extends BaseService {
         assignResult = await this.autoAssignJob(jobId, flow, job.requesterId);
         if (assignResult.success) {
           nextStatus = 'assigned';
+        }
+      }
+
+      // ----------------------------------------
+      // V1 Extended: Cascade Approval to Children
+      // ----------------------------------------
+      if (job.isParent && (nextStatus === 'approved' || nextStatus === 'assigned')) {
+        const pendingChildren = await this.prisma.job.findMany({
+          where: { parentJobId: jobId, status: 'pending_approval' }
+        });
+
+        if (pendingChildren.length > 0) {
+          // 1. Update status to approved first
+          await this.prisma.job.updateMany({
+            where: { parentJobId: jobId, status: 'pending_approval' },
+            data: { status: 'approved' } // Base status before assignment
+          });
+
+          // 2. Process each child for auto-assignment & logging
+          for (const child of pendingChildren) {
+            try {
+              // Auto-assign child (Reuse logic)
+              const childFlow = await this.getApprovalFlow(job.projectId, child.jobTypeId);
+              const childAssign = await this.autoAssignJob(child.id, childFlow, job.requesterId);
+
+              let childFinalStatus = 'approved';
+              if (childAssign.success) {
+                await this.prisma.job.update({ where: { id: child.id }, data: { status: 'assigned' } });
+                childFinalStatus = 'assigned';
+              }
+
+              // Log activity
+              await this.logApprovalActivity({
+                jobId: child.id,
+                approverId,
+                activityType: 'job_approved_cascade',
+                description: `อนุมัติอัตโนมัติตามงานแม่ (${job.djId}) -> ${childFinalStatus}`,
+                ipAddress,
+                metadata: { parentId: jobId, trigger: 'cascade' }
+              });
+            } catch (err) {
+              console.error(`[Cascade Error] Failed to process child ${child.id}:`, err);
+            }
+          }
         }
       }
 
@@ -590,7 +635,6 @@ export class ApprovalService extends BaseService {
 
     } catch (error) {
       return this.handleError(error, 'APPROVE_VIA_WEB', 'Approval');
-
     }
   }
 
@@ -601,7 +645,7 @@ export class ApprovalService extends BaseService {
     try {
       const job = await this.prisma.job.findUnique({
         where: { id: jobId },
-        select: { id: true, djId: true, status: true }
+        select: { id: true, djId: true, status: true, isParent: true, tenantId: true }
       });
 
       if (!job) throw new Error('Job not found');
@@ -630,10 +674,32 @@ export class ApprovalService extends BaseService {
       await this.prisma.job.update({
         where: { id: jobId },
         data: {
-          status: 'rejected',
-          updatedAt: new Date()
+          status: 'rejected'
         }
       });
+
+      // ----------------------------------------
+      // V1 Extended: Cascade Rejection Notification
+      // ----------------------------------------
+      if (job.isParent) {
+        const children = await this.prisma.job.findMany({
+          where: { parentJobId: jobId },
+          select: { id: true, djId: true, assigneeId: true }
+        });
+
+        for (const child of children) {
+          if (child.assigneeId) {
+            await this.notificationService.createNotification({
+              tenantId: job.tenantId,
+              userId: child.assigneeId,
+              type: 'parent_rejected',
+              title: `⚠️ งานแม่ถูกปฏิเสธ: ${job.djId}`,
+              message: `งานแม่ (${job.djId}) ถูกปฏิเสธเนื่องจาก: "${comment}" โปรดตรวจสอบงานของคุณ`,
+              link: `/jobs/${child.id}`
+            });
+          }
+        }
+      }
 
       // Log
       await this.logApprovalActivity({

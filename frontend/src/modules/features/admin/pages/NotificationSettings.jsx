@@ -51,7 +51,7 @@ export default function NotificationSettings() {
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
-    
+
     // Modal states
     const [showAddEmailModal, setShowAddEmailModal] = useState(false);
     const [showAddUserModal, setShowAddUserModal] = useState(false);
@@ -70,12 +70,13 @@ export default function NotificationSettings() {
                 api.getJobTypes(),
                 api.getUsers()
             ]);
-            setJobTypes(jobTypesData);
+            const filteredJobTypes = (jobTypesData || []).filter(t => t.name !== 'Project Group (Parent)');
+            setJobTypes(filteredJobTypes);
             setUsers(usersData.filter(u => u.isActive));
-            
+
             // Auto-select first job type
-            if (jobTypesData.length > 0) {
-                selectJobType(jobTypesData[0]);
+            if (filteredJobTypes.length > 0) {
+                selectJobType(filteredJobTypes[0]);
             }
         } catch (err) {
             console.error('Load data error:', err);
@@ -90,7 +91,7 @@ export default function NotificationSettings() {
         setSelectedJobType(jobType);
         setError('');
         setSuccess('');
-        
+
         try {
             const settingsData = await api.getNotificationSettings(jobType.id);
             setSettings(settingsData || getDefaultSettings());
@@ -136,7 +137,7 @@ export default function NotificationSettings() {
     // Add custom email
     const handleAddEmail = () => {
         if (!newEmail.trim()) return;
-        
+
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(newEmail)) {
             setError('รูปแบบอีเมลไม่ถูกต้อง');
@@ -168,7 +169,7 @@ export default function NotificationSettings() {
     // Add custom user
     const handleAddUser = () => {
         if (!selectedUserId) return;
-        
+
         const userId = parseInt(selectedUserId);
         if (settings.customUserIds?.includes(userId)) {
             setError('ผู้ใช้นี้มีอยู่แล้ว');
@@ -198,7 +199,7 @@ export default function NotificationSettings() {
     // Save settings
     const handleSave = async () => {
         if (!selectedJobType) return;
-        
+
         setIsSaving(true);
         setError('');
         setSuccess('');
@@ -248,11 +249,10 @@ export default function NotificationSettings() {
                                 <button
                                     key={jt.id}
                                     onClick={() => selectJobType(jt)}
-                                    className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${
-                                        selectedJobType?.id === jt.id
+                                    className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${selectedJobType?.id === jt.id
                                             ? 'bg-rose-50 border-2 border-rose-500 text-rose-700'
                                             : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
-                                    }`}
+                                        }`}
                                 >
                                     <div className="flex items-center gap-2">
                                         <span className="text-xl">{jt.icon || '📋'}</span>
@@ -370,7 +370,7 @@ export default function NotificationSettings() {
                                     <PlusIcon className="w-5 h-5" />
                                     ผู้รับเพิ่มเติม (Custom)
                                 </h3>
-                                
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     {/* Custom Emails */}
                                     <div>
@@ -457,11 +457,10 @@ export default function NotificationSettings() {
                                     {EVENT_TYPES.map((event) => (
                                         <label
                                             key={event.id}
-                                            className={`flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-colors ${
-                                                settings.events?.includes(event.id)
+                                            className={`flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-colors ${settings.events?.includes(event.id)
                                                     ? 'bg-rose-50 border-2 border-rose-200'
                                                     : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100'
-                                            }`}
+                                                }`}
                                         >
                                             <input
                                                 type="checkbox"

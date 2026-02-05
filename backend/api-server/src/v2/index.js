@@ -225,6 +225,7 @@ router.get('/health', (req, res) => {
   res.json({ success: true, message: 'V2 Auth API is running', version: '2.0.0', timestamp: new Date().toISOString() });
 });
 
+
 // ---- AUTH ROUTES ----
 
 // POST /api/v2/auth/register
@@ -309,6 +310,7 @@ router.post('/auth/register', async (req, res, next) => {
 // Includes registration approval status check
 router.post('/auth/login', async (req, res, next) => {
   try {
+
     const { email, password, tenantId } = req.body;
     if (!email || !password) {
       return res.status(400).json(errorResponse('MISSING_FIELDS', 'Email and password are required'));

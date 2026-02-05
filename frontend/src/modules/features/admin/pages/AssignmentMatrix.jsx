@@ -38,8 +38,8 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
             try {
                 // ถ้าไม่มี propAssignees ให้โหลด Users ทั้งหมด (หรือกรองตาม Role)
                 if (!propAssignees) {
-                    const users = await api.getUsers(); // หรือ api.getUsers({ role: 'assignee' }) ถ้ามี
-                    setLocalAssignees(users || []);
+                    const usersResponse = await api.getUsers(); // หรือ api.getUsers({ role: 'assignee' }) ถ้ามี
+                    setLocalAssignees(usersResponse?.data || []);
                 }
 
                 // ถ้าไม่มี propProjectId ให้โหลด Projects มาให้เลือก
@@ -80,7 +80,7 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
             } catch (e) {
                 console.warn('ไม่สามารถโหลด JobTypes:', e.message);
             }
-            setJobTypes(types || []);
+            setJobTypes((types || []).filter(t => t.name !== 'Project Group (Parent)'));
 
             // โหลด Matrix
             let currentMatrix = [];
