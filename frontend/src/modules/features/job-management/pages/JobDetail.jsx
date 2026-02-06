@@ -13,6 +13,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
+import LoadingSpinner from '@shared/components/LoadingSpinner';
 import { api } from '@shared/services/apiService';
 import { adminService } from '@shared/services/modules/adminService';
 import { useAuthStore } from '@core/stores/authStore';

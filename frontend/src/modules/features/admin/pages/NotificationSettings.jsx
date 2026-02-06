@@ -12,6 +12,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@shared/services/apiService';
 import Button from '@shared/components/Button';
+import LoadingSpinner from '@shared/components/LoadingSpinner';
 import { Card, CardHeader, CardBody } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
 import Modal from '@shared/components/Modal';
@@ -219,7 +220,7 @@ export default function NotificationSettings() {
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rose-600"></div>
+                <LoadingSpinner size="lg" color="rose" label="" />
             </div>
         );
     }

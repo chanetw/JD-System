@@ -11,6 +11,7 @@ import { useAuthStore } from '@core/stores/authStore';
 import { Card } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
+import LoadingSpinner from '@shared/components/LoadingSpinner';
 import { useSocket, useNotifications } from '@shared/hooks';
 import {
     ClipboardDocumentListIcon,

@@ -11,6 +11,7 @@
 import express from 'express';
 import { UserService } from '../services/userService.js';
 import { authenticateToken, setRLSContextMiddleware } from './auth.js';
+import { getSupabaseClient } from '../config/supabase.js';
 
 const router = express.Router();
 const userService = new UserService();
@@ -402,6 +403,223 @@ router.post('/:id/roles', async (req, res) => {
       success: false,
       error: 'UPDATE_ROLES_FAILED',
       message: 'ไม่สามารถบันทึกบทบาทได้'
+    });
+  }
+});
+
+/**
+ * POST /api/users/registrations/:id/approve
+ * อนุมัติคำขอสมัครและสร้างผู้ใช้ใหม่
+ *
+ * @param {number} id - Registration ID
+ * @body {Array} roles - Array of role objects with structure: { name, scopes, level }
+ * @body {string} tempPassword - Temporary password (hashed)
+ */
+router.post('/registrations/:id/approve', async (req, res) => {
+  try {
+    const { id: registrationId } = req.params;
+    const { roles, tempPassword } = req.body;
+    const tenantId = req.user.tenantId || 1;
+    const currentUserId = req.user.id;
+
+    // Check if user is admin
+    const isAdmin = hasAdminRole(req.user.roles);
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: 'INSUFFICIENT_PERMISSIONS',
+        message: 'คุณไม่มีสิทธิ์อนุมัติการสมัคร'
+      });
+    }
+
+    // Validate input
+    if (!registrationId || !roles || !Array.isArray(roles) || !tempPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_DATA',
+        message: 'ข้อมูลไม่ครบถ้วน (registrationId, roles, tempPassword)'
+      });
+    }
+
+    console.log('[Users] Approving registration:', registrationId);
+
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      return res.status(500).json({
+        success: false,
+        error: 'SUPABASE_NOT_CONFIGURED',
+        message: 'ฐานข้อมูลไม่ได้กำหนดค่า'
+      });
+    }
+
+    // 1. Fetch registration data
+    const { data: regData, error: regError } = await supabase
+      .from('user_registration_requests')
+      .select('*')
+      .eq('id', registrationId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (regError || !regData) {
+      console.error('[Users] Registration not found:', regError);
+      return res.status(404).json({
+        success: false,
+        error: 'NOT_FOUND',
+        message: 'ไม่พบคำขอสมัครนี้'
+      });
+    }
+
+    // 2. Create new user in users table
+    const { data: newUser, error: createError } = await supabase
+      .from('users')
+      .insert([{
+        tenant_id: tenantId,
+        email: regData.email,
+        password_hash: tempPassword,
+        first_name: regData.first_name,
+        last_name: regData.last_name,
+        display_name: `${regData.first_name} ${regData.last_name}`,
+        title: regData.title,
+        phone_number: regData.phone,
+        department: regData.department,
+        role: roles[0]?.name || 'requester',
+        is_active: true
+      }])
+      .select()
+      .single();
+
+    if (createError) {
+      console.error('[Users] Failed to create user:', createError);
+      throw createError;
+    }
+
+    console.log('[Users] New user created:', newUser.id);
+
+    // 3. Create roles using updateUserRoles method
+    if (roles && roles.length > 0) {
+      try {
+        const roleResult = await userService.updateUserRoles(newUser.id, roles, {
+          executedBy: currentUserId,
+          tenantId: tenantId
+        });
+        if (!roleResult.success) {
+          console.warn('[Users] Role creation warning:', roleResult.message);
+        }
+      } catch (roleError) {
+        console.warn('[Users] Failed to create role:', roleError.message);
+        // Continue despite role creation error - user is already created
+      }
+    }
+
+    // 4. Update registration status
+    const { error: updateError } = await supabase
+      .from('user_registration_requests')
+      .update({
+        status: 'approved',
+        approved_by: currentUserId,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', registrationId);
+
+    if (updateError) {
+      console.error('[Users] Failed to update registration:', updateError);
+      throw updateError;
+    }
+
+    res.json({
+      success: true,
+      data: { userId: newUser.id, email: newUser.email },
+      message: 'อนุมัติและสร้างผู้ใช้สำเร็จ'
+    });
+
+  } catch (error) {
+    console.error('[Users] Approve registration error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'APPROVE_REGISTRATION_FAILED',
+      message: 'ไม่สามารถอนุมัติการสมัครได้',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+/**
+ * GET /api/users/registrations/pending
+ * ดึงรายการคำขอสมัครที่รอการอนุมัติ
+ *
+ * @query {string} status - 'pending' (default), 'approved', 'rejected', or 'all'
+ */
+router.get('/registrations/pending', async (req, res) => {
+  try {
+    const { status = 'pending' } = req.query;
+    const tenantId = req.user.tenantId || 1;
+
+    // Check if user is admin
+    const isAdmin = hasAdminRole(req.user.roles);
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: 'INSUFFICIENT_PERMISSIONS',
+        message: 'คุณไม่มีสิทธิ์ดูรายการสมัคร'
+      });
+    }
+
+    console.log('[Users] Fetching pending registrations for tenant:', tenantId);
+
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      return res.status(500).json({
+        success: false,
+        error: 'SUPABASE_NOT_CONFIGURED',
+        message: 'ฐานข้อมูลไม่ได้กำหนดค่า'
+      });
+    }
+
+    let query = supabase
+      .from('user_registration_requests')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false });
+
+    if (status !== 'all') {
+      query = query.eq('status', status);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('[Users] Error fetching registrations:', error);
+      throw error;
+    }
+
+    // Map database fields to frontend format
+    const mappedData = (data || []).map(reg => ({
+      id: reg.id,
+      email: reg.email,
+      title: reg.title,
+      firstName: reg.first_name,
+      lastName: reg.last_name,
+      phone: reg.phone,
+      department: reg.department,
+      position: reg.position,
+      status: reg.status,
+      createdAt: reg.created_at,
+      approvedBy: reg.approved_by,
+      rejectionReason: reg.rejected_reason
+    }));
+
+    res.json({
+      success: true,
+      data: mappedData,
+      message: `Found ${mappedData.length} pending registrations`
+    });
+
+  } catch (error) {
+    console.error('[Users] Registrations fetch error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'FETCH_REGISTRATIONS_FAILED',
+      message: 'ไม่สามารถดึงรายการสมัครได้'
     });
   }
 });

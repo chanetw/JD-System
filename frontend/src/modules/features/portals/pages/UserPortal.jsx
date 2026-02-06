@@ -15,6 +15,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Badge from '@shared/components/Badge';
+import LoadingSpinner from '@shared/components/LoadingSpinner';
 import { useAuthStore } from '@core/stores/authStore';
 import { api } from '@shared/services/apiService';
 

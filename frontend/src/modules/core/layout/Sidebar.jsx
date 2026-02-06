@@ -20,22 +20,17 @@ export default function Sidebar() {
     /** ข้อมูลผู้ใช้งานปัจจุบันจาก store */
     const { user } = useAuthStoreV2();
 
-    /** ตรวจสอบสิทธิ์ว่าเป็นผู้ดูแลระบบ (Admin) หรือไม่ */
-    const isAdmin =
-        user?.roleName === 'SuperAdmin' ||
-        user?.roleName === 'OrgAdmin';
+    /** ตรวจสอบสิทธิ์ SuperAdmin (สำหรับ Admin Menu และ Analytics) */
+    const isSuperAdmin = user?.roleName === 'SuperAdmin';
 
     /** ตรวจสอบสิทธิ์ Assignee (Graphic/Editor) */
     const isAssignee = ['TeamLead', 'Member'].includes(user?.roleName);
 
-    /** ตรวจสอบสิทธิ์ Manager (Department Head) */
-    const isManager = user?.roleName === 'TeamLead';
+    /** ตรวจสอบสิทธิ์สร้างงาน (Requester: SuperAdmin, OrgAdmin, TeamLead) */
+    const canCreateJob = ['SuperAdmin', 'OrgAdmin', 'TeamLead'].includes(user?.roleName);
 
-    /** ตรวจสอบสิทธิ์ Supervisor */
-    const isSupervisor = user?.roleName === 'OrgAdmin';
-
-    /** ตรวจสอบสิทธิ์เข้าถึง Analytics Dashboard (Admin, Manager, Supervisor) */
-    const canAccessAnalytics = isAdmin || isManager || isSupervisor;
+    /** ตรวจสอบสิทธิ์เข้าถึง Analytics Dashboard (Phase 1: SuperAdmin only) */
+    const canAccessAnalytics = isSuperAdmin;
 
     return (
         // ============================================
@@ -71,9 +66,11 @@ export default function Sidebar() {
                     แผงควบคุม (Dashboard)
                 </SidebarLink>
 
-                <SidebarLink to="/create" icon={CreateIcon}>
-                    สร้างงาน DJ ใหม่
-                </SidebarLink>
+                {canCreateJob && (
+                    <SidebarLink to="/create" icon={CreateIcon}>
+                        สร้างงาน DJ ใหม่
+                    </SidebarLink>
+                )}
 
                 <SidebarLink to="/jobs" icon={ListIcon}>
                     รายการงาน DJ ทั้งหมด
@@ -100,9 +97,9 @@ export default function Sidebar() {
 
 
                 {/* ============================================
-            Admin Menu - เมนู Admin (แสดงเฉพาะ Admin)
+            Admin Menu - เมนู Admin (แสดงเฉพาะ SuperAdmin)
             ============================================ */}
-                {isAdmin && (
+                {isSuperAdmin && (
                     <>
                         <div className="pt-6 pb-2 px-2">
                             <p className="text-xs font-bold text-rose-300 uppercase tracking-wider">
@@ -141,7 +138,7 @@ export default function Sidebar() {
                 )}
 
                 {/* ============================================
-            Analytics Menu - เมนู Analytics (แสดงเฉพาะ Admin, Manager, Supervisor)
+            Analytics Menu - เมนู Analytics (Phase 1: แสดงเฉพาะ SuperAdmin)
             ============================================ */}
                 {canAccessAnalytics && (
                     <>

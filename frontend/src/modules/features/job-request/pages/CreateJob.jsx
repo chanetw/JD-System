@@ -10,6 +10,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@shared/services/supabaseClient';
+import LoadingSpinner from '@shared/components/LoadingSpinner';
 import { addWorkDays } from '@shared/utils/slaCalculator';
 import { assignJobFromMatrix } from '@shared/services/modules/autoAssignService';
 import { useAuth } from '@core/stores/authStore';

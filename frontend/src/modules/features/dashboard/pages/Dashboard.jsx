@@ -15,6 +15,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import api from '@shared/services/apiService';
+import LoadingSpinner from '@shared/components/LoadingSpinner';
 
 /**
  * @component Dashboard
@@ -95,7 +96,7 @@ export default function Dashboard() {
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-64">
-                <div className="w-8 h-8 border-4 border-rose-500 border-t-transparent rounded-full animate-spin"></div>
+                <LoadingSpinner size="md" color="rose" label="" />
             </div>
         );
     }

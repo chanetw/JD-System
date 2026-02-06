@@ -13,6 +13,7 @@
  */
 
 import React, { Suspense } from 'react';
+import LoadingSpinner from '@shared/components/LoadingSpinner';
 
 // === Lazy Loading Components ===
 // ใช้ React.lazy เพื่อโหลดหน้าแบบ Dynamic (Code Splitting)
@@ -36,7 +37,7 @@ const NotificationSettings = React.lazy(() => import('./pages/NotificationSettin
 const withSuspense = (Component) => (
     <Suspense fallback={
         <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-rose-600"></div>
+            <LoadingSpinner size="md" color="rose" label="" />
         </div>
     }>
         <Component />

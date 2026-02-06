@@ -19,19 +19,25 @@ router.use(setRLSContextMiddleware);
 
 /**
  * GET /api/approval-flows
- * @query {number} projectId
+ * @query {number} [projectId] - Optional. ถ้าไม่ระบุ จะคืนค่า Flows ทั้งหมด
  */
 router.get('/', async (req, res) => {
     try {
         const { projectId } = req.query;
-        if (!projectId) return res.status(400).json({ success: false, message: 'projectId is required' });
+        const tenantId = req.user.tenantId;
 
+        // ถ้าไม่มี projectId → ดึงทั้งหมด (สำหรับ Admin)
+        if (!projectId) {
+            console.log('[API] GET /api/approval-flows (ALL)');
+            const allFlows = await approvalService.getAllApprovalFlows(tenantId);
+            console.log(`[API] Retrieved ${allFlows.length} flows`);
+            return res.json({ success: true, data: allFlows });
+        }
+
+        // ถ้ามี projectId → ดึงของโครงการนั้น
         console.log(`[API] GET /api/approval-flows?projectId=${projectId}`);
         const flow = await approvalService.getApprovalFlowByProject(projectId);
         console.log('[API] Retrieved flows:', JSON.stringify(flow, null, 2));
-
-        // Transform to expected format if needed by frontend, or frontend adapts
-        // Frontend expects levels array. Service returns object with levels.
 
         // If null, return empty structure or null
         const result = flow || { projectId, levels: [], includeTeamLead: false, teamLeadId: null };

@@ -292,36 +292,26 @@ export const userService = {
      * @param {string} status - 'pending', 'approved', 'rejected', หรือ 'all'
      * @returns {Promise<Array>} รายการคำขอสมัคร
      */
-    getPendingRegistrations: async (status = 'all') => {
+    getPendingRegistrations: async (status = 'pending') => {
         try {
-            let query = supabase
-                .from('user_registration_requests')
-                .select('*')
-                .order('created_at', { ascending: false });
+            console.log('[userService] Fetching pending registrations with status:', status);
 
-            if (status !== 'all') {
-                query = query.eq('status', status);
+            // Use Backend API instead of direct Supabase to bypass RLS and get proper context
+            const response = await httpClient.get(`/users/registrations/pending`, {
+                params: { status }
+            });
+
+            if (!response.data.success) {
+                console.warn('[userService] getPendingRegistrations failed:', response.data.message);
+                return [];
             }
 
-            const { data, error } = await query;
-            if (error) throw error;
+            const registrationsData = response.data.data || [];
+            console.log('[userService] Fetched registrations:', registrationsData.length);
 
-            return (data || []).map(req => ({
-                id: req.id,
-                email: req.email,
-                title: req.title,
-                firstName: req.first_name,
-                lastName: req.last_name,
-                phone: req.phone,
-                department: req.department,
-                position: req.position,
-                status: req.status,
-                createdAt: req.created_at,
-                approvedBy: req.approved_by,
-                rejectionReason: req.rejected_reason
-            }));
+            return registrationsData;
         } catch (error) {
-            console.error('Error fetching pending registrations:', error);
+            console.error('[userService] Error fetching pending registrations:', error);
             throw error;
         }
     },

@@ -428,6 +428,24 @@ export const adminService = {
     },
 
     // --- Approval Flows ---
+    getAllApprovalFlows: async () => {
+        // ดึง Approval Flows ทั้งหมด (สำหรับ Admin)
+        // ใช้ใน ApprovalFlow.jsx เพื่อนับจำนวนโครงการที่ตั้งค่าแล้ว
+        try {
+            const response = await httpClient.get('/approval-flows'); // ไม่ส่ง projectId
+            if (!response.data.success) {
+                console.error('[adminService] getAllApprovalFlows error:', response.data.message);
+                return [];
+            }
+
+            // Backend returns array of flows
+            return response.data.data || [];
+        } catch (error) {
+            console.error('[adminService] getAllApprovalFlows error:', error);
+            return [];
+        }
+    },
+
     getApprovalFlows: async () => {
         // V1 Extended: Get all flows from database (default flows only, jobTypeId = null)
         try {
@@ -1110,6 +1128,35 @@ export const adminService = {
             return response.data;
         } catch (error) {
             console.error('[adminService] updateDepartmentManagers error:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * อนุมัติคำขอสมัครและสร้างผู้ใช้ใหม่
+     * @param {number} registrationId - ID ของคำขอสมัคร
+     * @param {Array} roles - Array of role objects: { name, scopes, level }
+     * @param {string} tempPassword - Temporary password (hashed)
+     * @returns {Promise<Object>} - Result from backend
+     */
+    approveRegistration: async (registrationId, roles, tempPassword) => {
+        try {
+            console.log('[adminService] Calling POST /users/registrations/:id/approve');
+
+            const response = await httpClient.post(`/users/registrations/${registrationId}/approve`, {
+                roles,
+                tempPassword
+            });
+
+            if (!response.data.success) {
+                console.error('[adminService] Approve failed:', response.data.message);
+                throw new Error(response.data.message || 'Failed to approve registration');
+            }
+
+            console.log('[adminService] Registration approved:', response.data.data);
+            return response.data;
+        } catch (error) {
+            console.error('[adminService] approveRegistration error:', error);
             throw error;
         }
     }

@@ -50,8 +50,10 @@ export default function AdminApprovalFlow() {
     // === สถานะข้อมูล (States: Data) ===
     /** รายการโครงการทั้งหมด */
     const [projects, setProjects] = useState([]);
-    /** รายการขั้นตอนการอนุมัติทั้งหมดที่มีในระบบ */
-    const [approvalFlows, setApprovalFlows] = useState([]);
+    /** รายการขั้นตอนการอนุมัติทั้งหมดของทุกโครงการ (สำหรับนับจำนวนและกรอง) */
+    const [allApprovalFlows, setAllApprovalFlows] = useState([]);
+    /** รายการขั้นตอนการอนุมัติของโครงการที่เลือก */
+    const [currentProjectFlows, setCurrentProjectFlows] = useState([]);
     /** รายการผู้อนุมัติ (อ้างตามบทบาท) */
     const [approvers, setApprovers] = useState([]);
     /** รายการผู้รับงาน (อ้างตามบทบาท) */
@@ -128,7 +130,7 @@ export default function AdminApprovalFlow() {
         try {
             // โหลดข้อมูลแบบ parallel แต่มี fallback ป้องกัน error
             let projectsData = [];
-            // let flowsData = []; // REMOVED
+            let allFlowsData = []; // ✅ เพิ่ม: เก็บ Flows ทั้งหมด
             let usersData = [];
             let jobTypesData = [];
 
@@ -138,12 +140,13 @@ export default function AdminApprovalFlow() {
                 console.warn('Error loading projects:', e.message);
             }
 
-            // REMOVED: Legacy flow loading
-            // try {
-            //     flowsData = await api.getApprovalFlows() || [];
-            // } catch (e) {
-            //     console.warn('Error loading approval flows:', e.message);
-            // }
+            // ✅ โหลด Flows ทั้งหมดสำหรับการนับและกรอง
+            try {
+                allFlowsData = await adminService.getAllApprovalFlows() || [];
+                console.log(`[ApprovalFlow] Loaded ${allFlowsData.length} flows total`);
+            } catch (e) {
+                console.warn('Error loading all approval flows:', e.message);
+            }
 
             try {
                 const usersResponse = await api.getUsers() || {};
@@ -159,9 +162,9 @@ export default function AdminApprovalFlow() {
             }
 
             setProjects(projectsData);
-            // setApprovalFlows(flowsData); // REMOVED: Managed by useEffect based on selectedProject
+            setAllApprovalFlows(allFlowsData); // ✅ เก็บ Flows ทั้งหมด
             setAllUsers(usersData);
-            setJobTypes((jobTypesData || []).filter(t => t.name !== 'Project Group (Parent)')); // เก็บข้อมูลผู้ใช้ทั้งหมดไว้สำหรับคัดกรองตามโครงการ
+            setJobTypes((jobTypesData || []).filter(t => t.name !== 'Project Group (Parent)'));
 
             // คัดกรองผู้ใช้งานตามบทบาทพื้นฐาน เพื่อความสะดวกรวดเร็ว
             setApprovers(usersData.filter(u => hasRole(u, 'approver') || hasRole(u, 'admin')));
@@ -255,65 +258,35 @@ export default function AdminApprovalFlow() {
      * useEffect Hook: Load flow data when selected project changes
      */
     useEffect(() => {
-        const fetchProjectFlows = async () => {
-            if (selectedProject?.id) {
-                try {
-                    // Fetch all flows for this project (Default + Skip flows)
-                    // Note: Backend currently returns a single object if accessing /api/approval-flows?projectId=...
-                    // We might need to adjust backend or how we interpret the response if we want MULTIPLE flows
+        if (selectedProject?.id && allApprovalFlows.length >= 0) {
+            // ✅ กรอง Flows จาก allApprovalFlows ที่โหลดไว้แล้ว
+            const projectFlows = allApprovalFlows.filter(f => f.projectId === selectedProject.id);
+            setCurrentProjectFlows(projectFlows);
 
-                    // Let's assume the API might need an update to return ALL flows for a project
-                    // OR we use the existing endpoint which seems to return "The Flow" structure
+            // Find default flow
+            const defaultFlow = projectFlows.find(f => f.jobTypeId === null);
 
-                    // However, based on the backend code I saw earlier:
-                    // router.get('/', ... approvalService.getApprovalFlowByProject(projectId) ...)
-                    // It returns a SINGLE object.
-
-                    // Wait, if it returns a single object, how do we support "Skip Flows" for multiple job types?
-                    // The backend `getApprovalFlowByProject` returns:
-                    // { levels, projectId, jobTypeId, ... }
-                    // It looks like it ONLY returns the DEFAULT flow (jobTypeId: null).
-
-                    // I need to Fix the Backend to return ALL flows for the project!
-
-                    const response = await api.getApprovalFlowByProject(selectedProject.id);
-                    // Handle if response is array or object
-                    const flows = Array.isArray(response) ? response : (response ? [response] : []);
-
-                    setApprovalFlows(flows);
-
-                    // Find default flow
-                    const defaultFlow = flows.find(f => f.jobTypeId === null);
-
-                    if (defaultFlow) {
-                        setEditLevels(defaultFlow.levels || []);
-                        setIncludeTeamLead(defaultFlow.includeTeamLead || false);
-                        setTeamLeadId(defaultFlow.teamLeadId || null);
-                        setSkipApproval(defaultFlow.skipApproval || false);
-                        setCurrentFlow(defaultFlow);
-                    } else {
-                        // Reset if no default flow
-                        setEditLevels([]);
-                        setIncludeTeamLead(false);
-                        setTeamLeadId(null);
-                        setSkipApproval(false);
-                        setCurrentFlow(null);
-                    }
-
-                    // RESTORE SKIP FLOWS SELECTION
-                    const skipFlows = flows.filter(f => f.skipApproval === true && f.jobTypeId !== null);
-                    const skippedJobTypeIds = skipFlows.map(f => f.jobTypeId);
-
-                    setSelectedJobTypesForSkip(skippedJobTypeIds);
-
-                } catch (error) {
-                    console.error('Error fetching project flows:', error);
-                }
+            if (defaultFlow) {
+                setEditLevels(defaultFlow.levels || []);
+                setIncludeTeamLead(defaultFlow.includeTeamLead || false);
+                setTeamLeadId(defaultFlow.teamLeadId || null);
+                setSkipApproval(defaultFlow.skipApproval || false);
+                setCurrentFlow(defaultFlow);
+            } else {
+                // Reset if no default flow
+                setEditLevels([]);
+                setIncludeTeamLead(false);
+                setTeamLeadId(null);
+                setSkipApproval(false);
+                setCurrentFlow(null);
             }
-        };
 
-        fetchProjectFlows();
-    }, [selectedProject]);
+            // RESTORE SKIP FLOWS SELECTION
+            const skipFlows = projectFlows.filter(f => f.skipApproval === true && f.jobTypeId !== null);
+            const skippedJobTypeIds = skipFlows.map(f => f.jobTypeId);
+            setSelectedJobTypesForSkip(skippedJobTypeIds);
+        }
+    }, [selectedProject, allApprovalFlows]); // ✅ Depend on allApprovalFlows
 
     /**
      * useEffect Hook สำหรับดึงข้อมูล Job Assignments ของโปรเจกต์
@@ -538,7 +511,8 @@ export default function AdminApprovalFlow() {
             p.code?.toLowerCase().includes(searchTerm.toLowerCase());
 
         // กรองตามสถานะการตั้งค่า Flow (Flow status filter)
-        const hasFlow = approvalFlows.some(f => f.projectId === p.id);
+        // ✅ ใช้ allApprovalFlows แทน approvalFlows
+        const hasFlow = allApprovalFlows.some(f => f.projectId === p.id);
         const matchFlow = flowFilter === 'all' ? true :
             flowFilter === 'hasFlow' ? hasFlow :
                 flowFilter === 'noFlow' ? !hasFlow : true;
@@ -624,7 +598,7 @@ export default function AdminApprovalFlow() {
                                     : 'text-gray-500 hover:text-gray-700'
                                     }`}
                             >
-                                ตั้งค่าแล้ว ({projects.filter(p => approvalFlows.some(f => f.projectId === p.id)).length})
+                                ตั้งค่าแล้ว ({projects.filter(p => allApprovalFlows.some(f => f.projectId === p.id)).length})
                             </button>
                             <button
                                 onClick={() => setFlowFilter('noFlow')}
@@ -633,13 +607,14 @@ export default function AdminApprovalFlow() {
                                     : 'text-gray-500 hover:text-gray-700'
                                     }`}
                             >
-                                ยังไม่ตั้งค่า ({projects.filter(p => !approvalFlows.some(f => f.projectId === p.id)).length})
+                                ยังไม่ตั้งค่า ({projects.filter(p => !allApprovalFlows.some(f => f.projectId === p.id)).length})
                             </button>
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto">
                         {filteredProjects.map((project, index) => {
-                            const flow = approvalFlows.find(f => f.projectId === project.id);
+                            // ✅ ใช้ allApprovalFlows แทน approvalFlows
+                            const flow = allApprovalFlows.find(f => f.projectId === project.id && f.jobTypeId === null);
                             const color = PROJECT_COLORS[index % PROJECT_COLORS.length];
                             const approverCount = flow?.levels?.length || 0;
                             const hasAssignee = flow?.defaultAssignee ? 1 : 0;
@@ -693,7 +668,7 @@ export default function AdminApprovalFlow() {
                                 <p className="text-xs text-gray-500">โครงการทั้งหมด</p>
                             </div>
                             <div className="bg-white rounded p-2 border border-gray-100">
-                                <p className="font-bold text-gray-900">{approvalFlows.filter(f => !!f).length}</p>
+                                <p className="font-bold text-gray-900">{new Set(allApprovalFlows.map(f => f.projectId)).size}</p>
                                 <p className="text-xs text-gray-500">ที่มีการตั้งค่าแล้ว</p>
                             </div>
                         </div>
@@ -799,7 +774,7 @@ export default function AdminApprovalFlow() {
 
                                     {(() => {
                                         // Calculate job type breakdown
-                                        const skipFlowJobTypes = approvalFlows
+                                        const skipFlowJobTypes = allApprovalFlows
                                             .filter(f => f.projectId === selectedProject?.id && f.skipApproval === true && f.jobTypeId)
                                             .map(f => {
                                                 const jt = jobTypes.find(j => j.id === f.jobTypeId);

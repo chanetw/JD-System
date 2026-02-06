@@ -18,6 +18,7 @@ import { useAuth } from '@core/stores/authStore';
 import { generateTempPassword } from '@shared/utils/passwordGenerator';
 import { ROLES, ROLE_LABELS, ROLE_V1_DISPLAY, ROLE_V2_BADGE_COLORS, hasRole } from '@shared/utils/permission.utils';
 import Button from '@shared/components/Button';
+import LoadingSpinner from '@shared/components/LoadingSpinner';
 import RoleSelectionCheckbox from '@shared/components/RoleSelectionCheckbox';
 import ScopeConfigPanel from '@shared/components/ScopeConfigPanel';
 import {
@@ -503,7 +504,8 @@ export default function UserManagementNew() {
     };
 
     const handleConfirmApprove = async () => {
-        if (approvalData.roles.length === 0) {
+        // ตรวจสอบว่าเลือกบทบาทแล้วหรือยัง
+        if (!approvalData.roles || approvalData.roles.length === 0) {
             showAlert('error', 'กรุณาเลือกบทบาทอย่างน้อย 1 ตัว');
             return;
         }
@@ -527,65 +529,37 @@ export default function UserManagementNew() {
                 return;
             }
 
-            const currentUserId = user.id;
-            const tenantId = user.tenant_id || 1;
-
             // Generate temporary password
             const tempPassword = generateTempPassword();
 
-            // 1. Create new user in users table
-            const { data: newUser, error: createError } = await supabase
-                .from('users')
-                .insert([{
-                    tenant_id: tenantId,
-                    email: approveModal.registrationData.email,
-                    password_hash: tempPassword,
-                    first_name: approveModal.registrationData.firstName,
-                    last_name: approveModal.registrationData.lastName,
-                    display_name: `${approveModal.registrationData.firstName} ${approveModal.registrationData.lastName}`,
-                    title: approveModal.registrationData.title,
-                    phone_number: approveModal.registrationData.phone,
-                    department: approveModal.registrationData.department,
-                    role: approvalData.roles[0] || 'requester', // Primary role for legacy
-                    is_active: true
-                }])
-                .select()
-                .single();
-
-            if (createError) throw createError;
-
-            // 2. Build roles array for saveUserRoles
-            const rolesForSave = approvalData.roles.map(roleName => {
+            // Build roles array for backend
+            const rolesForApprove = approvalData.roles.map(roleName => {
                 const roleConfig = approvalRoleConfigs[roleName] || { level: 'project', scopes: [] };
                 return {
                     name: roleName,
-                    level: roleConfig.level || 'project', // ✅ ส่ง level ให้ด้วย
-                    isActive: true,
+                    level: roleConfig.level || 'project',
                     scopes: roleConfig.scopes || []
                 };
             });
 
-            // 3. Save roles using new Multi-Role API
-            await adminService.saveUserRoles(
-                newUser.id,
-                rolesForSave,
-                currentUserId,
-                tenantId
+            console.log('[UserManagement] Approving registration via backend:', {
+                registrationId: approveModal.registrationId,
+                roles: rolesForApprove,
+                email: approveModal.registrationData.email
+            });
+
+            // Use Backend API to approve registration
+            const approveResponse = await adminService.approveRegistration(
+                approveModal.registrationId,
+                rolesForApprove,
+                tempPassword
             );
 
-            // 4. Update registration status
-            const { error: updateError } = await supabase
-                .from('user_registration_requests')
-                .update({
-                    status: 'approved',
-                    approved_by: currentUserId,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', approveModal.registrationId);
+            if (!approveResponse.success) {
+                throw new Error(approveResponse.message || 'ไม่สามารถอนุมัติได้');
+            }
 
-            if (updateError) throw updateError;
-
-            // 5. Send approval email
+            // Send approval email
             try {
                 await apiDatabase.sendApprovalEmail(
                     approveModal.registrationData.email,
@@ -597,6 +571,14 @@ export default function UserManagementNew() {
 
             showAlert('success', 'อนุมัติและสร้างผู้ใช้สำเร็จ ☑️');
             setApproveModal({ show: false, registrationId: null, registrationData: null });
+            setApprovalData({
+                roles: [],
+                scopeLevel: 'Project',
+                scopeId: '',
+                scopeName: '',
+                allowedProjects: [],
+                assignedProjects: []
+            });
             setApprovalRoleConfigs({});
             await loadRegistrations();
         } catch (error) {
@@ -801,10 +783,7 @@ export default function UserManagementNew() {
                 <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
                     {isLoading ? (
                         <div className="p-12 text-center text-gray-500">
-                            <svg className="animate-spin h-8 w-8 mx-auto mb-3 text-rose-600" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
+                            <LoadingSpinner size="md" color="rose" className="mb-3" label="" />
                             กำลังโหลดข้อมูลผู้ใช้...
                         </div>
                     ) : users.length === 0 ? (
@@ -1024,10 +1003,7 @@ export default function UserManagementNew() {
                 <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
                     {isLoading ? (
                         <div className="p-12 text-center text-gray-500">
-                            <svg className="animate-spin h-8 w-8 mx-auto mb-3 text-rose-600" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
+                            <LoadingSpinner size="md" color="rose" className="mb-3" label="" />
                             กำลังโหลด...
                         </div>
                     ) : registrations.length === 0 ? (

@@ -486,6 +486,57 @@ export class ApprovalService extends BaseService {
   }
 
   /**
+   * ดึง Approval Flows ทั้งหมด (สำหรับ Admin)
+   * ใช้ในหน้า Approval Flow Configuration เพื่อแสดงสถานะโครงการทั้งหมด
+   * 
+   * @param {number} tenantId - ID ของ Tenant (จาก RLS)
+   * @returns {Promise<Array>} - Array ของ Approval Flow configurations ทั้งหมด
+   */
+  async getAllApprovalFlows(tenantId) {
+    try {
+      const flows = await this.prisma.approvalFlow.findMany({
+        where: {
+          // RLS จะ filter tenantId อัตโนมัติ
+          isActive: true
+        },
+        orderBy: [
+          { projectId: 'asc' },
+          { createdAt: 'desc' }
+        ]
+      });
+
+      if (!flows || flows.length === 0) return [];
+
+      return flows.map(flow => {
+        // Extract approverSteps from JSON
+        const levels = flow.approverSteps || [];
+
+        // Extract legacy fields from conditions JSON
+        const includeTeamLead = flow.conditions?.includeTeamLead || false;
+        const teamLeadId = flow.conditions?.teamLeadId || null;
+
+        return {
+          id: flow.id,
+          projectId: flow.projectId,
+          jobTypeId: flow.jobTypeId,
+          skipApproval: flow.skipApproval,
+          autoAssignType: flow.autoAssignType,
+          autoAssignUserId: flow.autoAssignUserId,
+          name: flow.name,
+          levels,
+          includeTeamLead,
+          teamLeadId,
+          createdAt: flow.createdAt,
+          updatedAt: flow.updatedAt
+        };
+      });
+    } catch (error) {
+      console.error('[ApprovalService] Get all flows error:', error);
+      return [];
+    }
+  }
+
+  /**
    * อนุมัติงานผ่าน Web Backend (ใช้แทน Logic ฝั่ง Frontend)
    * 
    * @param {Object} params
