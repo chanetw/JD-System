@@ -45,7 +45,11 @@ export const ROLE_LABELS = {
     admin: 'ผู้ดูแลระบบ',
     requester: 'ผู้เปิดงาน',
     approver: 'ผู้อนุมัติ',
-    assignee: 'ผู้รับงาน'
+    assignee: 'ผู้รับงาน',
+    SuperAdmin: 'ผู้ดูแลระบบสูงสุด',
+    OrgAdmin: 'ผู้ดูแลองค์กร',
+    TeamLead: 'หัวหน้าทีม',
+    Member: 'สมาชิก'
 };
 
 // Role descriptions
@@ -54,6 +58,38 @@ export const ROLE_DESCRIPTIONS = {
     requester: 'สร้างและติดตามงาน',
     approver: 'อนุมัติงานที่ส่งมา',
     assignee: 'รับและดำเนินการงาน'
+};
+
+// Role display mapping (supports both V1 and V2 role names)
+export const ROLE_V1_DISPLAY = {
+    // V2 role names
+    SuperAdmin: 'System Admin',
+    OrgAdmin: 'Requester',
+    TeamLead: 'Approver',
+    Member: 'Assignee',
+    // V1 role names (fallback for direct V1 responses)
+    admin: 'System Admin',
+    requester: 'Requester',
+    approver: 'Approver',
+    assignee: 'Assignee',
+    manager: 'Manager',
+    user: 'User'
+};
+
+// Badge colors for roles (supports both V1 and V2 role names)
+export const ROLE_V2_BADGE_COLORS = {
+    // V2 role names
+    SuperAdmin: 'bg-purple-100 text-purple-800',
+    OrgAdmin: 'bg-blue-100 text-blue-800',
+    TeamLead: 'bg-green-100 text-green-800',
+    Member: 'bg-orange-100 text-orange-800',
+    // V1 role names (same colors)
+    admin: 'bg-purple-100 text-purple-800',
+    requester: 'bg-blue-100 text-blue-800',
+    approver: 'bg-green-100 text-green-800',
+    assignee: 'bg-orange-100 text-orange-800',
+    manager: 'bg-green-100 text-green-800',
+    user: 'bg-gray-100 text-gray-800'
 };
 
 // ============================================

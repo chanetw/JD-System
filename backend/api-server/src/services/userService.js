@@ -180,6 +180,7 @@ export class UserService extends BaseService {
           firstName: true,
           lastName: true,
           displayName: true,
+          departmentId: true, // Include departmentId directly for frontend compatibility
           isActive: true,
           createdAt: true,
           department: {
@@ -249,6 +250,9 @@ export class UserService extends BaseService {
               }));
           });
 
+          // Add direct roleName field for frontend compatibility (uses first/primary role)
+          user.roleName = user.roles[0]?.name || null;
+
           delete user.scopeAssignments;
           // Note: we keep userRoles for reference or delete if strict
         });
@@ -269,28 +273,50 @@ export class UserService extends BaseService {
    */
   async updateUser(userId, updateData) {
     try {
+      console.log('[UserService] updateUser called:', { userId, updateData });
+
       // ถ้ามีการอัปเดต password ให้เข้ารหัสก่อน
       if (updateData.password) {
         updateData.passwordHash = await bcrypt.hash(updateData.password, 10);
         delete updateData.password;
       }
 
+      // Build clean update data (only valid Prisma fields)
+      const prismaData = {};
+      if (updateData.firstName !== undefined) prismaData.firstName = updateData.firstName;
+      if (updateData.lastName !== undefined) prismaData.lastName = updateData.lastName;
+      if (updateData.displayName !== undefined) prismaData.displayName = updateData.displayName;
+      if (updateData.phone !== undefined) prismaData.phone = updateData.phone;
+      if (updateData.title !== undefined) prismaData.title = updateData.title;
+      if (updateData.email !== undefined) prismaData.email = updateData.email;
+      if (updateData.isActive !== undefined) prismaData.isActive = updateData.isActive;
+      if (updateData.passwordHash !== undefined) prismaData.passwordHash = updateData.passwordHash;
+      // Handle departmentId - critical for department assignment
+      if (updateData.departmentId !== undefined) {
+        prismaData.departmentId = updateData.departmentId ? parseInt(updateData.departmentId, 10) : null;
+      }
+
+      console.log('[UserService] Prisma update data:', prismaData);
+
       const user = await this.prisma.user.update({
         where: { id: userId },
-        data: updateData,
+        data: prismaData,
         select: {
           id: true,
           email: true,
           firstName: true,
           lastName: true,
           displayName: true,
+          departmentId: true,
           isActive: true,
           updatedAt: true
         }
       });
 
+      console.log('[UserService] User updated successfully:', user);
       return this.successResponse(user, 'อัปเดตข้อมูลผู้ใช้สำเร็จ');
     } catch (error) {
+      console.error('[UserService] Update user failed:', error);
       return this.handleError(error, 'UPDATE_USER', 'User');
     }
   }
@@ -323,10 +349,19 @@ export class UserService extends BaseService {
    */
   async getUserWithRoles(userId, tenantId) {
     try {
-      // 1. ดึงข้อมูล User หลัก
+      // 1. ดึงข้อมูล User หลัก (include departmentId directly)
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
-        include: {
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          displayName: true,
+          avatarUrl: true, // Prisma schema uses avatarUrl (maps to avatar_url)
+          isActive: true,
+          tenantId: true,
+          departmentId: true, // Direct field for reliable access
           department: {
             select: { id: true, name: true }
           }
@@ -378,14 +413,11 @@ export class UserService extends BaseService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        role: user.role, // Legacy
-        title: user.title,
         department: user.department?.name,
-        departmentId: user.department?.id,
-        phone: user.phone,
-        avatar: user.avatar, // Prisma map to avatar (check schema if it map("avatar_url"))
+        departmentId: user.departmentId, // Use direct field (not from relation)
+        avatar: user.avatarUrl, // Map avatarUrl to avatar for frontend compatibility
         isActive: user.isActive,
-        tenantId: user.tenantId, // Prisma map tenant_id
+        tenantId: user.tenantId,
         roles: rolesWithScopes
       }, 'ดึงข้อมูลผู้ใช้สําเร็จ');
 

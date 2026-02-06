@@ -36,9 +36,13 @@ class PrismaV1Adapter {
 
     let roleName = rawRoleName;
 
-    // Map legacy roles
+    // Map legacy V1 roles to V2 roles
     if (normalizedRole === 'admin') roleName = 'SuperAdmin';
     if (normalizedRole === 'user') roleName = 'Member';
+    if (normalizedRole === 'requester') roleName = 'OrgAdmin';
+    if (normalizedRole === 'approver') roleName = 'TeamLead';
+    if (normalizedRole === 'assignee') roleName = 'Member';
+    if (normalizedRole === 'manager') roleName = 'TeamLead';
 
     // Failsafe for specific admin user
     if (prismaUser.id === 10000) roleName = 'SuperAdmin';

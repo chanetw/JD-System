@@ -9,13 +9,14 @@
  * - Actions: Approve, Reject, Edit, Delete
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
 import { api } from '@shared/services/apiService';
 import { adminService } from '@shared/services/modules/adminService';
 import { useAuthStore } from '@core/stores/authStore';
+import { ROLES, ROLE_LABELS, ROLE_V1_DISPLAY } from '@shared/utils/permission.utils';
 import { formatDateToThai } from '@shared/utils/dateUtils';
 
 // Icons
@@ -61,6 +62,10 @@ export default function JobDetail() {
     // Custom Alert State
     const [alertState, setAlertState] = useState({ isOpen: false, title: '', message: '', type: 'success' });
 
+    // History Dropdown State
+    const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
+    const historyDropdownRef = useRef(null);
+
     // ============================================
     // Data Loading
     // ============================================
@@ -73,11 +78,29 @@ export default function JobDetail() {
     const loadUsers = async () => {
         try {
             const usersData = await adminService.getUsers();
-            setUsers(usersData || []);
+            // Fix: getUsers returns { data: [], pagination: {} }, extract the array
+            const usersList = usersData?.data || usersData || [];
+            setUsers(Array.isArray(usersList) ? usersList : []);
         } catch (error) {
             console.error('Failed to load users:', error);
+            setUsers([]); // Ensure users is always an array
         }
     };
+
+    // Click outside to close History Dropdown
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (historyDropdownRef.current && !historyDropdownRef.current.contains(event.target)) {
+                setShowHistoryDropdown(false);
+            }
+        };
+        if (showHistoryDropdown) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [showHistoryDropdown]);
 
     // Auto-Start (Immediate Access)
     useEffect(() => {
@@ -142,7 +165,7 @@ export default function JobDetail() {
                             flowSnapshot = {
                                 levels: flowResult.levels.map(l => ({
                                     level: l.level,
-                                    role: l.role || 'Approver',
+                                    role: ROLE_V1_DISPLAY[l.role] || l.role || 'Approver',
                                     name: l.approvers.map(a => a.name).join(', '),
                                     approvers: l.approvers, // Keep full approver objects for permission check
                                     logic: l.logic || 'any'
@@ -174,7 +197,20 @@ export default function JobDetail() {
                 }
 
                 setJob(jobData);
-                // Comments will be loaded separately via loadComments() when job.id is set
+
+                // Load comments and activities from job object
+                if (jobData.comments) {
+                    const mappedComments = jobData.comments.map(c => ({
+                        id: c.id,
+                        author: c.user?.name || 'Unknown',
+                        authorRole: 'User',
+                        avatar: c.user?.avatar,
+                        message: c.comment,
+                        timestamp: c.createdAt,
+                        userId: c.user?.id
+                    }));
+                    setComments(mappedComments);
+                }
             }
         } catch (err) {
             console.error('Failed to load job:', err);
@@ -187,7 +223,11 @@ export default function JobDetail() {
     // Load Users for Reassignment
     useEffect(() => {
         if (showReassignModal && users.length === 0) {
-            adminService.getUsers().then(data => setUsers(data));
+            adminService.getUsers().then(data => {
+                // Fix: Extract data array from response { data: [], pagination: {} }
+                const usersList = data?.data || data || [];
+                setUsers(Array.isArray(usersList) ? usersList : []);
+            });
         }
     }, [showReassignModal]);
 
@@ -595,13 +635,131 @@ export default function JobDetail() {
 
                         <div className="h-8 w-px bg-gray-200 mx-2"></div>
 
-                        <button className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg">
+                        <button
+                            onClick={() => setShowHistoryDropdown(!showHistoryDropdown)}
+                            className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
                             <ClockIcon className="w-6 h-6" />
-                            <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-xs rounded-full flex items-center justify-center">3</span>
+                            {((job.activities?.length || 0) + (comments.length || 0)) > 0 && (
+                                <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-xs rounded-full flex items-center justify-center">
+                                    {Math.min((job.activities?.length || 0) + (comments.length || 0), 99)}
+                                </span>
+                            )}
                         </button>
                     </div>
                 </div>
             </header>
+
+            {/* History Dropdown */}
+            {showHistoryDropdown && (
+                <div
+                    ref={historyDropdownRef}
+                    className="absolute top-20 right-8 w-96 max-h-96 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-2xl z-50 animate-fadeIn">
+                    {/* Dropdown Header */}
+                    <div className="sticky top-0 bg-gradient-to-r from-indigo-50 to-purple-50 px-5 py-3 border-b border-gray-200">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-bold text-gray-800">ประวัติการทำงาน (History)</h3>
+                            <button
+                                onClick={() => setShowHistoryDropdown(false)}
+                                className="text-gray-400 hover:text-gray-600 transition-colors">
+                                <XMarkIcon className="w-5 h-5" />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* History List */}
+                    <div className="p-4 space-y-3">
+                        {(() => {
+                            // Merge activities and comments
+                            const historyItems = [
+                                ...(job.activities || []).map(activity => ({
+                                    type: 'activity',
+                                    timestamp: activity.createdAt,
+                                    data: activity
+                                })),
+                                ...(comments || []).map(comment => ({
+                                    type: 'comment',
+                                    timestamp: comment.timestamp,
+                                    data: comment
+                                }))
+                            ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 15);
+
+                            if (historyItems.length === 0) {
+                                return (
+                                    <div className="text-center py-8 text-gray-400">
+                                        <ClockIcon className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                                        <p className="text-sm">ยังไม่มีประวัติ</p>
+                                    </div>
+                                );
+                            }
+
+                            return historyItems.map((item, idx) => {
+                                if (item.type === 'activity') {
+                                    const activity = item.data;
+                                    const iconConfig = {
+                                        'status_change': { bg: 'bg-gray-100', text: 'text-gray-600', icon: ClockIcon },
+                                        'approved': { bg: 'bg-green-100', text: 'text-green-600', icon: CheckIcon },
+                                        'rejected': { bg: 'bg-amber-100', text: 'text-amber-600', icon: XMarkIcon },
+                                        'assigned': { bg: 'bg-cyan-100', text: 'text-cyan-600', icon: UserIcon },
+                                        'reassigned': { bg: 'bg-cyan-100', text: 'text-cyan-600', icon: UserIcon }
+                                    };
+                                    const config = iconConfig[activity.type] || iconConfig['status_change'];
+                                    const IconComponent = config.icon;
+
+                                    return (
+                                        <div key={`activity-${idx}`} className="flex gap-3 items-start hover:bg-gray-50 p-2 rounded-lg transition-colors">
+                                            <div className={`w-8 h-8 ${config.bg} rounded-full flex items-center justify-center ${config.text} flex-shrink-0`}>
+                                                <IconComponent className="w-4 h-4" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm text-gray-900 leading-snug">
+                                                    {activity.user ? (
+                                                        <><span className="font-semibold">{activity.user.name}</span> {activity.description || activity.type}</>
+                                                    ) : (
+                                                        <>{activity.description || activity.type}</>
+                                                    )}
+                                                </p>
+                                                <p className="text-xs text-gray-400 mt-0.5">
+                                                    {activity.createdAt ? formatDateToThai(new Date(activity.createdAt)) : '-'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    );
+                                } else {
+                                    const comment = item.data;
+                                    return (
+                                        <div key={`comment-${idx}`} className="flex gap-3 items-start hover:bg-blue-50 p-2 rounded-lg transition-colors">
+                                            <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                                {comment.author?.[0] || '?'}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-semibold text-gray-900">{comment.author}</p>
+                                                <p className="text-sm text-gray-600 line-clamp-2">{comment.message}</p>
+                                                <p className="text-xs text-gray-400 mt-0.5">
+                                                    {comment.timestamp ? formatDateToThai(new Date(comment.timestamp)) : '-'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                            });
+                        })()}
+                    </div>
+
+                    {/* View All Link */}
+                    {((job.activities?.length || 0) + (comments.length || 0)) > 15 && (
+                        <div className="sticky bottom-0 bg-gradient-to-r from-gray-50 to-blue-50 px-5 py-3 border-t border-gray-200">
+                            <button
+                                onClick={() => {
+                                    setShowHistoryDropdown(false);
+                                    document.getElementById('activity-section')?.scrollIntoView({ behavior: 'smooth' });
+                                }}
+                                className="w-full text-center text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline transition-colors">
+                                ดูประวัติทั้งหมด ({(job.activities?.length || 0) + (comments.length || 0)} รายการ)
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Revision Alert (Mock logic for demo) */}
             {(job.status === 'rejected' || job.status === 'rework') && (
@@ -634,45 +792,54 @@ export default function JobDetail() {
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Left Column: Preview + Actions + Chat */}
+                {/* Left Column: Activity & Chat */}
                 <div className="lg:col-span-2 space-y-6">
 
-                    {/* Preview Card */}
+                    {/* Brief Card */}
                     <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                            <h2 className="font-semibold text-gray-900">Preview / Deliverables</h2>
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">Version {job.version || 1}</span>
-                                <button className="text-rose-600 hover:text-rose-700 text-sm font-medium">Download All</button>
-                            </div>
+                        <div className="px-6 py-4 border-b border-gray-200">
+                            <h2 className="font-semibold text-gray-900">Brief</h2>
                         </div>
-                        <div className="p-6">
-                            {/* Main Preview Placeholder */}
-                            <div
-                                className="bg-black rounded-xl aspect-video mb-4 border-2 border-dashed border-gray-700 relative overflow-hidden group"
-                                style={{ backgroundColor: '#000000' }}
-                            >
-                                <div className="absolute inset-0 flex flex-col items-center justify-center p-4 z-10">
-                                    <DocumentTextIcon className="w-20 h-20 text-gray-500 mb-3" />
-                                    <p className="font-medium text-gray-400">Preview Image</p>
-                                    <p className="text-sm text-gray-500">Wait for upload...</p>
-                                </div>
-
-                                {/* Hover Overlay */}
-                                <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                                </div>
+                        <div className="p-6 space-y-5">
+                            {/* Objective & Details */}
+                            <div>
+                                <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Objective & Details</p>
+                                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                                    {job.objective || '-'}
+                                </p>
                             </div>
 
-                            {/* Version Thumbnails (Mock) */}
-                            <div className="flex gap-3">
-                                <div className="w-24 aspect-video bg-gray-100 rounded-lg flex items-center justify-center border-2 border-rose-500 cursor-pointer relative">
-                                    <span className="text-xs text-gray-500">v{job.version || 1}</span>
-                                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-rose-500 rounded-full"></span>
+                            {/* Brief Link Card */}
+                            {job.briefLink && (
+                                <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4">
+                                    <div className="flex items-start gap-3">
+                                        <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center text-green-600 flex-shrink-0">
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                            </svg>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-xs text-green-600 font-semibold uppercase tracking-wider mb-1">Brief Link</p>
+                                            <a
+                                                href={job.briefLink}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-sm font-medium text-green-800 hover:text-green-900 hover:underline break-all block">
+                                                {job.briefLink}
+                                            </a>
+                                        </div>
+                                        <a
+                                            href={job.briefLink}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-green-600 hover:text-green-700 flex-shrink-0">
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                            </svg>
+                                        </a>
+                                    </div>
                                 </div>
-                                <div className="w-24 aspect-video bg-gray-50 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-300 cursor-pointer hover:border-rose-400 transition-colors">
-                                    <PaperClipIcon className="w-5 h-5 text-gray-400" />
-                                </div>
-                            </div>
+                            )}
                         </div>
                     </div>
 
@@ -860,20 +1027,20 @@ export default function JobDetail() {
                     )}
 
                     {/* Activity & Chat */}
-                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+                    <div id="activity-section" className="bg-white rounded-xl border border-gray-200 shadow-sm">
                         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                             <h2 className="font-semibold text-gray-900">Activity & Chat</h2>
-                            <span className="text-xs text-gray-500">{(job.timeline?.length || 0) + (comments.length || 0)} activities</span>
+                            <span className="text-xs text-gray-500">{((job.activities?.length || 0) + (comments.length || 0))} activities</span>
                         </div>
                         <div className="p-6">
                             <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
-                                {/* Merge timeline and comments, sort by timestamp */}
+                                {/* Merge activities and comments, sort by timestamp */}
                                 {(() => {
                                     const activities = [
-                                        ...(job.timeline || []).map(event => ({
+                                        ...(job.activities || []).map(activity => ({
                                             type: 'activity',
-                                            timestamp: event.timestamp,
-                                            data: event
+                                            timestamp: activity.createdAt,
+                                            data: activity
                                         })),
                                         ...(comments || []).map(comment => ({
                                             type: 'chat',
@@ -891,17 +1058,19 @@ export default function JobDetail() {
                                         </div>
                                     ) : activities.map((item, idx) => {
                                         if (item.type === 'activity') {
-                                            const event = item.data;
+                                            const activity = item.data;
                                             const iconConfig = {
-                                                'created': { bg: 'bg-gray-100', text: 'text-gray-600', icon: ClockIcon },
+                                                'status_change': { bg: 'bg-gray-100', text: 'text-gray-600', icon: ClockIcon },
                                                 'approved': { bg: 'bg-green-100', text: 'text-green-600', icon: CheckIcon },
                                                 'rejected': { bg: 'bg-amber-100', text: 'text-amber-600', icon: XMarkIcon },
                                                 'assigned': { bg: 'bg-cyan-100', text: 'text-cyan-600', icon: UserIcon },
+                                                'reassigned': { bg: 'bg-cyan-100', text: 'text-cyan-600', icon: UserIcon },
                                                 'uploaded': { bg: 'bg-blue-100', text: 'text-blue-600', icon: PaperClipIcon },
-                                                'commented': { bg: 'bg-purple-100', text: 'text-purple-600', icon: PencilIcon }
+                                                'comment_added': { bg: 'bg-purple-100', text: 'text-purple-600', icon: PencilIcon },
+                                                'created': { bg: 'bg-gray-100', text: 'text-gray-600', icon: ClockIcon }
                                             };
 
-                                            const config = iconConfig[event.action] || iconConfig['created'];
+                                            const config = iconConfig[activity.type] || iconConfig['status_change'];
                                             const Icon = config.icon;
 
                                             return (
@@ -911,14 +1080,15 @@ export default function JobDetail() {
                                                     </div>
                                                     <div className="flex-1 pb-4 border-b border-gray-50 group-last:border-0">
                                                         <p className="text-sm text-gray-900">
-                                                            <span className="font-semibold">{event.by}</span> {event.action}
+                                                            {activity.user ? (
+                                                                <><span className="font-semibold">{activity.user.name}</span> {activity.description || activity.type}</>
+                                                            ) : (
+                                                                <>{activity.description || activity.type}</>
+                                                            )}
                                                         </p>
-                                                        {event.detail && (
-                                                            <p className="text-sm text-gray-600 mt-1 bg-gray-50 p-2 rounded-lg inline-block">{event.detail}</p>
-                                                        )}
                                                         <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
                                                             <ClockIcon className="w-3 h-3" />
-                                                            {event.timestamp ? formatDateToThai(new Date(event.timestamp)) : '-'}
+                                                            {activity.createdAt ? formatDateToThai(new Date(activity.createdAt)) : '-'}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -980,7 +1150,7 @@ export default function JobDetail() {
                     </div>
                 </div>
 
-                {/* Right Column: Details & Brief */}
+                {/* Right Column: Brief & Details */}
                 <div className="space-y-6">
                     {/* Job Info Card */}
                     <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
@@ -1027,78 +1197,6 @@ export default function JobDetail() {
                         </div>
                     </div>
 
-                    {/* Brief Card */}
-                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                        <div className="px-6 py-4 border-b border-gray-200">
-                            <h2 className="font-semibold text-gray-900">Brief</h2>
-                        </div>
-                        <div className="p-6 space-y-5">
-                            <div>
-                                <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Objective</p>
-                                <p className="text-sm text-gray-700 leading-relaxed">{job.brief?.objective || '-'}</p>
-                            </div>
-
-                            <div className="bg-gray-50 p-4 rounded-lg space-y-3">
-                                <div>
-                                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Headline</p>
-                                    <p className="text-sm font-medium text-gray-900">{job.brief?.headline || '-'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Sub-headline</p>
-                                    <p className="text-sm text-gray-700">{job.brief?.subHeadline || '-'}</p>
-                                </div>
-                            </div>
-
-                            {/* Selling Points */}
-                            <div>
-                                <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Selling Points / Keywords</p>
-                                <div className="flex flex-wrap gap-2">
-                                    {(job.brief?.sellingPoints || ['Modern', 'Promotion', 'Premium']).map((tag, i) => (
-                                        <span key={i} className="px-2 py-1 bg-gray-100 text-gray-600 rounded-md text-xs border border-gray-200">
-                                            {tag}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Attachments Card */}
-                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                        <div className="px-6 py-4 border-b border-gray-200">
-                            <h2 className="font-semibold text-gray-900">Attachments</h2>
-                        </div>
-                        <div className="p-6 space-y-3">
-                            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 cursor-pointer transition-colors group">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center text-red-500">
-                                        <DocumentTextIcon className="w-5 h-5" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium text-gray-700 group-hover:text-rose-600 transition-colors">CI-guideline.pdf</p>
-                                        <p className="text-xs text-gray-400">2.1 MB</p>
-                                    </div>
-                                </div>
-                                <Button variant="ghost" size="sm" className="text-gray-400 hover:text-rose-600">
-                                    <PaperClipIcon className="w-4 h-4" />
-                                </Button>
-                            </div>
-                            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 cursor-pointer transition-colors group">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center text-yellow-600">
-                                        <PaperClipIcon className="w-5 h-5" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium text-gray-700 group-hover:text-rose-600 transition-colors">logo-pack.zip</p>
-                                        <p className="text-xs text-gray-400">5.4 MB</p>
-                                    </div>
-                                </div>
-                                <Button variant="ghost" size="sm" className="text-gray-400 hover:text-rose-600">
-                                    <PaperClipIcon className="w-4 h-4" />
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
 
                     {/* Approval Flow (Detailed) */}
                     {job.flowSnapshot && (
@@ -1261,14 +1359,18 @@ export default function JobDetail() {
                                     className="w-full border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
                                 >
                                     <option value="">-- เลือกผู้รับงาน --</option>
-                                    {users
-                                        .filter(u => u.role === 'assignee')
+                                    {Array.isArray(users) && users
+                                        .filter(u =>
+                                            u.isActive &&
+                                            u.roleName === 'assignee' // เฉพาะผู้รับงาน (Assignee/V1) เท่านั้น
+                                        )
                                         .map(u => (
                                             <option key={u.id} value={u.id}>
-                                                {u.name} ({u.department || 'General'})
+                                                {u.fullName || u.name || `${u.firstName} ${u.lastName}`} ({u.department?.name || u.department || 'General'})
                                             </option>
                                         ))
                                     }
+
                                 </select>
                             </div>
 

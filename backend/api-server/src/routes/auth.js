@@ -139,7 +139,8 @@ export async function setRLSContextMiddleware(req, res, next) {
         hasOrganizationId: !!req.user.organizationId
       });
 
-      await setRLSContext(prisma, tenantId);
+      // Set both tenant ID and user ID for RLS policies
+      await setRLSContext(prisma, tenantId, req.user.userId || req.user.id);
     } else {
       console.warn('[RLS Middleware] User or tenantId not available:', {
         hasUser: !!req.user,

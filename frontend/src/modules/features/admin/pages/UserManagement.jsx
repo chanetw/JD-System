@@ -16,7 +16,7 @@ import { supabase } from '@shared/services/supabaseClient';
 import { adminService } from '@shared/services/modules/adminService';
 import { useAuth } from '@core/stores/authStore';
 import { generateTempPassword } from '@shared/utils/passwordGenerator';
-import { ROLES, ROLE_LABELS } from '@shared/utils/permission.utils';
+import { ROLES, ROLE_LABELS, ROLE_V1_DISPLAY, ROLE_V2_BADGE_COLORS, hasRole } from '@shared/utils/permission.utils';
 import Button from '@shared/components/Button';
 import RoleSelectionCheckbox from '@shared/components/RoleSelectionCheckbox';
 import ScopeConfigPanel from '@shared/components/ScopeConfigPanel';
@@ -158,24 +158,38 @@ export default function UserManagementNew() {
 
     const loadMasterData = async () => {
         try {
-            const [tenantsRes, budsRes, projectsRes, departmentsRes] = await Promise.all([
-                supabase.from('tenants').select('*').eq('is_active', true),
-                supabase.from('buds').select('*').eq('is_active', true),
-                supabase.from('projects').select('*').eq('is_active', true),
-                supabase.from('departments').select('*').eq('is_active', true)
+            console.log('[UserManagement] Loading master data...');
+
+            // ✓ Use Backend REST API instead of direct Supabase queries (RLS blocked)
+            const [tenants, buds, projects, departments] = await Promise.all([
+                adminService.getTenants(),
+                adminService.getBUDs(),
+                adminService.getProjects(),
+                adminService.getDepartments()
             ]);
 
-            setMasterData({
-                tenants: tenantsRes.data || [],
-                buds: budsRes.data || [],
-                projects: projectsRes.data || [],
-                departments: departmentsRes.data || []
+            console.log('[UserManagement] Master data loaded:', {
+                tenants: tenants?.length || 0,
+                buds: buds?.length || 0,
+                projects: projects?.length || 0,
+                departments: departments?.length || 0
             });
+            console.log('[UserManagement] Departments detail:', departments);
+
+            setMasterData({
+                tenants: tenants || [],
+                buds: buds || [],
+                projects: projects || [],
+                departments: departments || []
+            });
+
+            console.log('[UserManagement] Master data set successfully');
 
             // Also load available scopes for multi-role
             loadAvailableScopes();
         } catch (error) {
-            console.error('Error loading master data:', error);
+            console.error('[UserManagement] Error loading master data:', error);
+            console.error('[UserManagement] Error details:', error.message, error.stack);
         }
     };
 
@@ -334,9 +348,11 @@ export default function UserManagementNew() {
                     lastName: userWithRoles?.lastName || userToEdit.lastName,
                     title: userWithRoles?.title || userToEdit.title,
                     phone: userWithRoles?.phone || userToEdit.phone,
+                    departmentId: userWithRoles?.departmentId || userToEdit.departmentId || userToEdit.department?.id || '',
                     role: userToEdit.role || loadedRoleNames[0] || 'requester'
                 }
             });
+            console.log('🏢 Department loaded:', userWithRoles?.departmentId, 'from userToEdit:', userToEdit.departmentId);
 
             console.log('🎯 Edit modal opened with roles:', loadedRoleNames);
         } catch (error) {
@@ -423,29 +439,24 @@ export default function UserManagementNew() {
                 tenantId
             });
 
-            // 1. Update users table basic info
-            const { error: userError } = await supabase
-                .from('users')
-                .update({
+            // 1. Update users table basic info via Backend API (RLS-safe)
+            console.log('[UserManagement] Saving user via Backend API:', editModal.user.id);
+
+            try {
+                await adminService.updateUser(editModal.user.id, {
+                    firstName: editModal.user.firstName,
+                    lastName: editModal.user.lastName,
                     title: editModal.user.title,
-                    phone_number: editModal.user.phone,
-                    department_id: editModal.user.departmentId || null,
-                    role: selectedRoles[0] || 'requester', // Primary role for legacy
-                    is_active: editModal.user.isActive,
-                    // Admin Only Fields (Updated 2026-01-27)
-                    first_name: editModal.user.firstName,
-                    last_name: editModal.user.lastName,
-                    display_name: `${editModal.user.firstName} ${editModal.user.lastName}`.trim(),
-                    email: editModal.user.email
-                })
-                .eq('id', editModal.user.id);
-
-            if (userError) {
-                console.warn('❌ Could not update users table:', userError);
-                throw userError;
+                    phone: editModal.user.phone,
+                    departmentId: editModal.user.departmentId,
+                    email: editModal.user.email,
+                    isActive: editModal.user.isActive
+                });
+                console.log('✅ Updated users table via Backend API');
+            } catch (updateError) {
+                console.error('❌ Could not update users table:', updateError);
+                throw updateError;
             }
-
-            console.log('✅ Updated users table');
 
             // 2. Build roles array for saveUserRoles
             const rolesForSave = selectedRoles.map(roleName => {
@@ -750,9 +761,10 @@ export default function UserManagementNew() {
                                 onChange={(e) => setFilterRole(e.target.value)}
                             >
                                 <option value="">ทุกบทบาท</option>
-                                {Object.values(ROLES).map(role => (
-                                    <option key={role} value={role}>{ROLE_LABELS[role] || role}</option>
-                                ))}
+                                <option value="SuperAdmin">{ROLE_V1_DISPLAY.SuperAdmin}</option>
+                                <option value="OrgAdmin">{ROLE_V1_DISPLAY.OrgAdmin}</option>
+                                <option value="TeamLead">{ROLE_V1_DISPLAY.TeamLead}</option>
+                                <option value="Member">{ROLE_V1_DISPLAY.Member}</option>
                             </select>
                         </div>
 
@@ -909,13 +921,8 @@ export default function UserManagementNew() {
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
-                                                    ${user.role === 'admin' ? 'bg-purple-100 text-purple-800' :
-                                                            user.role === 'requester' ? 'bg-blue-100 text-blue-800' :
-                                                                user.role === 'approver' ? 'bg-green-100 text-green-800' :
-                                                                    user.role === 'assignee' ? 'bg-orange-100 text-orange-800' :
-                                                                        'bg-gray-100 text-gray-800'}`}>
-                                                        {user.role}
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${ROLE_V2_BADGE_COLORS[user.roleName] || 'bg-gray-100 text-gray-800'}`}>
+                                                        {ROLE_V1_DISPLAY[user.roleName] || user.roleName || 'N/A'}
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-center">

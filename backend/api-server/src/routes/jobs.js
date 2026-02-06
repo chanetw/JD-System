@@ -511,6 +511,32 @@ router.get('/:id', async (req, res) => {
         attachments: {
           select: { id: true, filePath: true, fileName: true, fileSize: true, createdAt: true }
         },
+        // Include comments for discussion thread
+        comments: {
+          select: {
+            id: true,
+            comment: true,
+            createdAt: true,
+            user: {
+              select: { id: true, displayName: true, firstName: true, lastName: true, avatarUrl: true }
+            }
+          },
+          orderBy: { createdAt: 'asc' }
+        },
+        // Include activities for history log
+        jobActivities: {
+          select: {
+            id: true,
+            activityType: true,
+            description: true,
+            createdAt: true,
+            user: {
+              select: { id: true, displayName: true, firstName: true, lastName: true }
+            }
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 50 // Limit to recent 50 activities
+        },
         // Include child jobs if this is a parent job
         childJobs: {
           select: {
@@ -613,7 +639,29 @@ router.get('/:id', async (req, res) => {
         status: job.parentJob.status
       } : null,
       items: job.jobItems || [],
-      attachments: job.attachments || []
+      attachments: job.attachments || [],
+      // Comments for discussion thread
+      comments: job.comments?.map(c => ({
+        id: c.id,
+        comment: c.comment,
+        createdAt: c.createdAt,
+        user: {
+          id: c.user?.id,
+          name: c.user?.displayName || `${c.user?.firstName} ${c.user?.lastName}`.trim(),
+          avatar: c.user?.avatarUrl
+        }
+      })) || [],
+      // Activities for history log
+      activities: job.jobActivities?.map(a => ({
+        id: a.id,
+        type: a.activityType,
+        description: a.description,
+        createdAt: a.createdAt,
+        user: a.user ? {
+          id: a.user.id,
+          name: a.user.displayName || `${a.user.firstName} ${a.user.lastName}`.trim()
+        } : null
+      })) || []
     };
 
     res.json({

@@ -41,18 +41,29 @@ export function createDatabaseConnection() {
  * Set RLS tenant context for the database session
  * Must be called before executing queries to filter by tenant
  */
-export async function setRLSContext(prisma, tenantId) {
-  if (!tenantId) return;
+export async function setRLSContext(prisma, tenantId, userId = null) {
   try {
-    // Validate tenantId is a positive integer to prevent SQL injection
-    const validTenantId = parseInt(tenantId, 10);
-    if (isNaN(validTenantId) || validTenantId <= 0) {
-      console.warn('[RLS] Invalid tenant ID:', tenantId);
-      return;
+    // Set tenant ID if provided
+    if (tenantId) {
+      const validTenantId = parseInt(tenantId, 10);
+      if (isNaN(validTenantId) || validTenantId <= 0) {
+        console.warn('[RLS] Invalid tenant ID:', tenantId);
+      } else {
+        await prisma.$executeRawUnsafe(`SELECT set_config('app.tenant_id', '${validTenantId}', false)`);
+      }
     }
-    await prisma.$executeRawUnsafe(`SELECT set_config('app.tenant_id', '${validTenantId}', false)`);
+
+    // Set user ID if provided (required for admin permission checks)
+    if (userId) {
+      const validUserId = parseInt(userId, 10);
+      if (isNaN(validUserId) || validUserId <= 0) {
+        console.warn('[RLS] Invalid user ID:', userId);
+      } else {
+        await prisma.$executeRawUnsafe(`SELECT set_config('app.current_user_id', '${validUserId}', false)`);
+      }
+    }
   } catch (error) {
-    console.warn('[RLS] Failed to set tenant context:', error.message);
+    console.warn('[RLS] Failed to set RLS context:', error.message);
   }
 }
 

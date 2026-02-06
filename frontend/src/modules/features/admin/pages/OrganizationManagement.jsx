@@ -101,7 +101,7 @@ export default function OrganizationManagement() {
             // Backend API master-data might not include users to reduce payload size
             // Fetch users separately or if masterData has it
             const usersData = await api.getUsers();
-            setUsers(usersData || []);
+            setUsers(usersData?.data || []);
 
             console.log('[OrgManagement] All data loaded successfully');
         } catch (error) {

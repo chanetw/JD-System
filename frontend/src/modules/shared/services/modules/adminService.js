@@ -139,18 +139,23 @@ export const adminService = {
 
     getDepartments: async () => {
         try {
+            console.log('[adminService] Calling GET /departments...');
             // ✓ NEW: Use Backend REST API with RLS context
             const response = await httpClient.get('/departments');
+
+            console.log('[adminService] GET /departments response:', response.data);
 
             if (!response.data.success) {
                 console.warn('[adminService] Get departments failed:', response.data.message);
                 return [];
             }
 
+            console.log('[adminService] Departments loaded:', response.data.data?.length || 0, 'items');
             return response.data.data;
 
         } catch (error) {
             console.error('[adminService] getDepartments error:', error);
+            console.error('[adminService] Error response:', error.response?.data);
             return [];
         }
     },
@@ -730,23 +735,28 @@ export const adminService = {
     },
 
     updateUser: async (id, userData) => {
+        // ✓ Use Backend API instead of direct Supabase (RLS blocked)
+        console.log('[adminService] Updating user via Backend API:', id, userData);
+
         const payload = {
-            phone_number: userData.phone,
-            department_id: userData.departmentId,
-            role: userData.role,
-            is_active: userData.isActive,
-            updated_at: new Date().toISOString()
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            displayName: userData.displayName || `${userData.firstName || ''} ${userData.lastName || ''}`.trim(),
+            phone: userData.phone,
+            title: userData.title,
+            departmentId: userData.departmentId ? parseInt(userData.departmentId, 10) : null,
+            email: userData.email,
+            isActive: userData.isActive
         };
 
-        const { data, error } = await supabase
-            .from('users')
-            .update(payload)
-            .eq('id', id)
-            .select()
-            .single();
+        const response = await httpClient.put(`/users/${id}`, payload);
 
-        if (error) throw error;
-        return data;
+        if (!response.data.success) {
+            throw new Error(response.data.message || 'Failed to update user');
+        }
+
+        console.log('[adminService] User updated successfully:', response.data);
+        return response.data.data;
     },
 
     /**
@@ -770,6 +780,14 @@ export const adminService = {
             const resultData = response.data.data;
             const usersRaw = resultData.data || [];
             const pagination = resultData.pagination || {};
+
+            console.log('[adminService] getUsers raw data sample:', usersRaw.slice(0, 2).map(u => ({
+                id: u.id,
+                name: u.displayName || u.firstName,
+                department: u.department,
+                roleName: u.roleName,
+                userRoles: u.userRoles
+            })));
 
             const users = usersRaw.map(u => {
                 // Process scope assignments to match UI expectations
@@ -808,6 +826,7 @@ export const adminService = {
                     title: u.title,
                     department: u.department,
                     role: u.role, // Legacy role
+                    roleName: u.roleName || u.role?.name || 'Member',
                     roles: u.roles || [], // New multi-roles
                     isActive: u.isActive,
                     tenantId: u.tenantId,
@@ -907,38 +926,24 @@ export const adminService = {
     getAvailableScopes: async (tenantId = 1) => {
         try {
             const [projectsRes, budsRes, tenantsRes] = await Promise.all([
-                supabase
-                    .from('projects')
-                    .select('id, name, code, bud_id')
-                    .eq('tenant_id', tenantId)
-                    .eq('is_active', true)
-                    .order('name'),
-                supabase
-                    .from('buds')
-                    .select('id, name, code')
-                    .eq('tenant_id', tenantId)
-                    .eq('is_active', true)
-                    .order('name'),
-                supabase
-                    .from('tenants')
-                    .select('id, name, code')
-                    .eq('is_active', true)
-                    .order('name')
+                httpClient.get('/projects'),
+                httpClient.get('/buds'),
+                httpClient.get('/tenants')
             ]);
 
             return {
-                projects: (projectsRes.data || []).map(p => ({
+                projects: (projectsRes.data.data || []).map(p => ({
                     id: p.id,
                     name: p.name,
                     code: p.code,
-                    budId: p.bud_id
+                    budId: p.budId || p.bud_id
                 })),
-                buds: (budsRes.data || []).map(b => ({
+                buds: (budsRes.data.data || []).map(b => ({
                     id: b.id,
                     name: b.name,
                     code: b.code
                 })),
-                tenants: (tenantsRes.data || []).map(t => ({
+                tenants: (tenantsRes.data.data || []).map(t => ({
                     id: t.id,
                     name: t.name,
                     code: t.code

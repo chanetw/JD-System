@@ -23,9 +23,7 @@ export default function Sidebar() {
     /** ตรวจสอบสิทธิ์ว่าเป็นผู้ดูแลระบบ (Admin) หรือไม่ */
     const isAdmin =
         user?.roleName === 'SuperAdmin' ||
-        user?.roleName === 'OrgAdmin' ||
-        user?.roleName === 'admin' ||
-        user?.role === 'admin';
+        user?.roleName === 'OrgAdmin';
 
     /** ตรวจสอบสิทธิ์ Assignee (Graphic/Editor) */
     const isAssignee = ['TeamLead', 'Member'].includes(user?.roleName);

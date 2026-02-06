@@ -15,6 +15,13 @@ import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 const router = express.Router();
 const userService = new UserService();
 
+// Helper: Check if user has admin-level permissions (supports V1 + V2 roles)
+function hasAdminRole(roles) {
+  if (!roles || !Array.isArray(roles)) return false;
+  // V1: 'admin', V2: 'SuperAdmin', 'OrgAdmin' (can manage users)
+  return roles.some(role => ['admin', 'SuperAdmin', 'OrgAdmin'].includes(role));
+}
+
 // ทุก routes ต้องมีการ authenticate และตั้งค่า RLS context
 router.use(authenticateToken);
 router.use(setRLSContextMiddleware);
@@ -171,8 +178,8 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // ตรวจสอบว่าผู้ใช้มีสิทธิ์สร้างผู้ใช้ใหม่หรือไม่ (admin role)
-    if (!req.user.roles.includes('admin')) {
+    // ตรวจสอบว่าผู้ใช้มีสิทธิ์สร้างผู้ใช้ใหม่หรือไม่ (admin/SuperAdmin/OrgAdmin)
+    if (!hasAdminRole(req.user.roles)) {
       return res.status(403).json({
         success: false,
         error: 'INSUFFICIENT_PERMISSIONS',
@@ -232,9 +239,9 @@ router.put('/:id', async (req, res) => {
     }
 
     // ตรวจสอบว่าผู้ใช้มีสิทธิ์แก้ไขข้อมูลนี้หรือไม่
-    // - admin สามารถแก้ไขได้ทุกคน
+    // - admin/SuperAdmin/OrgAdmin สามารถแก้ไขได้ทุกคน
     // - user ปกติสามารถแก้ไขข้อมูลตัวเองได้
-    if (!req.user.roles.includes('admin') && req.user.userId !== userId) {
+    if (!hasAdminRole(req.user.roles) && req.user.userId !== userId) {
       return res.status(403).json({
         success: false,
         error: 'INSUFFICIENT_PERMISSIONS',
@@ -245,7 +252,7 @@ router.put('/:id', async (req, res) => {
     const updateData = { ...req.body };
 
     // ถ้าไม่ใช่ admin ไม่สามารถเปลี่ยน isActive ได้
-    if (!req.user.roles.includes('admin') && updateData.isActive !== undefined) {
+    if (!hasAdminRole(req.user.roles) && updateData.isActive !== undefined) {
       delete updateData.isActive;
     }
 
@@ -286,8 +293,8 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
-    // เฉพาะ admin เท่านั้นที่สามารถลบผู้ใช้ได้
-    if (!req.user.roles.includes('admin')) {
+    // เฉพาะ admin/SuperAdmin/OrgAdmin เท่านั้นที่สามารถลบผู้ใช้ได้
+    if (!hasAdminRole(req.user.roles)) {
       return res.status(403).json({
         success: false,
         error: 'INSUFFICIENT_PERMISSIONS',
@@ -352,12 +359,19 @@ router.post('/:id/roles', async (req, res) => {
       bodyRoles: roles
     });
 
-    // ตรวจสอบสิทธิ์ Admin
-    if (!req.user.roles.includes('admin')) {
+    // ตรวจสอบสิทธิ์ Admin (รองรับทั้ง V1 และ V2 role names)
+    const isAdmin = hasAdminRole(req.user.roles);
+
+    if (!isAdmin) {
+      console.warn('[Users] Permission denied:', {
+        userId: req.user.id,
+        roles: req.user.roles,
+        attempted: 'update user roles'
+      });
       return res.status(403).json({
         success: false,
         error: 'INSUFFICIENT_PERMISSIONS',
-        message: 'คุณไม่มีสิทธิ์จัดการบทบาท'
+        message: 'คุณไม่มีสิทธิ์จัดการบทบาท (ต้องการสิทธิ์ Admin)'
       });
     }
 
