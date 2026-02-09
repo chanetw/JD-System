@@ -12,12 +12,13 @@
  * - เคล็ดลับ (Dark Background)
  */
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Badge from '@shared/components/Badge';
-import LoadingSpinner from '@shared/components/LoadingSpinner';
 import { useAuthStore } from '@core/stores/authStore';
 import { api } from '@shared/services/apiService';
+import { adminService } from '@shared/services/modules/adminService';
+import httpClient from '@shared/services/httpClient';
 
 // Icons
 import {
@@ -52,6 +53,15 @@ export default function UserPortal() {
     const [searchQuery, setSearchQuery] = useState('');
     const [activeProject, setActiveProject] = useState(0);
 
+    // Real data states
+    const [projects, setProjects] = useState([]);
+    const [mediaFiles, setMediaFiles] = useState([]);
+    const [stats, setStats] = useState({
+        totalFiles: 0,
+        deliveredFiles: 0,
+        totalDownloads: 0
+    });
+
     // โหลดงานล่าสุด (My Requests)
     useEffect(() => {
         const loadJobs = async () => {
@@ -68,28 +78,47 @@ export default function UserPortal() {
         loadJobs();
     }, [user]);
 
+    // โหลด Projects และ Media Files
+    useEffect(() => {
+        loadProjectsAndMedia();
+    }, []);
+
+    const loadProjectsAndMedia = async () => {
+        try {
+            // 1. Load Projects (Backend จะกรองตาม User Scope อัตโนมัติ)
+            const projectsData = await adminService.getProjects();
+            setProjects(projectsData);
+
+            // 2. Load Media Files
+            const response = await httpClient.get('/storage/files');
+            if (response.data.success) {
+                const files = response.data.data;
+
+                // เอาแค่ 5 ไฟล์ล่าสุด
+                const recentFiles = files
+                    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                    .slice(0, 5);
+                setMediaFiles(recentFiles);
+
+                // คำนวณ Stats
+                const totalDownloads = files.reduce((sum, f) => sum + (f.downloadCount || 0), 0);
+                setStats({
+                    totalFiles: files.length,
+                    deliveredFiles: files.filter(f => f.jobId).length,
+                    totalDownloads
+                });
+            }
+        } catch (error) {
+            console.error('[UserPortal] Error loading projects/media:', error);
+        }
+    };
+
     // ค้นหา
     const handleSearch = (e) => {
         if (e.key === 'Enter' && searchQuery.trim()) {
             navigate(`/jobs?search=${encodeURIComponent(searchQuery)}`);
         }
     };
-
-    // Mock Projects
-    const projects = [
-        { name: 'Sena Park Grand', files: 85 },
-        { name: 'Sena Villa Ratchapruek', files: 62 },
-        { name: 'Sena Ecotown', files: 98 },
-    ];
-
-    // Mock Media Files
-    const mediaFiles = [
-        { name: 'Banner_FB_Q1_Final.jpg', type: 'JPG', size: '2.4 MB', djId: 'DJ-2024-0148', color: 'orange' },
-        { name: 'Walkthrough_30sec.mp4', type: 'MP4', size: '156 MB', djId: 'DJ-2024-0142', color: 'purple', duration: '00:30' },
-        { name: 'Brochure_2024.pdf', type: 'PDF', size: '8.7 MB', djId: 'DJ-2024-0145', color: 'red' },
-        { name: 'LINE_Richmenu.png', type: 'PNG', size: '1.8 MB', djId: 'DJ-2024-0151', color: 'cyan' },
-        { name: 'FB_Carousel_Set1.png', type: 'PNG', size: '3.1 MB', djId: 'DJ-2024-0149', color: 'pink' },
-    ];
 
     // Job Types
     const jobTypes = [
@@ -167,7 +196,7 @@ export default function UserPortal() {
                                 placeholder="ค้นหา DJ ID หรือชื่องาน..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                onKeyPress={handleSearch}
+                                onKeyDown={handleSearch}
                                 className="w-full pl-14 pr-4 py-4 rounded-xl text-lg focus:outline-none focus:ring-4 focus:ring-rose-300 shadow-lg bg-white"
                             />
                         </div>
@@ -325,41 +354,52 @@ export default function UserPortal() {
                     </div>
 
                     {/* Project Tabs */}
-                    <div className="flex gap-2 mb-4">
-                        {projects.map((project, idx) => (
-                            <button
-                                key={idx}
-                                onClick={() => setActiveProject(idx)}
-                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeProject === idx
-                                    ? 'bg-rose-500 text-white'
-                                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-                                    }`}
-                            >
-                                {project.name}
-                            </button>
-                        ))}
+                    <div className="flex gap-2 mb-4 overflow-x-auto">
+                        {projects.length > 0 ? (
+                            projects.map((project, idx) => (
+                                <button
+                                    key={project.id}
+                                    onClick={() => setActiveProject(idx)}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${activeProject === idx
+                                        ? 'bg-rose-500 text-white'
+                                        : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                                        }`}
+                                >
+                                    {project.name}
+                                </button>
+                            ))
+                        ) : (
+                            <p className="text-slate-400 text-sm">ไม่มีโครงการ</p>
+                        )}
                     </div>
 
                     {/* Media Grid */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                        {mediaFiles.map((file, idx) => (
-                            <MediaCard key={idx} file={file} />
-                        ))}
+                        {mediaFiles.length > 0 ? (
+                            mediaFiles.map((file) => (
+                                <MediaCard key={file.id} file={file} />
+                            ))
+                        ) : (
+                            <div className="col-span-full text-center py-8 text-slate-400">
+                                <PhotoIcon className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                                <p>ยังไม่มีไฟล์</p>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Quick Stats */}
+                    {/* Quick Stats - Real Data */}
                     <div className="mt-4 flex items-center gap-6 text-sm text-slate-500">
                         <span className="flex items-center gap-1">
                             <ArchiveBoxIcon className="w-4 h-4" />
-                            รวม 245 ไฟล์
+                            รวม {stats.totalFiles} ไฟล์
                         </span>
                         <span className="flex items-center gap-1">
                             <DocumentIcon className="w-4 h-4" />
-                            งานส่งมอบแล้ว 189 ชิ้น
+                            งานส่งมอบแล้ว {stats.deliveredFiles} ชิ้น
                         </span>
                         <span className="flex items-center gap-1">
                             <ArrowDownTrayIcon className="w-4 h-4" />
-                            ดาวน์โหลด 1,247 ครั้ง
+                            ดาวน์โหลด {stats.totalDownloads.toLocaleString()} ครั้ง
                         </span>
                     </div>
                 </div>
@@ -446,56 +486,102 @@ function SLAItem({ icon: Icon, iconColor, title, days }) {
 }
 
 function MediaCard({ file }) {
-    const colorMap = {
-        orange: 'from-orange-200 to-rose-300',
-        purple: 'from-purple-200 to-purple-400',
-        red: 'from-red-200 to-red-400',
-        cyan: 'from-cyan-200 to-cyan-400',
-        pink: 'from-pink-200 to-pink-400',
+    // ตรวจสอบประเภทไฟล์และกำหนดสี
+    const getFileTypeAndColor = () => {
+        const mimeType = file.mimeType || file.fileType || '';
+        const fileName = file.fileName || '';
+
+        if (mimeType.includes('video') || fileName.match(/\.(mp4|mov|avi|mkv)$/i)) {
+            return { type: 'VIDEO', color: 'from-purple-200 to-purple-400', badge: 'bg-purple-500', icon: VideoCameraIcon };
+        }
+        if (mimeType.includes('pdf') || fileName.endsWith('.pdf')) {
+            return { type: 'PDF', color: 'from-red-200 to-red-400', badge: 'bg-red-500', icon: DocumentIcon };
+        }
+        if (mimeType.includes('image') || fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+            return { type: 'IMAGE', color: 'from-cyan-200 to-cyan-400', badge: 'bg-cyan-500', icon: PhotoIcon };
+        }
+        return { type: 'FILE', color: 'from-slate-200 to-slate-400', badge: 'bg-slate-500', icon: DocumentIcon };
     };
 
-    const badgeColorMap = {
-        orange: 'bg-orange-500',
-        purple: 'bg-purple-500',
-        red: 'bg-red-500',
-        cyan: 'bg-cyan-500',
-        pink: 'bg-pink-500',
+    const { type, color, badge, icon: Icon } = getFileTypeAndColor();
+
+    // Format file size
+    const formatFileSize = (bytes) => {
+        if (!bytes) return '-';
+        const kb = bytes / 1024;
+        const mb = kb / 1024;
+        return mb >= 1 ? `${mb.toFixed(1)} MB` : `${kb.toFixed(0)} KB`;
+    };
+
+    const handleView = async () => {
+        try {
+            await httpClient.post('/analytics/track-click', {
+                fileId: file.id,
+                action: 'view'
+            });
+        } catch (error) {
+            console.error('[MediaCard] Error tracking click:', error);
+        } finally {
+            window.open(file.publicUrl || file.filePath, '_blank');
+        }
     };
 
     return (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden group">
             <div className="relative h-32 bg-slate-100">
-                <div className={`w-full h-full bg-gradient-to-br ${colorMap[file.color] || colorMap.cyan} flex items-center justify-center`}>
-                    {file.type === 'MP4' ? (
-                        <VideoCameraIcon className="w-10 h-10 text-white/80" />
-                    ) : file.type === 'PDF' ? (
-                        <DocumentIcon className="w-10 h-10 text-white/80" />
-                    ) : (
-                        <PhotoIcon className="w-10 h-10 text-white/80" />
-                    )}
+                {/* Thumbnail หรือ Icon */}
+                {file.thumbnailPath ? (
+                    <img
+                        src={`${import.meta.env.VITE_API_URL}/uploads/${file.thumbnailPath}`}
+                        alt={file.fileName}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                            e.target.style.display = 'none';
+                            e.target.nextSibling.style.display = 'flex';
+                        }}
+                    />
+                ) : null}
+                <div
+                    style={{ display: file.thumbnailPath ? 'none' : 'flex' }}
+                    className={`w-full h-full bg-gradient-to-br ${color} items-center justify-center`}
+                >
+                    <Icon className="w-10 h-10 text-white/80" />
                 </div>
+
+                {/* Badge Type */}
                 <div className="absolute top-2 right-2">
-                    <span className={`px-2 py-0.5 ${badgeColorMap[file.color] || 'bg-cyan-500'} text-white text-xs rounded font-medium`}>
-                        {file.type}
+                    <span className={`px-2 py-0.5 ${badge} text-white text-xs rounded font-medium`}>
+                        {type}
                     </span>
                 </div>
-                {file.duration && (
-                    <div className="absolute bottom-2 left-2">
-                        <span className="px-2 py-0.5 bg-black/70 text-white text-xs rounded">{file.duration}</span>
-                    </div>
-                )}
+
+                {/* Hover Actions */}
                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
-                    <button className="p-2 bg-white rounded-full hover:bg-slate-100" title="ดูตัวอย่าง">
+                    <button
+                        onClick={handleView}
+                        className="p-2 bg-white rounded-full hover:bg-slate-100"
+                        title="ดูตัวอย่าง"
+                    >
                         <EyeIcon className="w-4 h-4 text-slate-700" />
                     </button>
-                    <button className="p-2 bg-rose-500 rounded-full hover:bg-rose-600" title="ดาวน์โหลด">
+                    <button
+                        onClick={handleView}
+                        className="p-2 bg-rose-500 rounded-full hover:bg-rose-600"
+                        title="ดาวน์โหลด"
+                    >
                         <ArrowDownTrayIcon className="w-4 h-4 text-white" />
                     </button>
                 </div>
             </div>
+
+            {/* File Info */}
             <div className="p-3">
-                <p className="text-sm font-medium text-slate-800 truncate">{file.name}</p>
-                <p className="text-xs text-slate-500 mt-1">{file.djId} | {file.size}</p>
+                <p className="text-sm font-medium text-slate-800 truncate" title={file.fileName}>
+                    {file.fileName}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">
+                    {file.job?.djId || '-'} | {formatFileSize(file.fileSize)}
+                </p>
             </div>
         </div>
     );

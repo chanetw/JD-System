@@ -40,16 +40,22 @@ export const SCOPE_LEVELS = {
     PROJECT: 'project'
 };
 
-// Thai labels for roles
+// Thai labels for roles (V1 naming: Admin, Requester, Approver, Assignee)
 export const ROLE_LABELS = {
     admin: 'ผู้ดูแลระบบ',
     requester: 'ผู้เปิดงาน',
     approver: 'ผู้อนุมัติ',
     assignee: 'ผู้รับงาน',
+    // V1 role names (PascalCase - from DB)
+    Admin: 'ผู้ดูแลระบบสูงสุด',
+    Requester: 'ผู้เปิดงาน',
+    Approver: 'ผู้อนุมัติ',
+    Assignee: 'ผู้รับงาน',
+    // Legacy V2 mapping (backward compatibility)
     SuperAdmin: 'ผู้ดูแลระบบสูงสุด',
-    OrgAdmin: 'ผู้ดูแลองค์กร',
-    TeamLead: 'หัวหน้าทีม',
-    Member: 'สมาชิก'
+    OrgAdmin: 'ผู้เปิดงาน',
+    TeamLead: 'ผู้อนุมัติ',
+    Member: 'ผู้รับงาน'
 };
 
 // Role descriptions
@@ -60,34 +66,44 @@ export const ROLE_DESCRIPTIONS = {
     assignee: 'รับและดำเนินการงาน'
 };
 
-// Role display mapping (supports both V1 and V2 role names)
+// Role display mapping (V1 primary, V2 backward compatible)
 export const ROLE_V1_DISPLAY = {
-    // V2 role names
-    SuperAdmin: 'System Admin',
-    OrgAdmin: 'Requester',
-    TeamLead: 'Approver',
-    Member: 'Assignee',
-    // V1 role names (fallback for direct V1 responses)
+    // V1 role names (PascalCase - from DB)
+    Admin: 'System Admin',
+    Requester: 'Requester',
+    Approver: 'Approver',
+    Assignee: 'Assignee',
+    // V1 role names (lowercase - legacy)
     admin: 'System Admin',
     requester: 'Requester',
     approver: 'Approver',
     assignee: 'Assignee',
+    // V2 role names (backward compatibility)
+    SuperAdmin: 'System Admin',
+    OrgAdmin: 'Requester',
+    TeamLead: 'Approver',
+    Member: 'Assignee',
     manager: 'Manager',
     user: 'User'
 };
 
-// Badge colors for roles (supports both V1 and V2 role names)
+// Badge colors for roles (V1 primary, V2 backward compatible)
 export const ROLE_V2_BADGE_COLORS = {
-    // V2 role names
-    SuperAdmin: 'bg-purple-100 text-purple-800',
-    OrgAdmin: 'bg-blue-100 text-blue-800',
-    TeamLead: 'bg-green-100 text-green-800',
-    Member: 'bg-orange-100 text-orange-800',
-    // V1 role names (same colors)
+    // V1 role names (PascalCase - from DB)
+    Admin: 'bg-purple-100 text-purple-800',
+    Requester: 'bg-blue-100 text-blue-800',
+    Approver: 'bg-green-100 text-green-800',
+    Assignee: 'bg-orange-100 text-orange-800',
+    // V1 role names (lowercase - legacy)
     admin: 'bg-purple-100 text-purple-800',
     requester: 'bg-blue-100 text-blue-800',
     approver: 'bg-green-100 text-green-800',
     assignee: 'bg-orange-100 text-orange-800',
+    // V2 role names (backward compatibility)
+    SuperAdmin: 'bg-purple-100 text-purple-800',
+    OrgAdmin: 'bg-blue-100 text-blue-800',
+    TeamLead: 'bg-green-100 text-green-800',
+    Member: 'bg-orange-100 text-orange-800',
     manager: 'bg-green-100 text-green-800',
     user: 'bg-gray-100 text-gray-800'
 };

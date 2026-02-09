@@ -2,12 +2,12 @@
  * Role Interfaces for V2 Auth System (RBAC)
  */
 
-// Predefined role names
+// Predefined role names (V1 naming convention)
 export enum RoleName {
-  SUPER_ADMIN = 'SuperAdmin',
-  ORG_ADMIN = 'OrgAdmin',
-  TEAM_LEAD = 'TeamLead',
-  MEMBER = 'Member',
+  ADMIN = 'Admin',
+  REQUESTER = 'Requester',
+  APPROVER = 'Approver',
+  ASSIGNEE = 'Assignee',
 }
 
 // Permission structure for each resource
@@ -63,33 +63,33 @@ export interface IRole {
   description?: string;
 }
 
-// Default permissions for each role
+// Default permissions for each role (V1 naming)
 export const DEFAULT_PERMISSIONS: Record<RoleName, IPermissions> = {
-  [RoleName.SUPER_ADMIN]: {
+  [RoleName.ADMIN]: {
     users: { create: true, read: true, update: true, delete: true },
     organizations: { create: true, read: true, update: true, delete: true },
     jobs: { create: true, read: true, update: true, delete: true, approve: true },
     reports: { view: true, export: true },
     settings: { manage: true },
   },
-  [RoleName.ORG_ADMIN]: {
+  [RoleName.REQUESTER]: {
     users: { create: true, read: true, update: true, delete: true },
     organizations: { create: false, read: true, update: true, delete: false },
     jobs: { create: true, read: true, update: true, delete: true, approve: true },
     reports: { view: true, export: true },
     settings: { manage: false },
   },
-  [RoleName.TEAM_LEAD]: {
+  [RoleName.APPROVER]: {
     users: { create: false, read: true, update: false, delete: false },
     organizations: { create: false, read: true, update: false, delete: false },
-    jobs: { create: true, read: true, update: true, delete: false, approve: false },
+    jobs: { create: true, read: true, update: true, delete: false, approve: true },
     reports: { view: true, export: false },
     settings: { manage: false },
   },
-  [RoleName.MEMBER]: {
+  [RoleName.ASSIGNEE]: {
     users: { create: false, read: false, update: false, delete: false },
     organizations: { create: false, read: true, update: false, delete: false },
-    jobs: { create: true, read: true, update: true, delete: false, approve: false },
+    jobs: { create: false, read: true, update: true, delete: false, approve: false },
     reports: { view: false, export: false },
     settings: { manage: false },
   },

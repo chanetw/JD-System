@@ -40,25 +40,25 @@ export function requireRoles(...allowedRoles: RoleName[]) {
 }
 
 /**
- * Middleware to require SuperAdmin role
+ * Middleware to require Admin role
  */
-export const requireSuperAdmin = requireRoles(RoleName.SUPER_ADMIN);
+export const requireAdmin = requireRoles(RoleName.ADMIN);
 
 /**
- * Middleware to require at least OrgAdmin role
+ * Middleware to require at least Requester role (Admin or Requester)
  */
-export const requireOrgAdmin = requireRoles(
-  RoleName.SUPER_ADMIN,
-  RoleName.ORG_ADMIN
+export const requireRequester = requireRoles(
+  RoleName.ADMIN,
+  RoleName.REQUESTER
 );
 
 /**
- * Middleware to require at least TeamLead role
+ * Middleware to require at least Approver role
  */
-export const requireTeamLead = requireRoles(
-  RoleName.SUPER_ADMIN,
-  RoleName.ORG_ADMIN,
-  RoleName.TEAM_LEAD
+export const requireApprover = requireRoles(
+  RoleName.ADMIN,
+  RoleName.REQUESTER,
+  RoleName.APPROVER
 );
 
 /**
@@ -115,39 +115,48 @@ export function requirePermission(
 }
 
 /**
- * Check if user has admin-level access (SuperAdmin or OrgAdmin)
+ * Check if user has admin-level access (Admin or Requester)
  */
 export function isAdmin(role: RoleName): boolean {
-  return role === RoleName.SUPER_ADMIN || role === RoleName.ORG_ADMIN;
+  return role === RoleName.ADMIN || role === RoleName.REQUESTER;
 }
 
 /**
- * Check if user is SuperAdmin
+ * Check if user is Admin (highest level)
+ */
+export function isAdminRole(role: RoleName): boolean {
+  return role === RoleName.ADMIN;
+}
+
+/**
+ * Alias for isAdminRole - Check if user is Admin (highest level)
  */
 export function isSuperAdmin(role: RoleName): boolean {
-  return role === RoleName.SUPER_ADMIN;
+  return role === RoleName.ADMIN;
 }
 
 /**
  * Get role priority (higher = more access)
+ * Admin > Requester > Approver > Assignee
  */
 export function getRolePriority(role: RoleName): number {
   const priority: Record<RoleName, number> = {
-    [RoleName.SUPER_ADMIN]: 4,
-    [RoleName.ORG_ADMIN]: 3,
-    [RoleName.TEAM_LEAD]: 2,
-    [RoleName.MEMBER]: 1,
+    [RoleName.ADMIN]: 4,
+    [RoleName.REQUESTER]: 3,
+    [RoleName.APPROVER]: 2,
+    [RoleName.ASSIGNEE]: 1,
   };
   return priority[role] || 0;
 }
 
 export default {
   requireRoles,
-  requireSuperAdmin,
-  requireOrgAdmin,
-  requireTeamLead,
+  requireAdmin,
+  requireRequester,
+  requireApprover,
   requirePermission,
   isAdmin,
+  isAdminRole,
   isSuperAdmin,
   getRolePriority,
 };

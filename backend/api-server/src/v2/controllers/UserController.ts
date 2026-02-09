@@ -8,7 +8,7 @@ import { Request, Response, NextFunction } from 'express';
 import UserService from '../services/UserService';
 import { successResponse, errorResponse, paginatedResponse, ErrorCodes } from '../utils/responseUtils';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
-import { isAdmin, isSuperAdmin } from '../middleware/roleMiddleware';
+import { isAdmin, isAdmin } from '../middleware/roleMiddleware';
 import { IUserCreateRequest, IUserUpdateRequest } from '../interfaces/IUser';
 import { RoleName } from '../interfaces/IRole';
 
@@ -16,7 +16,7 @@ class UserController {
   /**
    * GET /api/v2/users
    * List users with pagination and filters
-   * Access: SuperAdmin (all), OrgAdmin (org users), TeamLead (org users read-only)
+   * Access: Admin (all), Requester (org users), Approver (org users read-only)
    */
   async listUsers(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -33,8 +33,8 @@ class UserController {
       // Build filters
       const filters = {
         tenantId: user.tenantId,
-        // SuperAdmin can filter by any org, others see only their org
-        organizationId: isSuperAdmin(user.role as RoleName)
+        // Admin can filter by any org, others see only their org
+        organizationId: isAdmin(user.role as RoleName)
           ? organizationId as string | undefined
           : user.organizationId,
         search: search as string | undefined,
@@ -83,7 +83,7 @@ class UserController {
   /**
    * GET /api/v2/users/:id
    * Get single user by ID
-   * Access: SuperAdmin (any), OrgAdmin/TeamLead (same org only)
+   * Access: Admin (any), Requester/Approver (same org only)
    */
   async getUser(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -99,8 +99,8 @@ class UserController {
         return;
       }
 
-      // Check organization access for non-SuperAdmins
-      if (!isSuperAdmin(user.role as RoleName) && userData.organizationId !== user.organizationId) {
+      // Check organization access for non-Admins
+      if (!isAdmin(user.role as RoleName) && userData.organizationId !== user.organizationId) {
         res.status(403).json(
           errorResponse(ErrorCodes.FORBIDDEN, 'Access denied')
         );
@@ -118,7 +118,7 @@ class UserController {
   /**
    * POST /api/v2/users
    * Create a new user
-   * Access: SuperAdmin, OrgAdmin
+   * Access: Admin, Requester
    */
   async createUser(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -134,8 +134,8 @@ class UserController {
         return;
       }
 
-      // OrgAdmin can only create users in their organization
-      if (!isSuperAdmin(user.role as RoleName)) {
+      // Requester can only create users in their organization
+      if (!isAdmin(user.role as RoleName)) {
         payload.organizationId = user.organizationId;
       }
 
@@ -170,7 +170,7 @@ class UserController {
   /**
    * PUT /api/v2/users/:id
    * Update a user
-   * Access: SuperAdmin (any), OrgAdmin (same org)
+   * Access: Admin (any), Requester (same org)
    */
   async updateUser(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -188,8 +188,8 @@ class UserController {
         return;
       }
 
-      // Check organization access for non-SuperAdmins
-      if (!isSuperAdmin(user.role as RoleName) && targetUser.organizationId !== user.organizationId) {
+      // Check organization access for non-Admins
+      if (!isAdmin(user.role as RoleName) && targetUser.organizationId !== user.organizationId) {
         res.status(403).json(
           errorResponse(ErrorCodes.FORBIDDEN, 'Access denied')
         );
@@ -225,7 +225,7 @@ class UserController {
   /**
    * DELETE /api/v2/users/:id
    * Soft delete user (set isActive = false)
-   * Access: SuperAdmin (any), OrgAdmin (same org)
+   * Access: Admin (any), Requester (same org)
    */
   async deleteUser(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -251,8 +251,8 @@ class UserController {
         return;
       }
 
-      // Check organization access for non-SuperAdmins
-      if (!isSuperAdmin(user.role as RoleName) && targetUser.organizationId !== user.organizationId) {
+      // Check organization access for non-Admins
+      if (!isAdmin(user.role as RoleName) && targetUser.organizationId !== user.organizationId) {
         res.status(403).json(
           errorResponse(ErrorCodes.FORBIDDEN, 'Access denied')
         );

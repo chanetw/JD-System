@@ -44,6 +44,7 @@ import jobTypesRoutes from './routes/job-types.js'; // ✓ NEW: Job Types Manage
 import approvalFlowsRoutes from './routes/approval-flows.js';
 import commentsRoutes from './routes/comments.js'; // ✓ NEW: Job Comments with @mentions
 import activitiesRoutes from './routes/activities.js'; // ✓ NEW: Job Activities
+import analyticsRoutes from './routes/analytics.js'; // ✓ NEW: Analytics Tracking
 
 // V2 Flow Templates REMOVED - Using V1 Extended instead
 
@@ -274,6 +275,7 @@ app.use('/api', activitiesRoutes); // ✓ NEW: Activities API (routes: /api/jobs
 // V2 Flow Templates API REMOVED - Using V1 Extended instead
 app.use('/api/reports', reportsRoutes);
 app.use('/api/storage', storageRoutes);
+app.use('/api/analytics', analyticsRoutes); // ✓ NEW: Analytics API (routes: /api/analytics/track-click, /api/analytics/stats)
 
 
 // Routes will be added here in the future

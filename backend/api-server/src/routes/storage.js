@@ -11,9 +11,16 @@
 
 import express from 'express';
 import multer from 'multer';
+import sharp from 'sharp';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import { SupabaseStorageService, isUsingSupabase } from '../config/supabase.js';
 import { getDatabase } from '../config/database.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 const prisma = getDatabase();
@@ -80,7 +87,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     if (isUsingSupabase()) {
       // ใช้ Supabase Storage
       const supabaseStorage = new SupabaseStorageService();
-      
+
       // สร้างชื่อไฟล์ที่ไม่ซ้ำกัน
       const timestamp = Date.now();
       const fileName = `${timestamp}_${file.originalname}`;
@@ -96,6 +103,18 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       return res.status(500).json(uploadResult);
     }
 
+    // สร้าง Thumbnail สำหรับไฟล์รูปภาพ
+    let thumbnailPath = null;
+    if (file.mimetype.startsWith('image/')) {
+      try {
+        thumbnailPath = await generateThumbnail(file, uploadResult.data.path, req.user.tenantId);
+        console.log('[Storage] Thumbnail created:', thumbnailPath);
+      } catch (error) {
+        console.error('[Storage] Thumbnail generation failed:', error.message);
+        // ไม่ throw error - ให้ upload สำเร็จแต่ไม่มี thumbnail
+      }
+    }
+
     // บันทึกข้อมูลไฟล์ใน database
     const mediaFile = await prisma.mediaFile.create({
       data: {
@@ -107,10 +126,10 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         fileSize: BigInt(file.size),
         fileType: file.mimetype,
         mimeType: file.mimetype,
+        thumbnailPath, // เพิ่มบันทึก thumbnail path
         uploadedBy: req.user.userId
       }
     });
-
     res.status(201).json({
       success: true,
       data: {
@@ -192,7 +211,7 @@ router.get('/files', async (req, res) => {
       data: files.map(file => ({
         ...file,
         fileSize: Number(file.fileSize),
-        publicUrl: isUsingSupabase() ? 
+        publicUrl: isUsingSupabase() ?
           `https://${process.env.SUPABASE_URL?.replace('https://', '')}/storage/v1/object/public/${process.env.SUPABASE_STORAGE_BUCKET || 'dj-system-files'}/${file.filePath}` :
           `/uploads/${file.filePath}`
       }))
@@ -495,6 +514,43 @@ async function deleteFromLocalFile(filePath) {
       error: 'LOCAL_DELETE_FAILED',
       message: 'ไม่สามารถลบไฟล์ในเครื่องได้'
     };
+  }
+}
+
+/**
+ * สร้าง Thumbnail สำหรับไฟล์รูปภาพ
+ * 
+ * @param {Object} file - Multer file object
+ * @param {string} originalPath - Path ของไฟล์ต้นฉบับ
+ * @param {number} tenantId - Tenant ID
+ * @returns {Promise<string|null>} - Path ของ thumbnail
+ */
+async function generateThumbnail(file, originalPath, tenantId) {
+  try {
+    // สร้างโฟลเดอร์ thumbnails ถ้ายังไม่มี
+    const thumbnailsDir = path.join(process.cwd(), 'uploads', 'thumbnails', `tenant_${tenantId}`);
+    await fs.promises.mkdir(thumbnailsDir, { recursive: true });
+
+    // สร้างชื่อไฟล์ thumbnail
+    const timestamp = Date.now();
+    const ext = path.extname(file.originalname);
+    const thumbnailFileName = `thumb_${timestamp}${ext}`;
+    const thumbnailFullPath = path.join(thumbnailsDir, thumbnailFileName);
+
+    // สร้าง Thumbnail ขนาด 400x300px (maintain aspect ratio)
+    await sharp(file.buffer)
+      .resize(400, 300, {
+        fit: 'cover',
+        position: 'center'
+      })
+      .jpeg({ quality: 80 }) // แปลงเป็น JPEG เพื่อประหยัดพื้นที่
+      .toFile(thumbnailFullPath);
+
+    // Return relative path
+    return `thumbnails/tenant_${tenantId}/${thumbnailFileName}`;
+  } catch (error) {
+    console.error('[Thumbnail] Generation error:', error);
+    throw error;
   }
 }
 

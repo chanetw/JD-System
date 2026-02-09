@@ -463,20 +463,20 @@ export const useHasPermission = (resource: string, action: string): boolean => {
   return (resourcePerms as Record<string, boolean>)[action] === true;
 };
 
-// Role check helpers
+// Role check helpers (V1 naming: Admin, Requester, Approver, Assignee)
 export const useIsSuperAdmin = (): boolean => {
   const user = useUser();
-  return user?.roleName === 'SuperAdmin';
+  return user?.roleName === 'Admin';
 };
 
 export const useIsOrgAdmin = (): boolean => {
   const user = useUser();
-  return user?.roleName === 'SuperAdmin' || user?.roleName === 'OrgAdmin';
+  return user?.roleName === 'Admin' || user?.roleName === 'Requester';
 };
 
 export const useIsTeamLead = (): boolean => {
   const user = useUser();
-  return user?.roleName === 'SuperAdmin' || user?.roleName === 'OrgAdmin' || user?.roleName === 'TeamLead';
+  return user?.roleName === 'Admin' || user?.roleName === 'Requester' || user?.roleName === 'Approver';
 };
 
 export default useAuthStoreV2;

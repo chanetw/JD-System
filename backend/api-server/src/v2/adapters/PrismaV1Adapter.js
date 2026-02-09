@@ -27,25 +27,25 @@ class PrismaV1Adapter {
 
     const primaryRole = prismaUser.userRoles?.[0];
 
-    // Map V1 roles to V2 roles
-    console.log('[PrismaV1Adapter] Mapping User:', prismaUser.email, 'Roles:', prismaUser.userRoles);
+    // V1 Role Names: Admin, Requester, Approver, Assignee
+    console.log('[PrismaV1Adapter] User:', prismaUser.email, 'Roles:', prismaUser.userRoles);
 
-    // Get raw role name
-    const rawRoleName = primaryRole?.roleName || 'Member';
+    // Get raw role name - V1 standard names
+    const rawRoleName = primaryRole?.roleName || 'Assignee';
     const normalizedRole = rawRoleName.toLowerCase().trim();
 
     let roleName = rawRoleName;
 
-    // Map legacy V1 roles to V2 roles
-    if (normalizedRole === 'admin') roleName = 'SuperAdmin';
-    if (normalizedRole === 'user') roleName = 'Member';
-    if (normalizedRole === 'requester') roleName = 'OrgAdmin';
-    if (normalizedRole === 'approver') roleName = 'TeamLead';
-    if (normalizedRole === 'assignee') roleName = 'Member';
-    if (normalizedRole === 'manager') roleName = 'TeamLead';
+    // Normalize legacy/V2 role names to V1 standard
+    if (normalizedRole === 'superadmin') roleName = 'Admin';
+    if (normalizedRole === 'orgadmin') roleName = 'Requester';
+    if (normalizedRole === 'teamlead') roleName = 'Approver';
+    if (normalizedRole === 'member') roleName = 'Assignee';
+    if (normalizedRole === 'user') roleName = 'Assignee';
+    if (normalizedRole === 'manager') roleName = 'Approver';
 
     // Failsafe for specific admin user
-    if (prismaUser.id === 10000) roleName = 'SuperAdmin';
+    if (prismaUser.id === 10000) roleName = 'Admin';
 
     return {
       id: prismaUser.id,
@@ -163,7 +163,7 @@ class PrismaV1Adapter {
     const effectiveTenantId = tenantId || 1; // Default to 1
 
     // Get role name from roleId if provided
-    let roleName = 'Member'; // Default role
+    let roleName = 'Assignee'; // Default role (V1)
     if (roleId) {
       const role = await prisma.role.findUnique({
         where: { id: roleId }
@@ -294,11 +294,11 @@ class PrismaV1Adapter {
   }
 
   /**
-   * Get default role (Member)
-   * @returns {Object|null} Member role or null
+   * Get default role (Assignee)
+   * @returns {Object|null} Assignee role or null
    */
   static async getDefaultRole() {
-    return this.getRoleByName('Member');
+    return this.getRoleByName('Assignee');
   }
 
   /**
@@ -496,7 +496,7 @@ class PrismaV1Adapter {
    * @param {string} roleName - Role to assign (default: 'Member')
    * @returns {Object} Approved user with temporary password
    */
-  static async approveRegistration(userId, approvedById, roleName = 'Member') {
+  static async approveRegistration(userId, approvedById, roleName = 'Assignee') {
     const prisma = getDatabase();
 
     // Get the user

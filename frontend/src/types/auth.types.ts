@@ -2,8 +2,8 @@
  * Authentication Types for V2 Auth System
  */
 
-// Role names enum
-export type RoleName = 'SuperAdmin' | 'OrgAdmin' | 'TeamLead' | 'Member';
+// Role names enum (V1)
+export type RoleName = 'Admin' | 'Requester' | 'Approver' | 'Assignee';
 
 // Permission structure
 export interface IResourcePermissions {

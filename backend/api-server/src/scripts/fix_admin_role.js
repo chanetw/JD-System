@@ -13,13 +13,13 @@ async function run() {
         await client.connect();
         console.log('Connected to database');
 
-        // Update the user's role to SuperAdmin (ID 1)
-        // Based on previous output, SuperAdmin should be ID 1, but I will query to be sure logic matches
+        // Update the user's role to Admin (V1 naming)
+        // Based on previous output, Admin should be ID 1, but I will query to be sure logic matches
 
-        // First find SuperAdmin role id
-        const roleRes = await client.query(`SELECT id FROM "Role" WHERE name = 'SuperAdmin' OR name = 'admin' LIMIT 1`);
+        // First find Admin role id
+        const roleRes = await client.query(`SELECT id FROM "Role" WHERE name = 'Admin' OR name = 'admin' LIMIT 1`);
         if (roleRes.rows.length === 0) {
-            console.error('SuperAdmin role not found');
+            console.error('Admin role not found');
             return;
         }
         const adminRoleId = roleRes.rows[0].id;

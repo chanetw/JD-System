@@ -11,7 +11,7 @@ import { RoleName } from '../interfaces/IRole';
 
 /**
  * Middleware to scope queries to user's organization
- * SuperAdmins can access all organizations
+ * Admins can access all organizations
  * Others are restricted to their own organization
  */
 export function scopeToOrganization(
@@ -28,8 +28,8 @@ export function scopeToOrganization(
     return;
   }
 
-  // SuperAdmins can access any organization
-  if (user.role === RoleName.SUPER_ADMIN) {
+  // Admins can access any organization
+  if (user.role === RoleName.ADMIN) {
     next();
     return;
   }
@@ -65,8 +65,8 @@ export function verifyOrganizationAccess(
     return;
   }
 
-  // SuperAdmins can access any organization
-  if (user.role === RoleName.SUPER_ADMIN) {
+  // Admins can access any organization
+  if (user.role === RoleName.ADMIN) {
     next();
     return;
   }
@@ -106,7 +106,7 @@ export function verifyTenantAccess(
     return;
   }
 
-  // SuperAdmins might need cross-tenant access in future
+  // Admins might need cross-tenant access in future
   // For now, everyone is restricted to their tenant
   if (requestedTenantId && requestedTenantId !== user.tenantId) {
     res.status(403).json(
@@ -132,8 +132,8 @@ export function canAccessOrganization(
   targetOrgId: number,
   userRole: RoleName
 ): boolean {
-  // SuperAdmins can access any organization
-  if (userRole === RoleName.SUPER_ADMIN) {
+  // Admins can access any organization
+  if (userRole === RoleName.ADMIN) {
     return true;
   }
 

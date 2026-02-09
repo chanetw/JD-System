@@ -743,10 +743,10 @@ export default function UserManagementNew() {
                                 onChange={(e) => setFilterRole(e.target.value)}
                             >
                                 <option value="">ทุกบทบาท</option>
-                                <option value="SuperAdmin">{ROLE_V1_DISPLAY.SuperAdmin}</option>
-                                <option value="OrgAdmin">{ROLE_V1_DISPLAY.OrgAdmin}</option>
-                                <option value="TeamLead">{ROLE_V1_DISPLAY.TeamLead}</option>
-                                <option value="Member">{ROLE_V1_DISPLAY.Member}</option>
+                                <option value="Admin">{ROLE_V1_DISPLAY.Admin || 'System Admin'}</option>
+                                <option value="Requester">{ROLE_V1_DISPLAY.Requester || 'Requester'}</option>
+                                <option value="Approver">{ROLE_V1_DISPLAY.Approver || 'Approver'}</option>
+                                <option value="Assignee">{ROLE_V1_DISPLAY.Assignee || 'Assignee'}</option>
                             </select>
                         </div>
 

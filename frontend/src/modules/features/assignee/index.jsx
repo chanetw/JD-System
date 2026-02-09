@@ -7,6 +7,6 @@ export const routes = [
         path: 'assignee/my-queue',
         element: <MyQueue />,
         title: 'คิวงานของฉัน',
-        roles: ['Member', 'assignee', 'admin', 'SuperAdmin', 'OrgAdmin', 'graphic', 'editor'] // Restricted to pure work recipients and admins
+        roles: ['Assignee', 'Admin', 'Requester', 'graphic', 'editor'] // V1: Admin, Requester can also view
     }
 ];

@@ -15,8 +15,8 @@ const router = Router();
 // All routes require authentication
 router.use(authenticateToken);
 
-// All routes require at least OrgAdmin role
-router.use(requireRoles(RoleName.SUPER_ADMIN, RoleName.ORG_ADMIN));
+// All routes require at least Requester role (Admin, Requester)
+router.use(requireRoles(RoleName.ADMIN, RoleName.REQUESTER));
 
 // ============================================================================
 // Registration Request Management
@@ -79,11 +79,11 @@ router.get('/users', AdminController.listAllUsers);
 
 /**
  * PUT /api/v2/admin/users/:id/role
- * Update user role (SuperAdmin only)
+ * Update user role (Admin only)
  */
 router.put(
   '/users/:id/role',
-  requireRoles(RoleName.SUPER_ADMIN),
+  requireRoles(RoleName.ADMIN),
   AdminController.updateUserRole
 );
 
@@ -94,7 +94,7 @@ router.put(
 router.put('/users/:id/status', AdminController.updateUserStatus);
 
 // ============================================================================
-// Organization Management (SuperAdmin only)
+// Organization Management (Admin only)
 // ============================================================================
 
 /**
@@ -103,7 +103,7 @@ router.put('/users/:id/status', AdminController.updateUserStatus);
  */
 router.get(
   '/organizations',
-  requireRoles(RoleName.SUPER_ADMIN),
+  requireRoles(RoleName.ADMIN),
   AdminController.listOrganizations
 );
 
@@ -113,7 +113,7 @@ router.get(
  */
 router.post(
   '/organizations',
-  requireRoles(RoleName.SUPER_ADMIN),
+  requireRoles(RoleName.ADMIN),
   AdminController.createOrganization
 );
 

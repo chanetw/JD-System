@@ -21,21 +21,21 @@ export default function Sidebar() {
     const { user } = useAuthStoreV2();
 
     /** รายชื่อ Role ที่ถือว่าเป็นผู้ปฏิบัติงาน (Work Recipients) */
-    const RECIPIENT_ROLES = ['Member', 'assignee', 'graphic', 'editor'];
+    const RECIPIENT_ROLES = ['Assignee', 'assignee', 'graphic', 'editor'];
 
-    /** ตรวจสอบสิทธิ์ SuperAdmin/Admin */
-    const isSuperAdmin = ['SuperAdmin', 'admin', 'OrgAdmin'].includes(user?.roleName) ||
-        (user?.roles && user.roles.some(r => ['SuperAdmin', 'admin', 'OrgAdmin'].includes(r)));
+    /** ตรวจสอบสิทธิ์ Admin เท่านั้น */
+    const isAdmin = user?.roleName === 'Admin' ||
+        (user?.roles && user.roles.includes('Admin'));
 
-    /** ตรวจสอบสิทธิ์ Assignee (ต้องมี Role ผู้รับงาน ไม่ว่าจะพ่วง TeamLead หรือไม่ก็ตาม) */
+    /** ตรวจสอบสิทธิ์ Assignee (ต้องมี Role ผู้รับงาน) */
     const isAssignee = RECIPIENT_ROLES.includes(user?.roleName) ||
         (user?.roles && user.roles.some(r => RECIPIENT_ROLES.includes(r)));
 
-    /** ตรวจสอบสิทธิ์สร้างงาน (Requester: SuperAdmin, OrgAdmin, TeamLead) */
-    const canCreateJob = ['SuperAdmin', 'OrgAdmin', 'TeamLead'].includes(user?.roleName);
+    /** ตรวจสอบสิทธิ์สร้างงาน (Admin, Requester, Approver) */
+    const canCreateJob = ['Admin', 'Requester', 'Approver'].includes(user?.roleName);
 
-    /** ตรวจสอบสิทธิ์เข้าถึง Analytics Dashboard (Phase 1: SuperAdmin only) */
-    const canAccessAnalytics = isSuperAdmin;
+    /** ตรวจสอบสิทธิ์เข้าถึง Analytics Dashboard (Phase 1: Admin only) */
+    const canAccessAnalytics = isAdmin;
 
     return (
         // ============================================
@@ -85,7 +85,7 @@ export default function Sidebar() {
                     คิวงานรออนุมัติ
                 </SidebarLink>
 
-                {(isAssignee || isSuperAdmin) && (
+                {(isAssignee || isAdmin) && (
                     <SidebarLink to="/assignee/my-queue" icon={InboxIcon}>
                         คิวงานของฉัน (My Queue)
                     </SidebarLink>
@@ -102,9 +102,9 @@ export default function Sidebar() {
 
 
                 {/* ============================================
-            Admin Menu - เมนู Admin (แสดงเฉพาะ SuperAdmin)
+            Admin Menu - เมนู Admin (แสดงเฉพาะ Admin)
             ============================================ */}
-                {isSuperAdmin && (
+                {isAdmin && (
                     <>
                         <div className="pt-6 pb-2 px-2">
                             <p className="text-xs font-bold text-rose-300 uppercase tracking-wider">
@@ -143,7 +143,7 @@ export default function Sidebar() {
                 )}
 
                 {/* ============================================
-            Analytics Menu - เมนู Analytics (Phase 1: แสดงเฉพาะ SuperAdmin)
+            Analytics Menu - เมนู Analytics (Phase 1: แสดงเฉพาะ Admin)
             ============================================ */}
                 {canAccessAnalytics && (
                     <>

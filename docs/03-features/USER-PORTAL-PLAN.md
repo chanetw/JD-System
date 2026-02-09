@@ -57,19 +57,24 @@
 
 ## 3. Implementation Process (ขั้นตอนการพัฒนา)
 
-### Phase 1: Backend Update (API)
-- [ ] **Modify `GET /api/jobs`**:
+### Phase 1: Backend Update (API) ✅ DONE
+- [x] **Modify `GET /api/jobs`**:
   - เพิ่ม Logic สำหรับ `role=approver`
   - ให้ Query จากตาราง `Approvals` ที่ `approver_id = current_user` และ `status = pending`
   - *เพื่อแก้ปัญหาปัจจุบันที่เห็นงานค้างทั้งหมดของบริษัท*
 
-### Phase 2: React Component (UserPortal)
-- [ ] **Create `PendingApprovalSection.jsx`**:
+### Phase 2: React Component (UserPortal) ✅ DONE
+- [x] **Create `PendingApprovalSection.jsx`**:
   - Fetch API: `/api/jobs?role=approver&status=waiting`
-  - แสดงผลแบบ Card หรือ Table ที่เน้นปุ่ม Action
-- [ ] **Update `UserPortal.jsx`**:
+  - แสดงผลแบบ Card ที่เน้นปุ่ม Action
+- [x] **Update `UserPortal.jsx`**:
   - นำ Section ใหม่ไปแทรกไว้ใต้ Hero Section
   - ปรับปรุงตาราง `MyRecentJobs` ให้ดึง `role=requester`
+  - **ดึง Projects จาก Backend** (ตาม User Scope)
+  - **ดึง Media Files จริง** จาก `/storage/files` (แสดง 5 ไฟล์ล่าสุด)
+  - **ดึง Stats จริง** (totalFiles, deliveredFiles, totalDownloads)
+  - **เอา Mock data ออกหมด** (projects, mediaFiles, hardcoded stats)
+  - **อัปเดต MediaCard** รองรับ real data + thumbnails
 
 ### Phase 3: Routing & Redirect
 - [ ] **Update `LoginReal.jsx`**:

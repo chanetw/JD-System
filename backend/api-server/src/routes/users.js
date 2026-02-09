@@ -16,11 +16,11 @@ import { getSupabaseClient } from '../config/supabase.js';
 const router = express.Router();
 const userService = new UserService();
 
-// Helper: Check if user has admin-level permissions (supports V1 + V2 roles)
+// Helper: Check if user has admin-level permissions (V1 naming)
 function hasAdminRole(roles) {
   if (!roles || !Array.isArray(roles)) return false;
-  // V1: 'admin', V2: 'SuperAdmin', 'OrgAdmin' (can manage users)
-  return roles.some(role => ['admin', 'SuperAdmin', 'OrgAdmin'].includes(role));
+  // V1: Admin, Requester (can manage users)
+  return roles.some(role => ['admin', 'Admin', 'Requester'].includes(role));
 }
 
 // ทุก routes ต้องมีการ authenticate และตั้งค่า RLS context
@@ -179,7 +179,7 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // ตรวจสอบว่าผู้ใช้มีสิทธิ์สร้างผู้ใช้ใหม่หรือไม่ (admin/SuperAdmin/OrgAdmin)
+    // ตรวจสอบว่าผู้ใช้มีสิทธิ์สร้างผู้ใช้ใหม่หรือไม่ (Admin/Requester)
     if (!hasAdminRole(req.user.roles)) {
       return res.status(403).json({
         success: false,
@@ -240,7 +240,7 @@ router.put('/:id', async (req, res) => {
     }
 
     // ตรวจสอบว่าผู้ใช้มีสิทธิ์แก้ไขข้อมูลนี้หรือไม่
-    // - admin/SuperAdmin/OrgAdmin สามารถแก้ไขได้ทุกคน
+    // - Admin/Requester สามารถแก้ไขได้ทุกคน
     // - user ปกติสามารถแก้ไขข้อมูลตัวเองได้
     if (!hasAdminRole(req.user.roles) && req.user.userId !== userId) {
       return res.status(403).json({
@@ -294,7 +294,7 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
-    // เฉพาะ admin/SuperAdmin/OrgAdmin เท่านั้นที่สามารถลบผู้ใช้ได้
+    // เฉพาะ Admin/Requester เท่านั้นที่สามารถลบผู้ใช้ได้
     if (!hasAdminRole(req.user.roles)) {
       return res.status(403).json({
         success: false,

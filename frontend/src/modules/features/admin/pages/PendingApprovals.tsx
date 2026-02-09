@@ -7,11 +7,11 @@
 import React, { useEffect, useState } from 'react';
 import { useAuthStoreV2, usePendingUsers, useRegistrationCounts, useIsOrgAdmin } from '../../../core/stores/authStoreV2';
 
-// Role options for assignment during approval
+// Role options for assignment during approval (V1 naming)
 const ROLE_OPTIONS = [
-  { value: 'Member', label: 'Member (Basic access)' },
-  { value: 'TeamLead', label: 'Team Lead (Team management)' },
-  { value: 'OrgAdmin', label: 'Organization Admin (Full access)' },
+  { value: 'Assignee', label: 'Assignee (Basic access)' },
+  { value: 'Approver', label: 'Approver (Approval access)' },
+  { value: 'Requester', label: 'Requester (Full access)' },
 ];
 
 const PendingApprovals: React.FC = () => {

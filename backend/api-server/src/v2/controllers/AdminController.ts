@@ -216,7 +216,7 @@ class AdminController {
 
   /**
    * PUT /api/v2/admin/users/:id/role
-   * Update user role (SuperAdmin only)
+   * Update user role (Admin only)
    */
   async updateUserRole(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -271,7 +271,7 @@ class AdminController {
 
   /**
    * GET /api/v2/admin/organizations
-   * List all organizations (SuperAdmin only)
+   * List all organizations (Admin only)
    */
   async listOrganizations(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -284,7 +284,7 @@ class AdminController {
 
   /**
    * POST /api/v2/admin/organizations
-   * Create new organization (SuperAdmin only)
+   * Create new organization (Admin only)
    */
   async createOrganization(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {

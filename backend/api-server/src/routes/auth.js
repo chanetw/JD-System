@@ -173,8 +173,8 @@ export function requireAdmin(req, res, next) {
     return next();
   }
 
-  // Check V2 format (role string) - Admin roles in V2: SuperAdmin, OrgAdmin
-  if (req.user.role && ['SuperAdmin', 'OrgAdmin', 'admin'].includes(req.user.role)) {
+  // Check role string format - Admin roles: Admin, Requester (V1 naming)
+  if (req.user.role && ['Admin', 'Requester', 'admin'].includes(req.user.role)) {
     return next();
   }
 

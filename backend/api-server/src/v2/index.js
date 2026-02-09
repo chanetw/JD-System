@@ -172,7 +172,7 @@ const formatUserResponse = (user) => ({
   fullName: `${user.firstName} ${user.lastName}`,
   roleId: user.roleId,
   // Use role object if available, otherwise check roleName property, or default to Member
-  roleName: user.role?.name || user.roleName || 'Member',
+  roleName: user.role?.name || user.roleName || 'Assignee',
   isActive: user.isActive,
   lastLoginAt: user.lastLoginAt,
   createdAt: user.createdAt,
@@ -203,12 +203,12 @@ const requireRoles = (...allowedRoles) => (req, res, next) => {
   next();
 };
 
-const requireOrgAdmin = requireRoles('SuperAdmin', 'OrgAdmin');
-const requireTeamLead = requireRoles('SuperAdmin', 'OrgAdmin', 'TeamLead');
+const requireOrgAdmin = requireRoles('Admin', 'Requester');
+const requireTeamLead = requireRoles('Admin', 'Requester', 'Approver');
 
 const scopeToOrganization = (req, res, next) => {
   if (!req.user) return res.status(401).json(errorResponse('UNAUTHORIZED', 'Authentication required'));
-  if (req.user.role !== 'SuperAdmin' && !req.query.organizationId) {
+  if (req.user.role !== 'Admin' && !req.query.organizationId) {
     req.query.organizationId = String(req.user.organizationId);
   }
   next();
@@ -248,7 +248,7 @@ router.post('/auth/register', async (req, res, next) => {
 
     // Get role information
     let effectiveRoleId = roleId;
-    let roleName = 'Member'; // Default role
+    let roleName = 'Assignee'; // Default role (V1 naming)
 
     if (!effectiveRoleId) {
       const defaultRole = await PrismaV1Adapter.getDefaultRole();
@@ -258,7 +258,7 @@ router.post('/auth/register', async (req, res, next) => {
       }
     } else {
       // Get role name from roleId
-      const role = await PrismaV1Adapter.getRoleByName('Member'); // In production, fetch by ID
+      const role = await PrismaV1Adapter.getRoleByName('Assignee'); // In production, fetch by ID
       if (role) {
         roleName = role.name;
       }
@@ -290,7 +290,7 @@ router.post('/auth/register', async (req, res, next) => {
       lastName: newUser.lastName,
       fullName: `${newUser.firstName} ${newUser.lastName}`,
       roleId: newUser.roleId || 0,
-      roleName: newUser.roleName || 'Member',
+      roleName: newUser.roleName || 'Assignee',
       displayName: newUser.displayName,
       avatarUrl: newUser.avatarUrl,
       isActive: newUser.isActive,
@@ -359,7 +359,7 @@ router.post('/auth/login', async (req, res, next) => {
       lastName: user.lastName,
       fullName: `${user.firstName} ${user.lastName}`,
       roleId: user.roleId || 0,
-      roleName: user.roleName || 'Member',
+      roleName: user.roleName || 'Assignee',
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
       isActive: user.isActive,
@@ -481,7 +481,7 @@ router.post('/admin/approve-registration', authenticateToken, requireOrgAdmin, a
     const approvedUser = await PrismaV1Adapter.approveRegistration(
       parseInt(userId),
       req.user.userId,
-      roleName || 'Member'
+      roleName || 'Assignee'
     );
 
     console.log(`[V2 Admin] User approved: ${approvedUser.email} by Admin ID: ${req.user.userId}`);
@@ -706,7 +706,7 @@ router.post('/auth/refresh', async (req, res, next) => {
 
     if (!user || !user.isActive) return res.status(401).json(errorResponse('TOKEN_INVALID', 'Invalid token'));
 
-    const token = generateToken(user.id, user.tenantId, user.organizationId, user.email, user.roleId, user.roleName || 'Member');
+    const token = generateToken(user.id, user.tenantId, user.organizationId, user.email, user.roleId, user.roleName || 'Assignee');
     res.json(successResponse({ token, expiresIn: JWT_EXPIRES_IN }, 'Token refreshed'));
   } catch (error) {
     next(error);
@@ -775,7 +775,7 @@ router.get('/users/:id', authenticateToken, requireTeamLead, async (req, res, ne
     });
 
     if (!user) return res.status(404).json(errorResponse('NOT_FOUND', 'User not found'));
-    if (req.user.role !== 'SuperAdmin' && user.organizationId !== req.user.organizationId) {
+    if (req.user.role !== 'Admin' && user.organizationId !== req.user.organizationId) {
       return res.status(403).json(errorResponse('FORBIDDEN', 'Access denied'));
     }
 
@@ -793,13 +793,13 @@ router.post('/users', authenticateToken, requireOrgAdmin, async (req, res, next)
       return res.status(400).json(errorResponse('MISSING_FIELDS', 'All fields required'));
     }
 
-    if (req.user.role !== 'SuperAdmin') organizationId = req.user.organizationId;
+    if (req.user.role !== 'Admin') organizationId = req.user.organizationId;
 
     const existingUser = await User.findOne({ where: { email: email.toLowerCase(), tenantId: req.user.tenantId } });
     if (existingUser) return res.status(409).json(errorResponse('EMAIL_EXISTS', 'Email already exists'));
 
     if (!roleId) {
-      const defaultRole = await Role.findOne({ where: { name: 'Member' } });
+      const defaultRole = await Role.findOne({ where: { name: 'Assignee' } });
       roleId = defaultRole?.id;
     }
 
@@ -829,7 +829,7 @@ router.put('/users/:id', authenticateToken, requireOrgAdmin, async (req, res, ne
     const user = await User.findOne({ where: { id: userId, tenantId: req.user.tenantId } });
 
     if (!user) return res.status(404).json(errorResponse('NOT_FOUND', 'User not found'));
-    if (req.user.role !== 'SuperAdmin' && user.organizationId !== req.user.organizationId) {
+    if (req.user.role !== 'Admin' && user.organizationId !== req.user.organizationId) {
       return res.status(403).json(errorResponse('FORBIDDEN', 'Access denied'));
     }
 
@@ -864,7 +864,7 @@ router.delete('/users/:id', authenticateToken, requireOrgAdmin, async (req, res,
 
     const user = await User.findOne({ where: { id: userId, tenantId: req.user.tenantId } });
     if (!user) return res.status(404).json(errorResponse('NOT_FOUND', 'User not found'));
-    if (req.user.role !== 'SuperAdmin' && user.organizationId !== req.user.organizationId) {
+    if (req.user.role !== 'Admin' && user.organizationId !== req.user.organizationId) {
       return res.status(403).json(errorResponse('FORBIDDEN', 'Access denied'));
     }
 

@@ -24,23 +24,23 @@ router.use(authenticateToken);
 router.get('/me', UserController.getCurrentUser);
 
 // GET /api/v2/users - List users with pagination
-// Access: TeamLead+ (scoped to organization)
+// Access: Approver+ (scoped to organization)
 router.get('/', requireTeamLead, scopeToOrganization, UserController.listUsers);
 
 // GET /api/v2/users/:id - Get single user
-// Access: TeamLead+ (scoped to organization)
+// Access: Approver+ (scoped to organization)
 router.get('/:id', requireTeamLead, UserController.getUser);
 
 // POST /api/v2/users - Create new user
-// Access: OrgAdmin+
+// Access: Requester+
 router.post('/', requireOrgAdmin, UserController.createUser);
 
 // PUT /api/v2/users/:id - Update user
-// Access: OrgAdmin+ (scoped to organization)
+// Access: Requester+ (scoped to organization)
 router.put('/:id', requireOrgAdmin, UserController.updateUser);
 
 // DELETE /api/v2/users/:id - Soft delete user
-// Access: OrgAdmin+ (scoped to organization)
+// Access: Requester+ (scoped to organization)
 router.delete('/:id', requireOrgAdmin, UserController.deleteUser);
 
 export default router;

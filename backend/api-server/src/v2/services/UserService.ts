@@ -235,7 +235,7 @@ export class UserService {
   }
 
   /**
-   * Get users by organization (for TeamLead access)
+   * Get users by organization (for Approver access)
    */
   async getUsersByOrganization(
     organizationId: number,

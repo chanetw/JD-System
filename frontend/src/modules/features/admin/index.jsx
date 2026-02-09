@@ -59,49 +59,49 @@ export const routes = [
     {
         path: 'admin/users',
         element: withSuspense(UserManagement),
-        roles: ['admin'],
+        roles: ['Admin'],
         title: 'จัดการผู้ใช้'
     },
     {
         path: 'admin/job-types',
         element: withSuspense(JobTypeSLA),
-        roles: ['admin'],
+        roles: ['Admin'],
         title: 'ประเภทงานและ SLA'
     },
     {
         path: 'admin/job-type-items',
         element: withSuspense(JobTypeItems),
-        roles: ['admin'],
+        roles: ['Admin'],
         title: 'รายการย่อยประเภทงาน'
     },
     {
         path: 'admin/approval-flow',
         element: withSuspense(ApprovalFlow),
-        roles: ['admin'],
+        roles: ['Admin'],
         title: 'ลำดับการอนุมัติ'
     },
     {
         path: 'admin/assignment-matrix',
         element: withSuspense(AssignmentMatrix),
-        roles: ['admin'],
+        roles: ['Admin'],
         title: 'กำหนดผู้รับงานอัตโนมัติ'
     },
     {
         path: 'admin/organization',
         element: withSuspense(OrganizationManagement),
-        roles: ['admin'],
+        roles: ['Admin'],
         title: 'โครงสร้างองค์กร'
     },
     {
         path: 'admin/holidays',
         element: withSuspense(HolidayCalendar),
-        roles: ['admin'],
+        roles: ['Admin'],
         title: 'ปฏิทินวันหยุด'
     },
     {
         path: 'admin/notifications',
         element: withSuspense(NotificationSettings),
-        roles: ['admin'],
+        roles: ['Admin'],
         title: 'ตั้งค่าการแจ้งเตือน'
     },
     // V2 Approval Flow Templates route REMOVED - Using V1 Extended instead

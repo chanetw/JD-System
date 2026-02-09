@@ -2,7 +2,7 @@
  * Role Model for V2 Auth System (RBAC)
  *
  * Defines user roles with JSON-based permissions.
- * Predefined roles: SuperAdmin, OrgAdmin, TeamLead, Member
+ * Predefined roles: Admin, Requester, Approver, Assignee
  */
 
 import { Model, DataTypes, Optional } from 'sequelize';
@@ -32,14 +32,14 @@ class Role extends Model<IRoleAttributes, IRoleCreationAttributes> implements IR
 
   /**
    * Check if this role has higher or equal priority than another role
-   * SuperAdmin > OrgAdmin > TeamLead > Member
+   * Admin > Requester > Approver > Assignee
    */
   public hasRolePriority(otherRole: RoleName): boolean {
     const priority: Record<RoleName, number> = {
-      [RoleName.SUPER_ADMIN]: 4,
-      [RoleName.ORG_ADMIN]: 3,
-      [RoleName.TEAM_LEAD]: 2,
-      [RoleName.MEMBER]: 1,
+      [RoleName.ADMIN]: 4,
+      [RoleName.REQUESTER]: 3,
+      [RoleName.APPROVER]: 2,
+      [RoleName.ASSIGNEE]: 1,
     };
     return priority[this.name] >= priority[otherRole];
   }
