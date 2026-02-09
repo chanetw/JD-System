@@ -63,23 +63,6 @@ export interface IRegistrationRequestFilters {
   search?: string;
 }
 
-// Pagination options
-export interface IPaginationOptions {
-  page: number;
-  limit: number;
-}
-
-// Paginated response
-export interface IPaginatedResponse<T> {
-  data: T[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-}
-
 // Approve request payload
 export interface IApproveRegistrationRequest {
   roleId?: number;

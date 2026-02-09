@@ -8,7 +8,7 @@ import { Request, Response, NextFunction } from 'express';
 import UserService from '../services/UserService';
 import { successResponse, errorResponse, paginatedResponse, ErrorCodes } from '../utils/responseUtils';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
-import { isAdmin, isAdmin } from '../middleware/roleMiddleware';
+import { isAdmin } from '../middleware/roleMiddleware';
 import { IUserCreateRequest, IUserUpdateRequest } from '../interfaces/IUser';
 import { RoleName } from '../interfaces/IRole';
 

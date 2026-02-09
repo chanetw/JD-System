@@ -127,7 +127,7 @@ export class UserService {
     let effectiveRoleId = roleId;
     if (!effectiveRoleId) {
       const defaultRole = await Role.findOne({
-        where: { name: RoleName.MEMBER },
+        where: { name: RoleName.ASSIGNEE },
       });
       if (!defaultRole) {
         throw new Error('DEFAULT_ROLE_NOT_FOUND');
@@ -261,7 +261,7 @@ export class UserService {
       lastName: user.lastName,
       fullName: user.fullName,
       roleId: user.roleId,
-      roleName: user.role?.name || RoleName.MEMBER,
+      roleName: user.role?.name || RoleName.ASSIGNEE,
       isActive: user.isActive,
       lastLoginAt: user.lastLoginAt,
       createdAt: user.createdAt,

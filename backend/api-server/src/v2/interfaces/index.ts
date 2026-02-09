@@ -8,3 +8,4 @@ export * from './IUser';
 export * from './IAuth';
 export * from './IRole';
 export * from './IOrganization';
+export * from './IRegistrationRequest';

@@ -27,7 +27,7 @@ class Role extends Model<IRoleAttributes, IRoleCreationAttributes> implements IR
   public hasPermission(resource: keyof IPermissions, action: string): boolean {
     const resourcePerms = this.permissions[resource];
     if (!resourcePerms) return false;
-    return (resourcePerms as Record<string, boolean>)[action] === true;
+    return (resourcePerms as unknown as Record<string, boolean>)[action] === true;
   }
 
   /**

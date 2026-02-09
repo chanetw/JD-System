@@ -149,11 +149,19 @@ export function getRolePriority(role: RoleName): number {
   return priority[role] || 0;
 }
 
+/**
+ * Aliases for backward compatibility with V2 naming
+ */
+export const requireOrgAdmin = requireRequester; // OrgAdmin → Requester
+export const requireTeamLead = requireApprover; // TeamLead → Approver
+
 export default {
   requireRoles,
   requireAdmin,
   requireRequester,
   requireApprover,
+  requireOrgAdmin,
+  requireTeamLead,
   requirePermission,
   isAdmin,
   isAdminRole,

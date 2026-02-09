@@ -54,7 +54,7 @@ export class AuthService {
     let effectiveRoleId = roleId;
     if (!effectiveRoleId) {
       const defaultRole = await Role.findOne({
-        where: { name: RoleName.MEMBER },
+        where: { name: RoleName.ASSIGNEE },
       });
       if (!defaultRole) {
         throw new Error('DEFAULT_ROLE_NOT_FOUND');
@@ -192,7 +192,7 @@ export class AuthService {
       {
         where: {
           userId: user.id,
-          usedAt: null,
+          usedAt: { [Op.is]: null },
         },
       }
     );
@@ -224,7 +224,7 @@ export class AuthService {
     const resetToken = await PasswordResetToken.findOne({
       where: {
         token,
-        usedAt: null,
+        usedAt: { [Op.is]: null },
         expiresAt: { [Op.gt]: new Date() },
       },
       include: [{ model: User, as: 'user' }],
@@ -316,7 +316,7 @@ export class AuthService {
       lastName: user.lastName,
       fullName: user.fullName,
       roleId: user.roleId,
-      roleName: user.role?.name || RoleName.MEMBER,
+      roleName: user.role?.name || RoleName.ASSIGNEE,
       isActive: user.isActive,
       lastLoginAt: user.lastLoginAt,
       createdAt: user.createdAt,

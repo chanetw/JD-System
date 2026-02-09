@@ -8,7 +8,7 @@ import { Router } from 'express';
 import AdminController from '../controllers/AdminController';
 import { authenticateToken } from '../middleware/authMiddleware';
 import { requireRoles } from '../middleware/roleMiddleware';
-import { RoleName } from '../models/Role.model';
+import { RoleName } from '../interfaces/IRole';
 
 const router = Router();
 
