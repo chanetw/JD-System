@@ -42,6 +42,8 @@ import {
     ArrowRightIcon
 } from '@heroicons/react/24/outline';
 
+import PendingApprovalSection from '../components/PendingApprovalSection';
+
 export default function UserPortal() {
     const navigate = useNavigate();
     const { user } = useAuthStore();
@@ -50,25 +52,13 @@ export default function UserPortal() {
     const [searchQuery, setSearchQuery] = useState('');
     const [activeProject, setActiveProject] = useState(0);
 
-    // โหลดงานล่าสุด
+    // โหลดงานล่าสุด (My Requests)
     useEffect(() => {
         const loadJobs = async () => {
             try {
-                const jobs = await api.getJobs();
-                // Filter ตาม role
-                const role = user?.roles?.[0] || 'requester';
-                let filtered = jobs;
-
-                if (role === 'requester') {
-                    // เห็นงานที่ตัวเองสร้าง (สมมติ requesterName = Demo User)
-                    filtered = jobs.filter(j => j.requesterName === 'สมหญิง' || j.requesterId === user?.id);
-                } else if (role === 'assignee') {
-                    // เห็นงานที่ถูกมอบหมาย
-                    filtered = jobs.filter(j => j.assigneeName === 'กานต์' || j.assigneeId === user?.id);
-                }
-                // Approver/Admin เห็นทั้งหมด
-
-                setRecentJobs(filtered.slice(0, 4));
+                // Focus on "My Requests" for this section
+                const jobs = await api.getJobs({ role: 'requester' });
+                setRecentJobs(jobs.slice(0, 5));
             } catch (err) {
                 console.error('Error loading jobs:', err);
             } finally {
@@ -183,6 +173,9 @@ export default function UserPortal() {
                         </div>
                     </div>
                 </div>
+
+                {/* Pending Approvals Section (Dynamic) */}
+                <PendingApprovalSection />
 
                 {/* Quick Actions Cards */}
                 <div className="max-w-6xl mx-auto px-6 -mt-8 relative z-10">

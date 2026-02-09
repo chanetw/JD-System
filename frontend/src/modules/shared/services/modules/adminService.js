@@ -200,10 +200,11 @@ export const adminService = {
                 id: jt.id,
                 name: jt.name,
                 description: jt.description,
-                sla: jt.slaWorkingDays, // Note: filed name changed in master-data
+                sla: jt.slaWorkingDays || jt.sla, // Support both field names
                 icon: jt.icon,
                 attachments: jt.attachments || [],
                 status: jt.isActive ? 'active' : 'inactive',
+                nextJobTypeId: jt.nextJobTypeId || null, // Auto-Chain Next Job
                 // Items are already nested in master-data response
                 items: (jt.items || []).map(i => ({
                     id: i.id,
@@ -286,6 +287,10 @@ export const adminService = {
             payload.attachments = Array.isArray(jobTypeData.attachments)
                 ? jobTypeData.attachments
                 : (jobTypeData.attachments ? [jobTypeData.attachments] : []);
+        }
+        if (jobTypeData.nextJobTypeId !== undefined) {
+            // Allow null to clear the chain
+            payload.nextJobTypeId = jobTypeData.nextJobTypeId;
         }
 
         // Only send if there are fields to update
@@ -749,6 +754,67 @@ export const adminService = {
         } catch (error) {
             console.error('[adminService] deleteHoliday error:', error);
             throw error;
+        }
+    },
+
+    /**
+     * Download Holiday Import Template (Excel .xlsx)
+     * @returns {Blob} - Excel file blob
+     */
+    downloadHolidayTemplate: async () => {
+        try {
+            const response = await httpClient.get('/holidays/template', {
+                responseType: 'blob'
+            });
+            return response.data;
+        } catch (error) {
+            console.error('[adminService] downloadHolidayTemplate error:', error);
+            throw new Error('ไม่สามารถดาวน์โหลด Template ได้');
+        }
+    },
+
+    /**
+     * Import Holidays from Excel file
+     * @param {File} file - Excel file (.xlsx)
+     * @returns {Object} - Import summary { total, added, updated, failed }
+     */
+    importHolidays: async (file) => {
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await httpClient.post('/holidays/import', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+
+            if (!response.data.success) {
+                throw new Error(response.data.message);
+            }
+
+            return response.data.data;
+        } catch (error) {
+            console.error('[adminService] importHolidays error:', error);
+            throw new Error(error.response?.data?.message || 'ไม่สามารถ Import ไฟล์ได้');
+        }
+    },
+
+    /**
+     * Export Holidays to Excel file
+     * @param {number} year - ปีที่ต้องการ Export (ค.ศ.)
+     * @returns {Blob} - Excel file blob
+     */
+    exportHolidays: async (year) => {
+        try {
+            const response = await httpClient.get('/holidays/export', {
+                params: { year },
+                responseType: 'blob'
+            });
+            return response.data;
+        } catch (error) {
+            console.error('[adminService] exportHolidays error:', error);
+            throw new Error('ไม่สามารถ Export ข้อมูลได้');
         }
     },
 

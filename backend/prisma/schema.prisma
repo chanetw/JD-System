@@ -220,6 +220,11 @@ model JobType {
   description    String? @db.Text
   isActive       Boolean @default(true) @map("is_active")
 
+  // Auto-Sequence / Job Chain
+  nextJobTypeId Int?     @map("next_job_type_id")
+  nextJobType   JobType? @relation("JobChain", fields: [nextJobTypeId], references: [id])
+  prevJobTypes  JobType[] @relation("JobChain")
+
   icon        String?  @db.VarChar
   colorTheme  String?  @map("color_theme") @db.VarChar
   attachments String[] @default([])
@@ -267,8 +272,16 @@ model Job {
 
   // Dates
   dueDate          DateTime? @map("due_date") @db.Timestamptz
+  assignedAt       DateTime? @map("assigned_at") @db.Timestamptz
   startedAt        DateTime? @map("started_at") @db.Timestamptz
   completedAt      DateTime? @map("completed_at") @db.Timestamptz
+
+  // Job Chain / Dependency
+  predecessorId Int?      @map("predecessor_id")
+  slaDays       Int?      @default(0) @map("sla_days") // Store original SLA for recalculation
+
+  predecessor Job?  @relation("JobDependency", fields: [predecessorId], references: [id])
+  successors  Job[] @relation("JobDependency")
   closeRequestedAt DateTime? @map("close_requested_at") @db.Timestamptz
   closedAt         DateTime? @map("closed_at") @db.Timestamptz
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz

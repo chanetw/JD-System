@@ -38,3 +38,6 @@ yarn-error.log*
 
 # OS files
 Thumbs.db
+
+# App temporary files
+*.pid

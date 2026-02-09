@@ -11,6 +11,7 @@
 import express from 'express';
 import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import { getDatabase } from '../config/database.js';
+import { invalidateMasterDataCache } from './master-data.js';
 
 const router = express.Router();
 
@@ -38,10 +39,10 @@ router.get('/', async (req, res) => {
                 description: true,
                 slaWorkingDays: true,
                 isActive: true,
-                isActive: true,
                 icon: true,
                 colorTheme: true,
-                attachments: true, // Select attachments
+                attachments: true,
+                nextJobTypeId: true, // For sequential jobs
                 jobTypeItems: {
                     orderBy: { sortOrder: 'asc' },
                     select: {
@@ -61,11 +62,11 @@ router.get('/', async (req, res) => {
             id: jt.id,
             name: jt.name,
             description: jt.description,
-            sla: jt.slaWorkingDays, // Map to 'sla' for frontend
-            sla: jt.slaWorkingDays, // Map to 'sla' for frontend
+            sla: jt.slaWorkingDays,
             isActive: jt.isActive,
             icon: jt.icon,
-            attachments: jt.attachments || [], // Return attachments
+            attachments: jt.attachments || [],
+            nextJobTypeId: jt.nextJobTypeId || null, // For sequential jobs
             items: jt.jobTypeItems
         }));
 
@@ -94,7 +95,7 @@ router.post('/', async (req, res) => {
     try {
         const prisma = getDatabase();
         const tenantId = req.user.tenantId;
-        const { name, description, sla, status, isActive, icon, attachments } = req.body;
+        const { name, description, sla, status, isActive, icon, attachments, nextJobTypeId } = req.body;
 
         // ✅ Validation: name is required
         if (!name || !name.trim()) {
@@ -139,7 +140,8 @@ router.post('/', async (req, res) => {
                 slaWorkingDays: sla ? parseInt(sla) : 3,
                 isActive: jobIsActive,
                 icon: icon || 'social',
-                attachments: attachments && Array.isArray(attachments) ? attachments : []
+                attachments: attachments && Array.isArray(attachments) ? attachments : [],
+                nextJobTypeId: nextJobTypeId ? parseInt(nextJobTypeId) : null
             }
         });
 
@@ -152,8 +154,12 @@ router.post('/', async (req, res) => {
             isActive: newJobType.isActive,
             status: newJobType.isActive ? 'active' : 'inactive',
             icon: newJobType.icon,
-            attachments: newJobType.attachments || []
+            attachments: newJobType.attachments || [],
+            nextJobTypeId: newJobType.nextJobTypeId
         };
+
+        // 🧹 Invalidate Master Data Cache
+        invalidateMasterDataCache(req.user.tenantId);
 
         res.json({ success: true, data: response });
     } catch (error) {
@@ -180,7 +186,7 @@ router.put('/:id', async (req, res) => {
     try {
         const prisma = getDatabase();
         const id = parseInt(req.params.id);
-        const { name, description, sla, isActive, status, icon, attachments } = req.body;
+        const { name, description, sla, isActive, status, icon, attachments, nextJobTypeId } = req.body;
 
         // ✅ Validation: job type must exist
         const jobType = await prisma.jobType.findUnique({
@@ -214,7 +220,9 @@ router.put('/:id', async (req, res) => {
             }
         }
 
-        // ✅ Validation: attachments must be array if provided
+        // ... (previous code)
+
+        // Validate: attachments must be array if provided
         if (attachments !== undefined && !Array.isArray(attachments)) {
             return res.status(400).json({
                 success: false,
@@ -222,7 +230,7 @@ router.put('/:id', async (req, res) => {
             });
         }
 
-        // ✅ Convert status string to isActive boolean if needed
+        // Convert status string to isActive boolean if needed
         let updateIsActive = isActive;
         if (status !== undefined) {
             updateIsActive = status === 'active';
@@ -239,15 +247,26 @@ router.put('/:id', async (req, res) => {
             // Store as JSON array (PostgreSQL handles this automatically with Prisma)
             updateData.attachments = attachments.length > 0 ? attachments : [];
         }
+        if (nextJobTypeId !== undefined) {
+            // Allow setting to null (removing chain) or a valid ID
+            console.log('[DEBUG] Setting nextJobTypeId:', nextJobTypeId, 'Type:', typeof nextJobTypeId);
+            updateData.nextJobTypeId = nextJobTypeId ? parseInt(nextJobTypeId) : null;
+        }
 
-        console.log('[JobTypes] Updating job type:', { id, updateData });
+        console.log('[DEBUG] Updating job type:', { id, body: req.body, updateData });
 
         const updated = await prisma.jobType.update({
             where: { id },
             data: updateData
         });
 
+        console.log('[DEBUG] Update Result:', updated);
+
+        // 🧹 Invalidate Master Data Cache
+        invalidateMasterDataCache(req.user.tenantId);
+
         // Transform response to match frontend expectations
+        // ... (rest of code)
         const response = {
             id: updated.id,
             name: updated.name,
@@ -256,7 +275,8 @@ router.put('/:id', async (req, res) => {
             isActive: updated.isActive,
             status: updated.isActive ? 'active' : 'inactive',
             icon: updated.icon,
-            attachments: updated.attachments || []
+            attachments: updated.attachments || [],
+            nextJobTypeId: updated.nextJobTypeId
         };
 
         res.json({ success: true, data: response });

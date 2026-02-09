@@ -431,23 +431,37 @@ export const jobService = {
 
         if (error) throw error;
 
-        // 2. Fetch New Assignee Name (for Log)
-        const { data: userData } = await supabase.from('users').select('display_name').eq('id', newAssigneeId).single();
+        // 2. Fetch New Assignee Info (ข้อมูลเต็ม)
+        const { data: userData } = await supabase.from('users')
+            .select('id, display_name, first_name, last_name, avatar_url, email')
+            .eq('id', newAssigneeId)
+            .single();
+
         const assigneeName = userData?.display_name || 'Unknown';
 
         // 3. Log Activity
         await supabase.from('activity_logs').insert([{
             job_id: jobId,
             user_id: userId,
-            action: 'assigned',
+            action: 'reassigned',
             message: `Reassigned to ${assigneeName}. Note: ${reason || '-'}`
         }]);
 
         // 4. Send Notification (Optional: Notify new assignee)
         await notificationService.sendNotification('job_assigned', jobId);
 
-        return { success: true };
+        // 🔥 NEW: Return ข้อมูล Assignee ใหม่
+        return {
+            success: true,
+            assignee: {
+                id: userData.id,
+                name: assigneeName,
+                email: userData.email,
+                avatar: userData.avatar_url
+            }
+        };
     },
+
 
     finishJob: async (jobId, finalFiles, notes, userId) => {
         // 1. Upload files (Mock data structure for files)
@@ -929,6 +943,35 @@ export const jobService = {
         } catch (error) {
             console.error('[jobService] deleteJobComment error:', error);
             return { success: false, error: error.message };
+        }
+    },
+
+    /**
+     * Get activities for a job
+     * @param {number} jobId
+     * @param {object} options
+     * @returns {Promise<object>}
+     */
+    getJobActivities: async (jobId, options = {}) => {
+        try {
+            const { page = 1, limit = 50 } = options;
+            const response = await httpClient.get(`/jobs/${jobId}/activities`, {
+                params: { page, limit }
+            });
+
+            if (!response.data.success) {
+                console.warn('[jobService] Get activities failed:', response.data.message);
+                return { success: false, data: [], error: response.data.message };
+            }
+
+            return {
+                success: true,
+                data: response.data.data || [],
+                pagination: response.data.pagination
+            };
+        } catch (error) {
+            console.error('[jobService] getJobActivities error:', error);
+            return { success: false, data: [], error: error.message };
         }
     }
 };

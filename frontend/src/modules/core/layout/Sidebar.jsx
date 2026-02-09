@@ -20,11 +20,16 @@ export default function Sidebar() {
     /** ข้อมูลผู้ใช้งานปัจจุบันจาก store */
     const { user } = useAuthStoreV2();
 
-    /** ตรวจสอบสิทธิ์ SuperAdmin (สำหรับ Admin Menu และ Analytics) */
-    const isSuperAdmin = user?.roleName === 'SuperAdmin';
+    /** รายชื่อ Role ที่ถือว่าเป็นผู้ปฏิบัติงาน (Work Recipients) */
+    const RECIPIENT_ROLES = ['Member', 'assignee', 'graphic', 'editor'];
 
-    /** ตรวจสอบสิทธิ์ Assignee (Graphic/Editor) */
-    const isAssignee = ['TeamLead', 'Member'].includes(user?.roleName);
+    /** ตรวจสอบสิทธิ์ SuperAdmin/Admin */
+    const isSuperAdmin = ['SuperAdmin', 'admin', 'OrgAdmin'].includes(user?.roleName) ||
+        (user?.roles && user.roles.some(r => ['SuperAdmin', 'admin', 'OrgAdmin'].includes(r)));
+
+    /** ตรวจสอบสิทธิ์ Assignee (ต้องมี Role ผู้รับงาน ไม่ว่าจะพ่วง TeamLead หรือไม่ก็ตาม) */
+    const isAssignee = RECIPIENT_ROLES.includes(user?.roleName) ||
+        (user?.roles && user.roles.some(r => RECIPIENT_ROLES.includes(r)));
 
     /** ตรวจสอบสิทธิ์สร้างงาน (Requester: SuperAdmin, OrgAdmin, TeamLead) */
     const canCreateJob = ['SuperAdmin', 'OrgAdmin', 'TeamLead'].includes(user?.roleName);
@@ -80,7 +85,7 @@ export default function Sidebar() {
                     คิวงานรออนุมัติ
                 </SidebarLink>
 
-                {isAssignee && (
+                {(isAssignee || isSuperAdmin) && (
                     <SidebarLink to="/assignee/my-queue" icon={InboxIcon}>
                         คิวงานของฉัน (My Queue)
                     </SidebarLink>

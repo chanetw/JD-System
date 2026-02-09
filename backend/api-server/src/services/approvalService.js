@@ -14,6 +14,7 @@ import { BaseService } from './baseService.js';
 import crypto from 'crypto';
 import { getDatabase } from '../config/database.js';
 import NotificationService from './notificationService.js';
+import chainService from './chainService.js';
 
 export class ApprovalService extends BaseService {
   constructor() {
@@ -730,26 +731,29 @@ export class ApprovalService extends BaseService {
       });
 
       // ----------------------------------------
-      // V1 Extended: Cascade Rejection Notification
+      // V2: Cascade Reject Downstream Jobs
       // ----------------------------------------
-      if (job.isParent) {
-        const children = await this.prisma.job.findMany({
-          where: { parentJobId: jobId },
-          select: { id: true, djId: true, assigneeId: true }
-        });
+      const cascadeResult = await chainService.cascadeRejectDownstream(
+        jobId,
+        this.prisma,
+        comment
+      );
 
-        for (const child of children) {
-          if (child.assigneeId) {
+      // Send notifications to affected assignees
+      if (cascadeResult.rejected > 0) {
+        for (const affected of cascadeResult.affected) {
+          if (affected.assigneeId) {
             await this.notificationService.createNotification({
               tenantId: job.tenantId,
-              userId: child.assigneeId,
-              type: 'parent_rejected',
-              title: `⚠️ งานแม่ถูกปฏิเสธ: ${job.djId}`,
-              message: `งานแม่ (${job.djId}) ถูกปฏิเสธเนื่องจาก: "${comment}" โปรดตรวจสอบงานของคุณ`,
-              link: `/jobs/${child.id}`
+              userId: affected.assigneeId,
+              type: 'cascade_rejected',
+              title: `❌ งาน ${affected.djId} ถูกยกเลิก`,
+              message: affected.reason,
+              link: `/jobs/${affected.jobId}`
             });
           }
         }
+        console.log(`[ApprovalService] Cascade rejected ${cascadeResult.rejected} downstream jobs`);
       }
 
       // Log

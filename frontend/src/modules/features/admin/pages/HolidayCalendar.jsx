@@ -14,6 +14,7 @@ import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
 import { FormInput, FormSelect } from '@shared/components/FormInput';
 import { api } from '@shared/services/apiService';
+import { adminService } from '@shared/services/modules/adminService';
 
 // Icons
 import {
@@ -22,6 +23,7 @@ import {
     PencilIcon,
     CalendarIcon,
     ArrowDownTrayIcon,
+    ArrowUpTrayIcon,
     XMarkIcon
 } from '@heroicons/react/24/outline';
 
@@ -56,6 +58,10 @@ export default function AdminHoliday() {
     const [confirmModal, setConfirmModal] = useState({ show: false, id: null });
     /** สถานะการกำลังส่งข้อมูลไปยัง Server */
     const [isSubmitting, setIsSubmitting] = useState(false);
+    /** สถานะการ Import */
+    const [isImporting, setIsImporting] = useState(false);
+    /** แสดง Modal ผลลัพธ์การ Import */
+    const [importResult, setImportResult] = useState(null);
 
     /**
      * แสดงการแจ้งเตือนแบบ Alert
@@ -219,6 +225,67 @@ export default function AdminHoliday() {
     };
 
     /**
+     * Download Holiday Template
+     */
+    const handleDownloadTemplate = async () => {
+        try {
+            const blob = await adminService.downloadHolidayTemplate();
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `holiday_template_${new Date().getFullYear()}.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+            showAlert('success', 'ดาวน์โหลด Template สำเร็จ');
+        } catch (error) {
+            showAlert('error', error.message);
+        }
+    };
+
+    /**
+     * Export Holidays to Excel
+     */
+    const handleExportExcel = async () => {
+        try {
+            const blob = await adminService.exportHolidays(selectedYear);
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `holidays_${selectedYear}.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+            showAlert('success', 'Export สำเร็จ');
+        } catch (error) {
+            showAlert('error', error.message);
+        }
+    };
+
+    /**
+     * Handle Import File
+     */
+    const handleImportFile = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        setIsImporting(true);
+        try {
+            const result = await adminService.importHolidays(file);
+            setImportResult(result);
+            await loadHolidays(); // Reload data
+        } catch (error) {
+            showAlert('error', error.message);
+        } finally {
+            setIsImporting(false);
+            // Reset file input
+            event.target.value = '';
+        }
+    };
+
+    /**
      * คำนวณวันเริ่มต้นของเดือน (0=อาทิตย์, 6=เสาร์)
      * @param {number} year - ปี ค.ศ.
      * @param {number} month - ลำดับเดือน (0-11)
@@ -237,9 +304,34 @@ export default function AdminHoliday() {
                     <h1 className="text-2xl font-bold text-gray-900">ปฏิทินวันหยุด (Holiday Calendar)</h1>
                     <p className="text-gray-500">จัดการข้อมูลวันหยุดประจำปีสำหรับคำนวณเวลาทำงานและเป้าหมายเวลา (SLA)</p>
                 </div>
-                <Button onClick={handleAddClick} className="bg-rose-500 hover:bg-rose-600">
-                    <PlusIcon className="w-5 h-5" /> เพิ่มวันหยุด (Add Holiday)
-                </Button>
+                <div className="flex gap-2">
+                    {/* Hidden File Input */}
+                    <input
+                        type="file"
+                        id="import-file"
+                        accept=".xlsx"
+                        className="hidden"
+                        onChange={handleImportFile}
+                        disabled={isImporting}
+                    />
+                    <Button
+                        onClick={handleDownloadTemplate}
+                        className="bg-indigo-500 hover:bg-indigo-600"
+                    >
+                        <ArrowDownTrayIcon className="w-5 h-5" /> ดาวน์โหลด Template
+                    </Button>
+                    <Button
+                        onClick={() => document.getElementById('import-file').click()}
+                        className="bg-green-500 hover:bg-green-600"
+                        disabled={isImporting}
+                    >
+                        <ArrowUpTrayIcon className="w-5 h-5" />
+                        {isImporting ? 'กำลัง Import...' : 'Import Excel'}
+                    </Button>
+                    <Button onClick={handleAddClick} className="bg-rose-500 hover:bg-rose-600">
+                        <PlusIcon className="w-5 h-5" /> เพิ่มวันหยุด
+                    </Button>
+                </div>
             </div>
 
             {/* ตัวเลือกปี และ คำอธิบายสัญลักษณ์ (Year Selector & Legend) */}
@@ -297,7 +389,7 @@ export default function AdminHoliday() {
             <Card>
                 <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
                     <h3 className="text-lg font-semibold text-gray-800">รายการวันหยุด พ.ศ. {selectedYear + 543} ({selectedYear})</h3>
-                    <Button variant="link" className="text-rose-600 hover:text-rose-700">
+                    <Button variant="link" className="text-rose-600 hover:text-rose-700" onClick={handleExportExcel}>
                         <ArrowDownTrayIcon className="w-4 h-4" /> Export Excel
                     </Button>
                 </div>
@@ -431,6 +523,44 @@ export default function AdminHoliday() {
                                 {isSubmitting ? 'กำลังบันทึก...' : (editingId ? 'บันทึกการแก้ไข' : 'เพิ่มวันหยุด')}
                             </Button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Import Result Modal */}
+            {importResult && (
+                <div className="fixed inset-0 flex items-center justify-center z-[70]">
+                    <div className="absolute inset-0 bg-black/20" onClick={() => setImportResult(null)}></div>
+                    <div className="bg-white rounded-xl shadow-2xl border border-gray-100 max-w-md w-full p-6 space-y-4 relative z-10 animate-scaleIn">
+                        <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                            <ArrowUpTrayIcon className="w-6 h-6 text-green-600" />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-900 text-center">Import สำเร็จ!</h3>
+                            <div className="mt-4 space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                    <span className="text-gray-600">ทั้งหมด:</span>
+                                    <span className="font-bold text-gray-900">{importResult.total} รายการ</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-600">เพิ่มใหม่:</span>
+                                    <span className="font-bold text-green-600">{importResult.added} รายการ</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-600">อัปเดต:</span>
+                                    <span className="font-bold text-blue-600">{importResult.updated} รายการ</span>
+                                </div>
+                                {importResult.failed && importResult.failed.length > 0 && (
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">ล้มเหลว:</span>
+                                        <span className="font-bold text-red-600">{importResult.failed.length} รายการ</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        <Button className="w-full bg-gray-600 hover:bg-gray-700" onClick={() => setImportResult(null)}>
+                            ปิด
+                        </Button>
                     </div>
                 </div>
             )}

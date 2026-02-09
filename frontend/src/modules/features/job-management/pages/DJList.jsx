@@ -150,6 +150,42 @@ export default function DJList() {
             return 0;
         });
 
+        // 4. 🔥 NEW: ซ่อน Parent Job ที่มี Child เดียว (Option B)
+        // เพื่อลดความซับซ้อนของ UI สำหรับงานเดี่ยว
+        const parentChildCount = {};
+        result.forEach(job => {
+            if (job.parentJobId) {
+                parentChildCount[job.parentJobId] = (parentChildCount[job.parentJobId] || 0) + 1;
+            }
+        });
+
+        // กรอง Parent ออกถ้ามี Child เพียงตัวเดียว
+        result = result.filter(job => {
+            if (job.isParent) {
+                const childCount = parentChildCount[job.id] || 0;
+                if (childCount === 1) {
+                    console.log(`[DJList] Hidden parent ${job.djId} (has only 1 child)`);
+                    return false; // ซ่อน Parent ที่มี Child เดียว
+                }
+            }
+            return true;
+        });
+
+        // เพิ่มข้อมูล child count ให้กับ children jobs
+        result = result.map(job => {
+            if (job.parentJobId) {
+                const totalSiblings = parentChildCount[job.parentJobId] || 1;
+                // หา index ของ job นี้ใน siblings
+                const siblings = result.filter(j => j.parentJobId === job.parentJobId);
+                const childIndex = siblings.findIndex(s => s.id === job.id) + 1;
+                return {
+                    ...job,
+                    childInfo: { index: childIndex, total: totalSiblings }
+                };
+            }
+            return job;
+        });
+
         setFilteredJobs(result);
         setCurrentPage(1); // เมื่อเริ่มคัดกรองใหม่ ให้กลับไปที่หน้า 1 เสมอ
     };
@@ -375,6 +411,7 @@ export default function DJList() {
                                         assignee={job.assigneeName || '-'}
                                         isParent={job.isParent}
                                         parentJobId={job.parentJobId}
+                                        childInfo={job.childInfo}
                                         rowClass={job.status === 'scheduled' ? 'bg-violet-50/30' : 'hover:bg-gray-50'}
                                     />
                                 ))}
@@ -476,7 +513,7 @@ function Th({ children }) {
 /**
  * JobRow Component: แสดงแถวข้อมูลงาน DJ ในตาราง
  */
-function JobRow({ id, pkId, project, type, subject, status, submitDate, deadline, sla, assignee, isParent, parentJobId, rowClass = 'hover:bg-gray-50' }) {
+function JobRow({ id, pkId, project, type, subject, status, submitDate, deadline, sla, assignee, isParent, parentJobId, childInfo, rowClass = 'hover:bg-gray-50' }) {
     // แยก ID จริงสำหรับการ Link (กรณีแสดงผลเป็น DJ-XXXX แต่ ID จริงคือเลข)
     // const actualId = id.toString().replace('DJ-', ''); 
     // ^ OLD logic: unreliable if id format changes. Now using pkId directly.
@@ -490,7 +527,13 @@ function JobRow({ id, pkId, project, type, subject, status, submitDate, deadline
                         {id}
                     </Link>
                     {isParent && <span className="text-[10px] text-blue-600 bg-blue-50 px-1 rounded inline-block w-fit mt-1">Parent Job</span>}
-                    {parentJobId && <span className="text-[10px] text-gray-500 bg-gray-100 px-1 rounded inline-block w-fit mt-1">Child Job</span>}
+                    {/* 🔥 NEW: แสดง Child Info Badge แทน "Child Job" */}
+                    {parentJobId && childInfo && (
+                        <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded inline-block w-fit mt-1">
+                            งานย่อย {childInfo.index}/{childInfo.total}
+                        </span>
+                    )}
+                    {parentJobId && !childInfo && <span className="text-[10px] text-gray-500 bg-gray-100 px-1 rounded inline-block w-fit mt-1">Child Job</span>}
                 </div>
             </td>
             <td className="px-4 py-3 text-sm">{project}</td>

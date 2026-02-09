@@ -18,10 +18,20 @@ export default function LoginReal() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
 
-    // ถ้า login แล้ว redirect ไป dashboard
+    // ถ้า login แล้ว redirect ตาม Role
     useEffect(() => {
         if (user) {
-            navigate('/');
+            // Check for admin/staff/assignee roles
+            const roles = user.roles || [];
+            const isStaffOrAdmin = roles.some(r =>
+                ['admin', 'staff', 'manager', 'assignee'].includes(r)
+            );
+
+            if (isStaffOrAdmin) {
+                navigate('/');
+            } else {
+                navigate('/user-portal');
+            }
         }
     }, [user, navigate]);
 

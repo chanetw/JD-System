@@ -1,23 +1,21 @@
 const { PrismaClient } = require('@prisma/client');
 const fs = require('fs');
 const path = require('path');
+const MIGRATION_FILE = path.join(__dirname, '../prisma/migrations/manual/add_sequential_jobs_fields.sql');
 
 const prisma = new PrismaClient();
 
 async function runMigration() {
-    const sqlFile = process.argv[2];
 
-    if (!sqlFile) {
+    if (!MIGRATION_FILE) {
         console.error('❌ Please provide SQL file path');
         process.exit(1);
     }
 
-    const filePath = path.resolve(process.cwd(), sqlFile);
-    console.log(`[Migration] Reading SQL file: ${filePath}`);
+    console.log(`🚀 Running migration from: ${MIGRATION_FILE}`);
+    const sqlContent = fs.readFileSync(MIGRATION_FILE, 'utf8');
 
     try {
-        const sqlContent = fs.readFileSync(filePath, 'utf-8');
-
         // Split statements by semicolon, but ignore empty lines
         const statements = sqlContent
             .split(';')

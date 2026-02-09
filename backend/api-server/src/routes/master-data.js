@@ -44,6 +44,18 @@ function setCachedData(key, data) {
   });
 }
 
+/**
+ * 🧹 ฟังก์ชันล้าง Cache (เรียกจาก Route อื่นเมื่อมีการแก้ไขข้อมูล)
+ * @param {number} tenantId - Tenant ID ที่ต้องการล้าง Cache
+ */
+export function invalidateMasterDataCache(tenantId) {
+  const key = `master-data-${tenantId}`;
+  if (cache.has(key)) {
+    cache.delete(key);
+    console.log(`[Cache] 🧹 Invalidated master-data for tenant ${tenantId}`);
+  }
+}
+
 // ทุก routes ต้องมีการ authenticate และตั้งค่า RLS context
 router.use(authenticateToken);
 router.use(setRLSContextMiddleware);
@@ -234,6 +246,7 @@ router.get('/', async (req, res) => {
         status: jt.isActive ? 'active' : 'inactive',
         isActive: jt.isActive,
         tenantId: jt.tenantId,
+        nextJobTypeId: jt.nextJobTypeId, // Auto-Chain Validation
         items: jt.jobTypeItems || []
       }))
     };

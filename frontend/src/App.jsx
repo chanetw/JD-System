@@ -16,7 +16,7 @@ import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 
 // Core Modules (loaded immediately)
 import { Layout } from '@core/layout';
-import { Login, LoginDemo, Register, ForgotPassword, ChangePassword, ProtectedRoute } from '@core/auth';
+import { Login, LoginDemo, Register, ForgotPassword, ChangePassword, ProtectedRoute, RoleProtectedRoute } from '@core/auth';
 
 // V2 Auth Pages (TypeScript - Production-ready)
 import { LoginV2, RegisterV2, ForgotPasswordV2, ResetPasswordV2, ForceChangePassword } from '@core/auth-v2';
@@ -140,7 +140,13 @@ function App() {
               path={route.path}
               element={
                 <Suspense fallback={<PageLoadingFallback />}>
-                  {route.element}
+                  {route.roles ? (
+                    <RoleProtectedRoute allowedRoles={route.roles}>
+                      {route.element}
+                    </RoleProtectedRoute>
+                  ) : (
+                    route.element
+                  )}
                 </Suspense>
               }
             />

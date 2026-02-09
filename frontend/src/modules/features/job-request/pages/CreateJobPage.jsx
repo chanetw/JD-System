@@ -325,7 +325,7 @@ export default function CreateDJ() {
     const addJobType = async (jobTypeId) => {
         if (!jobTypeId) return;
 
-        // ตรวจสอบว่ามี JobType นี้อยู่แล้วหรือไม่
+        // ตรวจสอบว่ามี JobType นี้อยู่แล้วหรือไม่ (Main Job)
         const exists = selectedJobTypes.some(jt => jt.jobTypeId === parseInt(jobTypeId));
         if (exists) {
             alert('ประเภทงานนี้ถูกเพิ่มไปแล้ว');
@@ -335,33 +335,60 @@ export default function CreateDJ() {
         // หาข้อมูล JobType จาก masterData
         const jobTypeInfo = masterData.jobTypes.find(t => t.id === parseInt(jobTypeId));
 
-        // เตรียมข้อมูลเบื้องต้น
-        const newJobType = {
+        // เตรียมรายการงานที่จะเพิ่ม (Start with Main Job)
+        const newJobs = [];
+        const startIndex = selectedJobTypes.length;
+
+        const mainJob = {
             jobTypeId: parseInt(jobTypeId),
             name: jobTypeInfo?.name || 'Unknown',
             sla: jobTypeInfo?.sla || 7,
             assigneeId: null,
-            // === Accordion State ===
             isExpanded: true,       // ✅ Default: Expanded
             subItems: {},           // ชิ้นงานย่อยที่เลือก { itemId: qty }
-            availableSubItems: []   // จะโหลดข้อมูลใส่ตรงนี้
+            availableSubItems: [],  // จะโหลดข้อมูลใส่ตรงนี้
+            predecessorIndex: null  // 🔥 Dependency: Index of the job to wait for
         };
+        newJobs.push(mainJob);
 
-        // เพิ่มเข้า State ก่อนเพื่อให้ UI ตอบสนองเร็ว (Optimistic UI)
-        setSelectedJobTypes(prev => [...prev, newJobType]);
+        // 🔥 Auto-Chain Logic: Check for Next Job
+        if (jobTypeInfo?.nextJobTypeId) {
+            const nextTypeInfo = masterData.jobTypes.find(t => t.id === jobTypeInfo.nextJobTypeId);
+            if (nextTypeInfo) {
+                // Check redundancy for the chained job
+                const nextExists = selectedJobTypes.some(jt => jt.jobTypeId === nextTypeInfo.id);
+                if (!nextExists) {
+                    console.log(`[Auto-Chain] Adding ${nextTypeInfo.name} after ${jobTypeInfo.name}`);
+                    const chainedJob = {
+                        jobTypeId: nextTypeInfo.id,
+                        name: nextTypeInfo.name,
+                        sla: nextTypeInfo.sla || 7,
+                        assigneeId: null,
+                        isExpanded: true,
+                        subItems: {},
+                        availableSubItems: [],
+                        predecessorIndex: startIndex // ✅ Wait for Main Job (at startIndex)
+                    };
+                    newJobs.push(chainedJob);
+                }
+            }
+        }
 
-        // โหลดข้อมูล Sub-items ทันที
-        try {
-            const items = await api.getJobTypeItems(jobTypeId);
+        // เพิ่มเข้า State ทีเดียว (Optimistic UI)
+        setSelectedJobTypes(prev => [...prev, ...newJobs]);
 
-            // อัปเดต state กลับเข้าไป
-            setSelectedJobTypes(prev => prev.map(jt =>
-                jt.jobTypeId === parseInt(jobTypeId)
-                    ? { ...jt, availableSubItems: items || [] }
-                    : jt
-            ));
-        } catch (error) {
-            console.error('Error loading sub-items for new job type:', error);
+        // โหลดข้อมูล Sub-items สำหรับทุก Job ที่เพิ่มเข้ามา
+        for (const job of newJobs) {
+            try {
+                const items = await api.getJobTypeItems(job.jobTypeId);
+                setSelectedJobTypes(prev => prev.map(jt =>
+                    jt.jobTypeId === job.jobTypeId
+                        ? { ...jt, availableSubItems: items || [] }
+                        : jt
+                ));
+            } catch (error) {
+                console.error(`Error loading sub-items for job ${job.jobTypeId}:`, error);
+            }
         }
     };
 
@@ -437,6 +464,60 @@ export default function CreateDJ() {
         setSelectedJobTypes(prev => prev.map((jt, i) =>
             i === index ? { ...jt, assigneeId: parseInt(assigneeId) || null } : jt
         ));
+    };
+
+    /**
+     * อัปเดตเงื่อนไขการเริ่มงาน (Dependency)
+     * @param {number} currentIndex - Index ของงานที่กำลังแก้ไข
+     * @param {number|null} predecessorIndex - Index ของงานที่ต้องรอ (null = ทำพร้อมกัน)
+     */
+    const updateJobDependency = (currentIndex, predecessorIndex) => {
+        setSelectedJobTypes(prev => prev.map((jt, i) => {
+            if (i !== currentIndex) return jt;
+
+            // Validate: ห้ามเลือกตัวเอง และห้ามเลือกงานที่อยู่ทีหลัง (เพื่อป้องกัน Circular)
+            // UI ควรกรองให้แล้ว แต่กันเหนียว
+            if (predecessorIndex !== null && predecessorIndex >= currentIndex) {
+                return jt;
+            }
+
+            return { ...jt, predecessorIndex: predecessorIndex };
+        }));
+    };
+
+    /**
+     * คำนวณ Timeline ของงานทั้งหมดตาม Dependency
+     * เพื่อหา Due Date จริงของแต่ละงาน
+     */
+    const calculateTimeline = () => {
+        const timeline = [];
+
+        selectedJobTypes.forEach((jt, index) => {
+            let startDate = new Date(); // Default: Start Today
+            const sla = jt.sla || 7;
+
+            // Check dependency
+            if (jt.predecessorIndex !== null && jt.predecessorIndex !== undefined) {
+                // ต้องรอ Job ก่อนหน้า
+                // อิงจาก index ใน timeline verification
+                // เนื่องจาก timeline push ตาม sequence 0..index, ดังนั้น predecessor (ซึ่ง index < current) จะถูกคำนวณแล้ว
+                const predecessor = timeline[jt.predecessorIndex];
+                if (predecessor) {
+                    startDate = new Date(predecessor.calculatedDueDate);
+                }
+            }
+
+            const calculatedDueDate = calculateDueDate(startDate, sla, holidays);
+
+            timeline.push({
+                ...jt,
+                originalIndex: index,
+                calculatedStartDate: startDate,
+                calculatedDueDate: calculatedDueDate
+            });
+        });
+
+        return timeline;
     };
 
     /**
@@ -604,6 +685,27 @@ export default function CreateDJ() {
     };
 
     /**
+     * บันทึกร่างงาน (Save Draft)
+     * ไม่ต้องผ่านการตรวจสอบเงื่อนไขทางธุรกิจ แค่ต้องมี Project และ Subject
+     */
+    const handleSaveDraft = async () => {
+        // Minimal validation for draft
+        const draftErrors = [];
+        if (!formData.project) draftErrors.push('กรุณาเลือกโครงการ');
+        if (!formData.subject?.trim()) draftErrors.push('กรุณาระบุหัวข้องาน');
+
+        if (draftErrors.length > 0) {
+            setErrors(draftErrors);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+        }
+
+        // Clear errors and save
+        setErrors([]);
+        await submitJob('draft');
+    };
+
+    /**
      * บันทึกข้อมูลงานลงในระบบ
      * - ถ้า selectedJobTypes มีมากกว่า 1 รายการ -> สร้างแบบ Parent-Child
      * - ถ้า selectedJobTypes มี 1 รายการ หรือใช้ formData.jobTypeId -> สร้างแบบ Single Job
@@ -637,26 +739,40 @@ export default function CreateDJ() {
 
             // ถ้าเลือกหลาย Job Type -> ใช้ Parent-Child Mode
             if (selectedJobTypes.length > 0) {
-                jobPayload.jobTypes = selectedJobTypes;
+                // Map predecessorIndex to payload ensure it's integer or null
+                jobPayload.jobTypes = selectedJobTypes.map((jt, idx) => ({
+                    ...jt,
+                    order: idx + 1, // 1-based order for reference if needed
+                    predecessorIndex: jt.predecessorIndex // Send index to backend
+                }));
             } else {
                 jobPayload.jobTypeId = parseInt(formData.jobTypeId);
             }
 
             await api.createJob(jobPayload);
 
-            const message = status === 'scheduled'
-                ? 'บันทึกงานและตั้งเวลาส่งอัตโนมัติสำเร็จ!'
-                : 'สร้างรายการงาน DJ สำเร็จ!';
+            // Message based on status
+            let message = 'สร้างรายการงาน DJ สำเร็จ!';
+            let redirectMessage = 'กำลังนำคุณไปที่หน้ารายการงาน...';
+            let redirectPath = '/jobs';
+
+            if (status === 'draft') {
+                message = 'บันทึกร่างเรียบร้อยแล้ว!';
+                redirectMessage = 'กำลังนำคุณไปที่หน้ารายการงาน...';
+                redirectPath = '/jobs?status=draft';
+            } else if (status === 'scheduled') {
+                message = 'บันทึกงานและตั้งเวลาส่งอัตโนมัติสำเร็จ!';
+            }
 
             setResultModalConfig({
                 type: 'success',
                 title: message,
-                message: 'กำลังนำคุณไปที่หน้ารายการงาน...'
+                message: redirectMessage
             });
             setShowResultModal(true);
 
             setTimeout(() => {
-                navigate('/jobs');
+                navigate(redirectPath);
             }, 1500);
 
         } catch (error) {
@@ -758,13 +874,16 @@ export default function CreateDJ() {
                                         <option value="Urgent">🔥 ด่วนมาก (Urgent)</option>
                                     </FormSelect>
                                     {formData.priority === 'Urgent' && (
-                                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 animate-fadeIn">
-                                            <p className="font-bold mb-1 flex items-center gap-1">
-                                                ⚠️ ผลกระทบงานด่วน
+                                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 animate-fadeIn space-y-2">
+                                            <p className="font-bold flex items-center gap-1">
+                                                ⚠️ งานด่วนต้องผ่านการอนุมัติเสมอ
                                             </p>
                                             <p className="text-xs">
-                                                การเลือก "งานด่วน" จะทำให้งานอื่นในมือ Graphic คนเดียวกัน
-                                                ถูกเลื่อนกำหนดส่งออกไป <strong>+2 วันทำการ</strong> โดยอัตโนมัติ
+                                                เนื่องจากงานด่วนกระทบต่อ SLA ของงานอื่นๆ จึงต้องได้รับการอนุมัติก่อนเข้าสู่ระบบ
+                                                (แม้ว่าประเภทงานจะตั้งค่าข้ามการอนุมัติไว้ก็ตาม)
+                                            </p>
+                                            <p className="text-xs text-red-700 font-medium">
+                                                📌 ผลกระทบ: งานอื่นในมือ Graphic คนเดียวกันจะถูกเลื่อนกำหนดส่งออกไป <strong>+2 วันทำการ</strong> โดยอัตโนมัติ
                                             </p>
                                         </div>
                                     )}
@@ -828,16 +947,55 @@ export default function CreateDJ() {
                                                         {jt.isExpanded ? '▼' : '▶'}
                                                     </button>
 
-                                                    {/* Job Type Info */}
+                                                    {/* Job Type Info & Dependency */}
                                                     <div className="flex-1">
-                                                        <span className="text-sm font-medium text-purple-800">
-                                                            {index + 1}. {jt.name}
-                                                        </span>
-                                                        <span className="text-xs text-purple-600 ml-2">
-                                                            (SLA: {jt.sla || 7} วัน)
-                                                        </span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-sm font-medium text-purple-800">
+                                                                {index + 1}. {jt.name}
+                                                            </span>
+                                                            {/* Dependency Badge */}
+                                                            {jt.predecessorIndex !== null && jt.predecessorIndex !== undefined && (
+                                                                <span className="flex items-center gap-1 text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full border border-amber-200">
+                                                                    🔗 รอ Job {jt.predecessorIndex + 1}
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Sub-line info */}
+                                                        <div className="flex items-center gap-3 mt-1">
+                                                            <span className="text-xs text-purple-600">
+                                                                SLA: {jt.sla || 7} วัน
+                                                            </span>
+
+                                                            {/* Dependency Selector (Show only for 2nd job onwards) */}
+                                                            {index > 0 && (
+                                                                <div className="flex items-center gap-2">
+                                                                    <label className="text-xs text-gray-500">เริ่มงาน:</label>
+                                                                    <select
+                                                                        className="text-xs border border-gray-200 rounded px-2 py-0.5 bg-white focus:outline-none focus:border-purple-300"
+                                                                        value={jt.predecessorIndex === null ? '' : jt.predecessorIndex}
+                                                                        onChange={(e) => {
+                                                                            const val = e.target.value;
+                                                                            updateJobDependency(index, val === '' ? null : parseInt(val));
+                                                                        }}
+                                                                        onClick={(e) => e.stopPropagation()} // Prevent accordion toggle
+                                                                    >
+                                                                        <option value="">🟢 พร้อมกัน (Parallel)</option>
+                                                                        {selectedJobTypes.map((prevJt, prevIdx) => {
+                                                                            if (prevIdx >= index) return null; // Show only previous jobs
+                                                                            return (
+                                                                                <option key={prevIdx} value={prevIdx}>
+                                                                                    🔗 หลังจาก {prevIdx + 1}. {prevJt.name} เสร็จ
+                                                                                </option>
+                                                                            );
+                                                                        })}
+                                                                    </select>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
                                                         {Object.keys(jt.subItems || {}).length > 0 && (
-                                                            <span className="ml-2 px-2 py-0.5 bg-purple-200 text-purple-700 text-xs rounded-full">
+                                                            <span className="mt-1 inline-block px-2 py-0.5 bg-purple-200 text-purple-700 text-xs rounded-full">
                                                                 {Object.values(jt.subItems).reduce((a, b) => a + b, 0)} ชิ้น
                                                             </span>
                                                         )}
@@ -923,27 +1081,30 @@ export default function CreateDJ() {
                                                 📊 สรุปงานทั้งหมด
                                             </h4>
 
-                                            {/* รายละเอียดแต่ละ Job Type */}
+                                            {/* ข้อมูล Timeline ที่คำนวณแล้ว */}
                                             <div className="space-y-2 mb-3">
-                                                {selectedJobTypes.map((jt, idx) => {
+                                                {calculateTimeline().map((jt, idx) => {
                                                     const totalItems = Object.values(jt.subItems || {}).reduce((a, b) => a + b, 0);
-                                                    const slaDays = jt.sla || 7;
-                                                    const jobDueDate = calculateDueDate(new Date(), slaDays, holidays);
 
                                                     return (
                                                         <div key={idx} className="flex items-center justify-between text-sm bg-white p-2 rounded border border-gray-100">
-                                                            <span className="font-medium text-purple-700">
-                                                                {idx + 1}. {jt.name}
-                                                            </span>
-                                                            <div className="flex items-center gap-3 text-gray-600">
-                                                                <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">
-                                                                    {totalItems} ชิ้น
+                                                            <div className="flex flex-col">
+                                                                <span className="font-medium text-purple-700">
+                                                                    {idx + 1}. {jt.name}
                                                                 </span>
-                                                                <span className="text-xs text-gray-500">
-                                                                    SLA {slaDays} วัน
-                                                                </span>
+                                                                {jt.predecessorIndex !== null && jt.predecessorIndex !== undefined && (
+                                                                    <span className="text-[10px] text-amber-600">
+                                                                        ↳ รอ Job {jt.predecessorIndex + 1}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="flex flex-col items-end gap-0.5">
                                                                 <span className="text-xs text-rose-600 font-medium">
-                                                                    {formatDateToThai(jobDueDate)}
+                                                                    ส่ง: {formatDateToThai(jt.calculatedDueDate)}
+                                                                </span>
+                                                                <span className="text-[10px] text-gray-400">
+                                                                    (เริ่ม: {formatDateToThai(jt.calculatedStartDate)})
                                                                 </span>
                                                             </div>
                                                         </div>
@@ -960,12 +1121,15 @@ export default function CreateDJ() {
                                                         )} ชิ้น
                                                     </span>
                                                     <span className="font-bold text-rose-700">
-                                                        📅 กำหนดส่ง: {formatDateToThai(
-                                                            calculateDueDate(new Date(),
-                                                                Math.max(...selectedJobTypes.map(jt => jt.sla || 7)),
-                                                                holidays
-                                                            )
-                                                        )}
+                                                        📅 กำหนดส่งงานสุดท้าย: {(() => {
+                                                            const timeline = calculateTimeline();
+                                                            if (timeline.length === 0) return '-';
+
+                                                            // Find the latest due date among all jobs
+                                                            // (Note: Usually it's the last one in chain, but if parallel, could be anyone)
+                                                            const maxDate = new Date(Math.max(...timeline.map(t => new Date(t.calculatedDueDate))));
+                                                            return formatDateToThai(maxDate);
+                                                        })()}
                                                     </span>
                                                 </div>
                                                 <p className="text-xs text-gray-500 mt-1">
@@ -1143,11 +1307,15 @@ export default function CreateDJ() {
                                 <h2 className="text-3xl font-bold text-rose-600 mb-1">
                                     {/* คำนวณ Due Date แบบ Real-time รองรับ Multi-Job Type */}
                                     {(() => {
-                                        // กรณี Multi-Job: ใช้ SLA สูงสุด
+                                        // กรณี Multi-Job: คำนวณตาม Timeline (Sequential)
                                         if (selectedJobTypes.length > 0) {
-                                            const maxSla = Math.max(...selectedJobTypes.map(jt => jt.sla || 7));
-                                            return formatDateToThai(calculateDueDate(new Date(), maxSla, holidays));
+                                            const timeline = calculateTimeline();
+                                            if (timeline.length > 0) {
+                                                const maxDate = new Date(Math.max(...timeline.map(t => new Date(t.calculatedDueDate))));
+                                                return formatDateToThai(maxDate);
+                                            }
                                         }
+
                                         // กรณี Single-Job: ใช้ jobTypeId จาก formData
                                         const singleJobType = masterData.jobTypes.find(t => t.id === parseInt(formData.jobTypeId));
                                         if (singleJobType?.sla) {
@@ -1192,8 +1360,16 @@ export default function CreateDJ() {
                                             let sla = 7;
 
                                             if (selectedJobTypes.length > 0) {
-                                                sla = Math.max(...selectedJobTypes.map(jt => jt.sla || 7));
-                                                calculatedDueDate = calculateDueDate(new Date(), sla, holidays);
+                                                const timeline = calculateTimeline();
+                                                if (timeline.length > 0) {
+                                                    const maxDate = new Date(Math.max(...timeline.map(t => new Date(t.calculatedDueDate))));
+                                                    calculatedDueDate = maxDate;
+                                                    // For sequential, estimated SLA is vague. We use Max SLA of single job for calculation baseline?
+                                                    // Or we just accept that (Diff - SLA) might be approximate.
+                                                    // Improved: Use the SLA of the job that finishes last?
+                                                    // Let's stick to Max SLA for now to avoid complexity in this ephemeral generic check.
+                                                    sla = Math.max(...selectedJobTypes.map(jt => jt.sla || 7));
+                                                }
                                             } else {
                                                 const singleJobType = masterData.jobTypes.find(t => t.id === parseInt(formData.jobTypeId));
                                                 if (singleJobType?.sla) {
@@ -1225,8 +1401,12 @@ export default function CreateDJ() {
                                     let calculatedDueDate = null;
 
                                     if (selectedJobTypes.length > 0) {
-                                        sla = Math.max(...selectedJobTypes.map(jt => jt.sla || 7));
-                                        calculatedDueDate = calculateDueDate(new Date(), sla, holidays);
+                                        const timeline = calculateTimeline();
+                                        if (timeline.length > 0) {
+                                            const maxDate = new Date(Math.max(...timeline.map(t => new Date(t.calculatedDueDate))));
+                                            calculatedDueDate = maxDate;
+                                            sla = Math.max(...selectedJobTypes.map(jt => jt.sla || 7));
+                                        }
                                     } else {
                                         const singleJobType = masterData.jobTypes.find(t => t.id === parseInt(formData.jobTypeId));
                                         if (singleJobType?.sla) {
@@ -1485,8 +1665,8 @@ export default function CreateDJ() {
                                 "ส่งงานตอนนี้ (Send Now)"
                             )}
                         </Button>
-                        <Button type="button" variant="secondary" className="w-full" disabled={isSubmitting}>
-                            บันทึกร่าง (Save Draft)
+                        <Button type="button" variant="secondary" className="w-full" disabled={isSubmitting} onClick={handleSaveDraft}>
+                            {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกร่าง (Save Draft)'}
                         </Button>
                     </div >
 

@@ -297,7 +297,7 @@ router.post('/jobs/:jobId/comments', async (req, res) => {
 
     // Log activity
     try {
-      await prisma.jobActivity.create({
+      await prisma.activityLog.create({
         data: {
           tenantId,
           jobId: parseInt(jobId),
@@ -475,7 +475,7 @@ router.delete('/jobs/:jobId/comments/:commentId', async (req, res) => {
 
     // Log activity
     try {
-      await prisma.jobActivity.create({
+      await prisma.activityLog.create({
         data: {
           tenantId,
           jobId: parseInt(jobId),

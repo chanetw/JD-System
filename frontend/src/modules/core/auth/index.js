@@ -1,4 +1,5 @@
 export { default as ProtectedRoute } from './ProtectedRoute';
+export { default as RoleProtectedRoute } from './RoleProtectedRoute';
 export { default as Login } from './pages/LoginReal';
 export { default as LoginDemo } from './pages/LoginDemo';
 export { default as Register } from './pages/Register';

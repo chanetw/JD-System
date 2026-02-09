@@ -11,9 +11,13 @@
 import express from 'express';
 import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import { getDatabase } from '../config/database.js';
+import { chainConfig } from '../config/chainConfig.js';
 import ApprovalService from '../services/approvalService.js';
+import JobService from '../services/jobService.js';
+import chainService from '../services/chainService.js';
 
 const approvalService = new ApprovalService();
+const jobService = new JobService();
 
 const router = express.Router();
 
@@ -48,7 +52,18 @@ router.get('/', async (req, res) => {
         where.assigneeId = userId;
         break;
       case 'approver':
+        // 🔥 User Portal Logic: Show ONLY jobs waiting for THIS user to approve
+        where.status = { in: ['pending_approval', 'pending_level_1', 'pending_level_2'] };
+        where.approvals = {
+          some: {
+            approverId: userId,
+            status: 'pending'
+          }
+        };
+        break;
+
       case 'manager':
+        // Legacy/Manager View: See all pending jobs (broad view) inside tenant
         where.status = { in: ['pending_approval', 'pending_level_1', 'pending_level_2'] };
         // Visibility Logic: Hide children if parent is still pending (Show only Parent)
         where.AND = [
@@ -267,7 +282,20 @@ router.post('/', async (req, res) => {
     // Step 3: Check Skip Approval
     // ถ้า flow.skipApproval = true หมายถึงไม่ต้องผ่านการอนุมัติ
     // ============================================
-    const isSkip = approvalService.isSkipApproval(flow);
+    // ============================================
+    // Step 3: Check Skip Approval
+    // 🔥 NEW LOGIC: งานด่วนต้องผ่าน Approval เสมอ
+    // ============================================
+    let isSkip = false;
+
+    if (priority.toLowerCase() === 'urgent') {
+      // งานด่วน: บังคับให้ผ่าน Approval Flow
+      isSkip = false;
+      console.log('[Jobs] Urgent job detected → Force Approval Flow');
+    } else {
+      // งานปกติ: ใช้ skipApproval ตาม Template
+      isSkip = approvalService.isSkipApproval(flow);
+    }
 
     // ============================================
     // Step 3.1: Validate Skip Approval (ต้องมี Assignee)
@@ -296,16 +324,21 @@ router.post('/', async (req, res) => {
 
     // ============================================
     // Step 4: Generate DJ ID
-    // รูปแบบ: DJ-YYYY-XXXX (เช่น DJ-2026-0001)
+    // รูปแบบใหม่: DJ-YYMMDD-XXXX (เช่น DJ-260206-0001)
     // ============================================
-    const year = new Date().getFullYear();
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(-2);
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const datePrefix = `DJ-${yy}${mm}${dd}-`;
+
     const jobCount = await prisma.job.count({
       where: {
         tenantId,
-        djId: { startsWith: `DJ-${year}-` }
+        djId: { startsWith: datePrefix }
       }
     });
-    const djId = `DJ-${year}-${String(jobCount + 1).padStart(4, '0')}`;
+    const djId = `${datePrefix}${String(jobCount + 1).padStart(4, '0')}`;
 
     // ============================================
     // Step 5: Create Job (Transaction)
@@ -524,14 +557,17 @@ router.get('/:id', async (req, res) => {
           orderBy: { createdAt: 'asc' }
         },
         // Include activities for history log
-        jobActivities: {
+        // Include activities for history log
+        // jobActivities: { ... } // Legacy unused
+        activityLogs: {
           select: {
             id: true,
-            activityType: true,
-            description: true,
+            action: true,
+            message: true,
+            detail: true,
             createdAt: true,
             user: {
-              select: { id: true, displayName: true, firstName: true, lastName: true }
+              select: { id: true, displayName: true, firstName: true, lastName: true, avatarUrl: true }
             }
           },
           orderBy: { createdAt: 'desc' },
@@ -651,15 +687,17 @@ router.get('/:id', async (req, res) => {
           avatar: c.user?.avatarUrl
         }
       })) || [],
-      // Activities for history log
-      activities: job.jobActivities?.map(a => ({
+      // Activities for history log (using ActivityLog model)
+      activities: job.activityLogs?.map(a => ({
         id: a.id,
-        type: a.activityType,
-        description: a.description,
+        action: a.action,
+        message: a.message,
+        detail: a.detail,
         createdAt: a.createdAt,
         user: a.user ? {
           id: a.user.id,
-          name: a.user.displayName || `${a.user.firstName} ${a.user.lastName}`.trim()
+          name: a.user.displayName || `${a.user.firstName} ${a.user.lastName}`.trim(),
+          avatar: a.user.avatarUrl
         } : null
       })) || []
     };
@@ -697,6 +735,42 @@ router.post('/:id/approve', async (req, res) => {
       comment,
       ipAddress
     });
+
+    // ✅ NEW: Handle Urgent Job Rescheduling (Part D)
+    if (result.success) {
+      try {
+        const prisma = getDatabase();
+        const jobId = parseInt(id);
+
+        // Get job details
+        const job = await prisma.job.findUnique({
+          where: { id: jobId },
+          select: {
+            priority: true,
+            assigneeId: true,
+            dueDate: true
+          }
+        });
+
+        // If urgent job, reschedule competing jobs
+        if (job && job.priority === 'urgent' && job.assigneeId && job.dueDate) {
+          const rescheduleResult = await chainService.rescheduleForUrgent(job, prisma);
+
+          if (rescheduleResult.rescheduled > 0) {
+            console.log(
+              `[Jobs] Urgent Job Rescheduled: ${rescheduleResult.rescheduled} competing jobs shifted +${rescheduleResult.shiftDays} days`,
+              { affected: rescheduleResult.affected.map(a => a.djId) }
+            );
+
+            // Append reschedule info to result
+            result.rescheduled = rescheduleResult;
+          }
+        }
+      } catch (rescheduleError) {
+        console.warn('[Jobs] Urgent Reschedule Warning (non-blocking):', rescheduleError);
+        // Don't fail approval, just log warning
+      }
+    }
 
     if (result.success) {
       res.json(result);
@@ -777,6 +851,7 @@ router.post('/parent-child', async (req, res) => {
       projectId,
       subject,
       priority = 'normal',
+      status,         // Optional: 'draft' to save as draft
       brief = {},
       objective,      // Fallback fields (for backward compatibility)
       headline,
@@ -787,6 +862,9 @@ router.post('/parent-child', async (req, res) => {
       jobTypes = [],
       deadline
     } = req.body;
+
+    // Check if this is a draft save
+    const isDraft = status === 'draft';
 
     // Merge brief object with fallback values from top-level fields
     const briefData = {
@@ -867,16 +945,20 @@ router.post('/parent-child', async (req, res) => {
 
       // ----------------------------------------
       // 2.2: Generate DJ-IDs atomically
-      // Use FOR UPDATE to prevent race conditions
+      // รูปแบบใหม่: Parent = DJ-YYMMDD-xxxx, Child = DJ-YYMMDD-xxxx-01
       // ----------------------------------------
-      const year = new Date().getFullYear();
-      const prefix = `DJ-${year}-`;
+      const now = new Date();
+      const yy = String(now.getFullYear()).slice(-2);
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const prefix = `DJ-${yy}${mm}${dd}-`;
 
       // Get the latest DJ-ID with row lock
       const latestJob = await tx.job.findFirst({
         where: {
           tenantId,
-          djId: { startsWith: prefix }
+          djId: { startsWith: prefix },
+          parentJobId: null // นับเฉพาะ Parent/Single Job
         },
         orderBy: { djId: 'desc' },
         select: { djId: true }
@@ -884,37 +966,67 @@ router.post('/parent-child', async (req, res) => {
 
       let runningNumber = 1;
       if (latestJob && latestJob.djId) {
+        // DJ-YYMMDD-xxxx format
         const parts = latestJob.djId.split('-');
-        if (parts.length === 3) {
+        if (parts.length >= 3) {
           runningNumber = parseInt(parts[2]) + 1;
         }
       }
 
-      const generateDjId = (offset = 0) => {
-        return `${prefix}${String(runningNumber + offset).padStart(4, '0')}`;
+      // สร้าง Parent DJ ID
+      const parentDjId = `${prefix}${String(runningNumber).padStart(4, '0')}`;
+
+      // สร้าง Child DJ ID (เพิ่ม suffix -01, -02, ...)
+      const generateChildDjId = (childIndex) => {
+        return `${parentDjId}-${String(childIndex + 1).padStart(2, '0')}`;
       };
 
       // ----------------------------------------
       // Smart Initial Status Logic
+      // 🔥 NEW: ถ้า Priority = Urgent → บังคับ Approval
+      // ----------------------------------------
+      // ----------------------------------------
+      // Smart Initial Status Logic
+      // 🔥 UPDATED: Pre-calculate approval needs for all children
       // ----------------------------------------
       let allChildrenSkip = true;
+      const childNeedsApprovalMap = new Map(); // jobTypeId -> boolean
+
+      // 1. Check Flow for ALL children
       for (const childConfig of jobTypes) {
-        // Use global approvalService to check flow config (outside transaction ok for reading config)
-        const childFlow = await approvalService.getApprovalFlow(parseInt(projectId), parseInt(childConfig.jobTypeId));
+        const jid = parseInt(childConfig.jobTypeId);
+
+        // Get flow config
+        const childFlow = await approvalService.getApprovalFlow(parseInt(projectId), jid);
         const levels = approvalService.getApprovalLevels(childFlow);
-        if (levels > 0) {
+        const needsApproval = levels > 0;
+
+        childNeedsApprovalMap.set(jid, needsApproval);
+
+        if (needsApproval) {
           allChildrenSkip = false;
-          break;
         }
       }
-      const parentStatus = allChildrenSkip ? 'assigned' : 'pending_approval';
-      console.log(`[Smart Status] All children skip? ${allChildrenSkip} => Parent Status: ${parentStatus}`);
+
+      // 2. Urgent Priority Override
+      if (priority.toLowerCase() === 'urgent') {
+        allChildrenSkip = false; // Force Parent to Pending
+        console.log('[Parent-Child] Urgent job → Force Approval Flow');
+      }
+
+      // Draft mode: save as draft without approval flow
+      let parentStatus;
+      if (isDraft) {
+        parentStatus = 'draft';
+        console.log('[Parent-Child] Draft mode → Status: draft');
+      } else {
+        parentStatus = allChildrenSkip ? 'assigned' : 'pending_approval';
+        console.log(`[Smart Status] All children skip? ${allChildrenSkip} => Parent Status: ${parentStatus}`);
+      }
 
       // ----------------------------------------
-      // 2.3: Create Parent Job
+      // 2.3: Create Parent Job (ใช้ parentDjId ที่สร้างไว้แล้วด้านบน)
       // ----------------------------------------
-      const parentDjId = generateDjId(0);
-
       const parentJob = await tx.job.create({
         data: {
           tenantId,
@@ -953,12 +1065,37 @@ router.post('/parent-child', async (req, res) => {
 
         if (!childJobType) continue;
 
-        // Calculate due date based on SLA
-        const slaWorkingDays = childJobType.slaWorkingDays || 7;
-        const childDueDate = calculateWorkingDays(new Date(), slaWorkingDays);
+        // Store created jobs to reference IDs for dependencies
+        // childJobs is already defined outside loop
 
-        // Generate child DJ-ID
-        const childDjId = generateDjId(i + 1);
+        // Determine Start Date & Predecessor
+        let startDate = new Date();
+        let predecessorId = null;
+        let predecessorSlaDays = 0; // For Frontend Preview Consistency
+
+        // Check for Dependency (Sequential Job)
+        // Frontend sends 'predecessorIndex' (0-based index in the jobTypes array)
+        if (childConfig.predecessorIndex !== undefined && childConfig.predecessorIndex !== null) {
+          const predecessorIndex = parseInt(childConfig.predecessorIndex);
+
+          // Validate index
+          if (predecessorIndex >= 0 && predecessorIndex < i && childJobs[predecessorIndex]) {
+            const predecessorJob = childJobs[predecessorIndex];
+            predecessorId = predecessorJob.id;
+
+            // Start Date = Predecessor's Due Date
+            startDate = new Date(predecessorJob.dueDate);
+
+            console.log(`[Parent-Child] Job ${i} depends on Job ${predecessorIndex} (ID: ${predecessorId})`);
+          }
+        }
+
+        // Calculate due date based on SLA & Start Date
+        const slaWorkingDays = childJobType.slaWorkingDays || 7;
+        const childDueDate = calculateWorkingDays(startDate, slaWorkingDays);
+
+        // Generate child DJ-ID (เพิ่ม suffix -01, -02, ...)
+        const childDjId = generateChildDjId(i);
 
         // Determine assignee
         let assigneeId = childConfig.assigneeId ? parseInt(childConfig.assigneeId) : null;
@@ -979,6 +1116,28 @@ router.post('/parent-child', async (req, res) => {
           }
         }
 
+        // Determine Child Status
+        let childStatus = 'draft'; // Default for draft mode
+
+        if (!isDraft) {
+          const flowNeedsApproval = childNeedsApprovalMap.get(parseInt(childConfig.jobTypeId));
+          const isUrgent = priority.toLowerCase() === 'urgent';
+
+          // Needs approval if Flow requires it OR Urgent...
+          // AND if it's a dependent job, it should wait (pending_dependency)
+          const needsApproval = flowNeedsApproval || isUrgent;
+
+          childStatus = 'pending_approval';
+
+          if (predecessorId) {
+            // 🔥 Sequential Job: Must wait for predecessor
+            childStatus = 'pending_dependency';
+          } else if (!needsApproval) {
+            // If skip approval: assigned (if has assignee) OR approved (waiting for assignee)
+            childStatus = assigneeId ? 'assigned' : 'approved';
+          }
+        }
+
         // Create child job
         const childJob = await tx.job.create({
           data: {
@@ -993,14 +1152,18 @@ router.post('/parent-child', async (req, res) => {
             description: briefData.description,
             briefLink: briefData.briefLink,
             briefFiles: briefData.briefFiles,
-            status: assigneeId ? 'assigned' : 'pending_approval',
+            status: childStatus,
             priority: priority.toLowerCase(),
             requesterId: userId,
             assigneeId: assigneeId,
             isParent: false,
             parentJobId: parentJob.id,
             dueDate: childDueDate,
-            startedAt: assigneeId ? new Date() : null
+            startedAt: assigneeId && !predecessorId ? new Date() : null, // Start now only if no dependency
+
+            // 🔥 Dependency Fields
+            predecessorId: predecessorId,
+            slaDays: slaWorkingDays // Save original SLA for recalculation
           }
         });
 
@@ -1039,13 +1202,16 @@ router.post('/parent-child', async (req, res) => {
         data: {
           jobId: parentJob.id,
           userId,
-          action: 'parent_child_created',
-          message: `สร้างงานกลุ่ม ${parentDjId} พร้อม ${childJobs.length} งานย่อย`,
+          action: isDraft ? 'draft_saved' : 'parent_child_created',
+          message: isDraft
+            ? `บันทึกร่างงาน ${parentDjId} พร้อม ${childJobs.length} งานย่อย`
+            : `สร้างงานกลุ่ม ${parentDjId} พร้อม ${childJobs.length} งานย่อย`,
           detail: {
             parentId: parentJob.id,
             childCount: childJobs.length,
             childIds: childJobs.map(c => c.id),
-            priority
+            priority,
+            isDraft
           }
         }
       });
@@ -1137,6 +1303,28 @@ router.post('/:id/complete', async (req, res) => {
       note,
       attachments
     });
+
+    // 🔥 Trigger Job Chain (Sequential Jobs)
+    if (result.success) {
+      // Logic for Job Chain: Auto-start successor jobs
+      try {
+        await jobService.onJobCompleted(jobId, userId);
+
+        // ✅ NEW: Notify next job in chain (Part D)
+        const prisma = getDatabase();
+        const notification = await chainService.notifyNextJob(jobId, prisma);
+
+        if (notification.notified) {
+          console.log(
+            `[Jobs] Chain Notification: ${notification.message}`,
+            { nextJobId: notification.nextJob.id }
+          );
+        }
+      } catch (chainError) {
+        console.error('[Jobs] Sequential Job Trigger Failed:', chainError);
+        // Don't fail the request, just log error
+      }
+    }
 
     res.json(result);
   } catch (error) {
