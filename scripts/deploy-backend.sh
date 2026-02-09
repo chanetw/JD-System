@@ -24,7 +24,7 @@ npm install
 
 # Step 2: Generate Prisma client
 echo -e "${YELLOW}📋 Generating Prisma client...${NC}"
-npx prisma generate
+npx prisma generate --schema ../prisma/schema.prisma
 
 # Step 3: Build TypeScript
 echo -e "${YELLOW}🔨 Building TypeScript V2 code...${NC}"
