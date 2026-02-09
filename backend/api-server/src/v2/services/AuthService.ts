@@ -192,7 +192,7 @@ export class AuthService {
       {
         where: {
           userId: user.id,
-          usedAt: { [Op.is]: null },
+          usedAt: undefined as any,
         },
       }
     );
@@ -224,7 +224,7 @@ export class AuthService {
     const resetToken = await PasswordResetToken.findOne({
       where: {
         token,
-        usedAt: { [Op.is]: null },
+        usedAt: undefined as any,
         expiresAt: { [Op.gt]: new Date() },
       },
       include: [{ model: User, as: 'user' }],
