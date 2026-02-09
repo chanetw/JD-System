@@ -43,6 +43,9 @@ cd "$BACKEND_DIR"
 echo -e "${YELLOW}  → Installing backend dependencies...${NC}"
 npm install
 
+echo -e "${YELLOW}  → Generating Prisma client...${NC}"
+npx prisma generate
+
 echo -e "${YELLOW}  → Building TypeScript V2 code...${NC}"
 npm run build:v2
 

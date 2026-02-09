@@ -22,11 +22,15 @@ NC='\033[0m'
 echo -e "${YELLOW}📦 Installing dependencies...${NC}"
 npm install
 
-# Step 2: Build TypeScript
+# Step 2: Generate Prisma client
+echo -e "${YELLOW}📋 Generating Prisma client...${NC}"
+npx prisma generate
+
+# Step 3: Build TypeScript
 echo -e "${YELLOW}🔨 Building TypeScript V2 code...${NC}"
 npm run build:v2
 
-# Step 3: Start server
+# Step 4: Start server
 echo -e "${YELLOW}🚀 Starting backend server...${NC}"
 npm start
 
