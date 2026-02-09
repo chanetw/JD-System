@@ -63,7 +63,7 @@ if ! kill -0 $BACKEND_PID 2>/dev/null; then
 fi
 
 echo -e "${YELLOW}  → Verifying backend health...${NC}"
-if curl -s http://localhost:5000/api/v2/health | grep -q "ok"; then
+if curl -s http://localhost:3000/health | grep -q "ok"; then
     echo -e "${GREEN}✅ Backend is running and healthy${NC}"
 else
     echo -e "${RED}❌ Backend health check failed${NC}"
@@ -119,8 +119,8 @@ echo "   • V2 role names → V1 role names"
 echo "   • Commit: 2dd68ed"
 echo ""
 echo -e "${GREEN}✅ Backend:${NC}"
-echo "   • Running on: http://localhost:5000"
-echo "   • Health check: http://localhost:5000/api/v2/health"
+echo "   • Running on: http://localhost:3000"
+echo "   • Health check: http://localhost:3000/health"
 echo ""
 echo -e "${GREEN}✅ Frontend:${NC}"
 echo "   • Build output: $FRONTEND_DIR/dist"

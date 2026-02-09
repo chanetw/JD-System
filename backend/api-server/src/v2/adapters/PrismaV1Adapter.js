@@ -721,6 +721,160 @@ class PrismaV1Adapter {
 
     return result;
   }
+
+  // =========================================================================
+  // PASSWORD RESET METHODS
+  // =========================================================================
+
+  /**
+   * Create a password reset token for a user
+   * @param {number} userId - User ID
+   * @param {number} expiresInHours - Token expiration time in hours (default: 1)
+   * @returns {Object} Token data
+   */
+  static async createPasswordResetToken(userId, expiresInHours = 1) {
+    const prisma = getDatabase();
+
+    // Get user to verify exists
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      throw new Error('USER_NOT_FOUND');
+    }
+
+    // Generate random token
+    const crypto = require('crypto');
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000);
+
+    // Create password reset token in V1 table
+    const resetToken = await prisma.passwordResetRequest.create({
+      data: {
+        tenantId: user.tenantId,
+        userId,
+        token,
+        expiresAt,
+        createdAt: new Date(),
+        isUsed: false
+      }
+    });
+
+    return {
+      id: resetToken.id,
+      userId: resetToken.userId,
+      token: resetToken.token,
+      expiresAt: resetToken.expiresAt
+    };
+  }
+
+  /**
+   * Verify a password reset token
+   * @param {string} token - Reset token
+   * @returns {Object|null} Token data if valid, null if invalid/expired
+   */
+  static async verifyPasswordResetToken(token) {
+    const prisma = getDatabase();
+
+    const resetToken = await prisma.passwordResetRequest.findFirst({
+      where: {
+        token,
+        isUsed: false,
+        expiresAt: { gt: new Date() } // Not expired
+      },
+      include: {
+        user: true
+      }
+    });
+
+    if (!resetToken) {
+      return null;
+    }
+
+    return {
+      id: resetToken.id,
+      userId: resetToken.userId,
+      userEmail: resetToken.user.email,
+      expiresAt: resetToken.expiresAt
+    };
+  }
+
+  /**
+   * Use a password reset token to reset password
+   * @param {string} token - Reset token
+   * @param {string} newPassword - New password (plain text)
+   * @returns {Object} Result with updated user
+   */
+  static async usePasswordResetToken(token, newPassword) {
+    const prisma = getDatabase();
+
+    // Verify token exists and is valid
+    const resetToken = await prisma.passwordResetRequest.findFirst({
+      where: {
+        token,
+        isUsed: false,
+        expiresAt: { gt: new Date() }
+      }
+    });
+
+    if (!resetToken) {
+      throw new Error('INVALID_OR_EXPIRED_TOKEN');
+    }
+
+    // Hash new password
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    // Update user password
+    const updatedUser = await prisma.user.update({
+      where: { id: resetToken.userId },
+      data: {
+        passwordHash,
+        mustChangePassword: false
+      },
+      include: {
+        userRoles: true,
+        department: true
+      }
+    });
+
+    // Mark token as used
+    await prisma.passwordResetRequest.update({
+      where: { id: resetToken.id },
+      data: {
+        isUsed: true,
+        usedAt: new Date()
+      }
+    });
+
+    return {
+      success: true,
+      user: this.tov2User(updatedUser),
+      message: 'Password reset successfully'
+    };
+  }
+
+  /**
+   * Invalidate all existing password reset tokens for a user
+   * @param {number} userId - User ID
+   * @returns {Object} Result
+   */
+  static async invalidatePasswordResetTokens(userId) {
+    const prisma = getDatabase();
+
+    await prisma.passwordResetRequest.updateMany({
+      where: {
+        userId,
+        isUsed: false
+      },
+      data: {
+        isUsed: true,
+        usedAt: new Date()
+      }
+    });
+
+    return { success: true, message: 'All reset tokens invalidated' };
+  }
 }
 
 export default PrismaV1Adapter;
