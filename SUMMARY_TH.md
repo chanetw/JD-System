@@ -138,6 +138,204 @@ f484097 Fix Prisma schema path in deployment scripts
 
 ---
 
+## ⚠️ Risk Analysis (การวิเคราะห์ความเสี่ยง)
+
+### 📊 ความเสี่ยงของระบบปัจจุบัน
+
+#### 🔴 High Risk Issues
+
+**1. Department Name Lookup (String-based)**
+- **ปัญหา:** Registration ใช้ department (string) ไม่ใช่ departmentId
+- **โอกาส:** ถ้าสองแผนกมีชื่อเหมือนกัน ระบบจะ filter ผิด
+- **ผลกระทบ:** ผู้ใช้เห็นโครงการผิดฝ่าย อาจลืมสิ่งสำคัญ
+- **ความรุนแรง:** HIGH (Data corruption risk)
+- **วิธีลดความเสี่ยง:**
+  - Priority 1: ทำการแก้ไข backend API ให้ส่ง departmentId
+  - ตรวจสอบ database ว่าไม่มี duplicate department names
+
+**2. Type Assertion with `as any` in AuthService**
+- **ปัญหา:** ใช้ `as any` เพื่อ workaround type mismatch ระหว่าง .ts และ .js adapter
+- **โอกาส:** หากมีการเปลี่ยน adapter signature TypeScript จะไม่จับ error
+- **ผลกระทบ:** Runtime errors ที่ไม่คาดหวัง
+- **ความรุนแรง:** HIGH (Silent failures)
+- **วิธีลดความเสี่ยง:**
+  - สร้าง TypeScript types สำหรับ PrismaV1Adapter return values
+  - เพิ่ม integration tests สำหรับ auth flows
+
+**3. Silent Filter Fallback**
+- **ปัญหา:** ถ้าไม่พบ department ระบบแสดงทุกโครงการโดยไม่มี warning
+- **โอกาส:** Admin อาจไม่รู้ว่าการกรองไม่ทำงาน
+- **ผลกระทบ:** ผู้ใช้เลือกโครงการผิดฝ่ายโดยไม่รู้ตัว
+- **ความรุนแรง:** HIGH (Compliance risk)
+- **วิธีลดความเสี่ยง:**
+  - เพิ่ม error message ชัดเจนถ้าไม่พบ department
+  - เก็บ log ว่า fallback ใช้กี่ครั้ง
+  - ส่ง alert ถ้า fallback เกิน threshold
+
+#### 🟡 Medium Risk Issues
+
+**4. Backend Registration API Incomplete**
+- **ปัญหา:** API ไม่ส่ง departmentId มาให้ frontend
+- **โอกาส:** ต้อง manual lookup by name ซึ่งไม่ robust
+- **ผลกระทบ:** Filtering ยังพึ่งพา string matching
+- **ความรุนแรง:** MEDIUM (Workaround available)
+- **วิธีลดความเสี่ยง:** Priority 1 task
+
+**5. No Audit Trail for Filter Override**
+- **ปัญหา:** ถ้า Priority 2 ทำเสร็จ (toggle show all) ไม่มี log ว่าใคร override filter
+- **โอกาส:** Admin override ทั้งที่ไม่จำเป็น
+- **ผลกระทบ:** Compliance issues, ไม่รู้ว่ามีใคร select โครงการนอก scope
+- **ความรุนแรง:** MEDIUM (Compliance consideration)
+- **วิธีลดความเสี่ยง:** Priority 3 task
+
+**6. Scope Level Mismatch**
+- **ปัญหา:** ถ้า user มี scope ที่ Tenant level อาจจะไม่ filter projects
+- **โอกาส:** RBAC hierarchy ยังมี edge cases
+- **ผลกระทบ:** Unexpected behavior สำหรับ tenant-level roles
+- **ความรุนแรง:** MEDIUM (Edge case)
+- **วิธีลดความเสี่ยง:**
+  - ทดสอบทุก scope level combinations
+  - เพิ่ม validation ถ้า scope type ที่ unexpected
+
+#### 🟢 Low Risk Issues
+
+**7. Logging Performance**
+- **ปัญหา:** Filtering function มี console.log หลายตัว
+- **โอกาส:** ถ้ามีผู้ใช้เยอะ console logging อาจทำให้ slow
+- **ผลกระทบ:** Performance degradation
+- **ความรุนแรง:** LOW (Easy to fix)
+- **วิธีลดความเสี่ยง:**
+  - Replace console.log ด้วย logger library (winston, pino)
+  - ปิด debug logs ใน production
+
+---
+
+### 📈 Risk Assessment Matrix
+
+| ลำดับ | ปัญหา | ความรุนแรง | โอกาส | ผลกระทบ | Priority |
+|------|--------|----------|-------|---------|----------|
+| 1 | Department Name Lookup | HIGH | MEDIUM | HIGH | 1 |
+| 2 | Type Assertions (as any) | HIGH | LOW | HIGH | 1 |
+| 3 | Silent Filter Fallback | HIGH | MEDIUM | HIGH | 1 |
+| 4 | Backend API Incomplete | MEDIUM | HIGH | MEDIUM | 1 |
+| 5 | No Audit Trail | MEDIUM | MEDIUM | MEDIUM | 3 |
+| 6 | Scope Level Mismatch | MEDIUM | LOW | MEDIUM | 2 |
+| 7 | Logging Performance | LOW | LOW | LOW | 3 |
+
+---
+
+### 🛡️ Risk Mitigation Strategy
+
+#### Immediate Actions (เดือนนี้)
+1. **Fix Department Lookup** (Priority 1)
+   - Update backend registration API → send departmentId
+   - Update frontend to use departmentId instead of name
+   - **Timeline:** 2-3 วัน
+   - **Verification:** Integration test registration flow
+
+2. **Add Error Handling for Filter Fallback** (Priority 1)
+   - ถ้าไม่พบ department → show error message
+   - Prevent fallback ที่เงียบ
+   - **Timeline:** 1 วัน
+   - **Verification:** Manual test with invalid department
+
+3. **Type Safety for AuthService** (Priority 1)
+   - สร้าง TypeScript interfaces สำหรับ PrismaV1Adapter
+   - Remove `as any` type assertions
+   - **Timeline:** 1-2 วัน
+   - **Verification:** TypeScript strict mode compilation
+
+#### Short Term (อีก 2-4 สัปดาห์)
+4. **Add Toggle & Audit Logging** (Priority 2)
+   - Priority 2: Add "Show All Projects" toggle
+   - Priority 3: Log who overrides filter
+   - **Timeline:** 2-3 วัน
+   - **Verification:** Test audit trail completeness
+
+5. **Test Edge Cases** (Priority 2)
+   - Test all scope level combinations
+   - Test multiple BUD scenarios
+   - Test user without department
+   - **Timeline:** 1-2 วัน
+   - **Verification:** Test case coverage 100%
+
+#### Long Term (อีก 1-2 เดือน)
+6. **Performance Optimization** (Priority 3)
+   - Replace console.log with proper logger
+   - Monitor filter performance with many projects
+   - Cache department-to-BUD mappings
+   - **Timeline:** 1-2 วัน
+   - **Verification:** Load testing
+
+---
+
+### 🔍 Monitoring & Alerting
+
+#### ต้องติดตามสิ่งนี้
+```
+1. Filter fallback occurrences (ควร = 0)
+   → Alert if > 5 times per day
+
+2. Role assignment success rate (ควร = 100%)
+   → Alert if < 99%
+
+3. Project filtering accuracy (ควร = 100%)
+   → Alert if incorrect BUD found
+
+4. Department lookup failures (ควร = 0)
+   → Alert if > 0 times
+
+5. Override filter usage (ควร = minimal)
+   → Alert if overused by same admin
+```
+
+#### Logging Requirements
+```javascript
+// ตัวอย่าง logs ที่ต้อง monitor
+1. Department not found:
+   "WARN: Department 'Marketing' not found for user 123"
+
+2. BUD not found:
+   "WARN: BUD not found for department 45"
+
+3. Filter fallback:
+   "WARN: Showing all projects - no BUD found for user 123"
+
+4. Role assignment failure:
+   "ERROR: Failed to save role 'Requester' for user 456"
+
+5. Filter override:
+   "AUDIT: Admin 789 overrode project filter - showed all projects"
+```
+
+---
+
+### 📋 Acceptance Criteria for Risk Mitigation
+
+**Priority 1 Complete Checklist:**
+- [ ] Backend API sends departmentId ✅
+- [ ] Frontend uses departmentId for lookup ✅
+- [ ] Error shown when department not found ✅
+- [ ] TypeScript types defined for adapter ✅
+- [ ] All `as any` type assertions removed ✅
+- [ ] Integration tests pass ✅
+- [ ] Manual testing completed ✅
+
+**Priority 2 Complete Checklist:**
+- [ ] Toggle feature works correctly ✅
+- [ ] All scope level combinations tested ✅
+- [ ] Edge cases handled ✅
+- [ ] User preference saved (if enabled) ✅
+- [ ] UI clear about filtering status ✅
+
+**Priority 3 Complete Checklist:**
+- [ ] Audit logging implemented ✅
+- [ ] Logger library integrated ✅
+- [ ] Performance monitoring in place ✅
+- [ ] Alerting configured ✅
+
+---
+
 ## 🚀 ขั้นตอนต่อไป (Priority)
 
 ### 🔴 Priority 1: Backend Registration API Fix
