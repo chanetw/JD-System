@@ -24,7 +24,7 @@ export default function LoginReal() {
             // Check for admin/staff/assignee roles
             const roles = user.roles || [];
             const isStaffOrAdmin = roles.some(r =>
-                ['admin', 'staff', 'manager', 'assignee'].includes(r)
+                ['Admin', 'staff', 'manager', 'Assignee'].includes(r)
             );
 
             if (isStaffOrAdmin) {

@@ -17,7 +17,7 @@ const JobActionPanel = ({
     const [isLoading, setIsLoading] = useState(false);
 
     // Permission Helpers
-    const isAdmin = currentUser?.roles?.includes('admin');
+    const isAdmin = currentUser?.roles?.includes('Admin');
     const isDeptManager = currentUser?.roles?.includes('dept_manager');
 
     // 1. Approval Actions
@@ -99,7 +99,7 @@ const JobActionPanel = ({
                         disabled={isLoading}
                     >
                         <option value="">-- เลือกผู้รับงาน --</option>
-                        {users.filter(u => u.roles?.includes('assignee') || u.roles?.includes('senior_designer') || u.roles?.includes('creative')).map(u => (
+                        {users.filter(u => u.roles?.includes('Assignee') || u.roles?.includes('senior_designer') || u.roles?.includes('creative')).map(u => (
                             <option key={u.id} value={u.id}>
                                 {u.displayName || `${u.firstName} ${u.lastName}`}
                             </option>

@@ -118,7 +118,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* ปุ่ม Create DJ (เฉพาะ Admin และ Requester) */}
-                {(['Admin', 'Requester', 'admin'].includes(user?.roleName) || user?.role === 'admin') && (
+                {(['Admin', 'Requester'].includes(user?.roleName) || user?.role === 'Admin') && (
                     <Link
                         to="/create"
                         className="flex items-center gap-2 px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors shadow-sm"

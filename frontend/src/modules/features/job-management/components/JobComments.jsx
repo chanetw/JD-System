@@ -120,7 +120,7 @@ const JobComments = ({ jobId, currentUser }) => {
                                 </p>
                                 <p className="mt-1 text-sm text-gray-700">{comment.message}</p>
                             </div>
-                            {(comment.userId === currentUser?.id || currentUser?.roles?.includes('admin')) && (
+                            {(comment.userId === currentUser?.id || currentUser?.roles?.includes('Admin')) && (
                                 <button
                                     onClick={() => handleDeleteComment(comment.id)}
                                     className="text-gray-400 hover:text-red-500"

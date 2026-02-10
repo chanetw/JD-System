@@ -28,10 +28,10 @@
 // ============================================
 
 export const ROLES = {
-    ADMIN: 'admin',
-    REQUESTER: 'requester',
-    APPROVER: 'approver',
-    ASSIGNEE: 'assignee'
+    ADMIN: 'Admin',
+    REQUESTER: 'Requester',
+    APPROVER: 'Approver',
+    ASSIGNEE: 'Assignee'
 };
 
 export const SCOPE_LEVELS = {

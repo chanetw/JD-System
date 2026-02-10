@@ -21,7 +21,7 @@ export default function Sidebar() {
     const { user } = useAuthStoreV2();
 
     /** รายชื่อ Role ที่ถือว่าเป็นผู้ปฏิบัติงาน (Work Recipients) */
-    const RECIPIENT_ROLES = ['Assignee', 'assignee', 'graphic', 'editor'];
+    const RECIPIENT_ROLES = ['Assignee', 'graphic', 'editor'];
 
     /** ตรวจสอบสิทธิ์ Admin เท่านั้น */
     const isAdmin = user?.roleName === 'Admin' ||

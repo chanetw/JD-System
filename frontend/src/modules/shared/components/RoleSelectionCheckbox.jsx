@@ -20,36 +20,36 @@ import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS } from '@shared/utils/permission.
 
 // Role icons mapping
 const ROLE_ICONS = {
-    admin: ShieldCheckIcon,
-    requester: DocumentTextIcon,
-    approver: CheckBadgeIcon,
-    assignee: WrenchScrewdriverIcon
+    Admin: ShieldCheckIcon,
+    Requester: DocumentTextIcon,
+    Approver: CheckBadgeIcon,
+    Assignee: WrenchScrewdriverIcon
 };
 
 // Role colors mapping
 const ROLE_COLORS = {
-    admin: {
+    Admin: {
         bg: 'bg-purple-50',
         border: 'border-purple-200',
         text: 'text-purple-700',
         icon: 'text-purple-500',
         checked: 'bg-purple-100 border-purple-500'
     },
-    requester: {
+    Requester: {
         bg: 'bg-blue-50',
         border: 'border-blue-200',
         text: 'text-blue-700',
         icon: 'text-blue-500',
         checked: 'bg-blue-100 border-blue-500'
     },
-    approver: {
+    Approver: {
         bg: 'bg-green-50',
         border: 'border-green-200',
         text: 'text-green-700',
         icon: 'text-green-500',
         checked: 'bg-green-100 border-green-500'
     },
-    assignee: {
+    Assignee: {
         bg: 'bg-orange-50',
         border: 'border-orange-200',
         text: 'text-orange-700',
@@ -108,7 +108,7 @@ export default function RoleSelectionCheckbox({
         <div className={`space-y-2 ${className}`}>
             {availableRoles.map((roleName) => {
                 const Icon = ROLE_ICONS[roleName] || DocumentTextIcon;
-                const colors = ROLE_COLORS[roleName] || ROLE_COLORS.requester;
+                const colors = ROLE_COLORS[roleName] || ROLE_COLORS.Requester;
                 const selected = isSelected(roleName);
                 const disabled = isDisabled(roleName);
 
@@ -209,7 +209,7 @@ export function RoleRadioSelect({
         <div className={`space-y-2 ${className}`}>
             {availableRoles.map((roleName) => {
                 const Icon = ROLE_ICONS[roleName] || DocumentTextIcon;
-                const colors = ROLE_COLORS[roleName] || ROLE_COLORS.requester;
+                const colors = ROLE_COLORS[roleName] || ROLE_COLORS.Requester;
                 const selected = selectedRole === roleName;
                 const disabled = disabledRoles.includes(roleName);
 

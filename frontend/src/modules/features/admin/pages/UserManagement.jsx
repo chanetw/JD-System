@@ -38,7 +38,7 @@ export default function UserManagementNew() {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Helper: Check if current user is admin
-    const isAdmin = user?.role === 'admin' || user?.roles?.includes('admin');
+    const isAdmin = user?.role === 'Admin' || user?.roles?.includes('Admin');
 
     // Approve Modal (Select Role & Scope)
     const [approveModal, setApproveModal] = useState({
@@ -294,8 +294,8 @@ export default function UserManagementNew() {
             } else {
                 // Fallback: use legacy role
                 if (userToEdit.role) {
-                    // Fix: Map 'marketing' to 'requester' dynamically
-                    const roleName = userToEdit.role === 'marketing' ? 'requester' : userToEdit.role;
+                    // Fix: Map 'marketing' to 'Requester' dynamically
+                    const roleName = userToEdit.role === 'marketing' ? 'Requester' : userToEdit.role;
                     loadedRoleNames.push(roleName);
                     console.log(`⚠️ Using legacy role: ${userToEdit.role} -> mapped to ${roleName}`);
                 }
@@ -350,7 +350,7 @@ export default function UserManagementNew() {
                     title: userWithRoles?.title || userToEdit.title,
                     phone: userWithRoles?.phone || userToEdit.phone,
                     departmentId: userWithRoles?.departmentId || userToEdit.departmentId || userToEdit.department?.id || '',
-                    role: userToEdit.role || loadedRoleNames[0] || 'requester'
+                    role: userToEdit.role || loadedRoleNames[0] || 'Requester'
                 }
             });
             console.log('🏢 Department loaded:', userWithRoles?.departmentId, 'from userToEdit:', userToEdit.departmentId);
@@ -373,7 +373,7 @@ export default function UserManagementNew() {
         }
 
         // Validate scopes for each non-admin role
-        const rolesNeedingScope = selectedRoles.filter(r => r !== 'admin');
+        const rolesNeedingScope = selectedRoles.filter(r => r !== 'Admin');
         for (const roleName of rolesNeedingScope) {
             const roleConfig = editRoleConfigs[roleName];
             if (!roleConfig || !roleConfig.scopes || roleConfig.scopes.length === 0) {
@@ -511,7 +511,7 @@ export default function UserManagementNew() {
         }
 
         // Validate scopes for each non-admin role
-        const rolesNeedingScope = approvalData.roles.filter(r => r !== 'admin');
+        const rolesNeedingScope = approvalData.roles.filter(r => r !== 'Admin');
         for (const roleName of rolesNeedingScope) {
             const roleConfig = approvalRoleConfigs[roleName];
             if (!roleConfig || !roleConfig.scopes || roleConfig.scopes.length === 0) {

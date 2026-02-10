@@ -69,9 +69,9 @@ export default function LoginDemo() {
                 // Redirect ตาม role (Priority: Admin > Requester > Others)
                 const userRoles = userWithToken.roles || [];
 
-                if (userRoles.includes('admin')) {
+                if (userRoles.includes('Admin')) {
                     navigate('/');
-                } else if (userRoles.includes('requester') || userRoles.includes('marketing')) {
+                } else if (userRoles.includes('Requester') || userRoles.includes('marketing')) {
                     navigate('/user-portal');
                 } else {
                     // Start at Dashboard for Approvers/Assignees
@@ -92,14 +92,14 @@ export default function LoginDemo() {
         const userRoles = user.roles || [];
 
         // Determine primary role for grouping
-        if (userRoles.includes('admin')) {
-            role = 'admin';
-        } else if (userRoles.includes('approver') || userRoles.includes('head') || userRoles.includes('manager')) {
-            role = 'approver';
-        } else if (userRoles.includes('assignee') || userRoles.includes('graphic') || userRoles.includes('web')) {
-            role = 'assignee';
-        } else if (userRoles.includes('requester') || userRoles.includes('marketing')) {
-            role = 'requester';
+        if (userRoles.includes('Admin')) {
+            role = 'Admin';
+        } else if (userRoles.includes('Approver') || userRoles.includes('head') || userRoles.includes('manager')) {
+            role = 'Approver';
+        } else if (userRoles.includes('Assignee') || userRoles.includes('graphic') || userRoles.includes('web')) {
+            role = 'Assignee';
+        } else if (userRoles.includes('Requester') || userRoles.includes('marketing')) {
+            role = 'Requester';
         }
 
         if (!acc[role]) acc[role] = [];
@@ -108,10 +108,10 @@ export default function LoginDemo() {
     }, {});
 
     const roleLabels = {
-        admin: '👑 Admin',
-        requester: '📝 ผู้เปิดงาน',
-        approver: '✅ Approver',
-        assignee: '🎨 Assignee'
+        Admin: '👑 Admin',
+        Requester: '📝 ผู้เปิดงาน',
+        Approver: '✅ Approver',
+        Assignee: '🎨 Assignee'
     };
 
     return (
@@ -173,14 +173,14 @@ export default function LoginDemo() {
                                         <div>
                                             <p className="font-medium text-slate-800">{selected.displayName}</p>
                                             <p className="text-sm text-slate-500">{selected.email}</p>
-                                            <span className={`inline-block mt-1 px-2 py-0.5 text-xs rounded-full ${selected.roles?.includes('admin') ? 'bg-purple-100 text-purple-700' :
-                                                (selected.roles?.includes('requester') || selected.roles?.includes('marketing')) ? 'bg-blue-100 text-blue-700' :
-                                                    selected.roles?.includes('approver') ? 'bg-green-100 text-green-700' :
+                                            <span className={`inline-block mt-1 px-2 py-0.5 text-xs rounded-full ${selected.roles?.includes('Admin') ? 'bg-purple-100 text-purple-700' :
+                                                (selected.roles?.includes('Requester') || selected.roles?.includes('marketing')) ? 'bg-blue-100 text-blue-700' :
+                                                    selected.roles?.includes('Approver') ? 'bg-green-100 text-green-700' :
                                                         'bg-amber-100 text-amber-700'
                                                 }`}>
-                                                {selected.roles?.includes('admin') ? 'ADMIN' :
-                                                    (selected.roles?.includes('requester') || selected.roles?.includes('marketing')) ? 'REQUESTER' :
-                                                        selected.roles?.includes('approver') ? 'APPROVER' :
+                                                {selected.roles?.includes('Admin') ? 'ADMIN' :
+                                                    (selected.roles?.includes('Requester') || selected.roles?.includes('marketing')) ? 'REQUESTER' :
+                                                        selected.roles?.includes('Approver') ? 'APPROVER' :
                                                             selected.roles?.[0]?.toUpperCase()}
                                             </span>
                                         </div>

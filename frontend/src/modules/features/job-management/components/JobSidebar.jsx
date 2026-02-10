@@ -5,7 +5,7 @@ import Badge from '@shared/components/Badge';
 const JobSidebar = ({ job, currentUser, onReassign }) => {
     if (!job) return null;
 
-    const isAdmin = currentUser?.roles?.includes('admin');
+    const isAdmin = currentUser?.roles?.includes('Admin');
     const isManager = currentUser?.roles?.includes('manager');
     const isAssignee = job.assigneeId === currentUser?.id;
     const canReassign = isAdmin || isManager || isAssignee;
