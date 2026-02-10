@@ -44,7 +44,8 @@ export default function UserManagementNew() {
     const [approveModal, setApproveModal] = useState({
         show: false,
         registrationId: null,
-        registrationData: null
+        registrationData: null,
+        filteredScopes: null  // Store filtered scopes based on user's department
     });
     const [approvalData, setApprovalData] = useState({
         roles: [],
@@ -56,7 +57,8 @@ export default function UserManagementNew() {
     });
     const [editModal, setEditModal] = useState({
         show: false,
-        user: null
+        user: null,
+        filteredScopes: null  // Store filtered scopes based on user's department
     });
     const [editScopeData, setEditScopeData] = useState({
         scopeLevel: 'Project',
@@ -212,6 +214,65 @@ export default function UserManagementNew() {
         }
     };
 
+    /**
+     * Filter projects by user's department and BUD
+     * Shows only projects that belong to the same BUD as the user's department
+     * @param {Object} userOrRegistration - User object or Registration object
+     * @param {Object} allScopes - Original availableScopes with all projects
+     * @returns {Object} - Filtered availableScopes with filtered projects
+     */
+    const getFilteredScopesForUser = (userOrRegistration, allScopes) => {
+        if (!userOrRegistration || !allScopes) return allScopes;
+
+        // 1. Get user's department ID
+        let departmentId = null;
+
+        // For existing user (Edit mode)
+        if (userOrRegistration.departmentId) {
+            departmentId = userOrRegistration.departmentId;
+        }
+        // For registration (Approve mode) - lookup by department name
+        else if (userOrRegistration.department) {
+            const dept = masterData.departments.find(d =>
+                d.name === userOrRegistration.department
+            );
+            departmentId = dept?.id;
+        }
+
+        // 2. Get department's BUD ID
+        const department = masterData.departments.find(d => d.id === departmentId);
+        const userBudId = department?.bud_id;
+
+        console.log('🔍 Filtering projects for user:', {
+            departmentId,
+            departmentName: department?.name,
+            budId: userBudId
+        });
+
+        // 3. If no BUD found, return all scopes (fallback)
+        if (!userBudId) {
+            console.warn('⚠️ No BUD found for user, showing all projects');
+            return allScopes;
+        }
+
+        // 4. Filter projects by BUD
+        const filteredProjects = allScopes.projects?.filter(p => {
+            const match = p.budId === userBudId;
+            if (match) {
+                console.log('✅ Project matched:', p.name, 'BUD:', p.budId);
+            }
+            return match;
+        }) || [];
+
+        console.log(`📊 Filtered ${filteredProjects.length}/${allScopes.projects?.length || 0} projects for BUD ${userBudId}`);
+
+        // 5. Return filtered scopes
+        return {
+            ...allScopes,
+            projects: filteredProjects
+        };
+    };
+
     const loadRegistrations = async () => {
         try {
             setIsLoading(true);
@@ -232,10 +293,15 @@ export default function UserManagementNew() {
 
     const handleApproveClick = (registrationId) => {
         const registration = registrations.find(r => r.id === registrationId);
+
+        // ✨ Get filtered scopes for this registration based on department/BUD
+        const filteredScopes = getFilteredScopesForUser(registration, availableScopes);
+
         setApproveModal({
             show: true,
             registrationId,
-            registrationData: registration
+            registrationData: registration,
+            filteredScopes  // Store filtered scopes in state
         });
         setApprovalData({
             roles: [],
@@ -340,6 +406,10 @@ export default function UserManagementNew() {
             setEditScopeData(initialScopeData);
             setEditRoleConfigs(loadedRoleConfigs);
             setEditSelectedRoles(loadedRoleNames);
+
+            // ✨ Get filtered scopes for this user based on department/BUD
+            const filteredScopes = getFilteredScopesForUser(userToEdit, availableScopes);
+
             setEditModal({
                 show: true,
                 user: {
@@ -351,7 +421,8 @@ export default function UserManagementNew() {
                     phone: userWithRoles?.phone || userToEdit.phone,
                     departmentId: userWithRoles?.departmentId || userToEdit.departmentId || userToEdit.department?.id || '',
                     role: userToEdit.role || loadedRoleNames[0] || 'Requester'
-                }
+                },
+                filteredScopes  // Store filtered scopes in state
             });
             console.log('🏢 Department loaded:', userWithRoles?.departmentId, 'from userToEdit:', userToEdit.departmentId);
 
@@ -1203,6 +1274,16 @@ export default function UserManagementNew() {
                                     />
                                 </div>
 
+                                {/* ✨ Show filtered scope indicator for Requester */}
+                                {editSelectedRoles.includes('Requester') && editModal.filteredScopes && (
+                                    <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                        <p className="text-xs text-blue-700">
+                                            💡 <strong>กำลังแสดงโครงการที่กรอง:</strong> แสดงเฉพาะโครงการในฝ่าย{' '}
+                                            <strong>{editModal.user?.department?.bud?.name || 'ไม่ระบุ'}</strong>
+                                        </p>
+                                    </div>
+                                )}
+
                                 {/* Scope Configuration - Multi-Role Component */}
                                 {editSelectedRoles.length > 0 && (
                                     <ScopeConfigPanel
@@ -1212,7 +1293,7 @@ export default function UserManagementNew() {
                                             console.log('🔄 Configs changed to:', configs);
                                             setEditRoleConfigs(configs);
                                         }}
-                                        availableScopes={availableScopes}
+                                        availableScopes={editModal.filteredScopes || availableScopes}
                                         loading={scopesLoading}
                                     />
                                 )}
@@ -1341,7 +1422,7 @@ export default function UserManagementNew() {
                                         selectedRoles={approvalData.roles}
                                         roleConfigs={approvalRoleConfigs}
                                         onConfigChange={setApprovalRoleConfigs}
-                                        availableScopes={availableScopes}
+                                        availableScopes={approveModal.filteredScopes || availableScopes}
                                         loading={scopesLoading}
                                     />
                                 )}
