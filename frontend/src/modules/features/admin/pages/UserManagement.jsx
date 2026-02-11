@@ -26,7 +26,9 @@ import {
     CheckIcon, XMarkIcon,
     UserIcon, EnvelopeIcon, BuildingOfficeIcon,
     ChevronLeftIcon, ChevronRightIcon,
-    KeyIcon
+    KeyIcon,
+    ExclamationTriangleIcon,
+    MapIcon // For Responsibilities Icon
 } from '@heroicons/react/24/outline';
 
 // ROLE_OPTIONS และ SCOPE_LEVELS ย้ายไปใช้จาก permission.utils.js แล้ว
@@ -78,6 +80,11 @@ export default function UserManagementNew() {
     const [approvalSelectedRoles, setApprovalSelectedRoles] = useState([]);
     const [editRoleConfigs, setEditRoleConfigs] = useState({});
     const [editSelectedRoles, setEditSelectedRoles] = useState([]);
+
+    // --- NEW: Assignment State (BUD-level + Project-level) ---
+    const [editAssignmentData, setEditAssignmentData] = useState({ jobTypeIds: [], budIds: [], projectIds: [] });
+    const [initialAssignmentData, setInitialAssignmentData] = useState({ jobTypeIds: [], budIds: [], projectIds: [] }); // To detect changes
+    const [budFilter, setBudFilter] = useState('all'); // Filter for projects section
     const [availableScopes, setAvailableScopes] = useState({
         projects: [],
         buds: [],
@@ -89,7 +96,8 @@ export default function UserManagementNew() {
         tenants: [],
         buds: [],
         projects: [],
-        departments: []
+        departments: [],
+        jobTypes: [] // Add jobTypes to masterData
     });
 
     // Reject Modal
@@ -166,18 +174,20 @@ export default function UserManagementNew() {
             console.log('[UserManagement] Loading master data...');
 
             // ✓ Use Backend REST API instead of direct Supabase queries (RLS blocked)
-            const [tenants, buds, projects, departments] = await Promise.all([
+            const [tenants, buds, projects, departments, jobTypes] = await Promise.all([
                 adminService.getTenants(),
                 adminService.getBUDs(),
                 adminService.getProjects(),
-                adminService.getDepartments()
+                adminService.getDepartments(),
+                adminService.getJobTypes() // Fetch Job Types
             ]);
 
             console.log('[UserManagement] Master data loaded:', {
                 tenants: tenants?.length || 0,
                 buds: buds?.length || 0,
                 projects: projects?.length || 0,
-                departments: departments?.length || 0
+                departments: departments?.length || 0,
+                jobTypes: jobTypes?.length || 0
             });
             console.log('[UserManagement] Departments detail:', departments);
 
@@ -185,7 +195,8 @@ export default function UserManagementNew() {
                 tenants: tenants || [],
                 buds: buds || [],
                 projects: projects || [],
-                departments: departments || []
+                departments: departments || [],
+                jobTypes: jobTypes || [] // Set jobTypes
             });
 
             console.log('[UserManagement] Master data set successfully');
@@ -513,6 +524,40 @@ export default function UserManagementNew() {
                 console.warn("Could not load user scopes:", scopeError.message);
             }
 
+            // --- NEW: Fetch Assignments (Responsibilities) - BUD + Project levels ---
+            try {
+                const assignments = await adminService.getUserAssignments(userToEdit.id);
+                // assignments = { budAssignments: [], projectAssignments: [] }
+
+                const { budAssignments = [], projectAssignments = [] } = assignments;
+
+                // Extract unique job type IDs from both levels
+                const jobTypeIds = [
+                    ...new Set([
+                        ...budAssignments.map(a => a.jobTypeId),
+                        ...projectAssignments.map(a => a.jobTypeId)
+                    ])
+                ];
+
+                // Extract BUD IDs
+                const budIds = [...new Set(budAssignments.map(a => a.budId))];
+
+                // Extract Project IDs
+                const projectIds = [...new Set(projectAssignments.map(a => a.projectId))];
+
+                const assignmentData = { jobTypeIds, budIds, projectIds };
+
+                console.log('[UserManagement] Loaded assignments:', assignmentData);
+
+                setEditAssignmentData(assignmentData);
+                setInitialAssignmentData(assignmentData);
+            } catch (assignError) {
+                console.warn("Could not load user assignments:", assignError);
+                setEditAssignmentData({ jobTypeIds: [], budIds: [], projectIds: [] });
+                setInitialAssignmentData({ jobTypeIds: [], budIds: [], projectIds: [] });
+            }
+            // ------------------------------------------------
+
             // New: Fetch Managed Department (Single)
             let currentManagedDeptId = '';
             try {
@@ -596,10 +641,46 @@ export default function UserManagementNew() {
         if (targetDeptId) {
             const targetDept = masterData.departments.find(d => d.id === targetDeptId);
             if (targetDept?.managerId && targetDept.managerId !== editModal.user.id) {
-                // หาชื่อ Manager เดิมจาก users list หรือจาก dept.manager (ขึ้นอยู่กับ frontend data structure)
-                // เนื่องจาก masterData.departments อาจไม่มี obj manager เราอาจต้องดูจาก field text ถ้ามี หรือหาจาก users
                 const oldManagerName = targetDept.manager?.displayName || targetDept.manager?.first_name || 'Manager เดิม';
                 warnings.push(`⚠️ แผนก "<b>${targetDept.name}</b>" มี Manager อยู่แล้ว (<b>${oldManagerName}</b>) จะถูกแทนที่`);
+            }
+        }
+
+        // --- NEW: Assignment Conflict Check (Only if Assignment Role is selected AND changes made) ---
+        const isAssignee = selectedRoles.includes('Assignee');
+        let assignmentsChanged = false;
+
+        if (isAssignee) {
+            const jobTypesChanged = JSON.stringify(editAssignmentData.jobTypeIds.sort()) !== JSON.stringify(initialAssignmentData.jobTypeIds.sort());
+            const budsChanged = JSON.stringify(editAssignmentData.budIds?.sort() || []) !== JSON.stringify(initialAssignmentData.budIds?.sort() || []);
+            const projectsChanged = JSON.stringify(editAssignmentData.projectIds.sort()) !== JSON.stringify(initialAssignmentData.projectIds.sort());
+            assignmentsChanged = jobTypesChanged || budsChanged || projectsChanged;
+
+            if (assignmentsChanged && editAssignmentData.projectIds.length > 0 && editAssignmentData.jobTypeIds.length > 0) {
+                try {
+                    const conflicts = await adminService.checkAssignmentConflicts(
+                        editModal.user.id,
+                        editAssignmentData.jobTypeIds,
+                        editAssignmentData.projectIds
+                    );
+
+                    if (conflicts && conflicts.length > 0) {
+                        // Create readable conflict list
+                        const conflictList = conflicts.map(c =>
+                            `<li><b>${c.projectName}</b> - <b>${c.jobTypeName}</b> (ปัจจุบันรับผิดชอบโดย: ${c.currentAssigneeName})</li>`
+                        ).join('');
+
+                        warnings.push(
+                            `<div class="text-left mt-2">
+                                <strong class="text-amber-600 block mb-1">⚠️ พบความซ้ำซ้อนในความรับผิดชอบ (Assignments Conflict):</strong>
+                                <ul class="list-disc pl-5 text-sm text-gray-700 max-h-32 overflow-y-auto">${conflictList}</ul>
+                                <p class="text-xs text-gray-500 mt-1">* หากยืนยัน ระบบจะเปลี่ยนผู้รับผิดชอบเป็น User นี้แทนทันที</p>
+                            </div>`
+                        );
+                    }
+                } catch (err) {
+                    console.error("Conflict check failed ignored:", err);
+                }
             }
         }
 
@@ -677,14 +758,18 @@ export default function UserManagementNew() {
                 tenantId
             );
 
-            // 4. Update Department Manager (NEW)
-            // เช็คว่ามีการเปลี่ยนแปลงค่าหรือไม่ (เพื่อลด call ไม่จำเป็น)
             if (managedDeptId !== userCurrentManagedDeptId) {
                 await adminService.updateDepartmentManagers(
                     editModal.user.id,
                     managedDeptId ? [managedDeptId] : []
                 );
                 console.log('✅ Updated Department Manager');
+            }
+
+            // 5. Save Assignments (Responsibilities)
+            if (isAssignee && assignmentsChanged) {
+                await adminService.saveUserAssignments(editModal.user.id, editAssignmentData);
+                console.log('✅ Updated Assignments');
             }
 
             console.log('✅ Saved user roles successfully');
@@ -992,7 +1077,7 @@ export default function UserManagementNew() {
                                     <tr>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">พนักงาน</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">แผนก / ฝ่าย</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3">ขอบเขตความรับผิดชอบ (Scope)</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">ขอบเขต (Scope) & ความรับผิดชอบ</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">บทบาทระบบ</th>
                                         <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">สถานะ</th>
                                         <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">จัดการ</th>
@@ -1317,7 +1402,7 @@ export default function UserManagementNew() {
             {
                 editModal.show && editModal.user && (
                     <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-                        <div className="bg-white rounded-2xl shadow-xl p-6 max-w-lg w-full">
+                        <div className="bg-white rounded-2xl shadow-xl p-6 max-w-4xl w-full">
                             <div className="flex justify-between items-center mb-6 border-b pb-4">
                                 <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                                     <UserIcon className="w-6 h-6 text-indigo-600" />
@@ -1456,10 +1541,10 @@ export default function UserManagementNew() {
                                     </>
                                 )}
 
-                                {/* Scope Configuration - Multi-Role Component */}
-                                {editSelectedRoles.length > 0 && (
+                                {/* Scope Configuration Panel (for roles OTHER than Assignee) */}
+                                {editSelectedRoles.length > 0 && editSelectedRoles.filter(r => r !== 'Assignee').length > 0 && (
                                     <ScopeConfigPanel
-                                        selectedRoles={editSelectedRoles}
+                                        selectedRoles={editSelectedRoles.filter(r => r !== 'Assignee')}
                                         roleConfigs={editRoleConfigs}
                                         onConfigChange={(configs) => {
                                             console.log('🔄 Configs changed to:', configs);
@@ -1469,6 +1554,207 @@ export default function UserManagementNew() {
                                         loading={scopesLoading}
                                     />
                                 )}
+
+                                {/* --- Responsibilities Section for Assignee --- */}
+                                {editSelectedRoles.includes('Assignee') && (
+                                    <div className="mt-6 border border-gray-200 rounded-lg overflow-hidden bg-white">
+                                        {/* Header */}
+                                        <div className="bg-gradient-to-r from-slate-50 to-gray-50 px-5 py-4 border-b border-gray-200">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <h4 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                                                        <MapIcon className="h-5 w-5 text-slate-600" />
+                                                        ความรับผิดชอบ
+                                                    </h4>
+                                                    <p className="text-xs text-gray-500 mt-1">
+                                                        เลือกประเภทงานและโครงการที่รับผิดชอบ
+                                                    </p>
+                                                </div>
+                                                <div className="text-xs text-gray-500 bg-white px-3 py-1.5 rounded-md border border-gray-200">
+                                                    <span className="font-medium text-gray-900">
+                                                        {editAssignmentData.jobTypeIds?.length || 0}
+                                                    </span> ทักษะ, <span className="font-medium text-gray-900">
+                                                        {editAssignmentData.projectIds?.length || 0}
+                                                    </span> โครงการ
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* 2-Column Layout */}
+                                        <div className="p-5">
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                {/* LEFT: Job Types */}
+                                                <div className="flex flex-col">
+                                                    <div className="mb-3 flex items-center justify-between">
+                                                        <h5 className="text-sm font-semibold text-gray-900">ทักษะ (Job Types)</h5>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const allJobTypeIds = masterData.jobTypes?.map(jt => jt.id) || [];
+                                                                const allSelected = allJobTypeIds.length > 0 && allJobTypeIds.every(id => editAssignmentData.jobTypeIds.includes(id));
+                                                                setEditAssignmentData({
+                                                                    ...editAssignmentData,
+                                                                    jobTypeIds: allSelected ? [] : allJobTypeIds
+                                                                });
+                                                            }}
+                                                            className="text-xs px-3 py-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                                        >
+                                                            {(() => {
+                                                                const allJobTypeIds = masterData.jobTypes?.map(jt => jt.id) || [];
+                                                                const allSelected = allJobTypeIds.length > 0 && allJobTypeIds.every(id => editAssignmentData.jobTypeIds.includes(id));
+                                                                return allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด';
+                                                            })()}
+                                                        </button>
+                                                    </div>
+                                                    <div className="border border-gray-300 rounded-lg h-96 overflow-y-auto bg-white">
+                                                        {masterData.jobTypes?.length > 0 ? masterData.jobTypes.map(jt => {
+                                                            const isSelected = editAssignmentData.jobTypeIds.includes(jt.id);
+                                                            return (
+                                                                <label
+                                                                    key={jt.id}
+                                                                    className={`flex items-center gap-3 px-4 py-2.5 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors ${
+                                                                        isSelected ? 'bg-blue-50/50' : ''
+                                                                    }`}
+                                                                >
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500"
+                                                                        checked={isSelected}
+                                                                        onChange={(e) => {
+                                                                            const newIds = e.target.checked
+                                                                                ? [...editAssignmentData.jobTypeIds, jt.id]
+                                                                                : editAssignmentData.jobTypeIds.filter(x => x !== jt.id);
+                                                                            setEditAssignmentData({ ...editAssignmentData, jobTypeIds: newIds });
+                                                                        }}
+                                                                    />
+                                                                    <span className="text-sm font-medium text-gray-900 flex-1">{jt.name}</span>
+                                                                </label>
+                                                            );
+                                                        }) : (
+                                                            <div className="text-sm text-gray-400 px-4 py-6 text-center">ไม่มีข้อมูล</div>
+                                                        )}
+                                                    </div>
+                                                    <div className="mt-2 px-1 text-xs text-gray-600">
+                                                        เลือกแล้ว: <span className="font-medium text-gray-900">{editAssignmentData.jobTypeIds?.length || 0}</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* RIGHT: Projects with BUD Filter */}
+                                                <div className="flex flex-col">
+                                                    {/* Header and Filter aligned like Job Types */}
+                                                    <div className="mb-3">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <h5 className="text-sm font-semibold text-gray-900">โครงการ (Projects)</h5>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const filteredProjects = masterData.projects
+                                                                        ?.filter(p => p.isActive !== false && p.isParent !== true && p.isParent !== 1)
+                                                                        ?.filter(p => budFilter === 'all' || p.budId === budFilter || p.bud_id === budFilter) || [];
+                                                                    const allIds = filteredProjects.map(p => p.id);
+                                                                    const allSelected = allIds.length > 0 && allIds.every(id => editAssignmentData.projectIds.includes(id));
+
+                                                                    setEditAssignmentData({
+                                                                        ...editAssignmentData,
+                                                                        projectIds: allSelected
+                                                                            ? editAssignmentData.projectIds.filter(id => !allIds.includes(id))
+                                                                            : [...new Set([...editAssignmentData.projectIds, ...allIds])]
+                                                                    });
+                                                                }}
+                                                                className="text-xs px-3 py-1 text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                                            >
+                                                                {(() => {
+                                                                    const filteredProjects = masterData.projects
+                                                                        ?.filter(p => p.isActive !== false && p.isParent !== true && p.isParent !== 1)
+                                                                        ?.filter(p => budFilter === 'all' || p.budId === budFilter || p.bud_id === budFilter) || [];
+                                                                    const allIds = filteredProjects.map(p => p.id);
+                                                                    const allSelected = allIds.length > 0 && allIds.every(id => editAssignmentData.projectIds.includes(id));
+                                                                    return allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด';
+                                                                })()}
+                                                            </button>
+                                                        </div>
+                                                        {/* BUD Filter Dropdown - aligned like Job Types box */}
+                                                        <select
+                                                            value={budFilter}
+                                                            onChange={(e) => setBudFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+                                                            className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                                                        >
+                                                            <option value="all">ทุก BUD</option>
+                                                            {masterData.buds?.filter(b => {
+                                                                if (b.isActive === false) return false;
+                                                                const projectCount = masterData.projects?.filter(p =>
+                                                                    (p.budId === b.id || p.bud_id === b.id) &&
+                                                                    p.isActive !== false &&
+                                                                    p.isParent !== true &&
+                                                                    p.isParent !== 1
+                                                                ).length || 0;
+                                                                return projectCount > 0;  // Only show BUDs with projects
+                                                            }).map(bud => {
+                                                                const projectCount = masterData.projects?.filter(p =>
+                                                                    (p.budId === bud.id || p.bud_id === bud.id) &&
+                                                                    p.isActive !== false &&
+                                                                    p.isParent !== true &&
+                                                                    p.isParent !== 1
+                                                                ).length || 0;
+                                                                return (
+                                                                    <option key={bud.id} value={bud.id}>
+                                                                        {bud.name} ({projectCount} โครงการ)
+                                                                    </option>
+                                                                );
+                                                            })}
+                                                        </select>
+                                                    </div>
+                                                    {/* Project List (filtered by BUD, exclude parent projects) */}
+                                                    <div className="border border-gray-300 rounded-lg h-80 overflow-y-auto bg-white">
+                                                        {(() => {
+                                                            const filteredProjects = masterData.projects
+                                                                ?.filter(p => p.isActive !== false)
+                                                                ?.filter(p => p.isParent !== true && p.isParent !== 1) // ✅ Exclude parent/group projects
+                                                                ?.filter(p => budFilter === 'all' || p.budId === budFilter || p.bud_id === budFilter) || [];
+
+                                                            return filteredProjects.length > 0 ? filteredProjects.map(p => {
+                                                                const isSelected = editAssignmentData.projectIds.includes(p.id);
+                                                                return (
+                                                                    <label
+                                                                        key={p.id}
+                                                                        className={`flex items-center gap-3 px-4 py-2.5 hover:bg-indigo-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors ${
+                                                                            isSelected ? 'bg-indigo-50/50' : ''
+                                                                        }`}
+                                                                    >
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            className="h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-2 focus:ring-indigo-500"
+                                                                            checked={isSelected}
+                                                                            onChange={(e) => {
+                                                                                const newIds = e.target.checked
+                                                                                    ? [...editAssignmentData.projectIds, p.id]
+                                                                                    : editAssignmentData.projectIds.filter(x => x !== p.id);
+                                                                                setEditAssignmentData({ ...editAssignmentData, projectIds: newIds });
+                                                                            }}
+                                                                        />
+                                                                        <span className="text-sm font-medium text-gray-900 flex-1 truncate">
+                                                                            {p.name}
+                                                                            <span className="ml-1.5 text-xs text-gray-500">({p.code})</span>
+                                                                        </span>
+                                                                    </label>
+                                                                );
+                                                            }) : (
+                                                                <div className="text-sm text-gray-400 px-4 py-6 text-center">
+                                                                    {budFilter === 'all' ? 'ไม่มีโครงการ' : 'ไม่มีโครงการใน BUD นี้'}
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                    </div>
+                                                    <div className="mt-2 px-1 text-xs text-gray-600">
+                                                        เลือกแล้ว: <span className="font-medium text-gray-900">{editAssignmentData.projectIds?.length || 0}</span> โครงการ
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                                {/* ----------------------------------------------------- */}
+
 
                                 {/* Department Manager Assignment (New) */
                                     (() => {
