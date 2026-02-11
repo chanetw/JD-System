@@ -13,8 +13,8 @@ const JobSidebar = ({ job, currentUser, onReassign }) => {
     return (
         <div className="space-y-6">
             {/* Job Info Card */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                <div className="px-6 py-4 border-b border-gray-200">
+            <div className="bg-white rounded-xl border border-gray-400 shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-400">
                     <h2 className="font-semibold text-gray-900">รายละเอียดงาน (Job Details)</h2>
                 </div>
                 <div className="p-6 space-y-4">
@@ -59,7 +59,7 @@ const JobSidebar = ({ job, currentUser, onReassign }) => {
 
             {/* Approval Chain Visualization */}
             {job.flowSnapshot && (
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 overflow-hidden">
+                <div className="bg-white rounded-xl border border-gray-400 shadow-sm p-6 overflow-hidden">
                     <h2 className="font-semibold text-gray-900 mb-4">เส้นทางการอนุมัติ (Approval Chain)</h2>
                     <div className="relative pl-4 space-y-6 before:absolute before:left-[21px] before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-200">
                         {job.flowSnapshot.levels.map((level, i) => {

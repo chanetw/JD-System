@@ -39,7 +39,7 @@ export default function PerformanceChart({ data, chartType = 'bar', isLoading, e
     // แสดง Loading state
     if (isLoading) {
         return (
-            <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+            <div className="bg-white rounded-xl p-6 border border-gray-400 shadow-sm">
                 <div className="h-80 flex items-center justify-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rose-500"></div>
                 </div>
@@ -59,7 +59,7 @@ export default function PerformanceChart({ data, chartType = 'bar', isLoading, e
 
     // แสดงกราฟตามประเภท
     return (
-        <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
+        <div className="bg-white rounded-xl p-6 border border-gray-400 shadow-sm">
             {title && (
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">{title}</h3>
             )}

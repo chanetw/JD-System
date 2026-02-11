@@ -133,7 +133,7 @@ const JobComments = ({ jobId, currentUser }) => {
                 )}
             </div>
 
-            <div className="border-t border-gray-200 p-4 bg-gray-50">
+            <div className="border-t border-gray-400 p-4 bg-gray-50">
                 <form onSubmit={handleAddComment} className="flex space-x-3">
                     <img
                         className="h-8 w-8 rounded-full"

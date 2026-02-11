@@ -58,9 +58,9 @@ export default function FilterPanel({ filters, onFiltersChange, projects = [], u
     };
 
     return (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="bg-white rounded-xl border border-gray-400 shadow-sm">
             {/* Header */}
-            <div className="p-4 border-b border-gray-200">
+            <div className="p-4 border-b border-gray-400">
                 <div className="flex items-center justify-between">
                     <h3 className="text-lg font-semibold text-gray-900">ตัวกรองข้อมูล</h3>
                     <button
@@ -188,7 +188,7 @@ export default function FilterPanel({ filters, onFiltersChange, projects = [], u
                     )}
 
                     {/* Actions */}
-                    <div className="flex gap-2 pt-4 border-t border-gray-200">
+                    <div className="flex gap-2 pt-4 border-t border-gray-400">
                         <button
                             onClick={handleReset}
                             className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"

@@ -37,7 +37,7 @@ const JobActionPanel = ({
         if (!canApprove) return null;
 
         return (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-6">
+            <div className="bg-white rounded-xl border border-gray-400 shadow-sm p-6 mb-6">
                 <h2 className="font-semibold text-gray-900 mb-4">Actions (Level {job.currentLevel})</h2>
                 <div className="flex gap-3">
                     <button
@@ -129,7 +129,7 @@ const JobActionPanel = ({
         // Old UI didn't disable button render based on user, it just showed "การดำเนินการของผู้รับงาน"
 
         return (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-6">
+            <div className="bg-white rounded-xl border border-gray-400 shadow-sm p-6 mb-6">
                 <h2 className="font-semibold text-gray-900 mb-4">การดำเนินการของผู้รับงาน</h2>
 
                 {job.status === 'assigned' && (

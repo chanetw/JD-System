@@ -275,6 +275,7 @@ export default function UserManagementNew() {
 
         // 2. Get department's BUD ID
         const department = masterData.departments.find(d => d.id === departmentId);
+        // Fix: backend might return budId (Prisma) or bud_id (Raw DB)
         const userBudId = department?.bud_id;
 
         console.log('🔍 Filtering projects for user:', {
@@ -285,14 +286,18 @@ export default function UserManagementNew() {
             budId: userBudId
         });
 
-        // 3. If no department found, show warning and return all (with error flag)
+        // 3. If no department found (only warn if it was expected)
         if (!departmentId) {
-            console.error('❌ No department found for user/registration:', {
+            // If we have a user ID but no department, that's a data issue or admin user
+            if (userOrRegistration.id && !userOrRegistration.departmentId) {
+                // Might be valid for some users
+                return { ...allScopes, _filterApplied: false };
+            }
+
+            console.warn('⚠️ No department found for user/registration:', {
                 id: userOrRegistration.id,
-                email: userOrRegistration.email,
-                availableFields: Object.keys(userOrRegistration).filter(k => k.includes('department') || k.includes('Department'))
+                email: userOrRegistration.email
             });
-            // Return scopes with warning flag
             return {
                 ...allScopes,
                 _filterError: 'NO_DEPARTMENT',
@@ -571,6 +576,7 @@ export default function UserManagementNew() {
             }
 
             // Set states
+            // Set states
             setManagedDeptId(currentManagedDeptId); // Sets the form value
             setUserCurrentManagedDeptId(currentManagedDeptId); // Remembers original value for change detection
             // Set states
@@ -579,7 +585,9 @@ export default function UserManagementNew() {
             setEditSelectedRoles(loadedRoleNames);
 
             // ✨ Get filtered scopes for this user based on department/BUD
-            const filteredScopes = getFilteredScopesForUser(userToEdit, availableScopes);
+            // Use userWithRoles (fresh data) if available, otherwise fallback to userToEdit
+            const userForFiltering = userWithRoles || userToEdit;
+            const filteredScopes = getFilteredScopesForUser(userForFiltering, availableScopes);
 
             setEditModal({
                 show: true,
@@ -595,7 +603,7 @@ export default function UserManagementNew() {
                 },
                 filteredScopes  // Store filtered scopes in state
             });
-            console.log('🏢 Department loaded:', userWithRoles?.departmentId, 'from userToEdit:', userToEdit.departmentId);
+            console.log('🏢 Department loaded:', userForFiltering.departmentId, 'from userToEdit:', userToEdit.departmentId);
 
             console.log('🎯 Edit modal opened with roles:', loadedRoleNames);
         } catch (error) {
@@ -615,7 +623,8 @@ export default function UserManagementNew() {
         }
 
         // Validate scopes for each non-admin role
-        const rolesNeedingScope = selectedRoles.filter(r => r !== 'Admin');
+        // Validate scopes for each non-admin role (Assignee uses Responsibilities, not Scope)
+        const rolesNeedingScope = selectedRoles.filter(r => r !== 'Admin' && r !== 'Assignee');
         for (const roleName of rolesNeedingScope) {
             const roleConfig = editRoleConfigs[roleName];
             if (!roleConfig || !roleConfig.scopes || roleConfig.scopes.length === 0) {
@@ -628,6 +637,24 @@ export default function UserManagementNew() {
         const targetDeptId = managedDeptId ? parseInt(managedDeptId) : null;
         const currentDeptId = userCurrentManagedDeptId ? parseInt(userCurrentManagedDeptId) : null;
         const warnings = [];
+
+        // Validate Assignee Assignments (Must select both Job Types and Projects)
+        const isAssignee = selectedRoles.includes('Assignee');
+        if (isAssignee) {
+            if (editAssignmentData.projectIds.length > 0 && editAssignmentData.jobTypeIds.length === 0) {
+                showAlert('error', 'กรุณาเลือกทักษะ (Job Types) อย่างน้อย 1 งาน');
+                return;
+            }
+            if (editAssignmentData.jobTypeIds.length > 0 && editAssignmentData.projectIds.length === 0) {
+                showAlert('error', 'กรุณาเลือกโครงการ (Projects) อย่างน้อย 1 โครงการ');
+                return;
+            }
+            // Optional: If both are empty, that's fine (no assignment), unless strict requirement.
+            // But usually Assignee should have assignment.
+            if (editAssignmentData.projectIds.length === 0 && editAssignmentData.jobTypeIds.length === 0) {
+                // Maybe warn? or let it pass (empty assignment)
+            }
+        }
 
         // Case 1: User จะถูกย้ายออกจากแผนกเดิม (User is currently manager of A, but removing or changing to B)
         if (currentDeptId && currentDeptId !== targetDeptId) {
@@ -647,7 +674,7 @@ export default function UserManagementNew() {
         }
 
         // --- NEW: Assignment Conflict Check (Only if Assignment Role is selected AND changes made) ---
-        const isAssignee = selectedRoles.includes('Assignee');
+        // isAssignee already declared above
         let assignmentsChanged = false;
 
         if (isAssignee) {
@@ -795,7 +822,8 @@ export default function UserManagementNew() {
         }
 
         // Validate scopes for each non-admin role
-        const rolesNeedingScope = approvalData.roles.filter(r => r !== 'Admin');
+        // Validate scopes for each non-admin role (Assignee uses Responsibilities, not Scope)
+        const rolesNeedingScope = approvalData.roles.filter(r => r !== 'Admin' && r !== 'Assignee');
         for (const roleName of rolesNeedingScope) {
             const roleConfig = approvalRoleConfigs[roleName];
             if (!roleConfig || !roleConfig.scopes || roleConfig.scopes.length === 0) {
@@ -952,7 +980,7 @@ export default function UserManagementNew() {
             </div>
 
             {/* Tabs */}
-            <div className="border-b border-gray-200">
+            <div className="border-b border-gray-400">
                 <div className="flex gap-8">
                     <button
                         onClick={() => setActiveTab('active')}
@@ -982,7 +1010,7 @@ export default function UserManagementNew() {
 
             {/* Filters */}
             {activeTab === 'active' && (
-                <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 space-y-4">
+                <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-400 space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         {/* Search */}
                         <div className="col-span-1 md:col-span-1">
@@ -1057,7 +1085,7 @@ export default function UserManagementNew() {
 
             {/* Content based on active tab */}
             {activeTab === 'active' ? (
-                <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                <div className="bg-white border border-gray-400 rounded-xl shadow-sm overflow-hidden">
                     {isLoading ? (
                         <div className="p-12 text-center text-gray-500">
                             <LoadingSpinner size="md" color="rose" className="mb-3" label="" />
@@ -1072,8 +1100,8 @@ export default function UserManagementNew() {
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-gray-50">
+                            <table className="min-w-full divide-y divide-gray-300">
+                                <thead className="bg-gray-100 border-b border-gray-300">
                                     <tr>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">พนักงาน</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/6">แผนก / ฝ่าย</th>
@@ -1083,7 +1111,7 @@ export default function UserManagementNew() {
                                         <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">จัดการ</th>
                                     </tr>
                                 </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
+                                <tbody className="bg-white divide-y divide-gray-300">
                                     {filteredUsers.map((user) => {
                                         const isManager = user.managedDepartments && user.managedDepartments.length > 0;
                                         return (
@@ -1126,14 +1154,14 @@ export default function UserManagementNew() {
                                                     <div className="flex flex-wrap gap-1.5 max-w-md">
                                                         {/* Company Scope */}
                                                         {user.assignedScopes?.tenants?.map(t => (
-                                                            <span key={`tenant-${t.id}`} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
+                                                            <span key={`tenant-${t.id}`} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700 border border-gray-300">
                                                                 🏢 {t.name}
                                                             </span>
                                                         ))}
 
                                                         {/* BU Scope */}
                                                         {user.assignedScopes?.buds?.map(b => (
-                                                            <span key={`bud-${b.id}`} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200">
+                                                            <span key={`bud-${b.id}`} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-300">
                                                                 💼 {b.name}
                                                             </span>
                                                         ))}
@@ -1142,17 +1170,17 @@ export default function UserManagementNew() {
                                                         {user.assignedProjects && user.assignedProjects.length > 0 ? (
                                                             <>
                                                                 {user.assignedProjects.slice(0, 5).map((p, idx) => (
-                                                                    <span key={`proj-${idx}`} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                                                    <span key={`proj-${idx}`} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-300">
                                                                         🏗️ {p.name}
                                                                     </span>
                                                                 ))}
                                                                 {user.assignedProjects.length > 5 && (
                                                                     <div className="relative inline-block">
-                                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 cursor-pointer hover:bg-gray-200 border border-gray-200">
+                                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 cursor-pointer hover:bg-gray-200 border border-gray-300">
                                                                             +{user.assignedProjects.length - 5}
                                                                         </span>
                                                                         {/* Tooltip/Popup on Hover */}
-                                                                        <div className="absolute left-0 bottom-full mb-2 w-64 p-3 bg-white rounded-lg shadow-xl border border-gray-200 z-50 hidden group-hover:block">
+                                                                        <div className="absolute left-0 bottom-full mb-2 w-64 p-3 bg-white rounded-lg shadow-xl border border-gray-300 z-50 hidden group-hover:block">
                                                                             <div className="text-xs text-gray-500 font-semibold mb-2 border-b pb-1">โครงการทั้งหมด:</div>
                                                                             <ul className="text-xs text-gray-700 space-y-1 max-h-48 overflow-y-auto">
                                                                                 {user.assignedProjects.map(p => (
@@ -1168,10 +1196,57 @@ export default function UserManagementNew() {
                                                             </>
                                                         ) : null}
 
-                                                        {/* Fallback if no scope assigned */}
+                                                        {/* Assignee Responsibilities (Unique Projects) */}
+                                                        {user.jobAssignments && user.jobAssignments.length > 0 ? (() => {
+                                                            // Deduplicate projects
+                                                            const uniqueProjects = Array.from(new Set(user.jobAssignments.map(a => a.projectId)))
+                                                                .map(id => {
+                                                                    const assignment = user.jobAssignments.find(a => a.projectId === id);
+                                                                    // Collect all job types for this project for tooltip
+                                                                    const jobTypes = user.jobAssignments
+                                                                        .filter(a => a.projectId === id)
+                                                                        .map(a => a.jobTypeName)
+                                                                        .join(', ');
+                                                                    return {
+                                                                        ...assignment,
+                                                                        tooltip: `Job Types: ${jobTypes}`
+                                                                    };
+                                                                });
+
+                                                            return (
+                                                                <>
+                                                                    {uniqueProjects.slice(0, 5).map((p, idx) => (
+                                                                        <span key={`proj-${idx}`} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-300" title={p.tooltip}>
+                                                                            🏗️ {p.projectName}
+                                                                        </span>
+                                                                    ))}
+                                                                    {uniqueProjects.length > 5 && (
+                                                                        <div className="relative inline-block">
+                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 cursor-pointer hover:bg-gray-200 border border-gray-300">
+                                                                                +{uniqueProjects.length - 5}
+                                                                            </span>
+                                                                            <div className="absolute left-0 bottom-full mb-2 w-64 p-3 bg-white rounded-lg shadow-xl border border-gray-300 z-50 hidden group-hover:block">
+                                                                                <div className="text-xs text-gray-500 font-semibold mb-2 border-b pb-1">โครงการทั้งหมด:</div>
+                                                                                <ul className="text-xs text-gray-700 space-y-1 max-h-48 overflow-y-auto">
+                                                                                    {uniqueProjects.map(p => (
+                                                                                        <li key={p.id} className="flex items-start gap-1">
+                                                                                            <span className="mt-0.5">•</span>
+                                                                                            <span>{p.projectName}</span>
+                                                                                        </li>
+                                                                                    ))}
+                                                                                </ul>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </>
+                                                            );
+                                                        })() : null}
+
+                                                        {/* Fallback if no scope/responsibility assigned */}
                                                         {(!user.assignedScopes?.tenants?.length &&
                                                             !user.assignedScopes?.buds?.length &&
-                                                            !user.assignedProjects?.length) && (
+                                                            !user.assignedProjects?.length &&
+                                                            !user.jobAssignments?.length) && (
                                                                 <span className="text-xs text-gray-400">-</span>
                                                             )}
                                                     </div>
@@ -1230,7 +1305,7 @@ export default function UserManagementNew() {
 
                     {/* Pagination Controls */}
                     {users.length > 0 && (
-                        <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
+                        <div className="flex items-center justify-between border-t border-gray-300 bg-white px-4 py-3 sm:px-6">
                             <div className="flex flex-1 justify-between sm:hidden">
                                 <button
                                     onClick={() => loadUsers(pagination.page - 1)}
@@ -1302,7 +1377,7 @@ export default function UserManagementNew() {
                     )}
                 </div>
             ) : (
-                <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                <div className="bg-white border border-gray-400 rounded-xl shadow-sm overflow-hidden">
                     {isLoading ? (
                         <div className="p-12 text-center text-gray-500">
                             <LoadingSpinner size="md" color="rose" className="mb-3" label="" />
@@ -1318,8 +1393,8 @@ export default function UserManagementNew() {
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-gray-50">
+                            <table className="min-w-full divide-y divide-gray-300">
+                                <thead className="bg-gray-100 border-b border-gray-300">
                                     <tr>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ข้อมูลผู้สมัคร</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">หน่วยงาน/แผนก</th>
@@ -1328,7 +1403,7 @@ export default function UserManagementNew() {
                                         <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">การกระทำ</th>
                                     </tr>
                                 </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
+                                <tbody className="bg-white divide-y divide-gray-300">
                                     {registrations.map((registration) => (
                                         <tr key={registration.id} className="hover:bg-gray-50">
                                             <td className="px-6 py-4">
@@ -1402,8 +1477,8 @@ export default function UserManagementNew() {
             {
                 editModal.show && editModal.user && (
                     <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-                        <div className="bg-white rounded-2xl shadow-xl p-6 max-w-4xl w-full">
-                            <div className="flex justify-between items-center mb-6 border-b pb-4">
+                        <div className="bg-white rounded-2xl shadow-2xl border border-gray-300 p-6 max-w-4xl w-full">
+                            <div className="flex justify-between items-center mb-6 border-b border-gray-300 pb-4">
                                 <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                                     <UserIcon className="w-6 h-6 text-indigo-600" />
                                     แก้ไขข้อมูลผู้ใช้
@@ -1425,7 +1500,7 @@ export default function UserManagementNew() {
                                             value={editModal.user.firstName || ''}
                                             onChange={(e) => isAdmin && setEditModal(prev => ({ ...prev, user: { ...prev.user, firstName: e.target.value } }))}
                                             disabled={!isAdmin}
-                                            className={`w-full px-3 py-2 border rounded-lg text-sm ${isAdmin ? 'bg-white border-gray-300 focus:ring-2 focus:ring-indigo-500' : 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'}`}
+                                            className={`w-full px-3 py-2 border rounded-lg text-sm ${isAdmin ? 'bg-white border-gray-400 focus:ring-2 focus:ring-indigo-500' : 'bg-gray-100 border-gray-300 text-gray-500 cursor-not-allowed'}`}
                                         />
                                     </div>
                                     <div>
@@ -1437,7 +1512,7 @@ export default function UserManagementNew() {
                                             value={editModal.user.lastName || ''}
                                             onChange={(e) => isAdmin && setEditModal(prev => ({ ...prev, user: { ...prev.user, lastName: e.target.value } }))}
                                             disabled={!isAdmin}
-                                            className={`w-full px-3 py-2 border rounded-lg text-sm ${isAdmin ? 'bg-white border-gray-300 focus:ring-2 focus:ring-indigo-500' : 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'}`}
+                                            className={`w-full px-3 py-2 border rounded-lg text-sm ${isAdmin ? 'bg-white border-gray-400 focus:ring-2 focus:ring-indigo-500' : 'bg-gray-100 border-gray-300 text-gray-500 cursor-not-allowed'}`}
                                         />
                                     </div>
                                     <div className="col-span-2">
@@ -1449,7 +1524,7 @@ export default function UserManagementNew() {
                                             value={editModal.user.email || ''}
                                             onChange={(e) => isAdmin && setEditModal(prev => ({ ...prev, user: { ...prev.user, email: e.target.value } }))}
                                             disabled={!isAdmin}
-                                            className={`w-full px-3 py-2 border rounded-lg text-sm ${isAdmin ? 'bg-white border-gray-300 focus:ring-2 focus:ring-indigo-500' : 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'}`}
+                                            className={`w-full px-3 py-2 border rounded-lg text-sm ${isAdmin ? 'bg-white border-gray-400 focus:ring-2 focus:ring-indigo-500' : 'bg-gray-100 border-gray-300 text-gray-500 cursor-not-allowed'}`}
                                         />
                                     </div>
                                 </div>
@@ -1461,7 +1536,7 @@ export default function UserManagementNew() {
                                         type="text"
                                         value={editModal.user.title || ''}
                                         onChange={(e) => setEditModal(prev => ({ ...prev, user: { ...prev.user, title: e.target.value } }))}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                        className="w-full px-3 py-2 border border-gray-400 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                                     />
                                 </div>
 
@@ -1472,7 +1547,7 @@ export default function UserManagementNew() {
                                         value={editModal.user.phone || ''}
                                         onChange={(e) => setEditModal(prev => ({ ...prev, user: { ...prev.user, phone: e.target.value } }))}
                                         placeholder="0xx-xxx-xxxx"
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                        className="w-full px-3 py-2 border border-gray-400 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                                     />
                                 </div>
 
@@ -1481,7 +1556,7 @@ export default function UserManagementNew() {
                                     <select
                                         value={editModal.user.departmentId || ''}
                                         onChange={(e) => setEditModal(prev => ({ ...prev, user: { ...prev.user, departmentId: e.target.value } }))}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                        className="w-full px-3 py-2 border border-gray-400 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                                     >
                                         <option value="">-- ระบุแผนก --</option>
                                         {masterData.departments.map(dept => (
@@ -1557,9 +1632,9 @@ export default function UserManagementNew() {
 
                                 {/* --- Responsibilities Section for Assignee --- */}
                                 {editSelectedRoles.includes('Assignee') && (
-                                    <div className="mt-6 border border-gray-200 rounded-lg overflow-hidden bg-white">
+                                    <div className="mt-6 border border-gray-300 rounded-lg overflow-hidden bg-white shadow-sm">
                                         {/* Header */}
-                                        <div className="bg-gradient-to-r from-slate-50 to-gray-50 px-5 py-4 border-b border-gray-200">
+                                        <div className="bg-gradient-to-r from-slate-50 to-gray-50 px-5 py-4 border-b border-gray-300">
                                             <div className="flex items-center justify-between">
                                                 <div>
                                                     <h4 className="text-base font-semibold text-gray-900 flex items-center gap-2">
@@ -1570,7 +1645,7 @@ export default function UserManagementNew() {
                                                         เลือกประเภทงานและโครงการที่รับผิดชอบ
                                                     </p>
                                                 </div>
-                                                <div className="text-xs text-gray-500 bg-white px-3 py-1.5 rounded-md border border-gray-200">
+                                                <div className="text-xs text-gray-500 bg-white px-3 py-1.5 rounded-md border border-gray-400">
                                                     <span className="font-medium text-gray-900">
                                                         {editAssignmentData.jobTypeIds?.length || 0}
                                                     </span> ทักษะ, <span className="font-medium text-gray-900">
@@ -1585,52 +1660,63 @@ export default function UserManagementNew() {
                                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                                 {/* LEFT: Job Types */}
                                                 <div className="flex flex-col">
-                                                    <div className="mb-3 flex items-center justify-between">
-                                                        <h5 className="text-sm font-semibold text-gray-900">ทักษะ (Job Types)</h5>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                const allJobTypeIds = masterData.jobTypes?.map(jt => jt.id) || [];
-                                                                const allSelected = allJobTypeIds.length > 0 && allJobTypeIds.every(id => editAssignmentData.jobTypeIds.includes(id));
-                                                                setEditAssignmentData({
-                                                                    ...editAssignmentData,
-                                                                    jobTypeIds: allSelected ? [] : allJobTypeIds
-                                                                });
-                                                            }}
-                                                            className="text-xs px-3 py-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                                        >
-                                                            {(() => {
-                                                                const allJobTypeIds = masterData.jobTypes?.map(jt => jt.id) || [];
-                                                                const allSelected = allJobTypeIds.length > 0 && allJobTypeIds.every(id => editAssignmentData.jobTypeIds.includes(id));
-                                                                return allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด';
-                                                            })()}
-                                                        </button>
+                                                    <div className="mb-3">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <h5 className="text-sm font-semibold text-gray-900">ทักษะ (Job Types)</h5>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const allJobTypeIds = masterData.jobTypes
+                                                                        ?.filter(jt => jt.name !== 'Project Group (Parent)') // Filter out Parent Job
+                                                                        ?.map(jt => jt.id) || [];
+                                                                    const allSelected = allJobTypeIds.length > 0 && allJobTypeIds.every(id => editAssignmentData.jobTypeIds.includes(id));
+                                                                    setEditAssignmentData({
+                                                                        ...editAssignmentData,
+                                                                        jobTypeIds: allSelected ? [] : allJobTypeIds
+                                                                    });
+                                                                }}
+                                                                className="text-xs px-3 py-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                                            >
+                                                                {(() => {
+                                                                    const allJobTypeIds = masterData.jobTypes
+                                                                        ?.filter(jt => jt.name !== 'Project Group (Parent)') // Filter out Parent Job
+                                                                        ?.map(jt => jt.id) || [];
+                                                                    const allSelected = allJobTypeIds.length > 0 && allJobTypeIds.every(id => editAssignmentData.jobTypeIds.includes(id));
+                                                                    return allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด';
+                                                                })()}
+                                                            </button>
+                                                        </div>
+                                                        {/* Spacer to align with Right Column Filter */}
+                                                        <div className="w-full text-sm border border-transparent px-3 py-2 invisible">
+                                                            Placeholder
+                                                        </div>
                                                     </div>
-                                                    <div className="border border-gray-300 rounded-lg h-96 overflow-y-auto bg-white">
-                                                        {masterData.jobTypes?.length > 0 ? masterData.jobTypes.map(jt => {
-                                                            const isSelected = editAssignmentData.jobTypeIds.includes(jt.id);
-                                                            return (
-                                                                <label
-                                                                    key={jt.id}
-                                                                    className={`flex items-center gap-3 px-4 py-2.5 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors ${
-                                                                        isSelected ? 'bg-blue-50/50' : ''
-                                                                    }`}
-                                                                >
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500"
-                                                                        checked={isSelected}
-                                                                        onChange={(e) => {
-                                                                            const newIds = e.target.checked
-                                                                                ? [...editAssignmentData.jobTypeIds, jt.id]
-                                                                                : editAssignmentData.jobTypeIds.filter(x => x !== jt.id);
-                                                                            setEditAssignmentData({ ...editAssignmentData, jobTypeIds: newIds });
-                                                                        }}
-                                                                    />
-                                                                    <span className="text-sm font-medium text-gray-900 flex-1">{jt.name}</span>
-                                                                </label>
-                                                            );
-                                                        }) : (
+                                                    <div className="border border-gray-400 shadow-sm rounded-lg h-96 overflow-y-auto bg-white">
+                                                        {masterData.jobTypes?.length > 0 ? masterData.jobTypes
+                                                            .filter(jt => jt.name !== 'Project Group (Parent)') // Filter out Parent Job from List
+                                                            .map(jt => {
+                                                                const isSelected = editAssignmentData.jobTypeIds.includes(jt.id);
+                                                                return (
+                                                                    <label
+                                                                        key={jt.id}
+                                                                        className={`flex items-center gap-3 px-4 py-2.5 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors ${isSelected ? 'bg-blue-50/50' : ''
+                                                                            }`}
+                                                                    >
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500"
+                                                                            checked={isSelected}
+                                                                            onChange={(e) => {
+                                                                                const newIds = e.target.checked
+                                                                                    ? [...editAssignmentData.jobTypeIds, jt.id]
+                                                                                    : editAssignmentData.jobTypeIds.filter(x => x !== jt.id);
+                                                                                setEditAssignmentData({ ...editAssignmentData, jobTypeIds: newIds });
+                                                                            }}
+                                                                        />
+                                                                        <span className="text-sm font-medium text-gray-900 flex-1">{jt.name}</span>
+                                                                    </label>
+                                                                );
+                                                            }) : (
                                                             <div className="text-sm text-gray-400 px-4 py-6 text-center">ไม่มีข้อมูล</div>
                                                         )}
                                                     </div>
@@ -1677,7 +1763,7 @@ export default function UserManagementNew() {
                                                         <select
                                                             value={budFilter}
                                                             onChange={(e) => setBudFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
-                                                            className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                                                            className="w-full text-sm border border-gray-400 rounded-md px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
                                                         >
                                                             <option value="all">ทุก BUD</option>
                                                             {masterData.buds?.filter(b => {
@@ -1705,7 +1791,7 @@ export default function UserManagementNew() {
                                                         </select>
                                                     </div>
                                                     {/* Project List (filtered by BUD, exclude parent projects) */}
-                                                    <div className="border border-gray-300 rounded-lg h-80 overflow-y-auto bg-white">
+                                                    <div className="border border-gray-400 shadow-sm rounded-lg h-96 overflow-y-auto bg-white">
                                                         {(() => {
                                                             const filteredProjects = masterData.projects
                                                                 ?.filter(p => p.isActive !== false)
@@ -1717,9 +1803,8 @@ export default function UserManagementNew() {
                                                                 return (
                                                                     <label
                                                                         key={p.id}
-                                                                        className={`flex items-center gap-3 px-4 py-2.5 hover:bg-indigo-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors ${
-                                                                            isSelected ? 'bg-indigo-50/50' : ''
-                                                                        }`}
+                                                                        className={`flex items-center gap-3 px-4 py-2.5 hover:bg-indigo-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors ${isSelected ? 'bg-indigo-50/50' : ''
+                                                                            }`}
                                                                     >
                                                                         <input
                                                                             type="checkbox"
@@ -1785,7 +1870,7 @@ export default function UserManagementNew() {
                                                     </label>
                                                 </div>
 
-                                                <div className="p-3 border border-gray-200 rounded-lg bg-gray-50 space-y-2">
+                                                <div className="p-3 border border-gray-400 rounded-lg bg-gray-50 space-y-2">
                                                     <p className="text-xs text-gray-500 mb-2">
                                                         กำหนดให้ User นี้เป็นผู้จัดการแผนก
                                                         {currentBudId && !showAllDepts && <span className="text-rose-600 font-medium"> (เฉพาะฝ่าย {selectedDeptObj?.name})</span>}
@@ -1818,7 +1903,7 @@ export default function UserManagementNew() {
                                     })()}
 
 
-                                <div className="flex items-center gap-3 p-3 mt-4 border border-gray-200 rounded-lg bg-gray-50">
+                                <div className="flex items-center gap-3 p-3 mt-4 border border-gray-400 rounded-lg bg-gray-50">
                                     <label className="flex items-center gap-2 cursor-pointer">
                                         <input
                                             type="checkbox"
@@ -1849,7 +1934,7 @@ export default function UserManagementNew() {
                 approveModal.show && (
                     <div className="fixed inset-0 flex items-center justify-center z-50 p-4 overflow-y-auto">
                         <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full my-6">
-                            <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-green-100 sticky top-0">
+                            <div className="p-6 border-b border-gray-400 bg-gradient-to-r from-green-50 to-green-100 sticky top-0">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
                                         <CheckIcon className="w-6 h-6 text-green-600" />
@@ -1922,7 +2007,7 @@ export default function UserManagementNew() {
                                 )}
                             </div>
 
-                            <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 sticky bottom-0">
+                            <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3 sticky bottom-0">
                                 <button
                                     onClick={() => setApproveModal({ show: false, registrationId: null, registrationData: null })}
                                     disabled={isSubmitting}
@@ -1948,7 +2033,7 @@ export default function UserManagementNew() {
                 rejectModal.show && (
                     <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
                         <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
-                            <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-red-50 to-red-100">
+                            <div className="p-6 border-b border-gray-400 bg-gradient-to-r from-red-50 to-red-100">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
                                         <XMarkIcon className="w-6 h-6 text-red-600" />
@@ -1970,7 +2055,7 @@ export default function UserManagementNew() {
                                 />
                             </div>
 
-                            <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                            <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3">
                                 <button
                                     onClick={() => setRejectModal({ show: false, registrationId: null, registrationEmail: null })}
                                     disabled={isSubmitting}

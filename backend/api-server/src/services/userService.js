@@ -215,6 +215,17 @@ export class UserService extends BaseService {
               scopeName: true,
               roleType: true
             }
+          },
+          // Include Job Assignments (Responsibilities)
+          assignedProjects: {
+            where: { isActive: true },
+            select: {
+              id: true,
+              projectId: true,
+              jobTypeId: true,
+              project: { select: { name: true, code: true } },
+              jobType: { select: { name: true } }
+            }
           }
         }
       });
@@ -501,6 +512,250 @@ export class UserService extends BaseService {
     } catch (error) {
       console.error('[UserService] Update roles failed:', error);
       return this.handleError(error, 'UPDATE_ROLES', 'User');
+    }
+  }
+
+  /**
+   * ดึงรายการงานที่ได้รับมอบหมาย (Project & BUD Job Assignments) ของผู้ใช้
+   *
+   * @param {number} userId - ID ของผู้ใช้
+   * @returns {Promise<Object>} - รายการงานที่ได้รับมอบหมาย (แยก BUD และ Project)
+   */
+  async getUserAssignments(userId) {
+    try {
+      // ⚡ Fetch both BUD-level and Project-level assignments in parallel
+      const [projectAssignments, budAssignments] = await Promise.all([
+        // Project-level assignments
+        this.prisma.projectJobAssignment.findMany({
+          where: {
+            assigneeId: userId,
+            isActive: true
+          },
+          include: {
+            project: {
+              select: { id: true, name: true, code: true, budId: true }
+            },
+            jobType: {
+              select: { id: true, name: true }
+            }
+          }
+        }),
+
+        // BUD-level assignments (NEW!)
+        this.prisma.budJobAssignment.findMany({
+          where: {
+            assigneeId: userId,
+            isActive: true
+          },
+          include: {
+            bud: {
+              select: { id: true, name: true, code: true }
+            },
+            jobType: {
+              select: { id: true, name: true }
+            }
+          }
+        })
+      ]);
+
+      return this.successResponse({
+        projectAssignments: projectAssignments.map(a => ({
+          id: a.id,
+          projectId: a.projectId,
+          projectName: a.project?.name,
+          projectCode: a.project?.code,
+          budId: a.project?.budId,
+          jobTypeId: a.jobTypeId,
+          jobTypeName: a.jobType?.name,
+          priority: a.priority || 100
+        })),
+        budAssignments: budAssignments.map(a => ({
+          id: a.id,
+          budId: a.budId,
+          budName: a.bud?.name,
+          budCode: a.bud?.code,
+          jobTypeId: a.jobTypeId,
+          jobTypeName: a.jobType?.name,
+          priority: a.priority || 50
+        }))
+      });
+    } catch (error) {
+      return this.handleError(error, 'GET_USER_ASSIGNMENTS', 'User');
+    }
+  }
+
+  /**
+   * ตรวจสอบความขัดแย้งของการมอบหมายงาน (Check Conflicts)
+   * 
+   * @param {number} userId - ID ของผู้ใช้ที่จะมอบหมาย
+   * @param {Array<number>} jobTypeIds - รายการ ID ของประเภทงาน
+   * @param {Array<number>} projectIds - รายการ ID ของโครงการ
+   * @returns {Promise<Object>} - รายการที่มีความขัดแย้ง
+   */
+  async checkAssignmentConflicts(userId, jobTypeIds, projectIds) {
+    try {
+      console.log(`[UserService] Checking conflicts for User ${userId}: Projects=${projectIds?.length}, JobTypes=${jobTypeIds?.length}`);
+
+      if (!projectIds || projectIds.length === 0 || !jobTypeIds || jobTypeIds.length === 0) {
+        return this.successResponse([]);
+      }
+
+      // Optimize: Fetch potentially conflicting assignments in one query
+      // We fetch all assignments for these projects and job types
+      const existingAssignments = await this.prisma.projectJobAssignment.findMany({
+        where: {
+          projectId: { in: projectIds },
+          jobTypeId: { in: jobTypeIds }
+        },
+        include: {
+          assignee: {
+            select: { id: true, displayName: true, firstName: true, lastName: true }
+          },
+          project: { select: { id: true, name: true } },
+          jobType: { select: { id: true, name: true } }
+        }
+      });
+
+      const conflicts = [];
+      // Filter in memory for exact matches (projectId + jobTypeId) that are assigned to OTHER users
+      for (const existing of existingAssignments) {
+        // If assigned to someone else
+        if (existing.assigneeId && existing.assigneeId !== userId) {
+          // Double check if this pair is actually requested (it must be due to query, but to be safe)
+          if (projectIds.includes(existing.projectId) && jobTypeIds.includes(existing.jobTypeId)) {
+            conflicts.push({
+              projectId: existing.projectId,
+              projectName: existing.project.name,
+              jobTypeId: existing.jobTypeId,
+              jobTypeName: existing.jobType.name,
+              currentAssigneeId: existing.assigneeId,
+              currentAssigneeName: existing.assignee.displayName || `${existing.assignee.firstName} ${existing.assignee.lastName}`
+            });
+          }
+        }
+      }
+
+      return this.successResponse(conflicts);
+    } catch (error) {
+      return this.handleError(error, 'CHECK_ASSIGNMENT_CONFLICTS', 'User');
+    }
+  }
+
+  /**
+   * อัปเดตการมอบหมายงานให้ผู้ใช้ (Update User Assignments)
+   *
+   * Supports both BUD-level and Project-level assignments with priority:
+   * - BUD-level (priority 50): Covers all projects in BUD
+   * - Project-level (priority 100): Override for specific projects
+   *
+   * @param {number} userId - ID ของผู้ใช้
+   * @param {Object} assignments - { jobTypeIds: [], budIds: [], projectIds: [] }
+   * @param {Object} context - { executedBy, tenantId }
+   */
+  async updateUserAssignments(userId, { jobTypeIds, budIds = [], projectIds = [] }, { executedBy, tenantId }) {
+    try {
+      console.log(`[UserService] Updating assignments for user ${userId}: JobTypes=${jobTypeIds?.length}, BUDs=${budIds?.length}, Projects=${projectIds?.length}`);
+
+      return await this.prisma.$transaction(async (tx) => {
+        // 1. Deactivate ALL existing assignments (both BUD and Project)
+        // Optimization: Run these in parallel
+        await Promise.all([
+          tx.budJobAssignment.updateMany({
+            where: { assigneeId: userId, tenantId },
+            data: { isActive: false }
+          }),
+          tx.projectJobAssignment.updateMany({
+            where: { assigneeId: userId },
+            data: { isActive: false }
+          })
+        ]);
+
+        const results = {
+          budAssignments: [],
+          projectAssignments: []
+        };
+
+        // 2. Create/Update BUD-level assignments (Optimized with Promise.all)
+        if (budIds && budIds.length > 0 && jobTypeIds && jobTypeIds.length > 0) {
+          const budPromises = [];
+          for (const budId of budIds) {
+            for (const jobTypeId of jobTypeIds) {
+              budPromises.push(
+                tx.budJobAssignment.upsert({
+                  where: {
+                    tenantId_budId_jobTypeId: {
+                      tenantId,
+                      budId,
+                      jobTypeId
+                    }
+                  },
+                  update: {
+                    assigneeId: userId,
+                    isActive: true,
+                    priority: 50,
+                    updatedAt: new Date()
+                  },
+                  create: {
+                    tenantId,
+                    budId,
+                    jobTypeId,
+                    assigneeId: userId,
+                    isActive: true,
+                    priority: 50
+                  }
+                })
+              );
+            }
+          }
+          results.budAssignments = await Promise.all(budPromises);
+        }
+
+        // 3. Create/Update Project-level assignments (Optimized with Promise.all)
+        if (projectIds && projectIds.length > 0 && jobTypeIds && jobTypeIds.length > 0) {
+          const projectPromises = [];
+          for (const projectId of projectIds) {
+            for (const jobTypeId of jobTypeIds) {
+              projectPromises.push(
+                tx.projectJobAssignment.upsert({
+                  where: {
+                    projectId_jobTypeId: {
+                      projectId,
+                      jobTypeId
+                    }
+                  },
+                  update: {
+                    assigneeId: userId,
+                    isActive: true,
+                    priority: 100,
+                    updatedAt: new Date()
+                  },
+                  create: {
+                    projectId,
+                    jobTypeId,
+                    assigneeId: userId,
+                    isActive: true,
+                    priority: 100
+                  }
+                })
+              );
+            }
+          }
+          results.projectAssignments = await Promise.all(projectPromises);
+        }
+
+        console.log(`[UserService] ✅ Saved assignments for user ${userId}:`, {
+          budAssignments: results.budAssignments.length,
+          projectAssignments: results.projectAssignments.length
+        });
+
+        return this.successResponse(results, 'บันทึกการมอบหมายงานสำเร็จ');
+      }, {
+        maxWait: 10000, // Wait for lock up to 10s
+        timeout: 20000  // Transaction must finish in 20s
+      });
+    } catch (error) {
+      console.error(`[UserService] Error updating assignments for user ${userId}:`, error);
+      return this.handleError(error, 'UPDATE_USER_ASSIGNMENTS', 'User');
     }
   }
 }

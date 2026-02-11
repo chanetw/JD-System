@@ -177,15 +177,7 @@ const LoginV2: React.FC = () => {
             </Link>
           </div>
 
-          {/* Demo Login Link */}
-          <div className="text-center pt-6 border-t border-slate-200">
-            <Link
-              to="/login_demo"
-              className="text-sm text-slate-400 hover:text-slate-600"
-            >
-              Switch to Demo Login (Mock Users)
-            </Link>
-          </div>
+
         </form>
       </div>
     </div>

@@ -402,7 +402,7 @@ export default function OrganizationManagement() {
      */
     const renderProjectsTable = (data) => (
         <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-gray-50 border-b border-gray-400">
                 <tr>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">โครงการ (Project)</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">รหัส (Code)</th>
@@ -412,7 +412,7 @@ export default function OrganizationManagement() {
                     <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">จัดการ (Actions)</th>
                 </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-gray-400">
                 {data.map((item) => {
                     // ค้นหาข้อมูลสายงาน (BUD) ที่เกี่ยวข้อง
                     const bud = buds.find(b => b.id === (item.bud?.id || item.budId)) || {};
@@ -453,7 +453,7 @@ export default function OrganizationManagement() {
      */
     const renderBudsTable = (data) => (
         <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-gray-50 border-b border-gray-400">
                 <tr>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">ชื่อสายงาน (BUD Name)</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">รหัส (Code)</th>
@@ -462,7 +462,7 @@ export default function OrganizationManagement() {
                     <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">จัดการ (Actions)</th>
                 </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-gray-400">
                 {data.map((item) => {
                     // ค้นหาชื่อบริษัทที่สายงานสังกัดอยู่
                     const tenant = tenants.find(t => t.id === item.tenantId) || {};
@@ -502,7 +502,7 @@ export default function OrganizationManagement() {
      */
     const renderDepartmentsTable = (data) => (
         <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-gray-50 border-b border-gray-400">
                 <tr>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">ชื่อแผนก (Dept Name)</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">รหัส (Code)</th>
@@ -512,7 +512,7 @@ export default function OrganizationManagement() {
                     <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">จัดการ (Actions)</th>
                 </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-gray-400">
                 {data.map((item) => {
                     const bud = buds.find(b => b.id === item.budId) || {};
                     const manager = users.find(u => u.id === item.managerId) || {};
@@ -559,7 +559,7 @@ export default function OrganizationManagement() {
      */
     const renderTenantsTable = (data) => (
         <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-gray-50 border-b border-gray-400">
                 <tr>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">ชื่อบริษัท (Tenant Name)</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">รหัส (Code)</th>
@@ -568,7 +568,7 @@ export default function OrganizationManagement() {
                     <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">จัดการ (Actions)</th>
                 </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-gray-400">
                 {data.map((item) => (
                     <tr key={item.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 font-medium text-gray-900">{item.name}</td>
@@ -699,7 +699,7 @@ export default function OrganizationManagement() {
                 ${disabled ? 'cursor-wait opacity-50' : 'cursor-pointer'}
                 ${isActive
                     ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                    : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                    : 'bg-gray-50 text-gray-600 border-gray-400 hover:bg-gray-100'
                 }
             `}
             title="คลิกเพื่อเปลี่ยนสถานะ"
@@ -739,7 +739,7 @@ export default function OrganizationManagement() {
     const Pagination = () => {
         if (totalPages <= 1) return null;
         return (
-            <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6 mt-4">
+            <div className="flex items-center justify-between border-t border-gray-400 bg-white px-4 py-3 sm:px-6 mt-4">
                 <div className="flex flex-1 justify-between sm:hidden">
                     <Button variant="secondary" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Previous</Button>
                     <Button variant="secondary" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Next</Button>
@@ -803,7 +803,7 @@ export default function OrganizationManagement() {
             </div>
 
             {/* แถบเมนู (Tabs) สำหรับเลือกประเภทข้อมูล */}
-            <div className="border-b border-gray-200">
+            <div className="border-b border-gray-400">
                 <nav className="-mb-px flex space-x-8">
                     {TABS.map((tab) => {
                         const Icon = tab.icon;
@@ -843,7 +843,7 @@ export default function OrganizationManagement() {
             {showModal && (
                 <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-xl max-w-lg w-full">
-                        <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+                        <div className="p-6 border-b border-gray-400 flex justify-between items-center">
                             <h3 className="text-lg font-semibold text-gray-900">
                                 {modalMode === 'add' ? 'เพิ่ม' : 'แก้ไข'} {TABS.find(t => t.id === activeTab)?.label.split(' ')[0]}
                             </h3>
@@ -931,7 +931,7 @@ export default function OrganizationManagement() {
                             )}
 
                         </div>
-                        <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                        <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3">
                             <Button variant="secondary" onClick={() => setShowModal(false)} disabled={isSaving}>ยกเลิก (Cancel)</Button>
                             <Button onClick={handleSave} disabled={isSaving} icon={isSaving ? undefined : null}>
                                 {isSaving ? 'กำลังบันทึก...' : 'บันทึกข้อมูล (Save)'}

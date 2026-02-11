@@ -67,7 +67,7 @@ export default function SLAReportTable({ data = [], isLoading, error, pageSize =
     // แสดง Loading state
     if (isLoading) {
         return (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-400 shadow-sm overflow-hidden">
                 <div className="p-6">
                     <div className="animate-pulse space-y-4">
                         {[1, 2, 3, 4, 5].map((i) => (
@@ -98,7 +98,7 @@ export default function SLAReportTable({ data = [], isLoading, error, pageSize =
     // แสดง Empty state
     if (data.length === 0) {
         return (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <div className="bg-white rounded-xl border border-gray-400 shadow-sm p-6">
                 <div className="text-center py-8">
                     <EmptyIcon />
                     <p className="text-gray-500 mt-2">ไม่พบข้อมูล</p>
@@ -108,11 +108,11 @@ export default function SLAReportTable({ data = [], isLoading, error, pageSize =
     }
 
     return (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-400 shadow-sm overflow-hidden">
             {/* Table */}
             <div className="overflow-x-auto">
                 <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
+                    <thead className="bg-gray-50 border-b border-gray-400">
                         <tr>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 รหัสงาน
@@ -134,7 +134,7 @@ export default function SLAReportTable({ data = [], isLoading, error, pageSize =
                             </th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200">
+                    <tbody className="divide-y divide-gray-400">
                         {paginatedData.map((job) => {
                             const deviation = calculateDeviation(job.deadline, job.completedAt);
                             const slaStatus = getSLAStatus(deviation);
@@ -183,7 +183,7 @@ export default function SLAReportTable({ data = [], isLoading, error, pageSize =
 
             {/* Pagination */}
             {totalPages > 1 && (
-                <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                <div className="px-6 py-4 border-t border-gray-400 flex items-center justify-between">
                     <div className="text-sm text-gray-500">
                         แสดง {startIndex + 1} ถึง {Math.min(endIndex, data.length)} จากทั้งหมด {data.length} รายการ
                     </div>

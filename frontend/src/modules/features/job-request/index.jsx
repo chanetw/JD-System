@@ -25,7 +25,7 @@ export const routes = [
     {
         path: 'create',
         element: <CreateJobPage />,
-        roles: ['user', 'admin', 'staff'],
+        roles: ['Admin', 'Requester', 'Approver'],
         title: 'สร้างรายการงาน'
     }
 ];

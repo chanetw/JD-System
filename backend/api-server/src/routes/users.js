@@ -624,4 +624,83 @@ router.get('/registrations/pending', async (req, res) => {
   }
 });
 
+
+
+/**
+ * GET /api/users/:id/assignments
+ * ดึงรายการงานที่ได้รับมอบหมาย
+ */
+router.get('/:id/assignments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = parseInt(id);
+
+    if (isNaN(userId)) {
+      return res.status(400).json({ success: false, message: 'Invalid User ID' });
+    }
+
+    const result = await userService.getUserAssignments(userId);
+    res.json(result);
+  } catch (error) {
+    console.error('[Users] Get assignments error:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+});
+
+/**
+ * POST /api/users/:id/assignments/check-conflict
+ * ตรวจสอบความขัดแย้งก่อนมอบหมายงาน
+ * Body: { jobTypeIds: [], projectIds: [] }
+ */
+router.post('/:id/assignments/check-conflict', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { jobTypeIds, projectIds } = req.body;
+    const userId = parseInt(id);
+
+    if (!Array.isArray(jobTypeIds) || !Array.isArray(projectIds)) {
+      return res.status(400).json({ success: false, message: 'Invalid data format' });
+    }
+
+    const result = await userService.checkAssignmentConflicts(userId, jobTypeIds, projectIds);
+    res.json(result);
+  } catch (error) {
+    console.error('[Users] Check conflict error:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+});
+
+/**
+ * POST /api/users/:id/assignments
+ * บันทึกการมอบหมายงาน (Upsert) - รองรับทั้ง BUD-level และ Project-level
+ * Body: { jobTypeIds: [], budIds: [], projectIds: [] }
+ * Roles: Admin Only
+ */
+router.post('/:id/assignments', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { jobTypeIds, budIds = [], projectIds = [] } = req.body;
+    const userId = parseInt(id);
+
+    // Permission Check
+    if (!hasAdminRole(req.user.roles)) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+
+    const result = await userService.updateUserAssignments(
+      userId,
+      { jobTypeIds, budIds, projectIds },
+      {
+        executedBy: req.user.id,
+        tenantId: req.user.tenantId
+      }
+    );
+
+    res.json(result);
+  } catch (error) {
+    console.error('[Users] Update assignments error:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+});
+
 export default router;

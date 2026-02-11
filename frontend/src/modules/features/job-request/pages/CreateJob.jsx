@@ -342,7 +342,7 @@ const CreateJob = () => {
 
                 {/* Section 2: รายละเอียดชิ้นงาน (Job Items) */}
                 {subItems.length > 0 && (
-                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-4">
+                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-400 space-y-4">
                         <h3 className="text-lg font-semibold text-gray-700 flex items-center">
                             📦 ชิ้นงานที่ต้องทำ (Job Items)
                             <span className="ml-2 text-xs font-normal text-gray-500 bg-white px-2 py-0.5 rounded-full border">

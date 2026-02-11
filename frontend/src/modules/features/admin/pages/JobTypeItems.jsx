@@ -303,14 +303,14 @@ export default function JobTypeItems() {
                 </CardHeader>
                 <div className="overflow-x-auto">
                     <table className="w-full">
-                        <thead className="bg-gray-50 border-b border-gray-200">
+                        <thead className="bg-gray-50 border-b border-gray-400">
                             <tr>
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">ชื่อชิ้นงาน (Item Name)</th>
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">ขนาดมาตรฐาน (Size)</th>
                                 <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">จัดการ</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-200">
+                        <tbody className="divide-y divide-gray-400">
                             {isLoading ? (
                                 <tr><td colSpan="3" className="p-8 text-center text-gray-500">กำลังโหลด...</td></tr>
                             ) : items.length === 0 ? (
@@ -353,7 +353,7 @@ export default function JobTypeItems() {
             {showModal && (
                 <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
-                        <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+                        <div className="p-6 border-b border-gray-400 flex justify-between items-center">
                             <h3 className="text-lg font-bold text-gray-900">{modalMode === 'add' ? 'เพิ่มรายการชิ้นงานย่อย' : 'แก้ไขรายการชิ้นงานย่อย'}</h3>
                             <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
                                 <XMarkIcon className="w-5 h-5" />
@@ -374,7 +374,7 @@ export default function JobTypeItems() {
                                 placeholder="เช่น 1080x1080px, 1920x600px"
                             />
                         </div>
-                        <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                        <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3">
                             <Button variant="secondary" onClick={() => setShowModal(false)}>ยกเลิก</Button>
                             <Button onClick={handleSave}>{modalMode === 'add' ? 'เพิ่มรายการ' : 'บันทึกแก้ไข'}</Button>
                         </div>

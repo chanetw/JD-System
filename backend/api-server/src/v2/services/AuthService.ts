@@ -16,7 +16,7 @@ import {
 } from '../interfaces/IAuth';
 import { IUserResponse } from '../interfaces/IUser';
 import { RoleName } from '../interfaces/IRole';
-import PrismaV1Adapter from '../adapters/PrismaV1Adapter';
+import PrismaV1Adapter, { IV1User, IV1UserWithPassword } from '../adapters/PrismaV1Adapter';
 
 export class AuthService {
   /**
@@ -34,7 +34,7 @@ export class AuthService {
     const effectiveTenantId = tenantId || 1; // Default to SENA Group (1)
 
     // Check if email already exists for this tenant
-    const existingUser = (await PrismaV1Adapter.findUserByEmail(email, effectiveTenantId)) as any;
+    const existingUser = await PrismaV1Adapter.findUserByEmail(email, effectiveTenantId);
     if (existingUser) {
       throw new Error('EMAIL_EXISTS');
     }
@@ -43,7 +43,7 @@ export class AuthService {
     const passwordHash = await hashPassword(password);
 
     // Create user with V1 adapter
-    const user = (await PrismaV1Adapter.createUser({
+    const user = await PrismaV1Adapter.createUser({
       tenantId: effectiveTenantId,
       organizationId,
       email: email.toLowerCase(),
@@ -52,16 +52,16 @@ export class AuthService {
       lastName,
       roleId: roleId || undefined,
       isActive: true,
-    })) as any;
+    });
 
     // Generate JWT token
     const token = generateToken(
       user.id,
       user.tenantId,
-      user.organizationId,
+      user.organizationId || 0, // Fallback for token payload
       user.email,
-      user.roleId,
-      user.roleName as RoleName
+      user.roleId || 0,
+      (user.roleName as RoleName) || RoleName.ASSIGNEE
     );
 
     // Format user response
@@ -83,7 +83,7 @@ export class AuthService {
     const targetTenantId = tenantId || 1;
 
     // Find user with password using V1 adapter
-    const user = (await PrismaV1Adapter.findUserByEmail(email, targetTenantId)) as any;
+    const user = await PrismaV1Adapter.findUserByEmail(email, targetTenantId);
 
     if (!user) {
       throw new Error('INVALID_CREDENTIALS');
@@ -94,7 +94,7 @@ export class AuthService {
     }
 
     // Get user with password hash for verification
-    const userWithPassword = (await PrismaV1Adapter.findUserByIdWithPassword(user.id, targetTenantId)) as any;
+    const userWithPassword = await PrismaV1Adapter.findUserByIdWithPassword(user.id, targetTenantId);
     if (!userWithPassword) {
       throw new Error('USER_NOT_FOUND');
     }
@@ -112,10 +112,10 @@ export class AuthService {
     const token = generateToken(
       user.id,
       user.tenantId,
-      user.organizationId,
+      user.organizationId || 0,
       user.email,
-      user.roleId,
-      user.roleName as RoleName
+      user.roleId || 0,
+      (user.roleName as RoleName) || RoleName.ASSIGNEE
     );
 
     // Format user response
@@ -133,7 +133,7 @@ export class AuthService {
    */
   async forgotPassword(email: string): Promise<void> {
     // Find user by email (don't reveal if not found)
-    const user = (await PrismaV1Adapter.findUserByEmail(email, 1)) as any; // Default to tenant 1
+    const user = await PrismaV1Adapter.findUserByEmail(email, 1); // Default to tenant 1
 
     if (!user || !user.isActive) {
       // Don't reveal that email doesn't exist (security best practice)
@@ -145,7 +145,7 @@ export class AuthService {
     await PrismaV1Adapter.invalidatePasswordResetTokens(user.id);
 
     // Create new reset token (expires in 1 hour)
-    const resetToken = (await PrismaV1Adapter.createPasswordResetToken(user.id, 1)) as any;
+    const resetToken = await PrismaV1Adapter.createPasswordResetToken(user.id, 1);
 
     // TODO: Send email with reset link
     // For now, log the token (remove in production)
@@ -164,7 +164,7 @@ export class AuthService {
     }
 
     // Use password reset token with V1 adapter
-    const result = (await PrismaV1Adapter.usePasswordResetToken(token, newPassword)) as any;
+    const result = await PrismaV1Adapter.usePasswordResetToken(token, newPassword);
 
     if (!result.success) {
       throw new Error('INVALID_OR_EXPIRED_TOKEN');
@@ -184,7 +184,7 @@ export class AuthService {
     }
 
     // Get fresh user data using V1 adapter
-    const user = (await PrismaV1Adapter.findUserById(decoded.userId)) as any;
+    const user = await PrismaV1Adapter.findUserById(decoded.userId);
 
     if (!user || !user.isActive) {
       throw new Error('USER_NOT_FOUND_OR_INACTIVE');
@@ -194,10 +194,10 @@ export class AuthService {
     const token = generateToken(
       user.id,
       user.tenantId,
-      user.organizationId,
+      user.organizationId || 0,
       user.email,
-      user.roleId,
-      user.roleName as RoleName
+      user.roleId || 0,
+      (user.roleName as RoleName) || RoleName.ASSIGNEE
     );
 
     return {
@@ -210,7 +210,7 @@ export class AuthService {
    * Get user by ID using V1 adapter
    */
   async getUserById(userId: number): Promise<IUserResponse | null> {
-    const user = (await PrismaV1Adapter.findUserById(userId)) as any;
+    const user = await PrismaV1Adapter.findUserById(userId);
 
     if (!user) return null;
 
@@ -220,19 +220,19 @@ export class AuthService {
   /**
    * Format user to response object
    */
-  private formatUserResponse(user: any): IUserResponse {
+  private formatUserResponse(user: IV1User): IUserResponse {
     return {
       id: user.id,
       tenantId: user.tenantId,
-      organizationId: user.organizationId,
+      organizationId: user.organizationId || 0,
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
       fullName: `${user.firstName} ${user.lastName}`.trim(),
-      roleId: user.roleId,
-      roleName: user.roleName || RoleName.ASSIGNEE,
+      roleId: user.roleId || 0,
+      roleName: (user.roleName as RoleName) || RoleName.ASSIGNEE,
       isActive: user.isActive,
-      lastLoginAt: user.lastLoginAt,
+      lastLoginAt: user.lastLoginAt || undefined,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

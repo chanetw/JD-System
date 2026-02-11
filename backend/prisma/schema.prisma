@@ -75,6 +75,7 @@ model Tenant {
   mediaFiles           MediaFile[]
   auditLogs            AuditLog[]
   userScopeAssignments UserScopeAssignment[]
+  budJobAssignments    BudJobAssignment[]
 
   @@map("tenants")
 }
@@ -124,6 +125,7 @@ model User {
   notifications        Notification[]
   auditLogs            AuditLog[]
   assignedProjects     ProjectJobAssignment[] @relation("AssignedProjects")
+  assignedBuds         BudJobAssignment[]     @relation("AssignedBuds")
   mediaFiles           MediaFile[]
   passwordResets       PasswordResetRequest[]
   jobActivities        JobActivity[]
@@ -181,9 +183,10 @@ model Bud {
   createdAt   DateTime @default(now()) @map("created_at")
   // updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
 
-  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  departments Department[]
-  projects    Project[]
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  departments       Department[]
+  projects          Project[]
+  budJobAssignments BudJobAssignment[]
 
   @@unique([tenantId, code])
   @@map("buds")
@@ -230,11 +233,12 @@ model JobType {
   colorTheme  String?  @map("color_theme") @db.VarChar
   attachments String[] @default([])
 
-  tenant         Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  jobs           Job[]
-  jobTypeItems   JobTypeItem[]
-  jobAssignments ProjectJobAssignment[]
-  approvalFlows  ApprovalFlow[]
+  tenant            Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  jobs              Job[]
+  jobTypeItems      JobTypeItem[]
+  jobAssignments    ProjectJobAssignment[]
+  budJobAssignments BudJobAssignment[]
+  approvalFlows     ApprovalFlow[]
 
   @@index([tenantId])
   @@map("job_types")
@@ -638,6 +642,7 @@ model ProjectJobAssignment {
   jobTypeId  Int      @map("job_type_id")
   assigneeId Int?     @map("assignee_id")
   isActive   Boolean  @default(true) @map("is_active")
+  priority   Int      @default(100) // Project-level has highest priority
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -651,6 +656,31 @@ model ProjectJobAssignment {
   @@index([assigneeId])
   @@index([assigneeId, isActive])
   @@map("project_job_assignments")
+}
+
+model BudJobAssignment {
+  id         Int      @id @default(autoincrement())
+  tenantId   Int      @map("tenant_id")
+  budId      Int      @map("bud_id")
+  jobTypeId  Int      @map("job_type_id")
+  assigneeId Int?     @map("assignee_id")
+  isActive   Boolean  @default(true) @map("is_active")
+  priority   Int      @default(50) // BUD-level has lower priority than project-level
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bud      Bud     @relation(fields: [budId], references: [id], onDelete: Cascade)
+  jobType  JobType @relation(fields: [jobTypeId], references: [id], onDelete: Cascade)
+  assignee User?   @relation("AssignedBuds", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, budId, jobTypeId])
+  @@index([budId])
+  @@index([jobTypeId])
+  @@index([assigneeId])
+  @@index([assigneeId, isActive])
+  @@index([tenantId])
+  @@map("bud_job_assignments")
 }
 
 model SlaShiftLog {

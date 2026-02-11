@@ -95,7 +95,7 @@ export default function ExportButton({ onExportPDF, onExportExcel, onExportCSV, 
 
             {/* Dropdown Menu */}
             {isOpen && !isExporting && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-400 z-50">
                     <div className="py-1">
                         <button
                             onClick={() => handleExport('pdf')}

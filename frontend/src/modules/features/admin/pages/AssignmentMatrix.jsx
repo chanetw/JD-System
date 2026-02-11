@@ -156,7 +156,7 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
     const activeAssignees = propAssignees || localAssignees;
 
     return (
-        <div className="bg-white rounded-lg border border-gray-200 mt-4 p-4 shadow-sm">
+        <div className="bg-white rounded-lg border border-gray-400 mt-4 p-4 shadow-sm">
             <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-gray-800">
                 <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
@@ -166,7 +166,7 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
 
             {/* Project Select (Standalone Mode) */}
             {!propProjectId && (
-                <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-400">
                     <label className="block text-sm font-medium text-gray-700 mb-2">เลือกโครงการ (Select Project)</label>
                     <select
                         className="w-full md:w-1/2 p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
@@ -182,7 +182,7 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
             )}
 
             {!selectedProjectId ? (
-                <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-lg">
+                <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-400 rounded-lg">
                     <p>กรุณาเลือกโครงการเพื่อเริ่มตั้งค่า</p>
                 </div>
             ) : (
@@ -192,14 +192,14 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
                     </p>
 
                     <div className="overflow-x-auto border rounded-lg">
-                        <table className="min-w-full divide-y divide-gray-200">
+                        <table className="min-w-full divide-y divide-gray-400">
                             <thead className="bg-gray-50">
                                 <tr>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3">ประเภทงาน (Job Type)</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ผู้รับงานเริ่มต้น (Default Assignee)</th>
                                 </tr>
                             </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
+                            <tbody className="bg-white divide-y divide-gray-400">
                                 {jobTypes.map(type => {
                                     const current = matrix.find(m => m.jobTypeId === type.id);
                                     return (

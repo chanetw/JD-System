@@ -346,8 +346,199 @@ class PrismaV1Adapter {
   }
 
   // =========================================================================
-  // REGISTRATION APPROVAL WORKFLOW METHODS
+  // USER MANAGEMENT METHODS (ADMIN)
   // =========================================================================
+
+  /**
+   * Map legacy V2 Role ID to V1 Role Name
+   * @param {number} roleId - V2 Role ID
+   * @returns {string} V1 Role Name
+   */
+  static mapRoleIdToName(roleId) {
+    // Mapping:
+    // 1: Admin (SuperAdmin)
+    // 2: Approver (Manager/TeamLead)
+    // 3: Assignee (Member/User)
+    // 4: Requester (OrgAdmin)
+    const mapping = {
+      1: 'Admin',
+      2: 'Approver',
+      3: 'Assignee',
+      4: 'Requester'
+    };
+    return mapping[roleId] || 'Assignee';
+  }
+
+  /**
+   * List users with pagination and filters (V2 Compatible)
+   * @param {Object} filters - Filter criteria
+   * @param {Object} pagination - Pagination options
+   * @returns {Object} Paginated user list
+   */
+  static async listUsers(filters = {}, pagination = { page: 1, limit: 10 }) {
+    const prisma = getDatabase();
+    const { search, roleId, organizationId, isActive } = filters;
+    const { page, limit } = pagination;
+    const skip = (page - 1) * limit;
+
+    // Build where clause
+    const where = {
+      tenantId: filters.tenantId || 1 // Default to 1 if not provided
+    };
+
+    if (isActive !== undefined) {
+      where.isActive = isActive;
+    }
+
+    // Map organizationId (V2) -> departmentId (V1)
+    if (organizationId) {
+      where.departmentId = parseInt(organizationId);
+    }
+
+    // Map roleId (V2) -> userRoles.roleName (V1)
+    if (roleId) {
+      const roleName = this.mapRoleIdToName(parseInt(roleId));
+      where.userRoles = {
+        some: {
+          roleName: roleName
+        }
+      };
+    }
+
+    // Search functionality
+    if (search) {
+      where.OR = [
+        { email: { contains: search, mode: 'insensitive' } },
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { displayName: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    // Execute query
+    const [total, users] = await Promise.all([
+      prisma.user.count({ where }),
+      prisma.user.findMany({
+        where,
+        include: {
+          userRoles: true,
+          department: true
+        },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' }
+      })
+    ]);
+
+    // Format results
+    return {
+      rows: users.map(user => this.tov2User(user)),
+      count: total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    };
+  }
+
+  /**
+   * Update user details (V2 Compatible)
+   * @param {number} userId - User ID
+   * @param {Object} data - Field to update
+   * @returns {Object} Updated user
+   */
+  static async updateUser(userId, data) {
+    const prisma = getDatabase();
+    const {
+      email,
+      firstName,
+      lastName,
+      roleId, // Legacy Role ID
+      organizationId, // Legacy Org ID -> Department ID
+      isActive,
+      passwordHash
+    } = data;
+
+    // Check if user exists
+    const existingUser = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!existingUser) {
+      throw new Error('USER_NOT_FOUND');
+    }
+
+    const updateData = {};
+    if (email) updateData.email = email.toLowerCase();
+    if (firstName) updateData.firstName = firstName;
+    if (lastName) updateData.lastName = lastName;
+    // Update display name if first/last name changes
+    if (firstName || lastName) {
+      const newFirst = firstName || existingUser.firstName;
+      const newLast = lastName || existingUser.lastName;
+      updateData.displayName = `${newFirst} ${newLast}`.trim();
+    }
+
+    if (organizationId !== undefined) updateData.departmentId = organizationId; // Allow null/0
+    if (isActive !== undefined) updateData.isActive = isActive;
+    if (passwordHash) updateData.passwordHash = passwordHash;
+
+    // Transaction for atomic update (User + Role)
+    const updatedUser = await prisma.$transaction(async (tx) => {
+      // 1. Update User fields
+      const user = await tx.user.update({
+        where: { id: userId },
+        data: updateData,
+        include: { userRoles: true, department: true }
+      });
+
+      // 2. Update Role if provided
+      if (roleId) {
+        const newRoleName = this.mapRoleIdToName(parseInt(roleId));
+
+        // Deactivate old roles
+        await tx.userRole.updateMany({
+          where: { userId },
+          data: { isActive: false }
+        });
+
+        // Add new role
+        await tx.userRole.create({
+          data: {
+            tenantId: user.tenantId,
+            userId,
+            roleName: newRoleName,
+            isActive: true
+          }
+        });
+      }
+
+      // Return updated user with relations
+      return tx.user.findUnique({
+        where: { id: userId },
+        include: { userRoles: true, department: true }
+      });
+    });
+
+    return this.tov2User(updatedUser);
+  }
+
+  /**
+   * Soft delete user
+   * @param {number} userId - User ID
+   * @returns {void}
+   */
+  static async deleteUser(userId) {
+    const prisma = getDatabase();
+
+    // Check if exists
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error('USER_NOT_FOUND');
+
+    // Hard Delete
+    await prisma.user.delete({
+      where: { id: userId }
+    });
+  }
 
   /**
    * Generate a random password
@@ -850,6 +1041,33 @@ class PrismaV1Adapter {
     return {
       success: true,
       user: this.tov2User(updatedUser),
+      message: 'Password reset successfully'
+    };
+  }
+
+  /**
+   * ADMIN ONLY: Reset user password to a random 8-char password
+   * @param {number} userId - User ID
+   * @returns {Object} Result with new password
+   */
+  static async resetPasswordRandom(userId) {
+    const prisma = getDatabase();
+
+    // Generate random 8-char password
+    const newPassword = this.generateRandomPassword(8);
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash,
+        mustChangePassword: true
+      }
+    });
+
+    return {
+      success: true,
+      newPassword, // Return plain text password to send via email
       message: 'Password reset successfully'
     };
   }

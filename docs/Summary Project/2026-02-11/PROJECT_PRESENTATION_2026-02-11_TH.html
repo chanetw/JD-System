@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DJ-System Project Overview</title>
+    <style>
+        :root {
+            --primary: #881337;
+            --bg: #f8fafc;
+            --text: #1e293b;
+        }
+        body {
+            font-family: 'Sarabun', sans-serif;
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+        }
+        .slide {
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+            box-sizing: border-box;
+            background: white;
+            transition: transform 0.5s ease-in-out;
+            position: relative;
+        }
+        h1 { color: var(--primary); font-size: 3rem; margin-bottom: 2rem; }
+        h2 { border-bottom: 4px solid var(--primary); padding-bottom: 10px; margin-top: 0; }
+        .content { font-size: 1.5rem; max-width: 900px; line-height: 1.6; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px; }
+        .card { background: #fff5f7; padding: 20px; border-radius: 12px; border-left: 5px solid var(--primary); box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+        .tag { background: var(--primary); color: white; padding: 5px 15px; border-radius: 20px; font-size: 1rem; margin-bottom: 10px; display: inline-block; }
+        .controls { position: fixed; bottom: 20px; right: 20px; z-index: 100; }
+        button { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1rem; margin-left: 10px; }
+        .page-num { position: fixed; bottom: 20px; left: 20px; color: #64748b; font-size: 1rem; }
+        
+        /* Gantt Simple CSS representation */
+        .gantt-bar { height: 30px; background: #e2e8f0; position: relative; border-radius: 5px; margin-bottom: 15px; }
+        .fill { background: var(--primary); height: 100%; border-radius: 5px; display: flex; align-items: center; padding-left: 10px; color: white; font-size: 0.8rem; }
+    </style>
+</head>
+<body>
+
+    <div id="slide-container">
+        <!-- Slide 1: Welcome -->
+        <div class="slide">
+            <h1 style="text-align: center;">🚀 DJ-System Project Overview</h1>
+            <p class="content" style="text-align: center;">สรุปแผนการพัฒนาและภาพรวมความคืบหน้าโครงการระบบจัดการงานออกแบบ</p>
+            <p style="color: #64748b;">โดย Antigravity Project Manager</p>
+        </div>
+
+        <!-- Slide 2: Tech Stack -->
+        <div class="slide">
+            <h2>🏗️ Technology Stack</h2>
+            <div class="grid content">
+                <div class="card">
+                    <div class="tag">Frontend</div>
+                    <p>React 18 + Tailwind CSS<br>Modular Architecture V2<br>State Mangement by Zustand</p>
+                </div>
+                <div class="card">
+                    <div class="tag">Backend</div>
+                    <p>Node.js + Express<br>Prisma ORM (TypeScript)<br>JWT Authentication</p>
+                </div>
+                <div class="card">
+                    <div class="tag">Database</div>
+                    <p>Supabase (PostgreSQL)<br>V1 Table Core Schema</p>
+                </div>
+                <div class="card">
+                    <div class="tag">Features</div>
+                    <p>Approval Flow V1 (Extended)<br>Auto-Assignment Logic<br>Dynamic Scoping</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 3: Roadmap -->
+        <div class="slide">
+            <h2>📅 Project Timeline (Phase 1-4)</h2>
+            <div class="content" style="width: 100%;">
+                <div class="tag">Phase 1: Foundation (Completed)</div>
+                <div class="gantt-bar"><div class="fill" style="width: 100%;">Architecture & DB Setup</div></div>
+                
+                <div class="tag">Phase 2: Core Workflow (In-Progress 95%)</div>
+                <div class="gantt-bar"><div class="fill" style="width: 95%;">Job Request & Approval Logic</div></div>
+                
+                <div class="tag">Phase 3: Portals & Analytics (Next)</div>
+                <div class="gantt-bar"><div class="fill" style="width: 20%; background: #fb7185;">User Portals & KPI Dashboard</div></div>
+
+                <div class="tag">Phase 4: Optimization & Launch</div>
+                <div class="gantt-bar"><div class="fill" style="width: 0%; background: #cbd5e1;">Final Test & Production</div></div>
+            </div>
+        </div>
+
+        <!-- Slide 4: Feature Separation -->
+        <div class="slide">
+            <h2>🧩 ฟังก์ชันการทำงานที่ปรับปรุงล่าสุด</h2>
+            <div class="content">
+                <ul>
+                    <li><strong>Modular Architecture:</strong> แยกฟีเจอร์เป็นอิสระ สามารถเพิ่ม/ลดโมดูลได้โดยไม่กระทบระบบหลัก</li>
+                    <li><strong>Role-Based Portal:</strong> ปรับหน้าแดชบอร์ดให้เหมาะสมกับหน้าที่ (ใครเปิดงาน, ใครอนุมัติ, ใครทำ)</li>
+                    <li><strong>Job Type Flow:</strong> ตรรกะการอนุมัติยืดหยุ่นตามประเภทงาน เช่น "งานด่วน" ข้ามการอนุมัติได้ทันที</li>
+                    <li><strong>Auto-Filter Scopes:</strong> กรองรายชื่อโครงการอัตโนมัติตาม BUD ของแผนกผู้ใช้งาน</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Slide 5: Data Flow Summary -->
+        <div class="slide">
+            <h2>🔄 การไหลของข้อมูล (Data Flow)</h2>
+            <div class="card content">
+                <p>1. <strong>User Input:</strong> ผู้ใช้ระบุข้อมูลผ่าน Form ที่ผ่านระบบ Validation</p>
+                <p>2. <strong>Logic Processing:</strong> ระบบตรวจสอบสิทธิ์ (RBAC) และเลือกเส้นทางการอนุมัติ (Flow Resolution)</p>
+                <p>3. <strong>Storage Tracking:</strong> บันทึกประวัติการเปลี่ยนแปลง (Activity Log) ทุกขั้นตอน</p>
+                <p>4. <strong>Notification:</strong> แจ้งเตือนผ่านหน้าเว็บไปยังผู้รับผิดชอบงานขั้นถัดไป</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button onclick="prevSlide()">ก่อนหน้า</button>
+        <button onclick="nextSlide()">ถัดไป</button>
+    </div>
+    <div class="page-num" id="page-num">1 / 5</div>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        const totalSlides = slides.length;
+        const pageNumDisplay = document.getElementById('page-num');
+
+        function updateSlide() {
+            slides.forEach((slide, index) => {
+                slide.style.display = (index === currentSlide) ? 'flex' : 'none';
+            });
+            pageNumDisplay.innerText = `${currentSlide + 1} / ${totalSlides}`;
+        }
+
+        function nextSlide() {
+            if (currentSlide < totalSlides - 1) {
+                currentSlide++;
+                updateSlide();
+            }
+        }
+
+        function prevSlide() {
+            if (currentSlide > 0) {
+                currentSlide--;
+                updateSlide();
+            }
+        }
+
+        updateSlide();
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight') nextSlide();
+            if (e.key === 'ArrowLeft') prevSlide();
+        });
+    </script>
+</body>
+</html>

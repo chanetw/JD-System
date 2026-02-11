@@ -269,7 +269,7 @@ export default function MyQueue() {
                 </div>
                 {/* Stats Summary */}
                 <div className="flex gap-4">
-                    <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-200">
+                    <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-400">
                         <span className="text-sm text-gray-500 block">งานทั้งหมด</span>
                         <span className="text-xl font-bold text-indigo-600">{jobs.length}</span>
                     </div>
@@ -285,7 +285,7 @@ export default function MyQueue() {
             </div>
 
             {/* Toolbar: Search & Filter */}
-            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-3 md:space-y-0 md:flex md:items-center md:gap-4">
+            <div className="bg-white p-4 rounded-xl border border-gray-400 shadow-sm space-y-3 md:space-y-0 md:flex md:items-center md:gap-4">
                 <div className="flex-1 relative">
                     <DocumentMagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
@@ -293,7 +293,7 @@ export default function MyQueue() {
                         placeholder="ค้นหา DJ ID, ชื่องาน..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        className="w-full pl-10 pr-4 py-2 border border-gray-400 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                     />
                 </div>
                 <div className="flex gap-2">
@@ -301,7 +301,7 @@ export default function MyQueue() {
                         <select
                             value={filterProject}
                             onChange={(e) => setFilterProject(e.target.value)}
-                            className="w-full pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 appearance-none bg-white"
+                            className="w-full pl-3 pr-8 py-2 border border-gray-400 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 appearance-none bg-white"
                         >
                             <option value="all">ทุกโปรเจกต์</option>
                             {projects.map(p => <option key={p} value={p}>{p}</option>)}
@@ -311,7 +311,7 @@ export default function MyQueue() {
                         <select
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value)}
-                            className="w-full pl-3 pr-8 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 appearance-none bg-white"
+                            className="w-full pl-3 pr-8 py-2 border border-gray-400 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 appearance-none bg-white"
                         >
                             <option value="deadline">📅 เรียงตามกำหนดส่ง</option>
                             <option value="priority">🔥 เรียงตามความด่วน</option>
@@ -322,7 +322,7 @@ export default function MyQueue() {
             </div>
 
             {/* Tabs Navigation */}
-            <div className="border-b border-gray-200">
+            <div className="border-b border-gray-400">
                 <nav className="-mb-px flex space-x-8">
                     {TABS.map((tab) => {
                         const Icon = tab.icon;
@@ -351,7 +351,7 @@ export default function MyQueue() {
                 {loading ? (
                     <div className="text-center py-10 text-gray-500">กำลังโหลดข้อมูล...</div>
                 ) : filteredJobs.length === 0 ? (
-                    <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                    <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-400">
                         <ClipboardDocumentListIcon className="w-12 h-12 mx-auto text-gray-300 mb-3" />
                         <h3 className="text-lg font-medium text-gray-900">ไม่มีงานที่ตรงกับเงื่อนไข</h3>
                         <p className="text-gray-500">ลองปรับเปลี่ยนตัวกรองหรือคำค้นหา</p>
@@ -363,7 +363,7 @@ export default function MyQueue() {
                                 key={job.id}
                                 onClick={() => handleViewDetail(job.id)}
                                 className={`
-                                    bg-white rounded-lg shadow-sm border border-gray-200 p-5 
+                                    bg-white rounded-lg shadow-sm border border-gray-400 p-5 
                                     hover:shadow-md transition-shadow cursor-pointer relative
                                     ${getHealthBorderColor(job.healthStatus)}
                                     ${job.priority === 'Urgent' ? 'bg-red-50/30' : ''}

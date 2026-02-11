@@ -155,7 +155,7 @@ export default function ApprovalsQueue() {
                     <p className="text-gray-500">รายการงาน DJ (Design Job) ที่รอให้คุณดำเนินการตรวจสอบ</p>
                 </div>
                 {/* ข้อมูลโปรไฟล์ผู้อนุมัติ (Mockup Profile) */}
-                <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
+                <div className="flex items-center gap-3 pl-4 border-l border-gray-400">
                     <div className="w-10 h-10 bg-rose-100 rounded-full flex items-center justify-center">
                         <span className="text-rose-600 font-semibold">{user?.displayName?.[0] || 'A'}</span>
                     </div>
@@ -169,7 +169,7 @@ export default function ApprovalsQueue() {
             {/* ============================================
           แถบเลือกสถานะงาน (Status Tabs)
           ============================================ */}
-            <div className="border-b border-gray-200">
+            <div className="border-b border-gray-400">
                 <nav className="-mb-px flex gap-6">
                     <TabButton
                         active={activeTab === 'waiting'}
@@ -212,7 +212,7 @@ export default function ApprovalsQueue() {
             <Card className="overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full">
-                        <thead className="bg-gray-50 border-b border-gray-200">
+                        <thead className="bg-gray-50 border-b border-gray-400">
                             <tr>
                                 <th className="px-4 py-3 text-left w-10">
                                     <input type="checkbox" className="rounded border-gray-300 text-rose-600 focus:ring-rose-500" />
@@ -228,7 +228,7 @@ export default function ApprovalsQueue() {
                                 <Th className="text-center">การจัดการ</Th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-200">
+                        <tbody className="divide-y divide-gray-400">
                             {isLoading ? (
                                 <tr>
                                     <td colSpan="10" className="text-center py-8 text-gray-500">กำลังโหลดรายการงาน...</td>
@@ -271,7 +271,7 @@ export default function ApprovalsQueue() {
             {showApproveModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden">
-                        <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+                        <div className="p-6 border-b border-gray-400 flex justify-between items-center">
                             <h3 className="text-lg font-semibold text-gray-900">ยืนยันการอนุมัติ</h3>
                             <button onClick={() => setShowApproveModal(false)} className="text-gray-400 hover:text-gray-600">
                                 <XMarkIcon className="w-6 h-6" />
@@ -296,7 +296,7 @@ export default function ApprovalsQueue() {
                             </div>
                         </div>
 
-                        <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                        <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3">
                             <Button variant="secondary" onClick={() => setShowApproveModal(false)}>ยกเลิก</Button>
                             <Button variant="success" onClick={handleConfirmApprove}>
                                 <CheckIcon className="w-4 h-4 mr-2" />
@@ -313,7 +313,7 @@ export default function ApprovalsQueue() {
             {showRejectModal && (
                 <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-xl max-w-lg w-full overflow-hidden">
-                        <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+                        <div className="p-6 border-b border-gray-400 flex justify-between items-center">
                             <h3 className="text-lg font-semibold text-gray-900">ปฏิเสธหรือตีกลับงาน (Reject / Return)</h3>
                             <button onClick={() => setShowRejectModal(false)} className="text-gray-400 hover:text-gray-600">
                                 <XMarkIcon className="w-6 h-6" />
@@ -362,7 +362,7 @@ export default function ApprovalsQueue() {
                             </div>
                         </div>
 
-                        <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                        <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3">
                             <Button variant="secondary" onClick={() => setShowRejectModal(false)}>ยกเลิก</Button>
                             <Button variant="primary" onClick={handleConfirmReject}>ยืนยันการดำเนินการ</Button>
                         </div>
@@ -416,7 +416,7 @@ function StatCard({ label, value, icon, color }) {
         yellow: "bg-yellow-100"
     };
     return (
-        <div className="bg-white rounded-lg border border-gray-200 p-4 flex items-center gap-3 shadow-sm">
+        <div className="bg-white rounded-lg border border-gray-400 p-4 flex items-center gap-3 shadow-sm">
             <div className={`w-10 h-10 ${colors[color]} rounded-lg flex items-center justify-center`}>
                 {icon}
             </div>

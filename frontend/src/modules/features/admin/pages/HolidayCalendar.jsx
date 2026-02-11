@@ -387,14 +387,14 @@ export default function AdminHoliday() {
           Holiday List
           ============================================ */}
             <Card>
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <div className="px-6 py-4 border-b border-gray-400 flex items-center justify-between">
                     <h3 className="text-lg font-semibold text-gray-800">รายการวันหยุด พ.ศ. {selectedYear + 543} ({selectedYear})</h3>
                     <Button variant="link" className="text-rose-600 hover:text-rose-700" onClick={handleExportExcel}>
                         <ArrowDownTrayIcon className="w-4 h-4" /> Export Excel
                     </Button>
                 </div>
                 <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
+                    <thead className="bg-gray-50 border-b border-gray-400">
                         <tr>
                             <Th>วันที่ (Date)</Th>
                             <Th>ชื่อวันหยุด (Holiday Name)</Th>
@@ -402,7 +402,7 @@ export default function AdminHoliday() {
                             <Th className="text-center">จัดการ (Actions)</Th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200">
+                    <tbody className="divide-y divide-gray-400">
                         {holidays
                             .filter(h => new Date(h.date).getFullYear() === selectedYear)
                             .sort((a, b) => new Date(a.date) - new Date(b.date))
@@ -426,7 +426,7 @@ export default function AdminHoliday() {
                         )}
                     </tbody>
                 </table>
-                <div className="px-6 py-3 border-t border-gray-200 text-center text-sm text-gray-500">
+                <div className="px-6 py-3 border-t border-gray-400 text-center text-sm text-gray-500">
                     แสดงทั้งหมด {holidays.filter(h => new Date(h.date).getFullYear() === selectedYear).length} รายการ
                 </div>
             </Card>
@@ -472,7 +472,7 @@ export default function AdminHoliday() {
             {showModal && (
                 <div className="fixed inset-0 flex items-center justify-center z-50 p-4 animate-fadeIn">
                     <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-100">
-                        <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50/50">
+                        <div className="p-6 border-b border-gray-400 flex justify-between items-center bg-gray-50/50">
                             <h3 className="text-lg font-bold text-gray-900">{editingId ? 'แก้ไขข้อมูลวันหยุด' : 'เพิ่มข้อมูลวันหยุดใหม่'}</h3>
                             <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 bg-white p-1 rounded-full shadow-sm">
                                 <XMarkIcon className="w-5 h-5" />
@@ -517,7 +517,7 @@ export default function AdminHoliday() {
                                 </div>
                             </label>
                         </div>
-                        <div className="p-6 border-t border-gray-200 bg-gray-50/50 flex justify-end gap-3">
+                        <div className="p-6 border-t border-gray-400 bg-gray-50/50 flex justify-end gap-3">
                             <Button variant="ghost" onClick={() => setShowModal(false)}>ยกเลิก (Cancel)</Button>
                             <Button variant="primary" onClick={handleSaveHoliday} disabled={isSubmitting} className="bg-rose-600 hover:bg-rose-700 min-w-[120px]">
                                 {isSubmitting ? 'กำลังบันทึก...' : (editingId ? 'บันทึกการแก้ไข' : 'เพิ่มวันหยุด')}
@@ -595,7 +595,7 @@ function MonthCalendar({ month, startDay, days, holidays }) {
     const emptyStart = Array.from({ length: startDay }, (_, i) => i);
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transition-all hover:shadow-md">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-400 overflow-hidden transition-all hover:shadow-md">
             <div className="bg-rose-600 text-white px-4 py-2.5">
                 <h3 className="font-bold text-center text-sm">{month}</h3>
             </div>

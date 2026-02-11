@@ -162,9 +162,9 @@ export default function Dashboard() {
             {/* ============================================
           My Queue - รายการงานของฉัน
           ============================================ */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-400">
                 {/* Header พร้อม Filters */}
-                <div className="p-4 border-b border-gray-200">
+                <div className="p-4 border-b border-gray-400">
                     <div className="flex items-center justify-between">
                         <h2 className="text-lg font-semibold text-gray-900">My Queue</h2>
 
@@ -196,7 +196,7 @@ export default function Dashboard() {
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead>
-                            <tr className="bg-gray-50 border-b border-gray-200">
+                            <tr className="bg-gray-50 border-b border-gray-400">
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">DJ ID</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Project</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Job Type</th>
@@ -209,7 +209,7 @@ export default function Dashboard() {
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-200">
+                        <tbody className="divide-y divide-gray-400">
                             {filteredJobs.length === 0 ? (
                                 <tr>
                                     <td colSpan={10} className="px-4 py-8 text-center text-gray-500">
@@ -242,7 +242,7 @@ function StatCard({ title, value, icon, color }) {
     };
 
     return (
-        <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+        <div className="bg-white rounded-xl p-4 border border-gray-400 shadow-sm">
             <div className="flex items-center gap-4">
                 <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${colors[color]}`}>
                     {icon}

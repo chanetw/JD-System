@@ -972,7 +972,7 @@ export default function CreateDJ() {
                                                                 <div className="flex items-center gap-2">
                                                                     <label className="text-xs text-gray-500">เริ่มงาน:</label>
                                                                     <select
-                                                                        className="text-xs border border-gray-200 rounded px-2 py-0.5 bg-white focus:outline-none focus:border-purple-300"
+                                                                        className="text-xs border border-gray-400 rounded px-2 py-0.5 bg-white focus:outline-none focus:border-purple-300"
                                                                         value={jt.predecessorIndex === null ? '' : jt.predecessorIndex}
                                                                         onChange={(e) => {
                                                                             const val = e.target.value;
@@ -1027,7 +1027,7 @@ export default function CreateDJ() {
                                                                     return (
                                                                         <div
                                                                             key={item.id}
-                                                                            className={`flex items-center gap-3 p-2 rounded-lg border transition-all ${isSelected ? 'border-purple-400 bg-purple-50' : 'border-gray-200'}`}
+                                                                            className={`flex items-center gap-3 p-2 rounded-lg border transition-all ${isSelected ? 'border-purple-400 bg-purple-50' : 'border-gray-400'}`}
                                                                         >
                                                                             <input
                                                                                 type="checkbox"
@@ -1140,7 +1140,7 @@ export default function CreateDJ() {
                                     </div>
                                 ) : (
                                     /* กรณียังไม่เลือก Job Type */
-                                    <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                                    <div className="p-4 bg-gray-50 border border-gray-400 rounded-lg text-center">
                                         <p className="text-sm text-gray-500">กรุณาเลือกประเภทงานจาก Dropdown ด้านบน</p>
                                         <p className="text-xs text-gray-400 mt-1">สามารถเลือกได้หลายประเภท (Parent-Child Mode)</p>
                                     </div>
@@ -1288,7 +1288,7 @@ export default function CreateDJ() {
                                     </div>
                                 </div>
                             ) : (
-                                <div className="text-center py-6 bg-gray-50 rounded-lg border border-gray-200 border-dashed">
+                                <div className="text-center py-6 bg-gray-50 rounded-lg border border-gray-400 border-dashed">
                                     <p className="text-sm text-gray-500">ยังไม่มีการกำหนดลำดับการอนุมัติ</p>
                                     <p className="text-xs text-green-600 mt-1 font-medium">✨ อนุมัติอัตโนมัติ (Auto Approve)</p>
                                 </div>
@@ -1527,7 +1527,7 @@ export default function CreateDJ() {
                                         'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 
                                     return (
-                                        <div className="border border-gray-200 rounded-lg p-3">
+                                        <div className="border border-gray-400 rounded-lg p-3">
                                             {/* Header พร้อมปุ่มเลื่อนเดือน */}
                                             <div className="flex items-center justify-between mb-2">
                                                 <button
@@ -1636,7 +1636,7 @@ export default function CreateDJ() {
                                 <CheckItem label="ลิงค์รายละเอียด" checked={!!formData.briefLink} />
                             </div>
 
-                            <div className="mt-4 pt-4 border-t border-gray-200">
+                            <div className="mt-4 pt-4 border-t border-gray-400">
                                 <div className="flex items-center gap-2">
                                     <div className="flex-1 bg-gray-200 rounded-full h-2">
                                         <div
@@ -1680,7 +1680,7 @@ export default function CreateDJ() {
                 showBlockModal && (
                     <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
                         <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden">
-                            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+                            <div className="p-6 border-b border-gray-400 flex justify-between items-center">
                                 <h3 className="text-lg font-semibold text-gray-900">ไม่สามารถส่งงานได้</h3>
                                 <button onClick={() => setShowBlockModal(false)} className="text-gray-400 hover:text-gray-600">
                                     <XMarkIcon className="w-6 h-6" />
@@ -1704,7 +1704,7 @@ export default function CreateDJ() {
                                     </div>
                                 )}
                             </div>
-                            <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                            <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3">
                                 <Button variant="secondary" onClick={() => setShowBlockModal(false)}>ยกเลิก</Button>
                                 {canSchedule && (
                                     <Button onClick={() => submitJob('scheduled')} className="bg-blue-500 hover:bg-blue-600">

@@ -25,19 +25,19 @@ export const routes = [
     {
         path: 'jobs',
         element: <DJList />,
-        roles: ['user', 'admin', 'staff'],
+        roles: ['Admin', 'Requester', 'Assignee', 'Approver', 'user', 'staff'], // Include legacy and proper roles
         title: 'รายการงาน'
     },
     {
         path: 'jobs/:id',
         element: <JobDetail />,
-        roles: ['user', 'admin', 'staff'],
+        roles: ['Admin', 'Requester', 'Assignee', 'Approver', 'user', 'staff'],
         title: 'รายละเอียดงาน'
     },
     {
         path: 'approvals',
         element: <ApprovalsQueue />,
-        roles: ['approver', 'admin'],
+        roles: ['Approver', 'Admin'],
         title: 'คิวรออนุมัติ'
     }
 ];

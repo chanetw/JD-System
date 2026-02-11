@@ -1,25 +1,42 @@
 
 import pg from 'pg';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Load .env from backend/api-server
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, '../../.env') });
+
 const { Client } = pg;
 
-const connectionString = 'postgresql://postgres.putfusjtlzmvjmcwkefv:Sena%401775%40%40@aws-1-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true';
+async function listTables() {
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+        console.error('DATABASE_URL is not set in .env');
+        process.exit(1);
+    }
 
-const client = new Client({
-    connectionString,
-});
+    const client = new Client({
+        connectionString,
+    });
 
-async function run() {
     try {
         await client.connect();
-        console.log('Connected to database');
 
+        // Query to list all tables in public schema
         const res = await client.query(`
       SELECT table_name 
       FROM information_schema.tables 
-      WHERE table_schema = 'public'
+      WHERE table_schema = 'public' 
+      ORDER BY table_name;
     `);
 
-        console.log('Tables:', res.rows.map(r => r.table_name));
+        console.log('--- Database Tables ---');
+        res.rows.forEach(row => {
+            console.log(row.table_name);
+        });
+        console.log('-----------------------');
 
     } catch (err) {
         console.error('Error executing query', err);
@@ -28,4 +45,4 @@ async function run() {
     }
 }
 
-run();
+listTables();

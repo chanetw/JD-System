@@ -172,7 +172,7 @@ export default function MediaPortal() {
                         onClick={() => setSelectedProject(project.id)}
                         className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${selectedProject === project.id
                             ? 'bg-rose-500 text-white shadow-md'
-                            : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                            : 'bg-white border border-gray-400 text-gray-700 hover:bg-gray-50'
                             }`}
                     >
                         {project.name} ({project.files})

@@ -577,9 +577,9 @@ export default function AdminApprovalFlow() {
                 )}
             </div>
 
-            <div className="flex flex-1 overflow-hidden bg-white rounded-xl border border-gray-200 shadow-sm">
-                <div className="w-96 border-r border-gray-200 flex flex-col">
-                    <div className="p-4 border-b border-gray-200 space-y-3">
+            <div className="flex flex-1 overflow-hidden bg-white rounded-xl border border-gray-400 shadow-sm">
+                <div className="w-96 border-r border-gray-400 flex flex-col">
+                    <div className="p-4 border-b border-gray-400 space-y-3">
                         {/* Search Input */}
                         <div className="relative">
                             <MagnifyingGlassIcon className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -672,7 +672,7 @@ export default function AdminApprovalFlow() {
                             );
                         })}
                     </div>
-                    <div className="p-4 border-t border-gray-200 bg-gray-50 text-center">
+                    <div className="p-4 border-t border-gray-400 bg-gray-50 text-center">
                         <div className="grid grid-cols-2 gap-2">
                             <div className="bg-white rounded p-2 border border-gray-100">
                                 <p className="font-bold text-gray-900">{projects.length}</p>
@@ -691,7 +691,7 @@ export default function AdminApprovalFlow() {
                     {selectedProject ? (
                         <>
                             {/* Project Header */}
-                            <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6 overflow-hidden">
+                            <div className="bg-white rounded-xl shadow-sm border border-gray-400 mb-6 overflow-hidden">
                                 <div className={`p-6 bg-gradient-to-r ${PROJECT_COLORS[projects.indexOf(selectedProject) % PROJECT_COLORS.length]}`}>
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-4">
@@ -708,7 +708,7 @@ export default function AdminApprovalFlow() {
                                         </span>
                                     </div>
                                 </div>
-                                <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-white">
+                                <div className="p-4 border-b border-gray-400 flex items-center justify-between bg-white">
                                     <div className="text-sm text-gray-500">
                                         {currentFlow
                                             ? `อัปเดตล่าสุด: ${new Date(currentFlow.updatedAt).toLocaleDateString('th-TH')}`
@@ -727,7 +727,7 @@ export default function AdminApprovalFlow() {
 
                             {/* Flow Diagram */}
                             {!isEditMode && (
-                                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+                                <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-6 mb-6">
                                     <h4 className="font-semibold text-gray-900 mb-6 flex items-center gap-2">
                                         แผนผังลำดับการอนุมัติ (Approval Flow Diagram)
                                     </h4>
@@ -777,7 +777,7 @@ export default function AdminApprovalFlow() {
 
                             {/* Flow Summary - Job Type Breakdown */}
                             {!isEditMode && (
-                                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+                                <div className="bg-white rounded-xl shadow-sm border border-gray-400 p-6 mb-6">
                                     <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
                                         <BriefcaseIcon className="w-5 h-5 text-gray-500" />
                                         สรุปการตั้งค่า Flow ตามประเภทงาน
@@ -864,7 +864,7 @@ export default function AdminApprovalFlow() {
                             )}
 
                             {/* Responsible Team Summary */}
-                            <div className="bg-white border border-gray-200 rounded-xl mb-6 p-5">
+                            <div className="bg-white border border-gray-400 rounded-xl mb-6 p-5">
                                 <h4 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
                                     <UserGroupIcon className="w-4 h-4 text-gray-500" /> ทีมงานที่รับผิดชอบโครงการ (Responsible Team)
                                 </h4>
@@ -940,7 +940,7 @@ export default function AdminApprovalFlow() {
                                     </div>
 
                                     {/* Tabs Selector */}
-                                    <div className="flex border-b border-gray-200 bg-white sticky top-[73px] z-20">
+                                    <div className="flex border-b border-gray-400 bg-white sticky top-[73px] z-20">
                                         <button
                                             onClick={() => setActiveTab('flow')}
                                             className={`flex-1 py-3 text-sm font-medium text-center border-b-2 transition-colors ${activeTab === 'flow'
@@ -1004,7 +1004,7 @@ export default function AdminApprovalFlow() {
                                                                         <span className="text-[10px] font-bold">{level.level}</span>
                                                                     </div>
 
-                                                                    <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm group-hover:shadow-md transition-shadow">
+                                                                    <div className="bg-white p-5 rounded-xl border border-gray-400 shadow-sm group-hover:shadow-md transition-shadow">
                                                                         <div className="flex items-center justify-between mb-4">
                                                                             <div>
                                                                                 <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1">
@@ -1026,12 +1026,12 @@ export default function AdminApprovalFlow() {
                                                                         </div>
 
                                                                         {/* รายการผู้อนุมัติ (Approvers List - Chips) */}
-                                                                        <div className="flex flex-wrap gap-2 mb-4 bg-gray-50/50 p-3 rounded-lg border border-dashed border-gray-200">
+                                                                        <div className="flex flex-wrap gap-2 mb-4 bg-gray-50/50 p-3 rounded-lg border border-dashed border-gray-400">
                                                                             {level.approvers.length === 0 ? (
                                                                                 <p className="text-xs text-gray-400 italic">ยังไม่ได้เพิ่มผู้อนุมัติ กรุณาเลือกจากรายการด้านล่าง</p>
                                                                             ) : (
                                                                                 level.approvers.map(app => (
-                                                                                    <div key={app.userId} className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border border-gray-200 shadow-sm animate-fadeIn">
+                                                                                    <div key={app.userId} className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border border-gray-400 shadow-sm animate-fadeIn">
                                                                                         <div className="w-5 h-5 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-600">
                                                                                             {app.name.substring(0, 1)}
                                                                                         </div>
@@ -1180,7 +1180,7 @@ export default function AdminApprovalFlow() {
                                                                             className={`flex items-center justify-between p-3 rounded-lg border-2 transition-all cursor-pointer ${isSelected
                                                                                 ? 'bg-emerald-50 border-emerald-400 shadow-sm'
                                                                                 : hasAssignee
-                                                                                    ? 'bg-white border-gray-200 hover:border-emerald-300'
+                                                                                    ? 'bg-white border-gray-400 hover:border-emerald-300'
                                                                                     : 'bg-orange-50 border-orange-200 cursor-not-allowed'
                                                                                 }`}
                                                                         >
@@ -1343,7 +1343,7 @@ export default function AdminApprovalFlow() {
                                                                 </div>
 
                                                                 {/* Flow Diagram Preview */}
-                                                                <div className="mb-4 p-4 bg-white rounded-lg border border-gray-200">
+                                                                <div className="mb-4 p-4 bg-white rounded-lg border border-gray-400">
                                                                     <p className="text-xs font-bold text-gray-600 mb-3">ขั้นตอนการทำงาน:</p>
                                                                     <div className="flex items-center gap-2 overflow-x-auto pb-2">
                                                                         <span className="px-3 py-1 bg-gray-100 rounded-full text-xs font-medium text-gray-700 whitespace-nowrap">

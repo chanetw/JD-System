@@ -25,7 +25,7 @@ export default function SummaryWidget({ kpi, trend, isLoading, error }) {
         return (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm animate-pulse">
+                    <div key={i} className="bg-white rounded-xl p-4 border border-gray-400 shadow-sm animate-pulse">
                         <div className="flex items-center gap-4">
                             <div className="w-12 h-12 rounded-lg bg-gray-200"></div>
                             <div className="flex-1">
@@ -108,7 +108,7 @@ function KPICard({ title, value, icon, color, trend, isPercentage = false, decim
     };
 
     return (
-        <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+        <div className="bg-white rounded-xl p-4 border border-gray-400 shadow-sm hover:shadow-md transition-shadow">
             <div className="flex items-center gap-4">
                 <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${colors[color]}`}>
                     {icon}

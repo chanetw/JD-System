@@ -417,7 +417,7 @@ export default function AdminJobTypeSLA() {
                 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer
                 ${isActive
                     ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                    : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                    : 'bg-gray-50 text-gray-600 border-gray-400 hover:bg-gray-100'
                 }
             `}
             title="คลิกเพื่อเปลี่ยนสถานะ"
@@ -476,7 +476,7 @@ export default function AdminJobTypeSLA() {
                 <CardHeader title="กำหนดค่าประเภทงานและ SLA (Job Types Configuration)" />
                 <div className="overflow-x-auto">
                     <table className="w-full">
-                        <thead className="bg-gray-50 border-b border-gray-200">
+                        <thead className="bg-gray-50 border-b border-gray-400">
                             <tr>
                                 <Th>ประเภทงาน (Job Type)</Th>
                                 <Th>รายละเอียด (Description)</Th>
@@ -486,7 +486,7 @@ export default function AdminJobTypeSLA() {
                                 <Th className="text-center">จัดการ</Th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-200">
+                        <tbody className="divide-y divide-gray-400">
                             {isLoading ? (
                                 <tr><td colSpan="6" className="p-8 text-center text-gray-500">Loading...</td></tr>
                             ) : jobTypes.map((item) => {
@@ -542,7 +542,7 @@ export default function AdminJobTypeSLA() {
             {showModal && (
                 <div className="fixed inset-0 flex items-center justify-center z-50 p-4 animate-fadeIn">
                     <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-100">
-                        <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50/50">
+                        <div className="p-6 border-b border-gray-400 flex justify-between items-center bg-gray-50/50">
                             <h3 className="text-lg font-bold text-gray-900">{modalMode === 'add' ? 'เพิ่มประเภทงานใหม่' : 'แก้ไขข้อมูลประเภทงาน'}</h3>
                             <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 bg-white p-1 rounded-full shadow-sm transition-transform hover:rotate-90">
                                 <XMarkIcon className="w-5 h-5" />
@@ -617,7 +617,7 @@ export default function AdminJobTypeSLA() {
                                 </label>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                     {AVAILABLE_ATTACHMENTS.map(item => (
-                                        <label key={item} className={`flex items-center gap-2 p-2.5 border rounded-lg cursor-pointer transition-all ${formData.attachments.includes(item) ? 'bg-rose-50 border-rose-200 ring-1 ring-rose-200' : 'bg-white border-gray-200 hover:border-gray-300'}`}>
+                                        <label key={item} className={`flex items-center gap-2 p-2.5 border rounded-lg cursor-pointer transition-all ${formData.attachments.includes(item) ? 'bg-rose-50 border-rose-200 ring-1 ring-rose-200' : 'bg-white border-gray-400 hover:border-gray-300'}`}>
                                             <input
                                                 type="checkbox"
                                                 className="w-4 h-4 rounded border-gray-300 text-rose-600 focus:ring-rose-500"
@@ -653,7 +653,7 @@ export default function AdminJobTypeSLA() {
                             </div>
                         </div>
 
-                        <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+                        <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3">
                             <Button variant="ghost" onClick={() => setShowModal(false)}>ยกเลิก (Cancel)</Button>
                             <Button variant="primary" onClick={handleSave} className="bg-rose-600 hover:bg-rose-700 shadow-md transform active:scale-95 transition-all min-w-[140px]">
                                 {modalMode === 'add' ? 'เพิ่มประเภทงาน' : 'บันทึกการแก้ไข'}
@@ -678,7 +678,7 @@ function AdminStatCard({ label, value, icon, color }) {
         purple: "bg-purple-100"
     };
     return (
-        <div className="bg-white rounded-xl border border-gray-200 p-5 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
+        <div className="bg-white rounded-xl border border-gray-400 p-5 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
             <div className={`w-12 h-12 ${colors[color]} rounded-xl flex items-center justify-center shadow-inner`}>
                 {icon}
             </div>

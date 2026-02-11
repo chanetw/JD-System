@@ -7,7 +7,7 @@ import { UserIcon } from '@heroicons/react/24/outline';
 const SubJobsList = ({ jobs }) => {
     if (!jobs || jobs.length === 0) {
         return (
-            <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200 border-dashed">
+            <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-400 border-dashed">
                 <p className="text-gray-500">ไม่มีงานย่อย</p>
             </div>
         );
@@ -15,7 +15,7 @@ const SubJobsList = ({ jobs }) => {
 
     return (
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
-            <ul className="divide-y divide-gray-200">
+            <ul className="divide-y divide-gray-400">
                 {jobs.map((job) => (
                     <li key={job.id}>
                         <Link to={`/jobs/${job.id}`} className="block hover:bg-gray-50">

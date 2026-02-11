@@ -64,11 +64,15 @@ export default function DJList() {
     const loadData = async () => {
         setIsLoading(true);
         try {
+            // 🔥 Security: Fetch jobs based on Role (Least Privilege)
+            const isAdmin = user?.roleName === 'Admin' || user?.roles?.includes('Admin');
+            const fetchJobsPromise = isAdmin ? api.getJobs() : api.getJobsByRole(user);
+
             const [jobsData, masterDataResult] = await Promise.all([
-                api.getJobs(),
+                fetchJobsPromise,
                 api.getMasterData()
             ]);
-            console.log(`[DJList] Loaded ${jobsData.length} jobs. First job:`, jobsData[0]);
+            console.log(`[DJList] Loaded ${jobsData.length} jobs (Admin: ${isAdmin}). First job:`, jobsData[0]);
 
             // === Scope-based Filtering (ใหม่) ===
             let scopeFilteredJobs = jobsData;
@@ -279,7 +283,7 @@ export default function DJList() {
             </div>
 
             {/* Search Bar */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+            <div className="bg-white rounded-xl border border-gray-400 shadow-sm p-4">
                 <div className="relative">
                     <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
@@ -293,7 +297,7 @@ export default function DJList() {
             </div>
 
             {/* ส่วนคัดกรองข้อมูล (Filters Section) */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+            <div className="bg-white rounded-xl border border-gray-400 shadow-sm p-4">
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                     <FilterSelect
                         label="โครงการ (Project)"
@@ -351,8 +355,8 @@ export default function DJList() {
             </div>
 
             {/* Results Table */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <div className="bg-white rounded-xl border border-gray-400 shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-400 flex items-center justify-between">
                     <p className="text-sm text-gray-600">
                         แสดง <strong>{filteredJobs.length}</strong> รายการ
                     </p>
@@ -395,7 +399,7 @@ export default function DJList() {
                                     <Th>การจัดการ</Th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-200">
+                            <tbody className="divide-y divide-gray-400">
                                 {currentJobs.map((job) => (
                                     <JobRow
                                         key={job.id}
@@ -422,7 +426,7 @@ export default function DJList() {
 
                 {/* Pagination */}
                 {!isLoading && filteredJobs.length > 0 && (
-                    <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+                    <div className="px-6 py-4 border-t border-gray-400 flex items-center justify-between">
                         <p className="text-sm text-gray-500">
                             แสดง {startIndex + 1}-{Math.min(endIndex, filteredJobs.length)} จาก {filteredJobs.length} รายการ
                         </p>

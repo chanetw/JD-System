@@ -1060,7 +1060,17 @@ export const adminService = {
                         projects: projectScopes
                     },
                     assignedProjects: projectScopes,
-                    scope_assignments: scopeAssignments
+                    scope_assignments: scopeAssignments,
+
+                    // NEW: Job Assignments (Responsibilities) - Preserve from backend
+                    jobAssignments: (u.assignedProjects || []).map(a => ({
+                        id: a.id,
+                        projectId: a.projectId,
+                        projectName: a.project?.name,
+                        projectCode: a.project?.code,
+                        jobTypeId: a.jobTypeId,
+                        jobTypeName: a.jobType?.name
+                    }))
                 };
             });
 
@@ -1399,6 +1409,78 @@ export const adminService = {
             return response.data;
         } catch (error) {
             console.error('[adminService] deleteUser error:', error);
+            throw error;
+        }
+    },
+
+    // --- User Assignments (User-Centric) - Support BUD-level + Project-level ---
+    /**
+     * Get user assignments (both BUD-level and Project-level)
+     * @param {number} userId
+     * @returns {Promise<Object>} { budAssignments: [], projectAssignments: [] }
+     */
+    getUserAssignments: async (userId) => {
+        try {
+            console.log(`[adminService] Getting assignments for user ${userId}...`);
+            const response = await httpClient.get(`/users/${userId}/assignments`);
+            console.log('[adminService] getUserAssignments raw response:', response.data);
+
+            // Backend now returns: { success: true, data: { budAssignments: [], projectAssignments: [] } }
+            if (response.data.success && response.data.data) {
+                return response.data.data; // Return { budAssignments, projectAssignments }
+            }
+
+            // Fallback for backward compatibility
+            return {
+                budAssignments: [],
+                projectAssignments: response.data.data || []
+            };
+        } catch (error) {
+            console.error('[adminService] getUserAssignments error:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Check assignment conflicts (Project-level only for now)
+     * @param {number} userId
+     * @param {Array<number>} jobTypeIds
+     * @param {Array<number>} projectIds
+     */
+    checkAssignmentConflicts: async (userId, jobTypeIds, projectIds) => {
+        try {
+            const response = await httpClient.post(`/users/${userId}/assignments/check-conflict`, {
+                jobTypeIds,
+                projectIds
+            });
+            return response.data;
+        } catch (error) {
+            console.error('[adminService] checkAssignmentConflicts error:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Save user assignments (both BUD-level and Project-level)
+     * @param {number} userId
+     * @param {Object} assignments - { jobTypeIds, budIds, projectIds }
+     */
+    saveUserAssignments: async (userId, { jobTypeIds, budIds = [], projectIds = [] }) => {
+        try {
+            const response = await httpClient.post(`/users/${userId}/assignments`, {
+                jobTypeIds,
+                budIds,      // NEW: BUD-level assignments
+                projectIds
+            });
+
+            if (!response.data.success) {
+                console.error('[adminService] Failed to save assignments:', response.data.message);
+                throw new Error(response.data.message || 'Failed to save assignments');
+            }
+
+            return response.data;
+        } catch (error) {
+            console.error('[adminService] saveUserAssignments error:', error);
             throw error;
         }
     }

@@ -205,7 +205,7 @@ const PendingApprovals: React.FC = () => {
             <p className="text-sm font-medium text-red-800">Rejected</p>
             <p className="text-2xl font-bold text-red-900">{registrationCounts.REJECTED}</p>
           </div>
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+          <div className="bg-gray-50 border border-gray-400 rounded-lg p-4">
             <p className="text-sm font-medium text-gray-600">Total Users</p>
             <p className="text-2xl font-bold text-gray-900">{registrationCounts.total}</p>
           </div>
@@ -231,8 +231,8 @@ const PendingApprovals: React.FC = () => {
       )}
 
       {/* Pending Users Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-400 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-400">
           <h2 className="text-lg font-semibold text-gray-900">
             Pending Registration Requests ({pendingUsers.length})
           </h2>
@@ -265,7 +265,7 @@ const PendingApprovals: React.FC = () => {
                   <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-400">
                 {pendingUsers.map((user) => (
                   <tr key={user.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
@@ -324,7 +324,7 @@ const PendingApprovals: React.FC = () => {
       {showApproveModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
-            <div className="p-6 border-b border-gray-200">
+            <div className="p-6 border-b border-gray-400">
               <h3 className="text-lg font-semibold text-gray-900">Approve Registration</h3>
             </div>
             <div className="p-6 space-y-4">
@@ -346,7 +346,7 @@ const PendingApprovals: React.FC = () => {
                 </select>
               </div>
             </div>
-            <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 rounded-b-xl">
+            <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3 rounded-b-xl">
               <button
                 onClick={() => setShowApproveModal(false)}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -369,7 +369,7 @@ const PendingApprovals: React.FC = () => {
       {showRejectModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
-            <div className="p-6 border-b border-gray-200">
+            <div className="p-6 border-b border-gray-400">
               <h3 className="text-lg font-semibold text-gray-900">Reject Registration</h3>
             </div>
             <div className="p-6 space-y-4">
@@ -387,7 +387,7 @@ const PendingApprovals: React.FC = () => {
                 />
               </div>
             </div>
-            <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 rounded-b-xl">
+            <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3 rounded-b-xl">
               <button
                 onClick={() => setShowRejectModal(false)}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -410,7 +410,7 @@ const PendingApprovals: React.FC = () => {
       {showPasswordModal && approvedUserInfo && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
-            <div className="p-6 border-b border-gray-200 bg-green-50">
+            <div className="p-6 border-b border-gray-400 bg-green-50">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
                   <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -478,7 +478,7 @@ const PendingApprovals: React.FC = () => {
                 <p>ผู้ใช้จะต้องเปลี่ยนรหัสผ่านเมื่อเข้าสู่ระบบครั้งแรก</p>
               </div>
             </div>
-            <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end rounded-b-xl">
+            <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end rounded-b-xl">
               <button
                 onClick={() => {
                   setShowPasswordModal(false);
