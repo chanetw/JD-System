@@ -450,6 +450,10 @@ model Approval {
   job      Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
   approver User   @relation(fields: [approverId], references: [id])
 
+  @@index([jobId, approverId])
+  @@index([status, createdAt])
+  @@index([jobId, status])
+  @@index([tenantId, status])
   @@map("approvals")
 }
 
@@ -467,6 +471,10 @@ model JobActivity {
   job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
   user   User?  @relation(fields: [userId], references: [id])
 
+  @@index([jobId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([jobId, activityType])
+  @@index([tenantId, createdAt(sort: Desc)])
   @@map("job_activities")
 }
 
@@ -484,6 +492,9 @@ model JobComment {
   job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id])
 
+  @@index([jobId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([tenantId, jobId])
   @@map("job_comments")
 }
 
@@ -638,6 +649,7 @@ model ProjectJobAssignment {
   @@index([projectId])
   @@index([jobTypeId])
   @@index([assigneeId])
+  @@index([assigneeId, isActive])
   @@map("project_job_assignments")
 }
 

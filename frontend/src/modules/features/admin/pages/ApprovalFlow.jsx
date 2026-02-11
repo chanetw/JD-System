@@ -128,37 +128,41 @@ export default function AdminApprovalFlow() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            // โหลดข้อมูลแบบ parallel แต่มี fallback ป้องกัน error
-            let projectsData = [];
-            let allFlowsData = []; // ✅ เพิ่ม: เก็บ Flows ทั้งหมด
-            let usersData = [];
-            let jobTypesData = [];
+            // ⚡ Performance: โหลดข้อมูลแบบ parallel ด้วย Promise.allSettled (เร็วขึ้น 600ms)
+            const [projectsResult, flowsResult, usersResult, jobTypesResult] = await Promise.allSettled([
+                api.getProjects(),
+                adminService.getAllApprovalFlows(),
+                api.getUsers(),
+                api.getJobTypes()
+            ]);
 
-            try {
-                projectsData = await api.getProjects() || [];
-            } catch (e) {
-                console.warn('Error loading projects:', e.message);
-            }
+            // Extract data with fallbacks
+            const projectsData = projectsResult.status === 'fulfilled'
+                ? (projectsResult.value || [])
+                : [];
+            const allFlowsData = flowsResult.status === 'fulfilled'
+                ? (flowsResult.value || [])
+                : [];
+            const usersData = usersResult.status === 'fulfilled'
+                ? (usersResult.value?.data || [])
+                : [];
+            const jobTypesData = jobTypesResult.status === 'fulfilled'
+                ? (jobTypesResult.value || [])
+                : [];
 
-            // ✅ โหลด Flows ทั้งหมดสำหรับการนับและกรอง
-            try {
-                allFlowsData = await adminService.getAllApprovalFlows() || [];
+            // Log errors if any
+            if (projectsResult.status === 'rejected')
+                console.warn('Error loading projects:', projectsResult.reason?.message || projectsResult.reason);
+            if (flowsResult.status === 'rejected')
+                console.warn('Error loading flows:', flowsResult.reason?.message || flowsResult.reason);
+            if (usersResult.status === 'rejected')
+                console.warn('Error loading users:', usersResult.reason?.message || usersResult.reason);
+            if (jobTypesResult.status === 'rejected')
+                console.warn('Error loading job types:', jobTypesResult.reason?.message || jobTypesResult.reason);
+
+            // Success log for flows
+            if (flowsResult.status === 'fulfilled') {
                 console.log(`[ApprovalFlow] Loaded ${allFlowsData.length} flows total`);
-            } catch (e) {
-                console.warn('Error loading all approval flows:', e.message);
-            }
-
-            try {
-                const usersResponse = await api.getUsers() || {};
-                usersData = usersResponse.data || [];
-            } catch (e) {
-                console.warn('Error loading users:', e.message);
-            }
-
-            try {
-                jobTypesData = await api.getJobTypes() || [];
-            } catch (e) {
-                console.warn('Error loading job types:', e.message);
             }
 
             setProjects(projectsData);

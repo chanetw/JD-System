@@ -409,7 +409,8 @@ export class ApprovalService extends BaseService {
             }
           }
         },
-        orderBy: { stepNumber: 'asc' }
+        orderBy: { stepNumber: 'asc' },
+        take: 100  // ⚡ Performance: Limit to 100 approval steps (prevent large queries)
       });
 
       // ดึง activity logs ที่เกี่ยวข้อง
@@ -429,7 +430,8 @@ export class ApprovalService extends BaseService {
             }
           }
         },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
+        take: 200  // ⚡ Performance: Limit to recent 200 activities
       });
 
       return this.successResponse({
