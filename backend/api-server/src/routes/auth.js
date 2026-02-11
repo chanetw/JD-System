@@ -141,17 +141,33 @@ export async function setRLSContextMiddleware(req, res, next) {
 
       // Set both tenant ID and user ID for RLS policies
       await setRLSContext(prisma, tenantId, req.user.userId || req.user.id);
+      console.log('[RLS Middleware] ✅ RLS context set successfully');
     } else {
-      console.warn('[RLS Middleware] User or tenantId not available:', {
+      console.warn('[RLS Middleware] ⚠️  User or tenantId not available:', {
         hasUser: !!req.user,
         tenantId: req.user?.tenantId
+      });
+      // Return 403 if we can't set RLS context
+      return res.status(403).json({
+        success: false,
+        error: 'INVALID_AUTH_CONTEXT',
+        message: 'Invalid authentication context - missing tenant or user'
       });
     }
     next();
   } catch (error) {
-    console.error('[RLS Middleware] Error setting RLS context:', error.message);
-    // Continue even if setting fails - don't block the request
-    next();
+    console.error('[RLS Middleware] ❌ CRITICAL: Failed to set RLS context:', {
+      error: error.message,
+      code: error.code,
+      userId: req.user?.userId,
+      tenantId: req.user?.tenantId
+    });
+    // Return 403 if RLS context cannot be set - subsequent queries will fail anyway
+    return res.status(403).json({
+      success: false,
+      error: 'RLS_CONTEXT_ERROR',
+      message: 'Failed to establish database context'
+    });
   }
 }
 

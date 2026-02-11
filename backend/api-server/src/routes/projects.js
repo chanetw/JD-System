@@ -25,6 +25,13 @@ router.get('/', async (req, res) => {
         const prisma = getDatabase();
         const tenantId = req.user.tenantId;
 
+        console.log('[Projects] GET / - User context:', {
+            userId: req.user.userId,
+            tenantId: tenantId,
+            email: req.user.email,
+            roles: req.user.roles
+        });
+
         const projects = await prisma.project.findMany({
             where: { tenantId },
             include: {

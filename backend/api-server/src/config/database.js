@@ -48,8 +48,14 @@ export async function setRLSContext(prisma, tenantId, userId = null) {
       const validTenantId = parseInt(tenantId, 10);
       if (isNaN(validTenantId) || validTenantId <= 0) {
         console.warn('[RLS] Invalid tenant ID:', tenantId);
-      } else {
+        return; // Don't continue if tenant ID is invalid
+      }
+      try {
         await prisma.$executeRawUnsafe(`SELECT set_config('app.tenant_id', '${validTenantId}', false)`);
+        console.log('[RLS] ✅ Set tenant_id:', validTenantId);
+      } catch (err) {
+        console.error('[RLS] ❌ Failed to set tenant_id:', validTenantId, err.message);
+        throw err;
       }
     }
 
@@ -58,12 +64,27 @@ export async function setRLSContext(prisma, tenantId, userId = null) {
       const validUserId = parseInt(userId, 10);
       if (isNaN(validUserId) || validUserId <= 0) {
         console.warn('[RLS] Invalid user ID:', userId);
-      } else {
+        return; // Don't continue if user ID is invalid
+      }
+      try {
         await prisma.$executeRawUnsafe(`SELECT set_config('app.current_user_id', '${validUserId}', false)`);
+        console.log('[RLS] ✅ Set current_user_id:', validUserId);
+      } catch (err) {
+        console.error('[RLS] ❌ Failed to set current_user_id:', validUserId, err.message);
+        throw err;
       }
     }
   } catch (error) {
-    console.warn('[RLS] Failed to set RLS context:', error.message);
+    console.error('[RLS] ⚠️  RLS Context Error - This will cause 403 on queries:', {
+      tenantId,
+      userId,
+      errorName: error.name,
+      errorMessage: error.message,
+      errorCode: error.code,
+      stack: error.stack
+    });
+    // IMPORTANT: Re-throw the error so middleware can decide how to handle it
+    throw error;
   }
 }
 
