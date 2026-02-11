@@ -289,22 +289,29 @@ export default function AdminApprovalFlow() {
     }, [selectedProject, allApprovalFlows]); // ✅ Depend on allApprovalFlows
 
     /**
-     * useEffect Hook สำหรับดึงข้อมูล Job Assignments ของโปรเจกต์
-     * ใช้สำหรับแสดง Job Types พร้อมผู้รับงานที่กำหนดไว้
+     * โหลด Job Assignments ของโปรเจกต์ปัจจุบัน
+     * ใช้เมื่อเปลี่ยน project หรือเมื่อ Assignment Matrix มีการอัพเดท
+     *
+     * @async
+     * @function fetchJobAssignments
+     */
+    const fetchJobAssignments = async () => {
+        if (selectedProject?.id) {
+            try {
+                const assignments = await adminService.getProjectJobAssignments(selectedProject.id);
+                setProjectJobAssignments(assignments || []);
+                console.log('[ApprovalFlow] ✅ Refreshed job assignments:', assignments?.length || 0);
+            } catch (error) {
+                console.error('[ApprovalFlow] Error fetching job assignments:', error);
+                setProjectJobAssignments([]);
+            }
+        }
+    };
+
+    /**
+     * useEffect Hook สำหรับดึงข้อมูล Job Assignments เมื่อเปลี่ยนโปรเจกต์
      */
     useEffect(() => {
-        const fetchJobAssignments = async () => {
-            if (selectedProject?.id) {
-                try {
-                    const assignments = await adminService.getProjectJobAssignments(selectedProject.id);
-                    setProjectJobAssignments(assignments || []);
-                    // setSelectedJobTypesForSkip([]); // REMOVED: Caused race condition overriding restored data
-                } catch (error) {
-                    console.error('Error fetching job assignments:', error);
-                    setProjectJobAssignments([]);
-                }
-            }
-        };
         fetchJobAssignments();
     }, [selectedProject]);
 
@@ -1439,6 +1446,7 @@ export default function AdminApprovalFlow() {
                                             <AssignmentMatrix
                                                 projectId={selectedProject.id}
                                                 assignees={responsibleTeam.assignees}
+                                                onSaveSuccess={fetchJobAssignments}
                                             />
                                         )}
                                     </div>

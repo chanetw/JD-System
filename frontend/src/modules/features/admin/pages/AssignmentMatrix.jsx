@@ -7,12 +7,14 @@ import Modal from '@shared/components/Modal';
 /**
  * AssignmentMatrix Component
  * จัดการตารางกำหนดผู้รับงานอัตโนมัติตามประเภทงาน (Project + JobType -> Assignee)
- * 
+ *
  * Capability:
  * - Standalone Mode: มี Dropdown ให้เลือก Project และโหลด Assignees เอง
  * - Embedded Mode: รับ projectId และ assignees ผ่าน props
+ *
+ * @param {Function} onSaveSuccess - Callback ที่ถูกเรียกเมื่อบันทึกสำเร็จ
  */
-export default function AssignmentMatrix({ projectId: propProjectId, assignees: propAssignees }) {
+export default function AssignmentMatrix({ projectId: propProjectId, assignees: propAssignees, onSaveSuccess }) {
     // === State ===
     const [projects, setProjects] = useState([]);
     const [localAssignees, setLocalAssignees] = useState([]);
@@ -133,6 +135,11 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
             });
             setShowModal(true);
             loadMatrixData();
+
+            // แจ้ง parent component ว่าบันทึกสำเร็จแล้ว
+            if (onSaveSuccess) {
+                onSaveSuccess();
+            }
         } catch (error) {
             setModalConfig({
                 type: 'error',
