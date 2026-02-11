@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient';
 import { handleResponse } from '../utils';
 import httpClient from '../httpClient';
+import { cacheService } from '../cacheService';
 
 export const adminService = {
     // --- Master Data (Organization) ---
@@ -114,13 +115,26 @@ export const adminService = {
     },
 
     getProjects: async () => {
+        // ⚡ Performance: Check cache first (10 min TTL)
+        const cacheKey = 'projects:all';
+        const cached = cacheService.get(cacheKey);
+        if (cached) return cached;
+
         const response = await httpClient.get('/projects');
-        return response.data.data;
+        const data = response.data.data;
+
+        // Cache for 10 minutes
+        cacheService.set(cacheKey, data, 10 * 60 * 1000);
+        return data;
     },
 
     createProject: async (projectData) => {
         const response = await httpClient.post('/projects', projectData);
         if (!response.data.success) throw new Error(response.data.message);
+
+        // ⚡ Performance: Invalidate projects cache
+        cacheService.invalidateByPrefix('projects:');
+
         return response.data.data;
     },
 
@@ -128,17 +142,30 @@ export const adminService = {
         const payload = { ...projectData, isActive: projectData.status === 'Active' };
         const response = await httpClient.put(`/projects/${id}`, payload);
         if (!response.data.success) throw new Error(response.data.message);
+
+        // ⚡ Performance: Invalidate projects cache
+        cacheService.invalidateByPrefix('projects:');
+
         return response.data.data;
     },
 
     deleteProject: async (id) => {
         const response = await httpClient.delete(`/projects/${id}`);
         if (!response.data.success) throw new Error(response.data.message);
+
+        // ⚡ Performance: Invalidate projects cache
+        cacheService.invalidateByPrefix('projects:');
+
         return response.data;
     },
 
     getDepartments: async () => {
         try {
+            // ⚡ Performance: Check cache first (10 min TTL)
+            const cacheKey = 'departments:all';
+            const cached = cacheService.get(cacheKey);
+            if (cached) return cached;
+
             console.log('[adminService] Calling GET /departments...');
             // ✓ NEW: Use Backend REST API with RLS context
             const response = await httpClient.get('/departments');
@@ -150,8 +177,12 @@ export const adminService = {
                 return [];
             }
 
-            console.log('[adminService] Departments loaded:', response.data.data?.length || 0, 'items');
-            return response.data.data;
+            const data = response.data.data;
+            console.log('[adminService] Departments loaded:', data?.length || 0, 'items');
+
+            // Cache for 10 minutes
+            cacheService.set(cacheKey, data, 10 * 60 * 1000);
+            return data;
 
         } catch (error) {
             console.error('[adminService] getDepartments error:', error);
@@ -163,24 +194,45 @@ export const adminService = {
     createDepartment: async (deptData) => {
         const response = await httpClient.post('/departments', deptData);
         if (!response.data.success) throw new Error(response.data.message);
+
+        // ⚡ Performance: Invalidate departments cache
+        cacheService.invalidateByPrefix('departments:');
+
         return response.data.data;
     },
 
     updateDepartment: async (id, deptData) => {
         const response = await httpClient.put(`/departments/${id}`, deptData);
         if (!response.data.success) throw new Error(response.data.message);
+
+        // ⚡ Performance: Invalidate departments cache
+        cacheService.invalidateByPrefix('departments:');
+
         return response.data.data;
     },
 
     deleteDepartment: async (id) => {
         const response = await httpClient.delete(`/departments/${id}`);
         if (!response.data.success) throw new Error(response.data.message);
+
+        // ⚡ Performance: Invalidate departments cache
+        cacheService.invalidateByPrefix('departments:');
+
         return response.data;
     },
 
     // --- Job Types ---
     getJobTypes: async (shouldRefresh = false) => {
         try {
+            // ⚡ Performance: Check cache first (30 min TTL for stable data)
+            const cacheKey = 'jobTypes:all';
+
+            // Bypass cache if refresh is requested
+            if (!shouldRefresh) {
+                const cached = cacheService.get(cacheKey);
+                if (cached) return cached;
+            }
+
             // ✓ NEW: Use Backend REST API (Consolidated)
             // Pass refresh param to bypass cache
             const response = await httpClient.get('/master-data', {
@@ -196,7 +248,7 @@ export const adminService = {
             const jobTypes = response.data.data.jobTypes || [];
 
             // Map to match component expectations
-            return jobTypes.map(jt => ({
+            const mappedData = jobTypes.map(jt => ({
                 id: jt.id,
                 name: jt.name,
                 description: jt.description,
@@ -214,6 +266,10 @@ export const adminService = {
                     isRequired: i.isRequired
                 }))
             }));
+
+            // Cache for 30 minutes (job types change infrequently)
+            cacheService.set(cacheKey, mappedData, 30 * 60 * 1000);
+            return mappedData;
 
         } catch (error) {
             console.error('[adminService] getJobTypes error:', error);
@@ -250,6 +306,10 @@ export const adminService = {
             if (!response.data.success) {
                 throw new Error(response.data.message || 'Failed to create job type');
             }
+
+            // ⚡ Performance: Invalidate job types cache
+            cacheService.invalidateByPrefix('jobTypes:');
+
             return response.data.data;
         } catch (error) {
             console.error('[adminService] createJobType error:', error);
@@ -303,6 +363,10 @@ export const adminService = {
             if (!response.data.success) {
                 throw new Error(response.data.message || 'Failed to update job type');
             }
+
+            // ⚡ Performance: Invalidate job types cache
+            cacheService.invalidateByPrefix('jobTypes:');
+
             return response.data.data;
         } catch (error) {
             console.error('[adminService] updateJobType error:', error);
@@ -325,6 +389,10 @@ export const adminService = {
             if (!response.data.success) {
                 throw new Error(response.data.message || 'Failed to delete job type');
             }
+
+            // ⚡ Performance: Invalidate job types cache
+            cacheService.invalidateByPrefix('jobTypes:');
+
             return { success: true };
         } catch (error) {
             console.error('[adminService] deleteJobType error:', error);
@@ -437,6 +505,11 @@ export const adminService = {
         // ดึง Approval Flows ทั้งหมด (สำหรับ Admin)
         // ใช้ใน ApprovalFlow.jsx เพื่อนับจำนวนโครงการที่ตั้งค่าแล้ว
         try {
+            // ⚡ Performance: Check cache first (5 min TTL)
+            const cacheKey = 'approvalFlows:all';
+            const cached = cacheService.get(cacheKey);
+            if (cached) return cached;
+
             const response = await httpClient.get('/approval-flows'); // ไม่ส่ง projectId
             if (!response.data.success) {
                 console.error('[adminService] getAllApprovalFlows error:', response.data.message);
@@ -444,7 +517,11 @@ export const adminService = {
             }
 
             // Backend returns array of flows
-            return response.data.data || [];
+            const data = response.data.data || [];
+
+            // Cache for 5 minutes
+            cacheService.set(cacheKey, data, 5 * 60 * 1000);
+            return data;
         } catch (error) {
             console.error('[adminService] getAllApprovalFlows error:', error);
             return [];
@@ -504,6 +581,10 @@ export const adminService = {
             const response = await httpClient.post('/approval-flows', payload);
 
             if (!response.data.success) throw new Error(response.data.message);
+
+            // ⚡ Performance: Invalidate approval flows cache
+            cacheService.invalidateByPrefix('approvalFlows:');
+
             return { success: true };
         } catch (error) {
             console.error('[adminService] saveApprovalFlow error:', error);
@@ -1223,6 +1304,46 @@ export const adminService = {
             return response.data;
         } catch (error) {
             console.error('[adminService] approveRegistration error:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * รีเซ็ตรหัสผ่านผู้ใช้ (Random + Email)
+     * @param {number} userId - ID ของ user
+     */
+    resetPassword: async (userId) => {
+        try {
+            console.log(`[adminService] Resetting password for user: ${userId}`);
+            const response = await httpClient.put(`/users/${userId}/reset-password`);
+
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Reset password failed');
+            }
+
+            return response.data;
+        } catch (error) {
+            console.error('[adminService] resetPassword error:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * ลบผู้ใช้ถาวร (Hard Delete)
+     * @param {number} userId - ID ของ user
+     */
+    deleteUser: async (userId) => {
+        try {
+            console.log(`[adminService] Deleting user: ${userId}`);
+            const response = await httpClient.delete(`/users/${userId}`);
+
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Delete user failed');
+            }
+
+            return response.data;
+        } catch (error) {
+            console.error('[adminService] deleteUser error:', error);
             throw error;
         }
     }

@@ -539,10 +539,12 @@ router.get('/:id', async (req, res) => {
           select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, email: true }
         },
         jobItems: {
-          select: { id: true, name: true, quantity: true, status: true }
+          select: { id: true, name: true, quantity: true, status: true },
+          take: 100  // ⚡ Performance: Limit to 100 items
         },
         attachments: {
-          select: { id: true, filePath: true, fileName: true, fileSize: true, createdAt: true }
+          select: { id: true, filePath: true, fileName: true, fileSize: true, createdAt: true },
+          take: 50  // ⚡ Performance: Limit to 50 attachments
         },
         // Include comments for discussion thread
         comments: {
@@ -554,7 +556,8 @@ router.get('/:id', async (req, res) => {
               select: { id: true, displayName: true, firstName: true, lastName: true, avatarUrl: true }
             }
           },
-          orderBy: { createdAt: 'asc' }
+          orderBy: { createdAt: 'desc' },
+          take: 50  // ⚡ Performance: Limit to recent 50 comments
         },
         // Include activities for history log
         // Include activities for history log
@@ -584,7 +587,9 @@ router.get('/:id', async (req, res) => {
             assignee: { select: { id: true, displayName: true } },
             dueDate: true
           },
-          orderBy: { createdAt: 'asc' }
+          where: { isParent: false },  // ⚡ Performance: Only non-parent children
+          orderBy: { createdAt: 'asc' },
+          take: 100  // ⚡ Performance: Limit to 100 children
         },
         // Include parent job if this is a child job
         parentJob: {

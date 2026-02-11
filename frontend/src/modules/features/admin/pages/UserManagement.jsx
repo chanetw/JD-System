@@ -11,6 +11,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import Swal from 'sweetalert2';
 import apiDatabase from '@shared/services/apiDatabase';
 import { supabase } from '@shared/services/supabaseClient';
 import { adminService } from '@shared/services/modules/adminService';
@@ -24,7 +25,8 @@ import ScopeConfigPanel from '@shared/components/ScopeConfigPanel';
 import {
     CheckIcon, XMarkIcon,
     UserIcon, EnvelopeIcon, BuildingOfficeIcon,
-    ChevronLeftIcon, ChevronRightIcon
+    ChevronLeftIcon, ChevronRightIcon,
+    KeyIcon
 } from '@heroicons/react/24/outline';
 
 // ROLE_OPTIONS และ SCOPE_LEVELS ย้ายไปใช้จาก permission.utils.js แล้ว
@@ -98,12 +100,8 @@ export default function UserManagementNew() {
     });
     const [rejectReason, setRejectReason] = useState('');
 
-    // Alert
-    const [alertState, setAlertState] = useState({
-        show: false,
-        type: 'success',
-        message: ''
-    });
+    // Alert - Using SweetAlert2 now, removing local state
+    // const [alertState, setAlertState] = useState({ ... });
 
     const [users, setUsers] = useState([]);
 
@@ -124,13 +122,17 @@ export default function UserManagementNew() {
     const [filterDepartment, setFilterDepartment] = useState('');
     const [showAllDepts, setShowAllDepts] = useState(false); // Department Manager Filter Toggle
 
+    // ⚡ Performance: Load master data once on mount
+    useEffect(() => {
+        loadMasterData();
+    }, []);
+
+    // Load tab-specific data when tab changes
     useEffect(() => {
         if (activeTab === 'registrations') {
             loadRegistrations();
-            loadMasterData();
         } else if (activeTab === 'active') {
             loadUsers();
-            loadMasterData(); // Need departments for edit
         }
     }, [activeTab]);
 
@@ -217,6 +219,11 @@ export default function UserManagementNew() {
     /**
      * Filter projects by user's department and BUD
      * Shows only projects that belong to the same BUD as the user's department
+     *
+     * Data sources:
+     * - User (Edit mode): has departmentId directly
+     * - Registration (Approve mode): has departmentId and departmentName from backend
+     *
      * @param {Object} userOrRegistration - User object or Registration object
      * @param {Object} allScopes - Original availableScopes with all projects
      * @returns {Object} - Filtered availableScopes with filtered projects
@@ -224,19 +231,35 @@ export default function UserManagementNew() {
     const getFilteredScopesForUser = (userOrRegistration, allScopes) => {
         if (!userOrRegistration || !allScopes) return allScopes;
 
-        // 1. Get user's department ID
+        // 1. Get user's department ID - Backend sends departmentId for both users and registrations
         let departmentId = null;
+        let lookupMethod = 'none';
 
-        // For existing user (Edit mode)
+        // Priority 1: Use departmentId directly (both User and Registration have this from backend)
         if (userOrRegistration.departmentId) {
             departmentId = userOrRegistration.departmentId;
+            lookupMethod = 'departmentId (direct)';
         }
-        // For registration (Approve mode) - lookup by department name
-        else if (userOrRegistration.department) {
+        // Priority 2: Fallback - lookup by departmentName (for registrations that might have name only)
+        else if (userOrRegistration.departmentName) {
+            const dept = masterData.departments.find(d =>
+                d.name === userOrRegistration.departmentName
+            );
+            departmentId = dept?.id;
+            lookupMethod = 'departmentName (lookup)';
+        }
+        // Priority 3: Legacy fallback - lookup by department string (old format)
+        else if (userOrRegistration.department && typeof userOrRegistration.department === 'string') {
             const dept = masterData.departments.find(d =>
                 d.name === userOrRegistration.department
             );
             departmentId = dept?.id;
+            lookupMethod = 'department (legacy lookup)';
+        }
+        // Priority 4: Nested department object
+        else if (userOrRegistration.department?.id) {
+            departmentId = userOrRegistration.department.id;
+            lookupMethod = 'department.id (nested)';
         }
 
         // 2. Get department's BUD ID
@@ -244,18 +267,42 @@ export default function UserManagementNew() {
         const userBudId = department?.bud_id;
 
         console.log('🔍 Filtering projects for user:', {
+            userId: userOrRegistration.id,
             departmentId,
+            lookupMethod,
             departmentName: department?.name,
             budId: userBudId
         });
 
-        // 3. If no BUD found, return all scopes (fallback)
-        if (!userBudId) {
-            console.warn('⚠️ No BUD found for user, showing all projects');
-            return allScopes;
+        // 3. If no department found, show warning and return all (with error flag)
+        if (!departmentId) {
+            console.error('❌ No department found for user/registration:', {
+                id: userOrRegistration.id,
+                email: userOrRegistration.email,
+                availableFields: Object.keys(userOrRegistration).filter(k => k.includes('department') || k.includes('Department'))
+            });
+            // Return scopes with warning flag
+            return {
+                ...allScopes,
+                _filterError: 'NO_DEPARTMENT',
+                _filterMessage: 'ไม่พบข้อมูลแผนกของผู้ใช้'
+            };
         }
 
-        // 4. Filter projects by BUD
+        // 4. If no BUD found for department, show warning
+        if (!userBudId) {
+            console.error('❌ No BUD found for department:', {
+                departmentId,
+                departmentName: department?.name
+            });
+            return {
+                ...allScopes,
+                _filterError: 'NO_BUD',
+                _filterMessage: `ไม่พบข้อมูลฝ่ายของแผนก "${department?.name || departmentId}"`
+            };
+        }
+
+        // 5. Filter projects by BUD
         const filteredProjects = allScopes.projects?.filter(p => {
             const match = p.budId === userBudId;
             if (match) {
@@ -266,10 +313,13 @@ export default function UserManagementNew() {
 
         console.log(`📊 Filtered ${filteredProjects.length}/${allScopes.projects?.length || 0} projects for BUD ${userBudId}`);
 
-        // 5. Return filtered scopes
+        // 6. Return filtered scopes with metadata
         return {
             ...allScopes,
-            projects: filteredProjects
+            projects: filteredProjects,
+            _budId: userBudId,
+            _budName: masterData.buds?.find(b => b.id === userBudId)?.name || null,
+            _filterApplied: true
         };
     };
 
@@ -287,8 +337,22 @@ export default function UserManagementNew() {
     };
 
     const showAlert = (type, message) => {
-        setAlertState({ show: true, type, message });
-        setTimeout(() => setAlertState({ show: false, type: '', message: '' }), 3000);
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true,
+            didOpen: (toast) => {
+                toast.addEventListener('mouseenter', Swal.stopTimer);
+                toast.addEventListener('mouseleave', Swal.resumeTimer);
+            }
+        });
+
+        Toast.fire({
+            icon: type,
+            title: message
+        });
     };
 
     const handleApproveClick = (registrationId) => {
@@ -315,6 +379,68 @@ export default function UserManagementNew() {
         setApprovalRoleConfigs({});
         setApprovalSelectedRoles([]);
     };
+
+    // ✨ Handle Toggle User Status (Active/Inactive)
+    const handleToggleStatus = async (userToToggle) => {
+        try {
+            const newStatus = !userToToggle.isActive;
+
+            // Optimistic Update: Update UI immediately
+            setUsers(prevUsers =>
+                prevUsers.map(u =>
+                    u.id === userToToggle.id ? { ...u, isActive: newStatus } : u
+                )
+            );
+
+            // Call API
+            await adminService.updateUser(userToToggle.id, {
+                ...userToToggle,
+                isActive: newStatus
+            });
+
+            showAlert('success', `เปลี่ยนสถานะเป็น ${newStatus ? 'Active' : 'Inactive'} เรียบร้อยแล้ว`);
+            // No need to reload list: loadUsers(); 
+        } catch (error) {
+            console.error('Error toggling status:', error);
+
+            // Revert on error
+            setUsers(prevUsers =>
+                prevUsers.map(u =>
+                    u.id === userToToggle.id ? { ...u, isActive: userToToggle.isActive } : u
+                )
+            );
+            showAlert('error', 'ไม่สามารถเปลี่ยนสถานะได้');
+        }
+    };
+
+    // ✨ Handle Reset Password
+    const handleResetPassword = async (userToReset) => {
+        const result = await Swal.fire({
+            title: `รีเซ็ตรหัสผ่าน?`,
+            text: `ต้องการรีเซ็ตรหัสผ่านของ ${userToReset.displayName} ใช่หรือไม่? ระบบจะสุ่มรหัสผ่านใหม่และส่งไปยังอีเมลของผู้ใช้ทันที`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#f59e0b',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'ใช่, รีเซ็ตเลย',
+            cancelButtonText: 'ยกเลิก'
+        });
+
+        if (!result.isConfirmed) return;
+
+        try {
+            setIsSubmitting(true);
+            await adminService.resetPassword(userToReset.id);
+            showAlert('success', `รีเซ็ตรหัสผ่านและส่งอีเมลเรียบร้อยแล้ว`);
+        } catch (error) {
+            console.error('Error resetting password:', error);
+            showAlert('error', 'ไม่สามารถรีเซ็ตรหัสผ่านได้: ' + error.message);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+
 
     // ✨ Handle Edit User - open modal with user data
     const handleEditUser = async (userToEdit) => {
@@ -479,18 +605,20 @@ export default function UserManagementNew() {
 
         // Show Confirmation if warnings exist
         if (warnings.length > 0) {
-            // ต้อง Import Swal หรือใช้ confirm browser แบบง่าย ถ้าไม่มี Swal
-            // ในที่นี้สมมติว่าใช้ confirm แบบง่ายไปก่อน หรือถ้ามี component AlertModal
-            // แต่เนื่องจาก User Request เจาะจง "Popup แจ้งเตือน" เราใช้ window.confirm แบบสวยๆ หรือ Alert ดีกว่า
-            // เพื่อความชัวร์และเร็ว ขอใช้ React State Alert ที่มี หรือ window.confirm + formatting
-            // แต่เดี๋ยวก่อน... เรามี Swal ไหม? ในไฟล์ไม่มี import Swal
-            // งั้นใช้ window.confirm แบบบ้านๆ ไปก่อน หรือสร้าง Modal ซ้อน?
-            // "Notification Popup" user might mean SweetAlert.
-            // Let's check imports. No Swal imported.
-            // I will use standard window.confirm but format text for readability (plaintext)
+            const confirmMessage = warnings.join('<br/><br/>');
 
-            const confirmMessage = warnings.map(w => w.replace(/<b>|<\/b>/g, '')).join('\n\n') + '\n\nยืนยันที่จะบันทึกหรือไม่?';
-            if (!window.confirm(confirmMessage)) {
+            const result = await Swal.fire({
+                title: 'ยืนยันการบันทึก?',
+                html: `<div class="text-left text-sm">${confirmMessage}</div>`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#f59e0b',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'ยืนยัน, บันทึกเลย',
+                cancelButtonText: 'ยกเลิก'
+            });
+
+            if (!result.isConfirmed) {
                 return;
             }
         }
@@ -839,15 +967,8 @@ export default function UserManagementNew() {
             )}
 
             {/* Alert Toast */}
-            {alertState.show && (
-                <div className={`fixed top-4 right-4 z-[60] px-6 py-4 rounded-lg shadow-lg flex items-center gap-3 transition-all duration-300 animate-slideIn ${alertState.type === 'success'
-                    ? 'bg-green-50 text-green-800 border border-green-200'
-                    : 'bg-red-50 text-red-800 border border-red-200'
-                    }`}>
-                    <div className={`w-2 h-2 rounded-full ${alertState.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                    <span className="font-medium">{alertState.message}</span>
-                </div>
-            )}
+
+            {/* Alert Toast - Removed (Using SweetAlert2) */}
 
             {/* Content based on active tab */}
             {activeTab === 'active' ? (
@@ -976,18 +1097,43 @@ export default function UserManagementNew() {
                                                     </span>
                                                 </td>
                                                 <td className="px-6 py-4 text-center">
-                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                                                    ${user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                                        {user.isActive ? 'Active' : 'Inactive'}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 text-center">
                                                     <button
-                                                        onClick={() => handleEditUser(user)}
-                                                        className="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
+                                                        onClick={() => handleToggleStatus(user)}
+                                                        disabled={isSubmitting}
+                                                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors
+                                                        ${user.isActive
+                                                                ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                                                                : 'bg-red-100 text-red-800 hover:bg-red-200'}`}
+                                                        title="แตะเพื่อเปลี่ยนสถานะ"
                                                     >
-                                                        แก้ไข
+                                                        {user.isActive ? 'Active' : 'Inactive'}
                                                     </button>
+                                                </td>
+                                                <td className="px-6 py-4 text-center whitespace-nowrap text-sm font-medium">
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        {/* Reset Password */}
+                                                        <button
+                                                            onClick={() => handleResetPassword(user)}
+                                                            className="text-amber-600 hover:text-amber-900 transition-colors p-1 rounded hover:bg-amber-50"
+                                                            title="รีเซ็ตรหัสผ่าน"
+                                                        >
+                                                            <KeyIcon className="w-5 h-5" />
+                                                        </button>
+
+                                                        {/* Edit User */}
+                                                        <button
+                                                            onClick={() => handleEditUser(user)}
+                                                            className="text-indigo-600 hover:text-indigo-900 transition-colors p-1 rounded hover:bg-indigo-50"
+                                                            title="แก้ไขข้อมูล"
+                                                        >
+                                                            <span className="hidden">Edit</span>
+                                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                                                            </svg>
+                                                        </button>
+
+
+                                                    </div>
                                                 </td>
                                             </tr>
                                         );
@@ -1274,14 +1420,40 @@ export default function UserManagementNew() {
                                     />
                                 </div>
 
-                                {/* ✨ Show filtered scope indicator for Requester */}
-                                {editSelectedRoles.includes('Requester') && editModal.filteredScopes && (
-                                    <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                        <p className="text-xs text-blue-700">
-                                            💡 <strong>กำลังแสดงโครงการที่กรอง:</strong> แสดงเฉพาะโครงการในฝ่าย{' '}
-                                            <strong>{editModal.user?.department?.bud?.name || 'ไม่ระบุ'}</strong>
-                                        </p>
-                                    </div>
+                                {/* ✨ Show filtered scope indicator or error for any role */}
+                                {editModal.filteredScopes && (
+                                    <>
+                                        {/* Error: No Department */}
+                                        {editModal.filteredScopes._filterError === 'NO_DEPARTMENT' && (
+                                            <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                                <p className="text-xs text-red-700">
+                                                    ⚠️ <strong>ไม่พบแผนก:</strong> {editModal.filteredScopes._filterMessage}
+                                                    <br />
+                                                    <span className="text-red-500">กำลังแสดงโครงการทั้งหมด</span>
+                                                </p>
+                                            </div>
+                                        )}
+                                        {/* Error: No BUD */}
+                                        {editModal.filteredScopes._filterError === 'NO_BUD' && (
+                                            <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                                <p className="text-xs text-yellow-700">
+                                                    ⚠️ <strong>ไม่พบฝ่าย:</strong> {editModal.filteredScopes._filterMessage}
+                                                    <br />
+                                                    <span className="text-yellow-600">กำลังแสดงโครงการทั้งหมด</span>
+                                                </p>
+                                            </div>
+                                        )}
+                                        {/* Success: Filter Applied */}
+                                        {editModal.filteredScopes._filterApplied && (
+                                            <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                                <p className="text-xs text-blue-700">
+                                                    💡 <strong>กรองโครงการแล้ว:</strong> แสดงเฉพาะโครงการในฝ่าย{' '}
+                                                    <strong>{editModal.filteredScopes._budName || 'ไม่ระบุ'}</strong>
+                                                    {' '}({editModal.filteredScopes.projects?.length || 0} โครงการ)
+                                                </p>
+                                            </div>
+                                        )}
+                                    </>
                                 )}
 
                                 {/* Scope Configuration - Multi-Role Component */}
@@ -1415,6 +1587,42 @@ export default function UserManagementNew() {
                                         showDescriptions={true}
                                     />
                                 </div>
+
+                                {/* ✨ Show filtered scope indicator or error */}
+                                {approveModal.filteredScopes && (
+                                    <>
+                                        {/* Error: No Department */}
+                                        {approveModal.filteredScopes._filterError === 'NO_DEPARTMENT' && (
+                                            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                                                <p className="text-xs text-red-700">
+                                                    ⚠️ <strong>ไม่พบแผนก:</strong> {approveModal.filteredScopes._filterMessage}
+                                                    <br />
+                                                    <span className="text-red-500">กำลังแสดงโครงการทั้งหมด</span>
+                                                </p>
+                                            </div>
+                                        )}
+                                        {/* Error: No BUD */}
+                                        {approveModal.filteredScopes._filterError === 'NO_BUD' && (
+                                            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                                <p className="text-xs text-yellow-700">
+                                                    ⚠️ <strong>ไม่พบฝ่าย:</strong> {approveModal.filteredScopes._filterMessage}
+                                                    <br />
+                                                    <span className="text-yellow-600">กำลังแสดงโครงการทั้งหมด</span>
+                                                </p>
+                                            </div>
+                                        )}
+                                        {/* Success: Filter Applied */}
+                                        {approveModal.filteredScopes._filterApplied && (
+                                            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                                <p className="text-xs text-blue-700">
+                                                    💡 <strong>กรองโครงการแล้ว:</strong> แสดงเฉพาะโครงการในฝ่าย{' '}
+                                                    <strong>{approveModal.filteredScopes._budName || 'ไม่ระบุ'}</strong>
+                                                    {' '}({approveModal.filteredScopes.projects?.length || 0} โครงการ)
+                                                </p>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
 
                                 {/* Scope Configuration - Multi-Role Component */}
                                 {approvalData.roles.length > 0 && (
