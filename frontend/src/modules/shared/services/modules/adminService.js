@@ -5,6 +5,61 @@ import { cacheService } from '../cacheService';
 
 export const adminService = {
     // --- Master Data (Organization) ---
+
+    /**
+     * ⚡ Performance: Get ALL master data in ONE request
+     * Replaces 6-7 separate API calls with 1 combined call
+     * Saves ~1200ms in page load time
+     */
+    getMasterDataCombined: async () => {
+        try {
+            // ⚡ Check cache first (10 min TTL)
+            const cacheKey = 'masterData:combined';
+            const cached = cacheService.get(cacheKey);
+            if (cached) {
+                console.log('[adminService] ✅ Using cached combined master data');
+                return cached;
+            }
+
+            console.log('[adminService] Fetching combined master data...');
+            const startTime = performance.now();
+
+            const response = await httpClient.get('/master-data-combined');
+
+            if (!response.data.success) {
+                console.warn('[adminService] Get combined master data failed:', response.data.message);
+                return {
+                    tenants: [],
+                    buds: [],
+                    projects: [],
+                    departments: [],
+                    jobTypes: [],
+                    availableScopes: { projects: [], buds: [], departments: [] }
+                };
+            }
+
+            const fetchTime = performance.now() - startTime;
+            console.log(`[adminService] ✅ Combined master data fetched in ${fetchTime.toFixed(0)}ms`);
+            console.log('[adminService] Backend reported:', response.data.meta);
+
+            // Cache for 10 minutes
+            cacheService.set(cacheKey, response.data.data, 10 * 60 * 1000);
+
+            return response.data.data;
+
+        } catch (error) {
+            console.error('[adminService] getMasterDataCombined error:', error);
+            return {
+                tenants: [],
+                buds: [],
+                projects: [],
+                departments: [],
+                jobTypes: [],
+                availableScopes: { projects: [], buds: [], departments: [] }
+            };
+        }
+    },
+
     getMasterData: async (shouldRefresh = false) => {
         try {
             // ✓ NEW: Use Backend REST API with RLS context

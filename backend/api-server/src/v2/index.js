@@ -12,121 +12,11 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
-import { Sequelize, DataTypes, Model, Op } from 'sequelize';
 import PrismaV1Adapter from './adapters/PrismaV1Adapter.js';
 import EmailService from '../services/emailService.js';
 
 // Email service instance
 const emailService = new EmailService();
-
-// ============================================================================
-// Sequelize Configuration
-// ============================================================================
-
-const getDatabaseConfig = () => {
-  const databaseUrl = process.env.DATABASE_URL;
-
-  if (databaseUrl) {
-    return {
-      url: databaseUrl,
-      dialectOptions: {
-        ssl: databaseUrl.includes('supabase') ? {
-          require: true,
-          rejectUnauthorized: false
-        } : false
-      }
-    };
-  }
-
-  return {
-    database: process.env.DB_NAME || 'dj_system',
-    username: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || '',
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5432', 10),
-    dialectOptions: {}
-  };
-};
-
-const config = getDatabaseConfig();
-
-const sequelize = 'url' in config && config.url
-  ? new Sequelize(config.url, {
-    dialect: 'postgres',
-    dialectOptions: config.dialectOptions,
-    logging: process.env.NODE_ENV === 'development' ? console.log : false,
-    pool: { max: 5, min: 0, acquire: 30000, idle: 10000 },
-    define: { timestamps: true, underscored: true, freezeTableName: true }
-  })
-  : new Sequelize(config.database, config.username, config.password, {
-    host: config.host,
-    port: config.port,
-    dialect: 'postgres',
-    dialectOptions: config.dialectOptions,
-    logging: process.env.NODE_ENV === 'development' ? console.log : false,
-    pool: { max: 5, min: 0, acquire: 30000, idle: 10000 },
-    define: { timestamps: true, underscored: true, freezeTableName: true }
-  });
-
-// ============================================================================
-// Models
-// ============================================================================
-
-// Role Model
-const Role = sequelize.define('Role', {
-  id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
-  name: { type: DataTypes.STRING(50), allowNull: false, unique: true },
-  displayName: { type: DataTypes.STRING(100), allowNull: false, field: 'display_name' },
-  permissions: { type: DataTypes.JSONB, allowNull: false },
-  description: { type: DataTypes.TEXT, allowNull: true },
-}, { tableName: 'v2_roles', timestamps: true, underscored: true });
-
-// Organization Model
-const Organization = sequelize.define('Organization', {
-  id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
-  tenantId: { type: DataTypes.INTEGER, allowNull: false, field: 'tenant_id' },
-  name: { type: DataTypes.STRING(255), allowNull: false },
-  slug: { type: DataTypes.STRING(100), allowNull: false },
-  settings: { type: DataTypes.JSONB, defaultValue: {} },
-  isActive: { type: DataTypes.BOOLEAN, defaultValue: true, field: 'is_active' },
-}, { tableName: 'v2_organizations', timestamps: true, underscored: true });
-
-// User Model
-const User = sequelize.define('User', {
-  id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
-  tenantId: { type: DataTypes.INTEGER, allowNull: false, field: 'tenant_id' },
-  organizationId: { type: DataTypes.INTEGER, allowNull: false, field: 'organization_id' },
-  email: { type: DataTypes.STRING(255), allowNull: false },
-  passwordHash: { type: DataTypes.STRING(255), allowNull: false, field: 'password_hash' },
-  firstName: { type: DataTypes.STRING(100), allowNull: false, field: 'first_name' },
-  lastName: { type: DataTypes.STRING(100), allowNull: false, field: 'last_name' },
-  roleId: { type: DataTypes.INTEGER, allowNull: false, field: 'role_id' },
-  isActive: { type: DataTypes.BOOLEAN, defaultValue: true, field: 'is_active' },
-  lastLoginAt: { type: DataTypes.DATE, field: 'last_login_at', allowNull: true },
-}, {
-  tableName: 'v2_users',
-  timestamps: true,
-  underscored: true,
-  defaultScope: { attributes: { exclude: ['passwordHash'] } },
-  scopes: { withPassword: { attributes: { include: ['passwordHash'] } } }
-});
-
-// Password Reset Token Model
-const PasswordResetToken = sequelize.define('PasswordResetToken', {
-  id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
-  userId: { type: DataTypes.INTEGER, allowNull: false, field: 'user_id' },
-  token: { type: DataTypes.STRING(64), allowNull: false, unique: true },
-  expiresAt: { type: DataTypes.DATE, allowNull: false, field: 'expires_at' },
-  usedAt: { type: DataTypes.DATE, allowNull: true, field: 'used_at' },
-}, { tableName: 'v2_password_reset_tokens', timestamps: true, updatedAt: false, underscored: true });
-
-// Associations
-User.belongsTo(Organization, { foreignKey: 'organizationId', as: 'organization' });
-Organization.hasMany(User, { foreignKey: 'organizationId', as: 'users' });
-User.belongsTo(Role, { foreignKey: 'roleId', as: 'role' });
-Role.hasMany(User, { foreignKey: 'roleId', as: 'users' });
-PasswordResetToken.belongsTo(User, { foreignKey: 'userId', as: 'user' });
-User.hasMany(PasswordResetToken, { foreignKey: 'userId', as: 'passwordResetTokens' });
 
 // ============================================================================
 // Utility Functions
@@ -638,12 +528,15 @@ router.post('/auth/forgot-password', async (req, res) => {
   if (!email) return res.status(400).json(errorResponse('MISSING_FIELDS', 'Email is required'));
 
   try {
-    const user = await User.findOne({ where: { email: email.toLowerCase(), isActive: true } });
-    if (user) {
-      await PasswordResetToken.update({ usedAt: new Date() }, { where: { userId: user.id, usedAt: null } });
-      const token = crypto.randomBytes(32).toString('hex');
-      await PasswordResetToken.create({ userId: user.id, token, expiresAt: new Date(Date.now() + 60 * 60 * 1000) });
-      console.log(`[V2 Auth] Password reset token for ${email}: ${token}`);
+    // Use Adapter
+    // Note: Defaulting tenantId to 1 (SENA) if not specified, as this is a public endpoint
+    const user = await PrismaV1Adapter.findUserByEmail(email, 1);
+
+    if (user && user.isActive) {
+      const resetToken = await PrismaV1Adapter.createPasswordResetToken(user.id);
+      console.log(`[V2 Auth] Password reset token for ${email}: ${resetToken.token}`);
+
+      // TODO: Send email
     }
   } catch (e) {
     console.error('[V2 Auth] forgot-password error:', e);
@@ -658,17 +551,16 @@ router.post('/auth/reset-password', async (req, res, next) => {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) return res.status(400).json(errorResponse('MISSING_FIELDS', 'Token and new password required'));
 
-    const resetToken = await PasswordResetToken.findOne({
-      where: { token, usedAt: null, expiresAt: { [Op.gt]: new Date() } }
-    });
-
-    if (!resetToken) return res.status(400).json(errorResponse('INVALID_RESET_TOKEN', 'Invalid or expired token'));
-
-    const passwordHashValue = await hashPassword(newPassword);
-    await User.update({ passwordHash: passwordHashValue }, { where: { id: resetToken.userId } });
-    await resetToken.update({ usedAt: new Date() });
-
-    res.json(successResponse(null, 'Password reset successful'));
+    // Use Adapter to verify and use token
+    try {
+      await PrismaV1Adapter.usePasswordResetToken(token, newPassword);
+      res.json(successResponse(null, 'Password reset successful'));
+    } catch (error) {
+      if (error.message === 'INVALID_OR_EXPIRED_TOKEN') {
+        return res.status(400).json(errorResponse('INVALID_RESET_TOKEN', 'Invalid or expired token'));
+      }
+      throw error;
+    }
   } catch (error) {
     next(error);
   }
@@ -738,29 +630,28 @@ router.get('/users/me', authenticateToken, async (req, res, next) => {
 router.get('/users', authenticateToken, requireTeamLead, scopeToOrganization, async (req, res, next) => {
   try {
     const { page = '1', limit = '20', search, roleId, isActive, organizationId } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    const where = { tenantId: req.user.tenantId };
-    if (organizationId) where.organizationId = parseInt(organizationId);
-    if (roleId) where.roleId = parseInt(roleId);
-    if (isActive !== undefined) where.isActive = isActive === 'true';
-    if (search) {
-      where[Op.or] = [
-        { firstName: { [Op.iLike]: `%${search}%` } },
-        { lastName: { [Op.iLike]: `%${search}%` } },
-        { email: { [Op.iLike]: `%${search}%` } }
-      ];
-    }
-
-    const { count, rows } = await User.findAndCountAll({
-      where,
-      include: [{ model: Role, as: 'role' }, { model: Organization, as: 'organization' }],
-      limit: parseInt(limit),
-      offset,
-      order: [['createdAt', 'DESC']]
+    const result = await PrismaV1Adapter.listUsers({
+      tenantId: req.user.tenantId,
+      organizationId: organizationId,
+      roleId: roleId,
+      isActive: isActive !== undefined ? isActive === 'true' : undefined,
+      search
+    }, {
+      page: parseInt(page),
+      limit: parseInt(limit)
     });
 
-    res.json(paginatedResponse(rows.map(formatUserResponse), { page: parseInt(page), limit: parseInt(limit), total: count }));
+    res.json({
+      success: true,
+      data: result.rows.map(formatUserResponse),
+      pagination: {
+        page: result.page,
+        limit: result.limit,
+        total: result.count,
+        totalPages: result.totalPages
+      }
+    });
   } catch (error) {
     next(error);
   }
@@ -769,12 +660,12 @@ router.get('/users', authenticateToken, requireTeamLead, scopeToOrganization, as
 // GET /api/v2/users/:id
 router.get('/users/:id', authenticateToken, requireTeamLead, async (req, res, next) => {
   try {
-    const user = await User.findOne({
-      where: { id: parseInt(req.params.id), tenantId: req.user.tenantId },
-      include: [{ model: Role, as: 'role' }, { model: Organization, as: 'organization' }]
-    });
+    const user = await PrismaV1Adapter.findUserById(parseInt(req.params.id));
 
-    if (!user) return res.status(404).json(errorResponse('NOT_FOUND', 'User not found'));
+    if (!user || user.tenantId !== req.user.tenantId) {
+      return res.status(404).json(errorResponse('NOT_FOUND', 'User not found'));
+    }
+
     if (req.user.role !== 'Admin' && user.organizationId !== req.user.organizationId) {
       return res.status(403).json(errorResponse('FORBIDDEN', 'Access denied'));
     }
@@ -795,27 +686,21 @@ router.post('/users', authenticateToken, requireOrgAdmin, async (req, res, next)
 
     if (req.user.role !== 'Admin') organizationId = req.user.organizationId;
 
-    const existingUser = await User.findOne({ where: { email: email.toLowerCase(), tenantId: req.user.tenantId } });
-    if (existingUser) return res.status(409).json(errorResponse('EMAIL_EXISTS', 'Email already exists'));
-
-    if (!roleId) {
-      const defaultRole = await Role.findOne({ where: { name: 'Assignee' } });
-      roleId = defaultRole?.id;
-    }
+    const emailExists = await PrismaV1Adapter.emailExists(email, req.user.tenantId);
+    if (emailExists) return res.status(409).json(errorResponse('EMAIL_EXISTS', 'Email already exists'));
 
     const passwordHashValue = await hashPassword(password);
-    const user = await User.create({
+    const user = await PrismaV1Adapter.createUser({
       tenantId: req.user.tenantId,
-      organizationId,
-      email: email.toLowerCase(),
+      organizationId: parseInt(organizationId),
+      email,
       passwordHash: passwordHashValue,
       firstName,
       lastName,
-      roleId,
+      roleId: parseInt(roleId) || 3, // Default 3 (Assignee) if not provided
       isActive: true
     });
 
-    await user.reload({ include: [{ model: Role, as: 'role' }, { model: Organization, as: 'organization' }] });
     res.status(201).json(successResponse(formatUserResponse(user), 'User created successfully'));
   } catch (error) {
     next(error);
@@ -826,31 +711,67 @@ router.post('/users', authenticateToken, requireOrgAdmin, async (req, res, next)
 router.put('/users/:id', authenticateToken, requireOrgAdmin, async (req, res, next) => {
   try {
     const userId = parseInt(req.params.id);
-    const user = await User.findOne({ where: { id: userId, tenantId: req.user.tenantId } });
+    const user = await PrismaV1Adapter.findUserById(userId);
 
-    if (!user) return res.status(404).json(errorResponse('NOT_FOUND', 'User not found'));
+    if (!user || user.tenantId !== req.user.tenantId) {
+      return res.status(404).json(errorResponse('NOT_FOUND', 'User not found'));
+    }
+
     if (req.user.role !== 'Admin' && user.organizationId !== req.user.organizationId) {
       return res.status(403).json(errorResponse('FORBIDDEN', 'Access denied'));
     }
 
     const updateData = {};
     if (req.body.email) {
-      const existing = await User.findOne({
-        where: { email: req.body.email.toLowerCase(), tenantId: req.user.tenantId, id: { [Op.ne]: userId } }
-      });
-      if (existing) return res.status(409).json(errorResponse('EMAIL_EXISTS', 'Email already exists'));
-      updateData.email = req.body.email.toLowerCase();
+      const existing = await PrismaV1Adapter.findUserByEmail(req.body.email, req.user.tenantId);
+      if (existing && existing.id !== userId) {
+        return res.status(409).json(errorResponse('EMAIL_EXISTS', 'Email already exists'));
+      }
+      updateData.email = req.body.email;
     }
+
     if (req.body.password) updateData.passwordHash = await hashPassword(req.body.password);
     if (req.body.firstName) updateData.firstName = req.body.firstName;
     if (req.body.lastName) updateData.lastName = req.body.lastName;
-    if (req.body.roleId) updateData.roleId = req.body.roleId;
+    if (req.body.roleId) updateData.roleId = parseInt(req.body.roleId);
+    if (req.body.organizationId !== undefined) updateData.organizationId = parseInt(req.body.organizationId);
     if (req.body.isActive !== undefined) updateData.isActive = req.body.isActive;
 
-    await user.update(updateData);
-    await user.reload({ include: [{ model: Role, as: 'role' }, { model: Organization, as: 'organization' }] });
+    const updatedUser = await PrismaV1Adapter.updateUser(userId, updateData);
 
-    res.json(successResponse(formatUserResponse(user), 'User updated successfully'));
+    res.json(successResponse(formatUserResponse(updatedUser), 'User updated successfully'));
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PUT /api/v2/users/:id/reset-password
+// ADMIN ONLY: Reset password to default '123456'
+router.put('/users/:id/reset-password', authenticateToken, requireOrgAdmin, async (req, res, next) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const user = await PrismaV1Adapter.findUserById(userId);
+
+    if (!user || user.tenantId !== req.user.tenantId) {
+      return res.status(404).json(errorResponse('NOT_FOUND', 'User not found'));
+    }
+
+    if (req.user.role !== 'Admin' && user.organizationId !== req.user.organizationId) {
+      return res.status(403).json(errorResponse('FORBIDDEN', 'Access denied'));
+    }
+
+    // 1. Reset password to random
+    const result = await PrismaV1Adapter.resetPasswordRandom(userId);
+
+    // 2. Send email to user
+    await emailService.notifyPasswordReset({
+      userEmail: user.email,
+      userName: user.firstName,
+      newPassword: result.newPassword,
+      loginUrl: process.env.FRONTEND_URL || 'http://localhost:5173'
+    });
+
+    res.json(successResponse(null, 'Password reset to random and email sent successfully'));
   } catch (error) {
     next(error);
   }
@@ -862,13 +783,16 @@ router.delete('/users/:id', authenticateToken, requireOrgAdmin, async (req, res,
     const userId = parseInt(req.params.id);
     if (userId === req.user.userId) return res.status(400).json(errorResponse('SELF_DELETE', 'Cannot delete yourself'));
 
-    const user = await User.findOne({ where: { id: userId, tenantId: req.user.tenantId } });
-    if (!user) return res.status(404).json(errorResponse('NOT_FOUND', 'User not found'));
+    const user = await PrismaV1Adapter.findUserById(userId);
+    if (!user || user.tenantId !== req.user.tenantId) {
+      return res.status(404).json(errorResponse('NOT_FOUND', 'User not found'));
+    }
+
     if (req.user.role !== 'Admin' && user.organizationId !== req.user.organizationId) {
       return res.status(403).json(errorResponse('FORBIDDEN', 'Access denied'));
     }
 
-    await user.update({ isActive: false });
+    await PrismaV1Adapter.deleteUser(userId);
     res.json(successResponse(null, 'User deleted successfully'));
   } catch (error) {
     next(error);
@@ -880,4 +804,3 @@ router.delete('/users/:id', authenticateToken, requireOrgAdmin, async (req, res,
 // ============================================================================
 
 export default router;
-export { sequelize, User, Organization, Role, PasswordResetToken };
