@@ -45,14 +45,6 @@ export default function JobDetail() {
     const navigate = useNavigate();
     const { user } = useAuthStore();
 
-    // DEBUG: Check user object
-    console.log('[JobDetail] user from authStore:', {
-        exists: !!user,
-        id: user?.id,
-        email: user?.email,
-        roles: user?.roles
-    });
-
     // State
     const [job, setJob] = useState(null);
     const [users, setUsers] = useState([]); // For assignment dropdown
@@ -76,12 +68,14 @@ export default function JobDetail() {
     // ============================================
     // Data Loading
     // ============================================
+    // Load job and users when id or user changes
     useEffect(() => {
+        if (!id) return;
+        if (!user) return; // ⭐ WAIT FOR USER TO BE LOADED
+
         loadJob();
-        // Load users only when needed (e.g., when modal opens) or pre-load if critical
-        // Since JobActionPanel uses users, we should load it.
         loadUsers();
-    }, [id]);
+    }, [id, user]);
 
     const loadUsers = async () => {
         try {

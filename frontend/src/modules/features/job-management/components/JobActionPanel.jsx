@@ -16,15 +16,6 @@ const JobActionPanel = ({
     const [selectedAssignee, setSelectedAssignee] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
-    // DEBUG: Check currentUser
-    console.log('[JobActionPanel] currentUser:', {
-        exists: !!currentUser,
-        id: currentUser?.id,
-        email: currentUser?.email,
-        rawRoles: currentUser?.roles,
-        typeof_roles: typeof currentUser?.roles
-    });
-
     // Permission Helpers
     // Support both case variations (admin/Admin, manager/Manager) for V1 and V2 auth formats
     const rawRoles = currentUser?.roles;
@@ -34,13 +25,6 @@ const JobActionPanel = ({
     }) || [];
     const isAdmin = normalizedRoles.includes('admin');
     const isDeptManager = normalizedRoles.includes('manager') || normalizedRoles.includes('dept_manager');
-
-    console.log('[JobActionPanel] Role Check:', {
-        rawRoles,
-        normalizedRoles,
-        isAdmin,
-        isDeptManager
-    });
 
     // 1. Approval Actions
     const renderApprovalActions = () => {
@@ -90,16 +74,6 @@ const JobActionPanel = ({
         if (job.assigneeId) return null; // Already assigned - don't show
 
         const canAssign = isAdmin || isDeptManager;
-
-        // Debug log for troubleshooting
-        console.log('[renderManualAssignment]', {
-            jobAssigneeId: job.assigneeId,
-            isAdmin,
-            isDeptManager,
-            canAssign,
-            willShow: !job.assigneeId && canAssign
-        });
-
         if (!canAssign) return null;
 
         const handleAssignClick = async () => {
