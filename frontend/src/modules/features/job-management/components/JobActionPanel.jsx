@@ -17,8 +17,10 @@ const JobActionPanel = ({
     const [isLoading, setIsLoading] = useState(false);
 
     // Permission Helpers
-    const isAdmin = currentUser?.roles?.includes('Admin');
-    const isDeptManager = currentUser?.roles?.includes('dept_manager');
+    // Support both case variations (admin/Admin, manager/Manager) for V1 and V2 auth formats
+    const normalizedRoles = currentUser?.roles?.map(r => (typeof r === 'string' ? r : r?.roleName || '').toLowerCase()) || [];
+    const isAdmin = normalizedRoles.includes('admin');
+    const isDeptManager = normalizedRoles.includes('manager') || normalizedRoles.includes('dept_manager');
 
     // 1. Approval Actions
     const renderApprovalActions = () => {
