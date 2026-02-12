@@ -633,10 +633,14 @@ router.get('/:id', async (req, res) => {
     }
 
     // Check permission (null-safe roles check)
+    // Support both case variations (admin/Admin, manager/Manager) for V1 and V2 auth formats
+    const userRoles = req.user.roles || [];
+    const normalizedRoles = userRoles.map(r => r?.toLowerCase() || '');
+
     const hasAccess = job.requesterId === req.user.userId ||
       job.assigneeId === req.user.userId ||
-      req.user.roles?.includes('admin') ||
-      req.user.roles?.includes('manager');
+      normalizedRoles.includes('admin') ||
+      normalizedRoles.includes('manager');
 
     if (!hasAccess) {
       return res.status(403).json({
