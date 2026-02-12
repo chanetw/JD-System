@@ -576,6 +576,27 @@ router.get('/:id', async (req, res) => {
           orderBy: { createdAt: 'desc' },
           take: 50 // Limit to recent 50 activities
         },
+        // 🆕 Include approvals with approver details
+        approvals: {
+          select: {
+            id: true,
+            stepNumber: true,
+            status: true,
+            comment: true,
+            approvedAt: true,
+            approver: {
+              select: {
+                id: true,
+                displayName: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                avatarUrl: true
+              }
+            }
+          },
+          orderBy: { stepNumber: 'asc' }
+        },
         // Include child jobs if this is a parent job
         childJobs: {
           select: {
@@ -704,6 +725,21 @@ router.get('/:id', async (req, res) => {
           name: a.user.displayName || `${a.user.firstName} ${a.user.lastName}`.trim(),
           avatar: a.user.avatarUrl
         } : null
+      })) || [],
+      // 🆕 Transform approvals with approver details
+      approvals: job.approvals?.map(a => ({
+        id: a.id,
+        stepNumber: a.stepNumber,
+        status: a.status,
+        comment: a.comment,
+        approvedAt: a.approvedAt,
+        approver: {
+          id: a.approver.id,
+          displayName: a.approver.displayName ||
+            `${a.approver.firstName} ${a.approver.lastName}`.trim(),
+          email: a.approver.email,
+          avatar: a.approver.avatarUrl
+        }
       })) || []
     };
 

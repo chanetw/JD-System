@@ -36,6 +36,7 @@ import JobComments from '../components/JobComments';
 import JobActivityLog from '../components/JobActivityLog';
 import SubJobsList from '../components/SubJobsList';
 import ParentJobAssignees from '../components/ParentJobAssignees';
+import JobApprovalFlow from '../components/JobApprovalFlow';
 import JobSidebar from '../components/JobSidebar';
 import JobActionPanel from '../components/JobActionPanel';
 
@@ -343,6 +344,7 @@ export default function JobDetail() {
                             {activeTab === 'overview' && (
                                 <>
                                     <JobBriefInfo job={job} />
+                                    <JobApprovalFlow job={job} />
                                     <ParentJobAssignees job={job} />
                                 </>
                             )}

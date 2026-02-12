@@ -15,7 +15,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Badge from '@shared/components/Badge';
-import { useAuthStore } from '@core/stores/authStore';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { api } from '@shared/services/apiService';
 import { adminService } from '@shared/services/modules/adminService';
 import httpClient from '@shared/services/httpClient';
@@ -47,7 +47,7 @@ import PendingApprovalSection from '../components/PendingApprovalSection';
 
 export default function UserPortal() {
     const navigate = useNavigate();
-    const { user } = useAuthStore();
+    const { user } = useAuthStoreV2();
     const [recentJobs, setRecentJobs] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -167,10 +167,10 @@ export default function UserPortal() {
                             <Link to="/media-portal" className="text-slate-600 hover:text-rose-600 text-sm font-medium">Media Portal</Link>
                             <div className="flex items-center gap-2 pl-4 border-l border-slate-200">
                                 <div className="w-8 h-8 bg-rose-100 rounded-full flex items-center justify-center text-rose-700 text-sm font-medium">
-                                    {user?.displayName?.[0] || 'ส'}
+                                    {user?.displayName?.[0] || user?.email?.[0] || 'U'}
                                 </div>
                                 <span className="text-sm text-slate-700 hidden sm:inline">
-                                    {user?.displayName || 'สมชาย'} {user?.roles?.[0] || 'Requester'}
+                                    {user?.displayName || user?.email} ({user?.roleName || 'Requester'})
                                 </span>
                             </div>
                         </div>

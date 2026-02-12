@@ -84,57 +84,57 @@ export default function MyQueue() {
         }
 
         try {
-          // =====================================
-          // Event: job:assigned - งานใหม่ได้รับมอบหมาย
-          // =====================================
-          const handleJobAssigned = (data) => {
-            console.log('[MyQueue] Received job:assigned event:', data);
+            // =====================================
+            // Event: job:assigned - งานใหม่ได้รับมอบหมาย
+            // =====================================
+            const handleJobAssigned = (data) => {
+                console.log('[MyQueue] Received job:assigned event:', data);
 
-            // Refresh jobs list เพื่อแสดงงานใหม่
-            // ไม่ต้อง toast ที่นี่เพราะ useNotifications จะจัดการ
-            if (activeTab === 'todo') {
-              fetchJobs();
-            }
-          };
+                // Refresh jobs list เพื่อแสดงงานใหม่
+                // ไม่ต้อง toast ที่นี่เพราะ useNotifications จะจัดการ
+                if (activeTab === 'todo') {
+                    fetchJobs();
+                }
+            };
 
-          // =====================================
-          // Event: job:status-changed - สถานะงานเปลี่ยน
-          // =====================================
-          const handleJobStatusChanged = (data) => {
-            console.log('[MyQueue] Received job:status-changed event:', data);
+            // =====================================
+            // Event: job:status-changed - สถานะงานเปลี่ยน
+            // =====================================
+            const handleJobStatusChanged = (data) => {
+                console.log('[MyQueue] Received job:status-changed event:', data);
 
-            // Refresh jobs list เพื่อให้ updated status
-            fetchJobs();
-          };
+                // Refresh jobs list เพื่อให้ updated status
+                fetchJobs();
+            };
 
-          // =====================================
-          // Event: job:completed - งานเสร็จสิ้น
-          // =====================================
-          const handleJobCompleted = (data) => {
-            console.log('[MyQueue] Received job:completed event:', data);
+            // =====================================
+            // Event: job:completed - งานเสร็จสิ้น
+            // =====================================
+            const handleJobCompleted = (data) => {
+                console.log('[MyQueue] Received job:completed event:', data);
 
-            // Refresh jobs list เพื่อให้ completed status
-            fetchJobs();
-          };
+                // Refresh jobs list เพื่อให้ completed status
+                fetchJobs();
+            };
 
-          // ตั้งค่า Socket Listeners
-          socket.on('job:assigned', handleJobAssigned);
-          socket.on('job:status-changed', handleJobStatusChanged);
-          socket.on('job:completed', handleJobCompleted);
+            // ตั้งค่า Socket Listeners
+            socket.on('job:assigned', handleJobAssigned);
+            socket.on('job:status-changed', handleJobStatusChanged);
+            socket.on('job:completed', handleJobCompleted);
 
-          console.log('[MyQueue] Socket event listeners set up');
+            console.log('[MyQueue] Socket event listeners set up');
 
-          // =====================================
-          // Cleanup: ลบ listeners ตอน unmount
-          // =====================================
-          return () => {
-            socket.off('job:assigned', handleJobAssigned);
-            socket.off('job:status-changed', handleJobStatusChanged);
-            socket.off('job:completed', handleJobCompleted);
-            console.log('[MyQueue] Socket event listeners cleaned up');
-          };
+            // =====================================
+            // Cleanup: ลบ listeners ตอน unmount
+            // =====================================
+            return () => {
+                socket.off('job:assigned', handleJobAssigned);
+                socket.off('job:status-changed', handleJobStatusChanged);
+                socket.off('job:completed', handleJobCompleted);
+                console.log('[MyQueue] Socket event listeners cleaned up');
+            };
         } catch (err) {
-          console.error('[MyQueue] Error setting up socket listeners:', err);
+            console.error('[MyQueue] Error setting up socket listeners:', err);
         }
     }, [socket, connected, activeTab]);
 

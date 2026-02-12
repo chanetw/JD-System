@@ -113,11 +113,11 @@ function App() {
 
         {/* V1 User Portal (แยก Layout) */}
         <Route path="/user-portal" element={
-          <ProtectedRoute>
+          <RoleProtectedRoute allowedRoles={['Admin', 'Requester', 'Approver']}>
             <Suspense fallback={<LoadingFallback />}>
               <UserPortal />
             </Suspense>
-          </ProtectedRoute>
+          </RoleProtectedRoute>
         } />
 
         {/* Layout เป็น parent route ที่ wrap ทุก pages ของ Admin/Staff */}
@@ -156,9 +156,11 @@ function App() {
           {/* Admin routes migrated to modules/features/admin */}
 
           <Route path="media-portal" element={
-            <Suspense fallback={<PageLoadingFallback />}>
-              <MediaPortal />
-            </Suspense>
+            <RoleProtectedRoute allowedRoles={['Admin', 'Requester', 'Approver']}>
+              <Suspense fallback={<PageLoadingFallback />}>
+                <MediaPortal />
+              </Suspense>
+            </RoleProtectedRoute>
           } />
 
         </Route>

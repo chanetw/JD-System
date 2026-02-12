@@ -13,9 +13,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@core/stores/authStore';
 import { api } from '@shared/services/apiService';
 import Button from '@shared/components/Button';
-import { 
-    LockClosedIcon, 
-    EyeIcon, 
+import {
+    LockClosedIcon,
+    EyeIcon,
     EyeSlashIcon,
     CheckCircleIcon,
     ExclamationCircleIcon,
@@ -28,12 +28,12 @@ export default function ChangePassword() {
     const [isLoading, setIsLoading] = useState(false);
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState('');
-    
+
     // Form data
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
-    
+
     // Password visibility
     const [showCurrent, setShowCurrent] = useState(false);
     const [showNew, setShowNew] = useState(false);
@@ -51,7 +51,7 @@ export default function ChangePassword() {
         if (/[A-Z]/.test(password)) strength++;
         if (/[0-9]/.test(password)) strength++;
         if (/[^a-zA-Z0-9]/.test(password)) strength++;
-        
+
         if (strength <= 2) return { level: 'weak', label: 'อ่อน', color: 'bg-red-500', width: '33%' };
         if (strength <= 4) return { level: 'medium', label: 'ปานกลาง', color: 'bg-yellow-500', width: '66%' };
         return { level: 'strong', label: 'แข็งแรง', color: 'bg-green-500', width: '100%' };
@@ -78,7 +78,7 @@ export default function ChangePassword() {
             setError('กรุณากรอกรหัสผ่านปัจจุบัน');
             return;
         }
-        
+
         if (!checks.minLength) {
             setError('รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร');
             return;
@@ -94,7 +94,7 @@ export default function ChangePassword() {
         try {
             await api.changePassword(currentPassword, newPassword);
             setSuccess(true);
-            
+
             // If this was a forced password change, update user state
             if (mustChangePassword) {
                 // User will need to re-login or we update the state
@@ -130,7 +130,7 @@ export default function ChangePassword() {
                     <p className="text-gray-600 mb-6">
                         รหัสผ่านของคุณได้ถูกเปลี่ยนเรียบร้อยแล้ว
                     </p>
-                    <Button 
+                    <Button
                         onClick={() => navigate('/')}
                         className="bg-rose-600 hover:bg-rose-700"
                     >
@@ -153,8 +153,8 @@ export default function ChangePassword() {
                         <div>
                             <h1 className="text-xl font-bold">เปลี่ยนรหัสผ่าน</h1>
                             <p className="text-rose-100 text-sm">
-                                {mustChangePassword 
-                                    ? 'กรุณาตั้งรหัสผ่านใหม่ก่อนใช้งาน' 
+                                {mustChangePassword
+                                    ? 'กรุณาตั้งรหัสผ่านใหม่ก่อนใช้งาน'
                                     : 'DJ System Security'
                                 }
                             </p>
@@ -228,15 +228,14 @@ export default function ChangePassword() {
                             <div className="mt-2">
                                 <div className="flex items-center justify-between text-xs mb-1">
                                     <span className="text-gray-500">ความแข็งแรงรหัสผ่าน</span>
-                                    <span className={`font-medium ${
-                                        passwordStrength.level === 'strong' ? 'text-green-600' :
-                                        passwordStrength.level === 'medium' ? 'text-yellow-600' : 'text-red-600'
-                                    }`}>
+                                    <span className={`font-medium ${passwordStrength.level === 'strong' ? 'text-green-600' :
+                                            passwordStrength.level === 'medium' ? 'text-yellow-600' : 'text-red-600'
+                                        }`}>
                                         {passwordStrength.label}
                                     </span>
                                 </div>
                                 <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                    <div 
+                                    <div
                                         className={`h-full ${passwordStrength.color} transition-all duration-300`}
                                         style={{ width: passwordStrength.width }}
                                     />
