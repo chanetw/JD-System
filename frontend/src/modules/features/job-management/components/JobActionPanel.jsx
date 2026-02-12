@@ -22,6 +22,19 @@ const JobActionPanel = ({
     const isAdmin = normalizedRoles.includes('admin');
     const isDeptManager = normalizedRoles.includes('manager') || normalizedRoles.includes('dept_manager');
 
+    // DEBUG: Log for troubleshooting
+    if (job && currentUser) {
+        console.log('[JobActionPanel] Debug:', {
+            jobId: job.id,
+            jobAssigneeId: job.assigneeId,
+            currentUserId: currentUser.id,
+            rawRoles: currentUser.roles,
+            normalizedRoles,
+            isAdmin,
+            isDeptManager
+        });
+    }
+
     // 1. Approval Actions
     const renderApprovalActions = () => {
         const isPending = job.currentLevel > 0 && job.currentLevel < 999;
