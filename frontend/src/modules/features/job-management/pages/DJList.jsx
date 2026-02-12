@@ -78,14 +78,15 @@ export default function DJList() {
             console.log(`[DJList] Loaded ${jobsData.length} jobs (Admin: ${isAdmin}). First job:`, jobsData[0]);
 
             // === Scope-based Filtering (ใหม่) ===
+            // Skip scope filtering if tenantId is not available
             let scopeFilteredJobs = jobsData;
-            if (user?.id) {
+            if (user?.id && user?.tenantId) {
                 const scopes = await getUserScopes(user.id);
                 const hasTenantScope = scopes.some(s => s.scope_level === 'Tenant');
 
                 if (!hasTenantScope && scopes.length > 0) {
                     // ถ้ามี scope แต่ไม่ใช่ Tenant level ให้ filter ตาม project
-                    const allowedProjectIds = await getAllowedProjectIds(user.id, user.tenant_id);
+                    const allowedProjectIds = await getAllowedProjectIds(user.id, user.tenantId);
                     scopeFilteredJobs = jobsData.filter(job => allowedProjectIds.has(job.projectId || job.project_id));
                     console.log('📋 [DJList] Filtered by scope:', scopeFilteredJobs.length, 'jobs');
                 }
