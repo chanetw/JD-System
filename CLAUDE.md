@@ -1,355 +1,355 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+ไฟล์นี้มีคำแนะนำสำหรับ Claude Code (claude.ai/code) เมื่อทำงานกับโค้ดในพื้นที่เก็บรักษา (Repository) นี้
 
-## Quick Start
+## เริ่มต้นอย่างรวดเร็ว
 
-**Install & Run:**
+**ติดตั้งและรัน:**
 ```bash
 # Backend (Node.js + Express)
 cd backend/api-server
 npm install
-npm run dev                    # Starts on http://localhost:3000
+npm run dev                    # เริ่มทำงานบน http://localhost:3000
 
 # Frontend (React + Vite)
 cd frontend
 npm install
-npm run dev                    # Starts on http://localhost:5173
+npm run dev                    # เริ่มทำงานบน http://localhost:5173
 
-# Environment Setup
+# ตั้งค่า Environment
 cp backend/api-server/.env.example backend/api-server/.env
-# Update DATABASE_URL and other env vars as needed
+# อัปเดต DATABASE_URL และตัวแปร env อื่นๆ ตามต้องการ
 ```
 
-**Key URLs:**
+**URL หลัก:**
 - Frontend: http://localhost:5173
 - Backend API: http://localhost:3000
 - Health Check: http://localhost:3000/health
 
 ---
 
-## Architecture Overview
+## ภาพรวมสถาปัตยกรรม
 
-### Big Picture
-**DJ System** is a Design Job management platform with workflow approval, SLA tracking, and real-time notifications. The system uses a **hybrid architecture**: V2 API layer running over a V1 database schema (via PrismaV1Adapter pattern).
+### ภาพใหญ่ (Big Picture)
+**DJ System** เป็นแพลตฟอร์มจัดการงาน Design Job พร้อมการอนุมัติ, SLA Tracking และการแจ้งเตือนแบบ Real-time ระบบนี้ใช้ **สถาปัตยกรรมแบบไฮบริด**: V2 API layer ทำงานอยู่บน V1 database schema (ผ่าน PrismaV1Adapter pattern)
 
 ```
 Frontend (React 18 + Vite)
     ↓ REST API + Socket.io
 Backend (Express + Prisma ORM)
-    ↓ PrismaV1Adapter (transforms V2 → V1)
+    ↓ PrismaV1Adapter (แปลง V2 → V1)
 Database (PostgreSQL with V1 schema)
 ```
 
-### Why This Architecture?
-During migration planning, the team decided to:
-1. Keep the V2 auth system API layer (modern, role-based)
-2. Continue using V1 database tables (proven, stable, production data)
-3. Use PrismaV1Adapter to bridge the gap (minimal risk, maximum compatibility)
+### ทำไมต้องใช้สถาปัตยกรรมแบบนี้?
+ในระหว่างการวางแผนการย้ายข้อมูล ทีมได้ตัดสินใจ:
+1. เก็บ V2 auth system API layer (ทันสมัย, role-based)
+2. ยังคงใช้ V1 database tables (ได้รับการพิสูจน์, เสถียร, มีข้อมูลจริง)
+3. ใช้ PrismaV1Adapter เชื่อมโยง (ความเสี่ยงน้อย, ความเข้ากันได้สูง)
 
-This allows new auth features without disrupting existing data or business logic.
+วิธีนี้ช่วยให้สามารถเพิ่มฟีเจอร์การตรวจสอบสิทธิใหม่ได้โดยไม่รบกวนข้อมูลที่มีอยู่หรือลอจิกธุรกิจ
 
-### Core Concepts
+### แนวคิดหลัก
 
-**Tenancy Model:**
-- Multi-tenant system: Each customer (SENA Marketing) is a tenant
-- Tenant ID is the primary filter for all queries
-- All users, jobs, roles are scoped to a tenant
+**โมเดลการใช้งาน Multi-Tenant:**
+- ระบบหลายผู้เช่า: ลูกค้าแต่ละราย (SENA Marketing) คือ tenant หนึ่งคน
+- Tenant ID คือตัวกรองหลักสำหรับทุกการสืบค้น
+- ผู้ใช้, งาน, บทบาท ทั้งหมดจะถูกจัดขอบเขตไว้ที่ tenant
 
-**User Roles (V1 Standard):**
-- **Admin**: System administrator, manages job types, approval flows, holidays
-- **Requester**: Marketing team member, creates jobs
-- **Approver**: Manager/Team Lead, approves jobs
-- **Assignee**: Designer/Developer, receives and completes jobs
+**User Roles (มาตรฐาน V1):**
+- **Admin**: ผู้ดูแลระบบ, จัดการประเภทงาน, เส้นทางการอนุมัติ, วันหยุด
+- **Requester**: สมาชิกทีม Marketing, สร้างงาน
+- **Approver**: ผู้จัดการ/Team Lead, อนุมัติงาน
+- **Assignee**: Designer/Developer, รับและดำเนินงาน
 
-**Job Relationships:**
-- **Parent Jobs**: Main design request with multiple deliverables
-- **Child Jobs**: Sequential or dependent jobs (chaining system)
-- **BUD Assignments**: Job Type assignments at Business Unit Division level
-- **Project Assignments**: Assign users to specific projects
+**ความสัมพันธ์ของงาน:**
+- **Parent Jobs**: งาน Design หลักที่มีไฟล์สิ่งที่ส่งมอบหลายชิ้น
+- **Child Jobs**: งานที่ตามลำดับหรือขึ้นอยู่กับงาน (chaining system)
+- **BUD Assignments**: การกำหนดประเภทงานในระดับ Business Unit Division
+- **Project Assignments**: กำหนดผู้ใช้ให้กับโครงการเฉพาะ
 
 ---
 
-## Frontend Architecture
+## สถาปัตยกรรม Frontend
 
-### Module System (Code Splitting + Dynamic Routing)
+### โมดูล (Code Splitting + Dynamic Routing)
 
-The frontend uses a **module registry pattern** to organize features:
+Frontend ใช้ **module registry pattern** ในการจัดระเบียบฟีเจอร์:
 
 ```
 frontend/src/modules/
-├── core/                    # Core: Auth, Layout, Stores
-├── shared/                  # Shared: Components, Services, Utils
+├── core/                    # ส่วนแกน: Auth, Layout, Stores
+├── shared/                  # ใช้ร่วมกัน: Components, Services, Utils
 └── features/
-    ├── job-request/         # Create job workflow
-    ├── job-management/      # Job detail, approval flow, comments
-    ├── admin/               # Admin panels (job types, holidays, etc.)
-    ├── assignee/            # Assignee dashboard
-    ├── analytics/           # Reports and analytics
-    ├── dashboard/           # Main dashboard
-    └── portals/             # User & Media portals
+    ├── job-request/         # ขั้นตอนการสร้างงาน
+    ├── job-management/      # รายละเอียดงาน, เส้นทางการอนุมัติ, ความเห็น
+    ├── admin/               # แผงควบคุม Admin (ประเภทงาน, วันหยุด, ฯลฯ)
+    ├── assignee/            # แดชบอร์ด Assignee
+    ├── analytics/           # รายงานและสถิติ
+    ├── dashboard/           # แดชบอร์ดหลัก
+    └── portals/             # พอร์ตัล User และ Media
 ```
 
-**How It Works:**
-1. Each feature module exports `routes` array in its `index.jsx`
-2. `moduleRegistry.js` imports all routes and flattens them
-3. `App.jsx` loops through registered modules and creates `<Route>` elements automatically
-4. Routes are **lazy-loaded** via `React.lazy()` for code splitting
+**วิธีการทำงาน:**
+1. โมดูล Feature แต่ละตัวส่งออก `routes` array ใน `index.jsx`
+2. `moduleRegistry.js` นำเข้า routes ทั้งหมดและแปลงแบน
+3. `App.jsx` วนลูปผ่าน modules ที่ลงทะเบียนและสร้างองค์ประกอบ `<Route>` โดยอัตโนมัติ
+4. Routes จะถูก **lazy-loaded** ผ่าน `React.lazy()` สำหรับ code splitting
 
-**Key Files:**
-- [frontend/src/moduleRegistry.js](frontend/src/moduleRegistry.js) - Central route registry
-- [frontend/src/App.jsx](frontend/src/App.jsx) - Root component with Layout
-- [frontend/src/modules/core/layout/](frontend/src/modules/core/layout/) - Main layout with sidebar + header
+**ไฟล์หลัก:**
+- [frontend/src/moduleRegistry.js](frontend/src/moduleRegistry.js) - ทะเบียน routes กลาง
+- [frontend/src/App.jsx](frontend/src/App.jsx) - องค์ประกอบ Root พร้อม Layout
+- [frontend/src/modules/core/layout/](frontend/src/modules/core/layout/) - เลาต์หลักพร้อม sidebar + header
 
-### State Management
+### การจัดการสถานะ (State Management)
 
 **Zustand Stores:**
-- [authStoreV2](frontend/src/modules/core/stores/authStoreV2.ts) - V2 auth with role-based access
-- Module-specific stores (e.g., in job-management, admin)
+- [authStoreV2](frontend/src/modules/core/stores/authStoreV2.ts) - V2 auth พร้อมการเข้าถึงตามบทบาท
+- Stores เฉพาะโมดูล (เช่น ใน job-management, admin)
 
-**API Communication:**
-- [httpClient](frontend/src/modules/shared/services/httpClient.js) - Axios wrapper with JWT auth
-- [apiService](frontend/src/modules/shared/services/apiService.js) - Centralized API methods
-- Service modules: [userService](frontend/src/modules/shared/services/modules/userService.js), [fileUploadService](frontend/src/modules/shared/services/modules/fileUploadService.js), etc.
+**การสื่อสาร API:**
+- [httpClient](frontend/src/modules/shared/services/httpClient.js) - Axios wrapper พร้อม JWT auth
+- [apiService](frontend/src/modules/shared/services/apiService.js) - วิธีการ API ที่เป็นศูนย์กลาง
+- โมดูล Service: [userService](frontend/src/modules/shared/services/modules/userService.js), [fileUploadService](frontend/src/modules/shared/services/modules/fileUploadService.js), ฯลฯ
 
-### Real-time Features
+### ฟีเจอร์ Real-time
 
 - [socketService](frontend/src/modules/shared/services/socketService.js) - Socket.io client
-- [useRealtime hook](frontend/src/modules/shared/hooks/useRealtime.js) - React hook for live updates
-- Notifications are pushed via Socket.io when jobs change
+- [useRealtime hook](frontend/src/modules/shared/hooks/useRealtime.js) - React hook สำหรับการอัปเดตแบบ Live
+- การแจ้งเตือนจะถูกผลักไป via Socket.io เมื่องานเปลี่ยนแปลง
 
 ---
 
-## Backend Architecture
+## สถาปัตยกรรม Backend
 
-### Entry Point
-[backend/api-server/src/index.js](backend/api-server/src/index.js) - Sets up Express, Socket.io, routes, middleware
+### จุดเริ่มต้น (Entry Point)
+[backend/api-server/src/index.js](backend/api-server/src/index.js) - ตั้งค่า Express, Socket.io, routes, middleware
 
-**Key Middleware:**
-- CORS configuration (allows localhost:5173)
-- Body parser (JSON, 10MB limit)
-- Socket.io with JWT authentication
+**Middleware หลัก:**
+- CORS configuration (อนุญาต localhost:5173)
+- Body parser (JSON, ขีด จำกัด 10MB)
+- Socket.io พร้อม JWT authentication
 
-### Routes Structure
+### โครงสร้าง Routes
 ```
 backend/api-server/src/routes/
-├── auth.js                  # Login, logout, token refresh (V1)
-├── users.js                 # User management, assignments
-├── jobs.js                  # Create, read, update job workflow
-├── job-types.js             # Job type CRUD
-├── approval-flows.js        # Approval flow templates
-├── approvals.js             # Approval actions (approve/reject)
-├── comments.js              # Job comments with @mention support
-├── activities.js            # Job activity log
-├── master-data.js           # Combined job types, approval flows, BUDs, projects
+├── auth.js                  # เข้าสู่ระบบ, ออกจากระบบ, รีเฟรช token (V1)
+├── users.js                 # การจัดการผู้ใช้, การกำหนด
+├── jobs.js                  # สร้าง, อ่าน, อัปเดตขั้นตอนการทำงาน
+├── job-types.js             # CRUD ประเภทงาน
+├── approval-flows.js        # เทมเพลตเส้นทางการอนุมัติ
+├── approvals.js             # การดำเนินการอนุมัติ (อนุมัติ/ปฏิเสธ)
+├── comments.js              # ความเห็นเกี่ยวกับงานพร้อมการสนับสนุน @mention
+├── activities.js            # บันทึกกิจกรรมของงาน
+├── master-data.js           # ประเภทงานรวม, เส้นทางการอนุมัติ, BUD, โครงการ
 ├── master-data-combined.js  # ⚡ Performance: Single endpoint (6-7 calls → 1)
-├── analytics.js             # Analytics tracking
+├── analytics.js             # การติดตามการวิเคราะห์
 └── v2/ (V2 auth routes)     # /api/v2/auth/*, /api/v2/users/*
 ```
 
-### PrismaV1Adapter Pattern (Key Architecture)
+### PrismaV1Adapter Pattern (สถาปัตยกรรมหลัก)
 
-Located: [backend/api-server/src/v2/adapters/PrismaV1Adapter.js](backend/api-server/src/v2/adapters/PrismaV1Adapter.js)
+ตั้งอยู่ที่: [backend/api-server/src/v2/adapters/PrismaV1Adapter.js](backend/api-server/src/v2/adapters/PrismaV1Adapter.js)
 
-**Problem Solved:**
-- V2 auth expects tables: `v2_users`, `v2_organizations`, `v2_roles`
-- Real database uses: `users`, `departments`, `user_roles`, `roles`
+**ปัญหาที่แก้:**
+- V2 auth คาดหวัง tables: `v2_users`, `v2_organizations`, `v2_roles`
+- ฐานข้อมูลจริงใช้: `users`, `departments`, `user_roles`, `roles`
 
-**Solution:**
-The adapter translates queries and responses:
-- `findUserByEmail()` queries V1 `users` table, returns V2-format user object
-- `tov2User()` converts V1 user data to V2 auth format
-- Role mapping: Normalizes legacy V1 role names (SuperAdmin → Admin, TeamLead → Approver)
+**วิธีแก้:**
+Adapter แปลการสืบค้นและการตอบสนอง:
+- `findUserByEmail()` สืบค้น V1 `users` table, ส่งกลับวัตถุผู้ใช้ในรูปแบบ V2
+- `tov2User()` แปลงข้อมูลผู้ใช้ V1 เป็นรูปแบบ V2 auth
+- Role mapping: ปรับปรุงชื่อบทบาท V1 ดั้งเดิม (SuperAdmin → Admin, TeamLead → Approver)
 
-**Why Important:**
-- All new auth features use V2 auth system
-- But actual data stays in proven V1 tables
-- Zero risk to production data integrity
+**ทำไมสำคัญ:**
+- ฟีเจอร์ auth ใหม่ทั้งหมดใช้ V2 auth system
+- แต่ข้อมูลจริงยังคงอยู่ใน V1 tables ที่ได้รับการพิสูจน์
+- ไม่มีความเสี่ยงต่อความสมบูรณ์ของข้อมูล
 
 ### Service Layer
 
-Business logic is in service modules:
-- [jobService](backend/api-server/src/services/jobService.js) - Job creation, SLA calculation, status workflows
-- [approvalService](backend/api-server/src/services/approvalService.js) - Approval chain logic
-- [userService](backend/api-server/src/services/userService.js) - User queries, role assignment
-- [cacheService](backend/api-server/src/services/cacheService.js) - Caching layer for performance
-- [notificationService](backend/api-server/src/services/notificationService.js) - Notification dispatch
-- [emailService](backend/api-server/src/services/emailService.js) - Email templates and sending
+ลอจิกธุรกิจอยู่ใน service modules:
+- [jobService](backend/api-server/src/services/jobService.js) - การสร้างงาน, การคำนวณ SLA, ขั้นตอน status
+- [approvalService](backend/api-server/src/services/approvalService.js) - ลอจิกเส้นทางการอนุมัติ
+- [userService](backend/api-server/src/services/userService.js) - การสืบค้นผู้ใช้, การกำหนดบทบาท
+- [cacheService](backend/api-server/src/services/cacheService.js) - Caching layer สำหรับประสิทธิภาพ
+- [notificationService](backend/api-server/src/services/notificationService.js) - การส่งการแจ้งเตือน
+- [emailService](backend/api-server/src/services/emailService.js) - เทมเพลตอีเมลและการส่ง
 
-### Socket.io Real-time System
+### ระบบ Socket.io Real-time
 
-**Authentication:**
-- [socket/middleware/auth.js](backend/api-server/src/socket/middleware/auth.js) - JWT verification on connection
+**การตรวจสอบสิทธิ (Authentication):**
+- [socket/middleware/auth.js](backend/api-server/src/socket/middleware/auth.js) - การตรวจสอบ JWT เมื่อการเชื่อมต่อ
 
 **Event Handlers:**
-- [socket/handlers/jobEvents.js](backend/api-server/src/socket/handlers/jobEvents.js) - Job updates, approvals
-- [socket/handlers/notificationEvents.js](backend/api-server/src/socket/handlers/notificationEvents.js) - Notification delivery
+- [socket/handlers/jobEvents.js](backend/api-server/src/socket/handlers/jobEvents.js) - อัปเดตงาน, การอนุมัติ
+- [socket/handlers/notificationEvents.js](backend/api-server/src/socket/handlers/notificationEvents.js) - การส่งการแจ้งเตือน
 
 **Room System:**
-- Personal room: `tenant_{tenantId}:user_{userId}` - User receives notifications here
-- Broadcast rooms for real-time updates
+- Personal room: `tenant_{tenantId}:user_{userId}` - ผู้ใช้รับการแจ้งเตือนที่นี่
+- Broadcast rooms สำหรับการอัปเดตแบบ real-time
 
 ---
 
-## Database Schema (Prisma + PostgreSQL)
+## สคีมาฐานข้อมูล (Prisma + PostgreSQL)
 
-Key models in [backend/prisma/schema.prisma](backend/prisma/schema.prisma):
+โมเดลหลักใน [backend/prisma/schema.prisma](backend/prisma/schema.prisma):
 
-**Core Tables:**
-- `users` - User accounts (V1 auth, used by V2 adapter)
-- `roles` - Role definitions
-- `user_roles` - User-role assignments
-- `tenants` - Multi-tenant isolation
+**ตารางหลัก:**
+- `users` - บัญชีผู้ใช้ (V1 auth, ใช้โดย V2 adapter)
+- `roles` - นิยามบทบาท
+- `user_roles` - การกำหนดบทบาท-ผู้ใช้
+- `tenants` - การแยกแบบหลายผู้เช่า
 - `buds` - Business Unit Divisions
-- `projects` - Marketing projects
-- `job_types` - Design job types with SLA
+- `projects` - โครงการ Marketing
+- `job_types` - ประเภทงาน Design พร้อม SLA
 
-**Job Workflow:**
-- `jobs` - Design jobs (main table, ~20 fields)
-  - Status flow: draft → submitted → pending_approval → approved → assigned → in_progress → completed
-  - Parent/child relationships for job chaining
-  - SLA tracking with working days calculation
-- `job_briefs` - Job requirements and specifications
-- `job_attachments` - Input files
-- `job_deliverables` - Output files
-- `job_comments` - Chat/Comments with @mention support
-- `job_activities` - Audit log of all changes
+**ขั้นตอนการทำงาน (Job Workflow):**
+- `jobs` - งาน Design (ตารางหลัก, ~20 ฟิลด์)
+  - ขั้นตอน status: draft → submitted → pending_approval → approved → assigned → in_progress → completed
+  - ความสัมพันธ์ parent/child สำหรับ job chaining
+  - การติดตาม SLA พร้อมการคำนวณวันทำงาน
+- `job_briefs` - ข้อกำหนดงานและสเปค
+- `job_attachments` - ไฟล์อินพุต
+- `job_deliverables` - ไฟล์เอาต์พุต
+- `job_comments` - แชท/ความเห็นพร้อมการสนับสนุน @mention
+- `job_activities` - บันทึกตรวจสอบของการเปลี่ยนแปลงทั้งหมด
 
-**Approval System:**
-- `approval_flows` - Approval chain templates (multi-level, multi-approver per level)
-- `approvals` - Actual approvals for a job (tracks approval history)
+**ระบบการอนุมัติ:**
+- `approval_flows` - เทมเพลตเส้นทางการอนุมัติ (หลายระดับ, ผู้อนุมัติหลายคนต่อระดับ)
+- `approvals` - การอนุมัติจริงสำหรับงาน (ติดตามประวัติการอนุมัติ)
 
-**Admin Config:**
-- `holidays` - Working day exceptions
-- `notifications` - Delivery logs
-- `audit_logs` - System audit trail
+**การกำหนดค่า Admin:**
+- `holidays` - ข้อยกเว้นวันทำงาน
+- `notifications` - บันทึกการส่ง
+- `audit_logs` - บันทึกตรวจสอบระบบ
 
-**Assignments:**
-- `bud_job_assignments` - Assign job types to BUDs
-- `project_job_assignments` - Assign users to projects
-- `user_scope_assignments` - Fine-grained user access control
+**การกำหนด:**
+- `bud_job_assignments` - กำหนดประเภทงานให้กับ BUD
+- `project_job_assignments` - กำหนดผู้ใช้ให้กับโครงการ
+- `user_scope_assignments` - การควบคุมการเข้าถึงผู้ใช้ที่ละเอียด
 
 ---
 
-## Common Commands
+## คำสั่งทั่วไป
 
-### Development
+### การพัฒนา (Development)
 
 ```bash
 # Backend
 cd backend/api-server
-npm run dev                          # Start dev server with hot reload
-npm run build:v2                     # Compile TypeScript (V2 auth)
-npm run test                         # Run tests: node --test src/**/*.test.js
+npm run dev                          # เริ่ม dev server พร้อม hot reload
+npm run build:v2                     # คอมไพล์ TypeScript (V2 auth)
+npm run test                         # รัน tests: node --test src/**/*.test.js
 
 # Frontend
 cd frontend
-npm run dev                          # Start Vite dev server
-npm run build                        # Production build
-npm run lint                         # Run ESLint
-npm run preview                      # Preview production build locally
+npm run dev                          # เริ่ม Vite dev server
+npm run build                        # โปรดักชั่น build
+npm run lint                         # รัน ESLint
+npm run preview                      # ตัวอย่าง production build เฉพาะที่
 
 # Database (Prisma)
 cd backend/prisma
-npx prisma migrate dev --name <name> # Create and apply migration
-npx prisma db push                   # Sync schema to database
+npx prisma migrate dev --name <name> # สร้างและใช้ migration
+npx prisma db push                   # ซิงค์ schema ไปยังฐานข้อมูล
 npx prisma studio                    # GUI database browser (localhost:5555)
-npx prisma generate                  # Regenerate Prisma client
+npx prisma generate                  # สร้างใหม่ Prisma client
 ```
 
-### Debugging
+### การแก้ปัญหา (Debugging)
 
 ```bash
-# Check backend health
+# ตรวจสอบสุขภาพ backend
 curl http://localhost:3000/health
 
-# Check API version
+# ตรวจสอบเวอร์ชัน API
 curl http://localhost:3000/api/version
 
-# Test Socket.io connection
-# (Use browser console or Socket.io client library)
+# ทดสอบการเชื่อมต่อ Socket.io
+# (ใช้ browser console หรือ Socket.io client library)
 
-# Database connection test
-# Check .env DATABASE_URL, then:
+# ทดสอบการเชื่อมต่อฐานข้อมูล
+# ตรวจสอบ .env DATABASE_URL, จากนั้น:
 psql $DATABASE_URL -c "SELECT version();"
 
-# View Prisma logs
-# Add to .env: DEBUG=prisma:*
+# ดูบันทึก Prisma
+# เพิ่มไปยัง .env: DEBUG=prisma:*
 ```
 
-### Testing
+### การทดสอบ (Testing)
 
 ```bash
-# Test a specific API route
+# ทดสอบเส้นทาง API เฉพาะ
 npm test -- src/routes/jobs.test.js
 
-# Run all tests
+# รันการทดสอบทั้งหมด
 npm test
 
-# Note: Current tests minimal; add as needed
+# หมายเหตุ: ปัจจุบัน tests น้อย; เพิ่มตามต้องการ
 ```
 
 ---
 
-## Key Architectural Patterns
+## รูปแบบสถาปัตยกรรมหลัก
 
 ### 1. **Tenant Scoping**
-Every query filters by `tenantId`:
+ทุกการสืบค้นกรองตามค่า `tenantId`:
 ```javascript
 const job = await prisma.job.findUnique({
-  where: { id: jobId, tenantId: userId.tenantId }  // Crucial for security
+  where: { id: jobId, tenantId: userId.tenantId }  // สำคัญสำหรับความปลอดภัย
 });
 ```
 
 ### 2. **Role-Based Authorization**
-User roles determine features (check [permission.utils.js](frontend/src/modules/shared/utils/permission.utils.js)):
-- Admin: All features
-- Approver: Can approve/reject/comment
-- Requester: Can create/view own jobs
-- Assignee: Can view assigned, update progress, comment
+บทบาทผู้ใช้กำหนดฟีเจอร์ (ตรวจสอบ [permission.utils.js](frontend/src/modules/shared/utils/permission.utils.js)):
+- Admin: ทุกฟีเจอร์
+- Approver: สามารถอนุมัติ/ปฏิเสธ/แสดงความเห็น
+- Requester: สามารถสร้าง/ดูงานของตนเอง
+- Assignee: สามารถดูที่ได้รับมอบหมาย, อัปเดตความคืบหน้า, แสดงความเห็น
 
 ### 3. **Master Data Optimization**
-Most API calls fetch shared data (job types, approval flows, BUDs, projects):
-- **Old pattern**: 6-7 separate calls → slow initial load
-- **New pattern**: [master-data-combined.js](backend/api-server/src/routes/master-data-combined.js) - Single `/api/master-data-combined` call → 70% faster
+การโทร API ส่วนใหญ่ดึงข้อมูลที่ใช้ร่วมกัน (ประเภทงาน, เส้นทางการอนุมัติ, BUD, โครงการ):
+- **รูปแบบเก่า**: การเรียก 6-7 ครั้ง → การโหลดแบบช้า
+- **รูปแบบใหม่**: [master-data-combined.js](backend/api-server/src/routes/master-data-combined.js) - การเรียก `/api/master-data-combined` ครั้งเดียว → เร็วขึ้น 70%
 
 ### 4. **Service Layer for Business Logic**
-Controllers call services, not queries directly:
+Controllers เรียก services, ไม่ใช่ queries โดยตรง:
 ```javascript
 // routes/jobs.js
 const jobService = new JobService();
-await jobService.createJob(data, userId, tenantId);  // Service handles validation, SLA, notifications
+await jobService.createJob(data, userId, tenantId);  // Service จัดการ validation, SLA, notifications
 ```
 
 ### 5. **Activity Tracking**
-All job changes logged to `job_activities` for audit trail and UI timeline.
+บันทึกการเปลี่ยนแปลงงานทั้งหมดไปยัง `job_activities` สำหรับบันทึกตรวจสอบและไทม์ไลน์ UI
 
 ---
 
-## Important Notes for Development
+## หมายเหตุสำคัญสำหรับการพัฒนา
 
-### ⚠️ Database Schema Issues (Known)
-- **V2 Tables Remnant**: Tables `v2_users`, `v2_organizations`, `v2_roles` exist in schema but are NOT used
-  - Migration files 010, 011 were created but never executed
-  - Can be safely deleted (36 total records, no production data)
-  - Recommendation: Drop when schema is cleaned up
+### ⚠️ ปัญหาสคีมาฐานข้อมูล (ที่ทราบ)
+- **V2 Tables Remnant**: ตาราง `v2_users`, `v2_organizations`, `v2_roles` มีอยู่ในสคีมา แต่ **ไม่ได้ใช้**
+  - ไฟล์ migration 010, 011 ถูกสร้างขึ้นแต่ไม่เคยถูกดำเนินการ
+  - สามารถลบได้อย่างปลอดภัย (36 บันทึกทั้งหมด, ไม่มีข้อมูลจริง)
+  - คำแนะนำ: ลบเมื่อสคีมาถูกทำความสะอาด
 
-- **Parent Job Filtering**: Some projects have `isParent` as numeric 1 instead of boolean true
-  - Filters check both: `isParent !== true && isParent !== 1`
-  - Applies to: UserManagement BUD assignment UI, job list filtering
+- **Parent Job Filtering**: โครงการบางแห่งมี `isParent` เป็นตัวเลข 1 แทนที่จะเป็น boolean true
+  - ตัวกรองตรวจสอบทั้งสองอย่าง: `isParent !== true && isParent !== 1`
+  - ใช้กับ: UserManagement BUD assignment UI, job list filtering
 
-### 🎯 Recent Implementations (Reference)
-- **BUD-Level Assignments**: 2-column UI in UserManagement for assigning job types to BUDs
-- **Approval Flow Display**: Timeline visualization in JobDetail showing approval hierarchy
-- **Parent Job Assignees**: Aggregates all child job assignees with deduplication
-- **Brief Link Support**: External URL field for job requirements
-- **Job Chaining**: Sequential job dependencies (A→B→C with max depth control)
+### 🎯 การใช้งานล่าสุด (อ้างอิง)
+- **BUD-Level Assignments**: 2-column UI ใน UserManagement สำหรับการกำหนดประเภทงานให้กับ BUD
+- **Approval Flow Display**: Timeline visualization ใน JobDetail แสดงลำดับชั้นการอนุมัติ
+- **Parent Job Assignees**: รวมผู้รับมอบหมายงาน child ทั้งหมดพร้อมการหลีกเลี่ยงการทำซ้ำ
+- **Brief Link Support**: ฟิลด์ URL ภายนอกสำหรับข้อกำหนดงาน
+- **Job Chaining**: ความสัมพันธ์ของงานตามลำดับ (A→B→C พร้อมการควบคุมความลึกสูงสุด)
 
-### 🚀 Performance Optimizations
+### 🚀 การปรับปรุงประสิทธิภาพ
 - Master data combined endpoint (6-7 API calls → 1)
-- Database indexes on frequently queried columns
-- Client-side caching for static data
-- Pagination on large lists (jobs, comments)
+- Database indexes บนคอลัมน์ที่มีการสืบค้นบ่อย
+- Client-side caching สำหรับข้อมูลแบบคงที่
+- Pagination บนรายการขนาดใหญ่ (งาน, ความเห็น)
 
 ### 📝 Naming Conventions
 - **Database**: snake_case (users, job_types, job_activities)
@@ -358,56 +358,56 @@ All job changes logged to `job_activities` for audit trail and UI timeline.
 - **Files**: kebab-case (job-types.js, user-scope.jsx)
 
 ### 🔐 Authentication Flow
-1. **Login**: POST /api/v2/auth/login → Returns JWT token + user data
-2. **Token Storage**: Saved in Zustand store (authStoreV2)
-3. **API Calls**: JWT added to Authorization header via httpClient
-4. **Socket.io**: JWT passed in handshake auth, verified by middleware
-5. **Role Check**: Frontend uses RoleProtectedRoute, backend validates in each route
+1. **Login**: POST /api/v2/auth/login → ส่งกลับ JWT token + user data
+2. **Token Storage**: บันทึกไว้ใน Zustand store (authStoreV2)
+3. **API Calls**: JWT เพิ่มไปยัง Authorization header ผ่าน httpClient
+4. **Socket.io**: JWT ส่งผ่าน handshake auth, ตรวจสอบโดย middleware
+5. **Role Check**: Frontend ใช้ RoleProtectedRoute, backend ตรวจสอบในแต่ละเส้นทาง
 
 ---
 
-## Common Issues & Solutions
+## ปัญหาทั่วไปและการแก้ไข
 
-**Issue: Database connection error**
-- Check `.env` DATABASE_URL is correct
-- Ensure PostgreSQL is running
-- Run `psql $DATABASE_URL -c "SELECT 1;"` to test
+**ปัญหา: ข้อผิดพลาดในการเชื่อมต่อฐานข้อมูล**
+- ตรวจสอบ DATABASE_URL ใน `.env` ถูกต้อง
+- ตรวจสอบให้แน่ใจว่า PostgreSQL กำลังทำงาน
+- รัน `psql $DATABASE_URL -c "SELECT 1;"` เพื่อทดสอบ
 
-**Issue: CORS error from frontend**
-- Check `ALLOWED_ORIGINS` in `.env` includes http://localhost:5173
-- Restart backend after .env changes
+**ปัญหา: CORS error จาก frontend**
+- ตรวจสอบ `ALLOWED_ORIGINS` ใน `.env` รวม http://localhost:5173
+- รีสตาร์ท backend หลังจากเปลี่ยน .env
 
-**Issue: Socket.io not connecting**
-- Check JWT token is valid
-- Check browser console for handshake errors
-- Socket.io middleware will disconnect invalid tokens
+**ปัญหา: Socket.io ไม่เชื่อมต่อ**
+- ตรวจสอบ JWT token ถูกต้อง
+- ตรวจสอบ browser console สำหรับข้อผิดพลาด handshake
+- Socket.io middleware จะตัดการเชื่อมต่อ tokens ที่ไม่ถูกต้อง
 
-**Issue: Prisma client out of sync**
-- Run `npx prisma generate`
-- Delete `node_modules/.prisma` and reinstall
+**ปัญหา: Prisma client ไม่ซิงค์**
+- รัน `npx prisma generate`
+- ลบ `node_modules/.prisma` และติดตั้งใหม่
 
-**Issue: V2 auth endpoints 404**
-- V2 routes must be mounted BEFORE /api comments route (check index.js line 271)
-- Order: /api/v2 → /api/comments → /api/activities
+**ปัญหา: V2 auth endpoints 404**
+- V2 routes ต้องติดตั้งก่อนเส้นทางแสดงความเห็น /api (ตรวจสอบ index.js บรรทัด 271)
+- ลำดับ: /api/v2 → /api/comments → /api/activities
 
 ---
 
-## File Structure Overview
+## ภาพรวมโครงสร้างไฟล์ (File Structure Overview)
 
 ```
 DJ-System/
 ├── backend/
 │   ├── api-server/
 │   │   ├── src/
-│   │   │   ├── index.js                 # Server entry point
+│   │   │   ├── index.js                 # จุดเริ่มต้นของเซิร์ฟเวอร์
 │   │   │   ├── routes/                  # API endpoints
-│   │   │   ├── services/                # Business logic
-│   │   │   ├── v2/                      # V2 auth system
+│   │   │   ├── services/                # ลอจิกธุรกิจ
+│   │   │   ├── v2/                      # ระบบ V2 auth
 │   │   │   ├── socket/                  # Real-time handlers
 │   │   │   └── config/                  # Database, Supabase config
 │   │   └── .env.example                 # Env template
 │   └── prisma/
-│       └── schema.prisma                # Database schema (Prisma ORM)
+│       └── schema.prisma                # สคีมาฐานข้อมูล (Prisma ORM)
 │
 ├── frontend/
 │   ├── src/
@@ -417,22 +417,22 @@ DJ-System/
 │   │   ├── modules/
 │   │   │   ├── core/                    # Auth, Layout, Stores
 │   │   │   ├── shared/                  # Common components, services
-│   │   │   └── features/                # Feature modules (job-management, admin, etc.)
+│   │   │   └── features/                # Feature modules (job-management, admin, ฯลฯ)
 │   │   └── index.css                    # TailwindCSS import
 │   └── index.html                       # HTML template
 │
 ├── database/
-│   └── migrations/                      # SQL migration files
+│   └── migrations/                      # ไฟล์ SQL migration
 │
 └── docs/
-    └── (Various documentation files)
+    └── (ไฟล์เอกสารต่างๆ)
 ```
 
 ---
 
-## References & Docs
+## อ้างอิงและเอกสาร (References & Docs)
 
-- **README.md** - Project overview and tech stack
+- **README.md** - ภาพรวมโครงการและ tech stack
 - **Prisma Docs**: https://www.prisma.io/docs (ORM, migrations)
 - **Tailwind Docs**: https://tailwindcss.com (CSS framework)
 - **React Router**: https://reactrouter.com (Frontend routing)
