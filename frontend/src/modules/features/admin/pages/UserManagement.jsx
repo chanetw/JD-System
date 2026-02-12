@@ -10,7 +10,7 @@
  *   - Click [ปฏิเสธ] → Modal for Reason + Auto-Email
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Swal from 'sweetalert2';
 import apiDatabase from '@shared/services/apiDatabase';
 import { supabase } from '@shared/services/supabaseClient';
@@ -33,6 +33,21 @@ import {
 
 // ROLE_OPTIONS และ SCOPE_LEVELS ย้ายไปใช้จาก permission.utils.js แล้ว
 // ดู: ROLES, ROLE_LABELS, SCOPE_LEVELS จาก '@shared/utils/permission.utils'
+
+// ⚡ Custom debounce hook
+const useDebounce = (value, delay) => {
+    const [debouncedValue, setDebouncedValue] = useState(value);
+
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedValue(value);
+        }, delay);
+
+        return () => clearTimeout(handler);
+    }, [value, delay]);
+
+    return debouncedValue;
+};
 
 export default function UserManagementNew() {
     const { user } = useAuth(); // ดึง current user จาก Auth Store
@@ -125,10 +140,21 @@ export default function UserManagementNew() {
 
     // Filter State
     const [searchTerm, setSearchTerm] = useState('');
+    const debouncedSearchTerm = useDebounce(searchTerm, 300); // ⚡ 300ms debounce
     const [filterRole, setFilterRole] = useState('');
     const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'active', 'inactive'
     const [filterDepartment, setFilterDepartment] = useState('');
     const [showAllDepts, setShowAllDepts] = useState(false); // Department Manager Filter Toggle
+
+    // ⚡ Memoize department lookups (O(1) instead of O(n) find operations)
+    const departmentMap = useMemo(() => {
+        const map = new Map();
+        masterData.departments.forEach(dept => {
+            map.set(dept.id, dept);
+            map.set(dept.name, dept);
+        });
+        return map;
+    }, [masterData.departments]);
 
     // ⚡ Performance: Load master data once on mount
     useEffect(() => {
@@ -171,38 +197,40 @@ export default function UserManagementNew() {
 
     const loadMasterData = async () => {
         try {
-            console.log('[UserManagement] Loading master data...');
+            console.log('[UserManagement] Loading master data (combined endpoint)...');
+            const startTime = performance.now();
 
-            // ✓ Use Backend REST API instead of direct Supabase queries (RLS blocked)
-            const [tenants, buds, projects, departments, jobTypes] = await Promise.all([
-                adminService.getTenants(),
-                adminService.getBUDs(),
-                adminService.getProjects(),
-                adminService.getDepartments(),
-                adminService.getJobTypes() // Fetch Job Types
-            ]);
+            // ⚡ Performance: Use combined endpoint (1 API call instead of 5)
+            // Already has caching (10 min TTL) from adminService
+            const combinedData = await adminService.getMasterDataCombined();
+            const { tenants, buds, projects, departments, jobTypes, availableScopes } = combinedData;
 
-            console.log('[UserManagement] Master data loaded:', {
+            const loadTime = performance.now() - startTime;
+            console.log('[UserManagement] ✅ Master data loaded in', loadTime.toFixed(0), 'ms:', {
                 tenants: tenants?.length || 0,
                 buds: buds?.length || 0,
                 projects: projects?.length || 0,
                 departments: departments?.length || 0,
-                jobTypes: jobTypes?.length || 0
+                jobTypes: jobTypes?.length || 0,
+                scopes: availableScopes
             });
-            console.log('[UserManagement] Departments detail:', departments);
 
             setMasterData({
                 tenants: tenants || [],
                 buds: buds || [],
                 projects: projects || [],
                 departments: departments || [],
-                jobTypes: jobTypes || [] // Set jobTypes
+                jobTypes: jobTypes || []
+            });
+
+            // ⚡ Set availableScopes directly (already included in combined data)
+            setAvailableScopes(availableScopes || {
+                projects: projects || [],
+                buds: buds || [],
+                tenants: tenants || []
             });
 
             console.log('[UserManagement] Master data set successfully');
-
-            // Also load available scopes for multi-role
-            loadAvailableScopes();
         } catch (error) {
             console.error('[UserManagement] Error loading master data:', error);
             console.error('[UserManagement] Error details:', error.message, error.stack);
@@ -212,9 +240,15 @@ export default function UserManagementNew() {
     // Load available scopes for Multi-Role UI
     const loadAvailableScopes = async () => {
         try {
-            setScopesLoading(true);
-            const scopes = await adminService.getAvailableScopes(user?.tenant_id || 1);
-            setAvailableScopes(scopes);
+            // ⚡ Scopes already loaded from getMasterDataCombined()
+            // This function is now a no-op, but kept for backward compatibility
+            if (masterData.projects && masterData.projects.length > 0) {
+                setAvailableScopes({
+                    projects: masterData.projects || [],
+                    buds: masterData.buds || [],
+                    tenants: masterData.tenants || []
+                });
+            }
         } catch (error) {
             console.error('Error loading available scopes:', error);
             // Fallback to masterData
@@ -253,17 +287,13 @@ export default function UserManagementNew() {
         }
         // Priority 2: Fallback - lookup by departmentName (for registrations that might have name only)
         else if (userOrRegistration.departmentName) {
-            const dept = masterData.departments.find(d =>
-                d.name === userOrRegistration.departmentName
-            );
+            const dept = departmentMap.get(userOrRegistration.departmentName);
             departmentId = dept?.id;
             lookupMethod = 'departmentName (lookup)';
         }
         // Priority 3: Legacy fallback - lookup by department string (old format)
         else if (userOrRegistration.department && typeof userOrRegistration.department === 'string') {
-            const dept = masterData.departments.find(d =>
-                d.name === userOrRegistration.department
-            );
+            const dept = departmentMap.get(userOrRegistration.department);
             departmentId = dept?.id;
             lookupMethod = 'department (legacy lookup)';
         }
@@ -274,7 +304,7 @@ export default function UserManagementNew() {
         }
 
         // 2. Get department's BUD ID
-        const department = masterData.departments.find(d => d.id === departmentId);
+        const department = departmentMap.get(departmentId);
         // Fix: backend might return budId (Prisma) or bud_id (Raw DB)
         const userBudId = department?.bud_id;
 
@@ -470,24 +500,48 @@ export default function UserManagementNew() {
                 assignedProjects: []
             };
 
-            // Load user with roles using new Multi-Role API
+            // ⚡ Performance: Load all edit details in ONE request
             let userWithRoles = null;
+            let assignments = { budAssignments: [], projectAssignments: [] };
+            let managedDepts = [];
+            let currentManagedDeptId = '';
+
             try {
-                userWithRoles = await adminService.getUserWithRoles(userToEdit.id, userToEdit.tenantId || 1);
-                console.log('📋 Loaded user with roles:', userWithRoles);
+                console.log('⚡ Loading user edit details (combined endpoint)...');
+                const startTime = performance.now();
+
+                const editDetails = await adminService.getUserEditDetails(userToEdit.id);
+                const loadTime = performance.now() - startTime;
+
+                console.log(`✅ User edit details loaded in ${loadTime.toFixed(0)}ms:`, editDetails);
+
+                // Extract data from combined response
+                const { user: editUser, roles, assignments: userAssignments, managedDepartments } = editDetails;
+
+                userWithRoles = {
+                    ...editUser,
+                    roles: roles
+                };
+
+                assignments = userAssignments;
+                managedDepts = managedDepartments || [];
+
+                if (managedDepts && managedDepts.length > 0) {
+                    currentManagedDeptId = managedDepts[0].id;
+                }
             } catch (apiError) {
-                console.warn("Could not load user roles from new API:", apiError.message);
+                console.warn("Could not load user edit details from combined endpoint:", apiError.message);
+                // Fallback to old method if combined endpoint fails (backward compatibility)
+                try {
+                    userWithRoles = await adminService.getUserWithRoles(userToEdit.id, userToEdit.tenantId || 1);
+                } catch (e) {
+                    console.warn("Fallback also failed:", e.message);
+                }
             }
 
             // Build roleConfigs from loaded roles
             const loadedRoleConfigs = {};
             const loadedRoleNames = [];
-
-            console.log('🔍 [DEBUG] Checking roles:', {
-                rolesRaw: userWithRoles?.roles,
-                isArray: Array.isArray(userWithRoles?.roles),
-                length: userWithRoles?.roles?.length
-            });
 
             if (userWithRoles?.roles && userWithRoles.roles.length > 0) {
                 userWithRoles.roles.forEach(role => {
@@ -498,82 +552,38 @@ export default function UserManagementNew() {
                     };
                 });
                 console.log('✅ Loaded roles:', loadedRoleNames);
-                console.log('✅ Loaded configs:', loadedRoleConfigs);
             } else {
                 // Fallback: use legacy role
                 if (userToEdit.role) {
-                    // Fix: Map 'marketing' to 'Requester' dynamically
                     const roleName = userToEdit.role === 'marketing' ? 'Requester' : userToEdit.role;
                     loadedRoleNames.push(roleName);
                     console.log(`⚠️ Using legacy role: ${userToEdit.role} -> mapped to ${roleName}`);
                 }
             }
 
-            // Try to fetch existing scopes (legacy support)
-            try {
-                const scopes = await apiDatabase.getUserScopes(userToEdit.id);
-                if (scopes && scopes.length > 0) {
-                    scopes.forEach(s => {
-                        if (s.role_type === 'approver_scope') {
-                            initialScopeData.scopeLevel = s.scope_level;
-                            initialScopeData.scopeId = s.scope_id;
-                            initialScopeData.scopeName = s.scope_name;
-                        } else if (s.role_type === 'requester_allowed') {
-                            initialScopeData.allowedProjects.push(s.scope_id);
-                        } else if (s.role_type === 'assignee_assigned') {
-                            initialScopeData.assignedProjects.push(s.scope_id);
-                        }
-                    });
-                }
-            } catch (scopeError) {
-                console.warn("Could not load user scopes:", scopeError.message);
-            }
+            // Extract assignment data
+            const { budAssignments = [], projectAssignments = [] } = assignments;
 
-            // --- NEW: Fetch Assignments (Responsibilities) - BUD + Project levels ---
-            try {
-                const assignments = await adminService.getUserAssignments(userToEdit.id);
-                // assignments = { budAssignments: [], projectAssignments: [] }
+            // Extract unique job type IDs from both levels
+            const jobTypeIds = [
+                ...new Set([
+                    ...budAssignments.map(a => a.jobTypeId),
+                    ...projectAssignments.map(a => a.jobTypeId)
+                ])
+            ];
 
-                const { budAssignments = [], projectAssignments = [] } = assignments;
+            // Extract BUD IDs
+            const budIds = [...new Set(budAssignments.map(a => a.budId))];
 
-                // Extract unique job type IDs from both levels
-                const jobTypeIds = [
-                    ...new Set([
-                        ...budAssignments.map(a => a.jobTypeId),
-                        ...projectAssignments.map(a => a.jobTypeId)
-                    ])
-                ];
+            // Extract Project IDs
+            const projectIds = [...new Set(projectAssignments.map(a => a.projectId))];
 
-                // Extract BUD IDs
-                const budIds = [...new Set(budAssignments.map(a => a.budId))];
+            const assignmentData = { jobTypeIds, budIds, projectIds };
 
-                // Extract Project IDs
-                const projectIds = [...new Set(projectAssignments.map(a => a.projectId))];
+            console.log('[UserManagement] Extracted assignments:', assignmentData);
 
-                const assignmentData = { jobTypeIds, budIds, projectIds };
-
-                console.log('[UserManagement] Loaded assignments:', assignmentData);
-
-                setEditAssignmentData(assignmentData);
-                setInitialAssignmentData(assignmentData);
-            } catch (assignError) {
-                console.warn("Could not load user assignments:", assignError);
-                setEditAssignmentData({ jobTypeIds: [], budIds: [], projectIds: [] });
-                setInitialAssignmentData({ jobTypeIds: [], budIds: [], projectIds: [] });
-            }
-            // ------------------------------------------------
-
-            // New: Fetch Managed Department (Single)
-            let currentManagedDeptId = '';
-            try {
-                const managedDepts = await adminService.getDepartmentsByManager(userToEdit.id);
-                // เพราะเราเปลี่ยนเป็น Single Select ตาม Requirement
-                if (managedDepts && managedDepts.length > 0) {
-                    currentManagedDeptId = managedDepts[0].id;
-                }
-            } catch (deptError) {
-                console.warn("Could not load managed departments:", deptError.message);
-            }
+            setEditAssignmentData(assignmentData);
+            setInitialAssignmentData(assignmentData);
 
             // Set states
             // Set states
@@ -658,7 +668,7 @@ export default function UserManagementNew() {
 
         // Case 1: User จะถูกย้ายออกจากแผนกเดิม (User is currently manager of A, but removing or changing to B)
         if (currentDeptId && currentDeptId !== targetDeptId) {
-            const currentDeptName = masterData.departments.find(d => d.id === currentDeptId)?.name || 'Unknown';
+            const currentDeptName = departmentMap.get(currentDeptId)?.name || 'Unknown';
             // ถ้า targetDeptId เป็น null แปลว่า "ปลดออก" // ถ้าเปลี่ยนเป็น ID อื่น แปลว่า "ย้ายแผนก"
             const action = targetDeptId ? 'จะถูกย้ายออกจาก' : 'จะถูกปลดออกจาก';
             warnings.push(`👤 User นี้เป็น Manager ของแผนก "<b>${currentDeptName}</b>" อยู่ ${action}แผนกเดิม`);
@@ -666,7 +676,7 @@ export default function UserManagementNew() {
 
         // Case 2: แผนกเป้าหมายมี Manager คนอื่นอยู่แล้ว (Target dept already has a DIFFERENT manager)
         if (targetDeptId) {
-            const targetDept = masterData.departments.find(d => d.id === targetDeptId);
+            const targetDept = departmentMap.get(targetDeptId);
             if (targetDept?.managerId && targetDept.managerId !== editModal.user.id) {
                 const oldManagerName = targetDept.manager?.displayName || targetDept.manager?.first_name || 'Manager เดิม';
                 warnings.push(`⚠️ แผนก "<b>${targetDept.name}</b>" มี Manager อยู่แล้ว (<b>${oldManagerName}</b>) จะถูกแทนที่`);
@@ -938,35 +948,37 @@ export default function UserManagementNew() {
         }
     };
 
-    // Filter Users
-    const filteredUsers = users.filter(u => {
-        // 1. Department Filter
-        if (filterDepartment && u.department?.id?.toString() !== filterDepartment) return false;
+    // ⚡ Filter Users with Memoization (uses debouncedSearchTerm for performance)
+    const filteredUsers = useMemo(() => {
+        return users.filter(u => {
+            // 1. Department Filter
+            if (filterDepartment && u.department?.id?.toString() !== filterDepartment) return false;
 
-        // 2. Search Filter (Name, Email)
-        if (searchTerm) {
-            const lowerTerm = searchTerm.toLowerCase();
-            const matchName = (u.name || '').toLowerCase().includes(lowerTerm);
-            const matchDisplay = (u.displayName || '').toLowerCase().includes(lowerTerm);
-            const matchEmail = (u.email || '').toLowerCase().includes(lowerTerm);
-            if (!matchName && !matchDisplay && !matchEmail) return false;
-        }
+            // 2. Search Filter (Name, Email) - uses debounced value for smooth UX
+            if (debouncedSearchTerm) {
+                const lowerTerm = debouncedSearchTerm.toLowerCase();
+                const matchName = (u.name || '').toLowerCase().includes(lowerTerm);
+                const matchDisplay = (u.displayName || '').toLowerCase().includes(lowerTerm);
+                const matchEmail = (u.email || '').toLowerCase().includes(lowerTerm);
+                if (!matchName && !matchDisplay && !matchEmail) return false;
+            }
 
-        // 3. Role Filter
-        if (filterRole) {
-            // Check primary role or roles array
-            const userRoles = u.roles || (u.role ? [u.role] : []);
-            if (!userRoles.includes(filterRole)) return false;
-        }
+            // 3. Role Filter
+            if (filterRole) {
+                // Check primary role or roles array
+                const userRoles = u.roles || (u.role ? [u.role] : []);
+                if (!userRoles.includes(filterRole)) return false;
+            }
 
-        // 4. Status Filter
-        if (filterStatus !== 'all') {
-            const wantActive = filterStatus === 'active';
-            if (u.isActive !== wantActive) return false;
-        }
+            // 4. Status Filter
+            if (filterStatus !== 'all') {
+                const wantActive = filterStatus === 'active';
+                if (u.isActive !== wantActive) return false;
+            }
 
-        return true;
-    });
+            return true;
+        });
+    }, [users, filterDepartment, filterRole, filterStatus, debouncedSearchTerm]);
 
 
     return (
@@ -1845,7 +1857,7 @@ export default function UserManagementNew() {
                                     (() => {
                                         // Filter Logic: Show only departments in same BUD
                                         const selectedUserDeptId = editModal.user.departmentId;
-                                        const selectedDeptObj = masterData.departments.find(d => d.id == selectedUserDeptId);
+                                        const selectedDeptObj = departmentMap.get(selectedUserDeptId);
                                         const currentBudId = selectedDeptObj?.bud_id;
 
                                         // If dept selected AND NOT showAll, filter by BUD. Otherwise show all.

@@ -27,6 +27,33 @@ function hasAdminRole(roles) {
 router.use(authenticateToken);
 router.use(setRLSContextMiddleware);
 
+// ✅ ⚡ GET User Edit Details (Combined endpoint - Performance optimized)
+router.get('/:id/edit-details', async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const tenantId = req.user.tenantId || 1;
+
+    if (isNaN(userId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_USER_ID',
+        message: 'ID ไม่ถูกต้อง'
+      });
+    }
+
+    console.log(`[Users Route] Getting edit details for user ${userId}`);
+    const result = await userService.getUserEditDetails(userId, tenantId);
+    res.json(result);
+  } catch (error) {
+    console.error('[Users Route] Error getting user edit details:', error);
+    res.status(500).json({
+      success: false,
+      error: 'SERVER_ERROR',
+      message: error.message
+    });
+  }
+});
+
 // ✅ GET User data with Roles (Admin/Secure) - Moved to top to avoid conflict
 router.get('/:id/roles', async (req, res) => {
   try {

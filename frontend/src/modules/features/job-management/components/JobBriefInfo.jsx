@@ -1,5 +1,5 @@
 import React from 'react';
-import { PaperClipIcon } from '@heroicons/react/24/outline';
+import { PaperClipIcon, LinkIcon } from '@heroicons/react/24/outline';
 
 
 const JobBriefInfo = ({ job }) => {
@@ -51,6 +51,22 @@ const JobBriefInfo = ({ job }) => {
                                 </div>
                             </dd>
                         </div>
+                        {job.briefLink && (
+                            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 border-t border-gray-400">
+                                <dt className="text-sm font-medium text-gray-500">ลิงก์ Brief (Brief Link)</dt>
+                                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                    <a
+                                        href={job.briefLink}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 hover:underline"
+                                    >
+                                        <LinkIcon className="w-4 h-4" />
+                                        {job.briefLink}
+                                    </a>
+                                </dd>
+                            </div>
+                        )}
                         {hasFiles && (
                             <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4">
                                 <dt className="text-sm font-medium text-gray-500">ไฟล์แนบ (Attachments)</dt>

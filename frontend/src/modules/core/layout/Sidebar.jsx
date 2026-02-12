@@ -37,6 +37,11 @@ export default function Sidebar() {
     /** ตรวจสอบสิทธิ์เข้าถึง Analytics Dashboard (Phase 1: Admin only) */
     const canAccessAnalytics = isAdmin;
 
+    /** ตรวจสอบสิทธิ์ Approver (Approver หรือ Admin) */
+    const isApprover = user?.roleName === 'Approver' ||
+        user?.roleName === 'Admin' ||
+        (user?.roles && (user.roles.includes('Approver') || user.roles.includes('Admin')));
+
     return (
         // ============================================
         // Sidebar Container
@@ -81,9 +86,11 @@ export default function Sidebar() {
                     รายการงาน DJ ทั้งหมด
                 </SidebarLink>
 
-                <SidebarLink to="/approvals" icon={ApprovalIcon}>
-                    คิวงานรออนุมัติ
-                </SidebarLink>
+                {isApprover && (
+                    <SidebarLink to="/approvals" icon={ApprovalIcon}>
+                        คิวงานรออนุมัติ
+                    </SidebarLink>
+                )}
 
                 {(isAssignee || isAdmin) && (
                     <SidebarLink to="/assignee/my-queue" icon={InboxIcon}>

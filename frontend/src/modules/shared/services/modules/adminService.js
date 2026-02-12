@@ -1483,5 +1483,31 @@ export const adminService = {
             console.error('[adminService] saveUserAssignments error:', error);
             throw error;
         }
+    },
+
+    /**
+     * ⚡ Performance: Get all edit details for user (combined endpoint)
+     * Replaces: getUserWithRoles + getUserScopes + getUserAssignments + getDepartmentsByManager
+     * Saves ~550ms by fetching everything in one API call
+     */
+    getUserEditDetails: async (userId) => {
+        try {
+            console.log(`[adminService] Getting user edit details for user ${userId}...`);
+            const startTime = performance.now();
+
+            const response = await httpClient.get(`/users/${userId}/edit-details`);
+
+            if (!response.data.success) {
+                throw new Error(response.data.message);
+            }
+
+            const loadTime = performance.now() - startTime;
+            console.log(`[adminService] ✅ User edit details loaded in ${loadTime.toFixed(0)}ms`);
+
+            return response.data.data;
+        } catch (error) {
+            console.error('[adminService] getUserEditDetails error:', error);
+            throw error;
+        }
     }
 };

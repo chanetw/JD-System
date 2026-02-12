@@ -35,6 +35,7 @@ import JobBriefInfo from '../components/JobBriefInfo';
 import JobComments from '../components/JobComments';
 import JobActivityLog from '../components/JobActivityLog';
 import SubJobsList from '../components/SubJobsList';
+import ParentJobAssignees from '../components/ParentJobAssignees';
 import JobSidebar from '../components/JobSidebar';
 import JobActionPanel from '../components/JobActionPanel';
 
@@ -338,8 +339,13 @@ export default function JobDetail() {
                             onChange={setActiveTab}
                             className="px-6 pt-2"
                         />
-                        <div className="p-6 flex-1">
-                            {activeTab === 'overview' && <JobBriefInfo job={job} />}
+                        <div className="p-6 flex-1 space-y-6">
+                            {activeTab === 'overview' && (
+                                <>
+                                    <JobBriefInfo job={job} />
+                                    <ParentJobAssignees job={job} />
+                                </>
+                            )}
                             {activeTab === 'subjobs' && <SubJobsList jobs={job.childJobs} />}
                             {activeTab === 'comments' && <JobComments jobId={job.id} currentUser={user} />}
                             {activeTab === 'activity' && <JobActivityLog jobId={job.id} />}

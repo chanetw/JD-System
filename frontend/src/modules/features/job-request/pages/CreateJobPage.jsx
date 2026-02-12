@@ -119,7 +119,8 @@ export default function CreateDJ() {
         const loadData = async () => {
             setIsLoading(true);
             try {
-                const data = await api.getMasterData();
+                // Use Combined API for performance & scope data
+                const data = await api.getMasterDataCombined();
 
                 // Business Rule: User ทั่วไปควรเห็นเฉพาะข้อมูลที่ Active เท่านั้น (กรอง Inactive ออก)
                 data.projects = data.projects?.filter(p => p.isActive) || [];
@@ -127,19 +128,35 @@ export default function CreateDJ() {
                 data.buds = data.buds?.filter(b => b.isActive) || [];
 
                 // Multi-Role: กรองโครงการตาม scope ที่ user มีสิทธิ์
-                // ใช้ getAccessibleProjects จาก permission.utils
-                if (user && !isAdmin(user)) {
-                    const accessibleProjectIds = getAccessibleProjects(user, 'requester');
-                    if (accessibleProjectIds.length > 0) {
-                        // ถ้ามี scopes กำหนด ให้แสดงเฉพาะโครงการที่มีสิทธิ์
-                        data.projects = data.projects.filter(p => accessibleProjectIds.includes(p.id));
+                const isAdminUser = isAdmin(user);
+
+                if (user && !isAdminUser) {
+                    // Use availableScopes from backend (Optimized)
+                    const scopedProjects = data.availableScopes?.projects || [];
+
+                    if (scopedProjects.length > 0) {
+                        data.projects = scopedProjects;
+                    } else {
+                        // Fallback: If no scopes returned but user is not admin, 
+                        // check if we should fallback to empty or keep all (if legacy)
+                        // For now, strict mode: empty if no scopes
+                        data.projects = [];
+                        console.warn('[CreateJob] User has no assigned project scopes');
                     }
-                    // ถ้าไม่มี scopes กำหนด = เข้าถึงได้ทั้งหมด (fallback: tenant level)
                 }
 
+                console.log('🔍 [CreateJob] Master Data Loaded:', {
+                    projects: data.projects?.length,
+                    isAdmin: isAdminUser,
+                    userRoles: user?.roles
+                });
+
                 setMasterData(data);
+
                 // ข้อมูลวันหยุดเพื่อใช้คำนวณเป้าหมายเวลาทำงาน (SLA Calculation)
-                const holidaysData = await api.getHolidays();
+                // Note: getMasterDataCombined already returns holidays in some versions, 
+                // but if not, we keep this call or use data.holidays if available
+                const holidaysData = data.holidays || await api.getHolidays();
                 setHolidays(holidaysData);
             } catch (error) {
                 console.error("เกิดข้อผิดพลาดในการโหลดข้อมูลตั้งต้น:", error);
@@ -1665,9 +1682,11 @@ export default function CreateDJ() {
                                 "ส่งงานตอนนี้ (Send Now)"
                             )}
                         </Button>
+                        {/* Feature Pending: Save Draft
                         <Button type="button" variant="secondary" className="w-full" disabled={isSubmitting} onClick={handleSaveDraft}>
                             {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกร่าง (Save Draft)'}
                         </Button>
+                        */}
                     </div >
 
                 </div >
