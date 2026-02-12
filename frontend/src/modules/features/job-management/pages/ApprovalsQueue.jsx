@@ -78,11 +78,12 @@ export default function ApprovalsQueue() {
             }
 
             // กฎการคัดกรองตามบทบาท (Filter Logic by Role) - เก็บไว้เป็น fallback
-            const userRole = user?.roles?.[0];
-            if (userRole === 'approver' || userRole === 'admin') {
+            // Support both single role (roleName) and multiple roles (roles array)
+            const userRole = user?.roleName || user?.roles?.[0];
+            if (userRole === 'Approver' || userRole === 'Admin') {
                 // ผู้อนุมัติและ Admin สามารถเห็นและจัดการงานทั้งหมดใน scope
                 setJobs(sorted);
-            } else if (userRole === 'requester') {
+            } else if (userRole === 'Requester') {
                 // ผู้ขอใช้บริการ (Requester) เห็นเฉพาะงานที่ตนเองเป็นคนสร้างเท่านั้น
                 const myJobs = sorted.filter(job => job.requesterId === user?.id);
                 setJobs(myJobs);
