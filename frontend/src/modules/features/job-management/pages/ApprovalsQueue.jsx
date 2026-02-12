@@ -150,21 +150,9 @@ export default function ApprovalsQueue() {
             {/* ============================================
           ส่วนหัวของหน้าจอ (Page Header)
           ============================================ */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900">คิวรออนุมัติ (Approvals Queue)</h1>
-                    <p className="text-gray-500">รายการงาน DJ (Design Job) ที่รอให้คุณดำเนินการตรวจสอบ</p>
-                </div>
-                {/* ข้อมูลโปรไฟล์ผู้อนุมัติ (Mockup Profile) */}
-                <div className="flex items-center gap-3 pl-4 border-l border-gray-400">
-                    <div className="w-10 h-10 bg-rose-100 rounded-full flex items-center justify-center">
-                        <span className="text-rose-600 font-semibold">{user?.displayName?.[0] || 'A'}</span>
-                    </div>
-                    <div>
-                        <p className="text-sm font-medium text-gray-700">{user?.displayName || 'Approver Name'}</p>
-                        <p className="text-xs text-gray-500">{user?.bud || 'สายงานการตลาด'}</p>
-                    </div>
-                </div>
+            <div>
+                <h1 className="text-2xl font-bold text-gray-900">คิวรออนุมัติ (Approvals Queue)</h1>
+                <p className="text-gray-500">รายการงาน DJ (Design Job) ที่รอให้คุณดำเนินการตรวจสอบ</p>
             </div>
 
             {/* ============================================
