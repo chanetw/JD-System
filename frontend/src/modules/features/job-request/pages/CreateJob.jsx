@@ -95,14 +95,46 @@ const CreateJob = () => {
     const fetchMasterData = async () => {
         try {
             setLoading(true);
-            const { api } = await import('@shared/services/apiService'); // Dynamic import to avoid cycles if any
+            const { api } = await import('@shared/services/apiService'); // Dynamic import
 
-            // Call Backend API via AdminService or APIService
-            // Using api.getMasterData which calls /api/master-data
-            const data = await api.getMasterData();
+            // Call Backend API via AdminService (Combined Data)
+            // This returns all master data + availableScopes for the current user
+            const data = await api.getMasterDataCombined();
 
             if (data) {
-                setProjects(data.projects || []);
+                // Check User Role (Admin can see all, others see only scoped projects)
+                // user.roles is array of strings (e.g. ['admin', 'requester'])
+                const isAdmin = user?.roles?.some(r =>
+                    ['admin', 'Admin', 'administrator', 'Administrator'].includes(r)
+                ) || false;
+
+                let visibleProjects = data.projects || [];
+
+                // If not Admin, filter by available scopes
+                if (!isAdmin) {
+                    // Use availableScopes returned from backend specifically for this user
+                    const scopedProjects = data.availableScopes?.projects || [];
+
+                    if (scopedProjects.length > 0) {
+                        visibleProjects = scopedProjects;
+                    } else {
+                        // User has no scoped projects assigned
+                        // Fallback: Show empty list or check if user is unrestricted?
+                        // For strict compliance: Show empty list (or maybe Public projects if any)
+                        visibleProjects = [];
+                        console.warn('User has no assigned project scopes');
+                    }
+                }
+
+                console.log('🔍 [CreateJob] Debug Data:', {
+                    userRoles: user?.roles,
+                    isAdmin,
+                    scopedProjectsLength: data.availableScopes?.projects?.length,
+                    allProjectsLength: data.projects?.length,
+                    visibleProjectsLength: visibleProjects.length
+                });
+
+                setProjects(visibleProjects);
                 setJobTypes(data.jobTypes || []);
 
                 // Holidays logic
@@ -110,10 +142,13 @@ const CreateJob = () => {
                 const holidayDates = holidaysData.map(h => h.date);
                 setHolidays(holidayDates);
                 saveHolidaysToCache(holidayDates);
+
                 console.log('📅 Master Data Loaded:', {
-                    projects: data.projects?.length,
+                    totalProjects: data.projects?.length,
+                    visibleProjects: visibleProjects.length,
                     jobTypes: data.jobTypes?.length,
-                    holidays: holidayDates.length
+                    holidays: holidayDates.length,
+                    isAdmin
                 });
             }
         } catch (error) {
@@ -294,7 +329,7 @@ const CreateJob = () => {
                             <option value="">-- กรุณาเลือก --</option>
                             {jobTypes.map(type => (
                                 <option key={type.id} value={type.id}>
-                                    {type.name} (SLA: {type.sla_days} วัน)
+                                    {type.name} (SLA: {type.sla} วัน)
                                 </option>
                             ))}
                         </select>
