@@ -172,7 +172,7 @@ export default function JobDetail() {
         }
 
         try {
-            const result = await api.reassignJob(job.id, selectedAssignee, reassignReason, user?.id || 1);
+            const result = await api.reassignJob(job.id, selectedAssignee, reassignReason, user?.id || 1, user);
             if (result.success) {
                 alert('ย้ายงานสำเร็จ');
                 setShowReassignModal(false);
@@ -183,7 +183,7 @@ export default function JobDetail() {
             }
         } catch (err) {
             console.error(err);
-            alert('เกิดข้อผิดพลาด');
+            alert('เกิดข้อผิดพลาด: ' + (err.message || 'ไม่ทราบสาเหตุ'));
         }
     };
 
@@ -237,7 +237,7 @@ export default function JobDetail() {
 
     const handleManualAssign = async (jobId, assigneeId) => {
         try {
-            const result = await api.assignJobManually(jobId, assigneeId, user?.id);
+            const result = await api.assignJobManually(jobId, assigneeId, user?.id, 'manual', user);
             if (result.success) {
                 alert('มอบหมายงานสำเร็จ');
                 loadJob();
@@ -245,7 +245,7 @@ export default function JobDetail() {
                 alert('ไม่สำเร็จ: ' + result.error);
             }
         } catch (err) {
-            alert('Error: ' + err.message);
+            alert('Error: ' + (err.message || 'ไม่ทราบสาเหตุ'));
         }
     };
 

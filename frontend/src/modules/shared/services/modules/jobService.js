@@ -428,8 +428,37 @@ export const jobService = {
         }
     },
 
-    reassignJob: async (jobId, newAssigneeId, reason, userId) => {
+    reassignJob: async (jobId, newAssigneeId, reason, userId, user = null) => {
         console.log(`[Reassign] Job ${jobId} -> New Assignee ${newAssigneeId} by User ${userId}`);
+
+        // ========================================
+        // Permission Check
+        // ========================================
+        // Get current job to check assignee
+        const { data: currentJob, error: jobFetchErr } = await supabase.from('jobs')
+            .select('assignee_id')
+            .eq('id', jobId)
+            .single();
+
+        if (jobFetchErr) throw jobFetchErr;
+
+        // Get user roles if not provided
+        let userRoles = [];
+        if (user?.roles) {
+            userRoles = user.roles.map(r => (typeof r === 'string' ? r : r?.roleName || '').toLowerCase());
+        }
+
+        // Permission check: Can reassign if:
+        // 1. User is the current assignee, OR
+        // 2. User is admin or manager
+        const isCurrentAssignee = currentJob.assignee_id === userId;
+        const isAdminOrManager = userRoles.includes('admin') || userRoles.includes('manager');
+
+        if (!isCurrentAssignee && !isAdminOrManager) {
+            const error = new Error('ไม่มีสิทธิ์ย้ายงาน: คุณเป็นผู้รับงานเท่านั้น');
+            error.code = 'PERMISSION_DENIED';
+            throw error;
+        }
 
         // 1. Update Assignee
         const { error } = await supabase.from('jobs')
@@ -785,15 +814,34 @@ export const jobService = {
 
     /**
      * Manual assign job (called by Department Manager or Admin)
-     * 
+     *
      * @param {number} jobId - Job ID to assign
      * @param {number} assigneeId - User ID to assign to
      * @param {number|null} assignedBy - User ID who performed the assignment
      * @param {string} source - Source of assignment ('manual', 'auto-assign: team-lead', etc.)
+     * @param {Object} user - Current user object with roles
      * @returns {Promise<Object>} - Result with success status
      */
-    assignJobManually: async (jobId, assigneeId, assignedBy = null, source = 'manual') => {
+    assignJobManually: async (jobId, assigneeId, assignedBy = null, source = 'manual', user = null) => {
         try {
+            // ========================================
+            // Permission Check
+            // ========================================
+            // Get user roles if not provided
+            let userRoles = [];
+            if (user?.roles) {
+                userRoles = user.roles.map(r => (typeof r === 'string' ? r : r?.roleName || '').toLowerCase());
+            }
+
+            // Permission check: Only Admin and Manager can manually assign
+            const isAdminOrManager = userRoles.includes('admin') || userRoles.includes('manager');
+
+            if (!isAdminOrManager) {
+                const error = new Error('ไม่มีสิทธิ์มอบหมายงาน: เฉพาะ Admin และ Manager เท่านั้น');
+                error.code = 'PERMISSION_DENIED';
+                throw error;
+            }
+
             // Update job with assignee
             const { data: updatedJob, error: updateErr } = await supabase
                 .from('jobs')
