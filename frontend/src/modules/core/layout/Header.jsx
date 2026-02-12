@@ -187,8 +187,8 @@ export default function Header() {
             {/* Toast Popup */}
             {toast.show && (
                 <div className={`fixed top-20 right-6 z-50 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-slide-in ${toast.type === 'success'
-                        ? 'bg-green-50 border border-green-200 text-green-800'
-                        : 'bg-red-50 border border-red-200 text-red-800'
+                    ? 'bg-green-50 border border-green-200 text-green-800'
+                    : 'bg-red-50 border border-red-200 text-red-800'
                     }`}>
                     {toast.type === 'success' ? (
                         <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">

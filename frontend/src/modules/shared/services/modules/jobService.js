@@ -46,6 +46,13 @@ export const jobService = {
         try {
             // ✓ NEW: Use Backend REST API with RLS context
             // Handle V1 (roles array) and V2 (role object or roleName string)
+
+            // Guard against null/undefined user
+            if (!user) {
+                console.warn('[getJobsByRole] User is null or undefined, returning empty jobs list');
+                return [];
+            }
+
             let role = 'requester';
 
             if (typeof user.role === 'string') {
