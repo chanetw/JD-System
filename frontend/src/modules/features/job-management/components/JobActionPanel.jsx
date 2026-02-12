@@ -83,6 +83,16 @@ const JobActionPanel = ({
         if (job.assigneeId) return null; // Already assigned - don't show
 
         const canAssign = isAdmin || isDeptManager;
+
+        // Debug log for troubleshooting
+        console.log('[renderManualAssignment]', {
+            jobAssigneeId: job.assigneeId,
+            isAdmin,
+            isDeptManager,
+            canAssign,
+            willShow: !job.assigneeId && canAssign
+        });
+
         if (!canAssign) return null;
 
         const handleAssignClick = async () => {
