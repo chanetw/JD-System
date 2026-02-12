@@ -18,17 +18,22 @@ const JobActionPanel = ({
 
     // Permission Helpers
     // Support both case variations (admin/Admin, manager/Manager) for V1 and V2 auth formats
-    const normalizedRoles = currentUser?.roles?.map(r => (typeof r === 'string' ? r : r?.roleName || '').toLowerCase()) || [];
+    const rawRoles = currentUser?.roles;
+    const normalizedRoles = rawRoles?.map(r => {
+        const normalized = (typeof r === 'string' ? r : r?.roleName || '').toLowerCase();
+        return normalized;
+    }) || [];
     const isAdmin = normalizedRoles.includes('admin');
     const isDeptManager = normalizedRoles.includes('manager') || normalizedRoles.includes('dept_manager');
 
     // DEBUG: Log for troubleshooting
     if (job && currentUser) {
-        console.log('[JobActionPanel] Debug:', {
+        console.log('[JobActionPanel] Permission Debug:', {
             jobId: job.id,
-            jobAssigneeId: job.assigneeId,
             currentUserId: currentUser.id,
-            rawRoles: currentUser.roles,
+            rawRoles: rawRoles,
+            rawRolesType: rawRoles ? typeof rawRoles : 'undefined',
+            rawRolesLength: rawRoles?.length || 0,
             normalizedRoles,
             isAdmin,
             isDeptManager
