@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useAuthStore } from '@core/stores/authStore';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import * as socketService from '@shared/services/socketService';
 
 /**
@@ -48,7 +48,7 @@ export const useSocket = (autoConnect = true) => {
   // =====================================
   // ขั้นตอนที่ 1: ดึงข้อมูล Auth จาก Store
   // =====================================
-  const { authToken, user } = useAuthStore();
+  const { token: authToken, user } = useAuthStoreV2();
 
   // =====================================
   // ขั้นตอนที่ 2: ตั้งค่า State สำหรับ Connection

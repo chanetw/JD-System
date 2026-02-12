@@ -12,7 +12,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api } from '@shared/services/apiService';
 import { adminService } from '@shared/services/modules/adminService';
-import { useAuthStore } from '@core/stores/authStore';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { ROLE_V1_DISPLAY } from '@shared/utils/permission.utils';
 import { formatDateToThai } from '@shared/utils/dateUtils';
 import Badge from '@shared/components/Badge';
@@ -43,7 +43,7 @@ import JobActionPanel from '../components/JobActionPanel';
 export default function JobDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { user } = useAuthStore();
+    const { user } = useAuthStoreV2();
 
     // State
     const [job, setJob] = useState(null);

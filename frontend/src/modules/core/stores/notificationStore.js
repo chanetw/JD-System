@@ -8,7 +8,7 @@
 
 import { create } from 'zustand';
 import { api } from '@shared/services/apiService';
-import { useAuthStore } from './authStore';
+import { useAuthStoreV2 } from './authStoreV2';
 
 export const useNotificationStore = create((set, get) => ({
     notifications: [],
@@ -22,7 +22,7 @@ export const useNotificationStore = create((set, get) => ({
         set({ isLoading: true });
 
         try {
-            const currentUser = useAuthStore.getState().user;
+            const currentUser = useAuthStoreV2.getState().user;
 
             if (!currentUser) {
                 set({ notifications: [], unreadCount: 0, isLoading: false });
@@ -89,7 +89,7 @@ export const useNotificationStore = create((set, get) => ({
         // Update in Database (ถ้ามี API function)
         if (typeof api.markAllNotificationsAsRead === 'function') {
             try {
-                const currentUser = useAuthStore.getState().user;
+                const currentUser = useAuthStoreV2.getState().user;
                 await api.markAllNotificationsAsRead(currentUser?.id);
             } catch (error) {
                 console.error('[notificationStore] markAllAsRead error:', error);

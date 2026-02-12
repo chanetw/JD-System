@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { api } from '@shared/services/apiService';
-import { useAuthStore } from '@core/stores/authStore';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { Link } from 'react-router-dom';
 import { Card } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
@@ -44,7 +44,7 @@ export default function ApprovalsQueue() {
     const [rejectResult, setRejectComment] = useState('');           // ความคิดเห็นเพิ่มเติมเมื่อปฏิเสธ
 
     /** ข้อมูลผู้ใช้งานปัจจุบันจาก Central Store */
-    const { user } = useAuthStore();
+    const { user } = useAuthStoreV2();
 
     // === สถานะข้อมูล (Data States) ===
     const [jobs, setJobs] = useState([]);      // รายการงานทั้งหมดที่โหลดมา

@@ -10,7 +10,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '@core/stores/authStore';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { api } from '@shared/services/apiService';
 import Button from '@shared/components/Button';
 import {
@@ -24,7 +24,7 @@ import {
 
 export default function ChangePassword() {
     const navigate = useNavigate();
-    const { user, logout } = useAuthStore();
+    const { user, logout } = useAuthStoreV2();
     const [isLoading, setIsLoading] = useState(false);
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState('');

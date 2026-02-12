@@ -11,7 +11,7 @@
  */
 
 import { useState } from 'react';
-import { useAuthStore } from '@core/stores/authStore';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { useAnalyticsData } from '../hooks/useAnalyticsData';
 import { useRealtimeAnalyticsWithRefetch } from '../hooks/useRealtimeAnalytics';
 import { reportService } from '@shared/services/modules/reportService';
@@ -26,7 +26,7 @@ import ExportButton from '../components/ExportButton';
  * @description หน้า Dashboard แสดงข้อมูลเชิงลึก
  */
 export default function AnalyticsDashboard() {
-    const { user } = useAuthStore();
+    const { user } = useAuthStoreV2();
     const [filters, setFilters] = useState({
         period: 'this_month',
         startDate: null,

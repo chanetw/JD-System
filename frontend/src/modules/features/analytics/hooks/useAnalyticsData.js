@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { useAuthStore } from '@core/stores/authStore';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { reportService } from '@shared/services/modules/reportService';
 
 /**
@@ -19,7 +19,7 @@ import { reportService } from '@shared/services/modules/reportService';
  * @returns {object} - { data, isLoading, error, refetch }
  */
 export function useAnalyticsData(filters = {}) {
-    const { user } = useAuthStore();
+    const { user } = useAuthStoreV2();
     const [data, setData] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -79,7 +79,7 @@ export function useAnalyticsData(filters = {}) {
  * @returns {object} - { data, isLoading, error }
  */
 export function useTrendComparison(currentPeriod = 'this_month', previousPeriod = 'last_month') {
-    const { user } = useAuthStore();
+    const { user } = useAuthStoreV2();
     const [data, setData] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);

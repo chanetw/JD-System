@@ -10,7 +10,7 @@
 
 import { useRef, useEffect, useCallback } from 'react';
 import { useJobsRealtime } from '@shared/hooks/useRealtime';
-import { useAuthStore } from '@core/stores/authStore';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 
 /**
  * @function useRealtimeAnalytics
@@ -19,7 +19,7 @@ import { useAuthStore } from '@core/stores/authStore';
  * @returns {object} - { isConnected, error }
  */
 export function useRealtimeAnalytics(onDataChange) {
-    const { user } = useAuthStore();
+    const { user } = useAuthStoreV2();
     const tenantId = user?.tenantId;
 
     // สร้าง callbacks object สำหรับ useJobsRealtime
@@ -55,7 +55,7 @@ export function useRealtimeAnalytics(onDataChange) {
  * @returns {object} - { isConnected, error }
  */
 export function useRealtimeAnalyticsWithRefetch(refetch, debounceMs = 1000) {
-    const { user } = useAuthStore();
+    const { user } = useAuthStoreV2();
     const tenantId = user?.tenantId;
     const debounceTimerRef = useRef(null);
 

@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '@core/stores/authStore';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import api from '@shared/services/apiService'; // ใช้ apiService ที่เป็น Centralized API (Support Real DB)
 import { Card, CardHeader, CardBody } from '@shared/components/Card';
 import { FormInput, FormSelect, FormTextarea } from '@shared/components/FormInput';
@@ -28,7 +28,7 @@ import { XMarkIcon, ClockIcon, LinkIcon, PlusIcon } from '@heroicons/react/24/ou
  */
 export default function CreateDJ() {
     const navigate = useNavigate();
-    const { user } = useAuthStore();
+    const { user } = useAuthStoreV2();
 
     // === สถานะการทำงาน (States: Status) ===
     /** สถานะกำลังโหลดข้อมูลตั้งต้น */

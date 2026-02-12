@@ -5,11 +5,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useAuthStore } from '@core/stores/authStore';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 
 export default function LoginReal() {
     const navigate = useNavigate();
-    const { login, user } = useAuthStore();
+    const { login, user } = useAuthStoreV2();
 
     const [formData, setFormData] = useState({
         email: '',

@@ -15,7 +15,7 @@ import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
 import { api } from '@shared/services/apiService';
 import { formatDateToThai } from '@shared/utils/dateUtils';
-import { useAuthStore } from '@core/stores/authStore';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { getUserScopes, getAllowedProjectIds } from '@shared/utils/scopeHelpers';
 
 // Icons
@@ -26,7 +26,7 @@ import {
 
 export default function DJList() {
     // === Auth State ===
-    const { user } = useAuthStore();
+    const { user } = useAuthStoreV2();
 
     // === สถานะข้อมูล (Data Management States) ===
     const [jobs, setJobs] = useState([]);          // ข้อมูลงานต้นฉบับทั้งหมดจาก API
@@ -68,14 +68,13 @@ export default function DJList() {
         setIsLoading(true);
         try {
             // 🔥 Security: Fetch jobs based on Role (Least Privilege)
-            const isAdmin = user?.roleName === 'Admin' || user?.roles?.includes('Admin');
-            const fetchJobsPromise = isAdmin ? api.getJobs() : api.getJobsByRole(user);
-
+            // Always use getJobsByRole to pass correct role parameter to backend
+            // getJobs() without role defaults to 'requester' on backend, which is incorrect for admin
             const [jobsData, masterDataResult] = await Promise.all([
-                fetchJobsPromise,
+                api.getJobsByRole(user),
                 api.getMasterData()
             ]);
-            console.log(`[DJList] Loaded ${jobsData.length} jobs (Admin: ${isAdmin}). First job:`, jobsData[0]);
+            console.log(`[DJList] Loaded ${jobsData.length} jobs. First job:`, jobsData[0]);
 
             // === Scope-based Filtering (ใหม่) ===
             // Skip scope filtering if tenantId is not available

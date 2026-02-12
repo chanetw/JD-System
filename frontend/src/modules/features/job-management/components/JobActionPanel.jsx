@@ -20,7 +20,7 @@ const JobActionPanel = ({
     // Support both case variations (admin/Admin, manager/Manager) for V1 and V2 auth formats
     const rawRoles = currentUser?.roles;
     const normalizedRoles = rawRoles?.map(r => {
-        const normalized = (typeof r === 'string' ? r : r?.roleName || '').toLowerCase();
+        const normalized = (typeof r === 'string' ? r : r?.roleName || r?.name || '').toLowerCase();
         return normalized;
     }) || [];
     const isAdmin = normalizedRoles.includes('admin');
@@ -71,7 +71,7 @@ const JobActionPanel = ({
         // 1. Job is not yet assigned
         // 2. User is admin or manager
         // Can assign at any job status (pending, pending dependency, etc.) before approval
-        if (job.assigneeId) return null; // Already assigned - don't show
+        if (job.assigneeId) return null; // Already assigned - show reassign instead
 
         const canAssign = isAdmin || isDeptManager;
         if (!canAssign) return null;
@@ -122,6 +122,69 @@ const JobActionPanel = ({
                         className="px-6 py-3 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
                     >
                         {isLoading ? 'กำลังบันทึก...' : 'มอบหมาย'}
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
+    // 2b. Reassign Job (Admin in ALL statuses, Current Assignee only)
+    const renderReassignment = () => {
+        // Only show if job already has assignee
+        if (!job.assigneeId) return null;
+
+        // Admin can reassign in ALL statuses
+        // Current assignee can also reassign (transfer work)
+        const canReassign = isAdmin || job.assigneeId === currentUser?.id;
+        if (!canReassign) return null;
+
+        const handleReassignClick = async () => {
+            if (!selectedAssignee) return alert('กรุณาเลือกผู้รับงานใหม่');
+            if (selectedAssignee === job.assigneeId) return alert('กรุณาเลือกผู้รับงานคนอื่น');
+            setIsLoading(true);
+            try {
+                await onManualAssign(job.id, selectedAssignee);
+                setSelectedAssignee('');
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        return (
+            <div className="bg-purple-50 border-l-4 border-l-purple-500 rounded-xl p-6 shadow-sm mb-6">
+                <div className="flex items-center justify-between mb-4">
+                    <div>
+                        <h3 className="font-bold text-purple-800 flex items-center gap-2">
+                            <UserIcon className="w-5 h-5" />
+                            ย้ายงาน (Reassign)
+                        </h3>
+                        <p className="text-sm text-purple-600 mt-1">
+                            ผู้รับผิดชอบปัจจุบัน: <span className="font-semibold">{job.assignee || 'ไม่ระบุ'}</span>
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex gap-3">
+                    <select
+                        value={selectedAssignee}
+                        onChange={(e) => setSelectedAssignee(e.target.value)}
+                        className="flex-1 px-4 py-3 border border-purple-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                        disabled={isLoading}
+                    >
+                        <option value="">-- เลือกผู้รับงานใหม่ --</option>
+                        {users.filter(u => u.roles?.includes('Assignee') || u.roles?.includes('senior_designer') || u.roles?.includes('creative')).map(u => (
+                            <option key={u.id} value={u.id}>
+                                {u.displayName || `${u.firstName} ${u.lastName}`}
+                            </option>
+                        ))}
+                    </select>
+
+                    <button
+                        onClick={handleReassignClick}
+                        disabled={!selectedAssignee || isLoading}
+                        className="px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                    >
+                        {isLoading ? 'กำลังบันทึก...' : 'ย้ายงาน'}
                     </button>
                 </div>
             </div>
@@ -199,6 +262,7 @@ const JobActionPanel = ({
         <>
             {renderApprovalActions()}
             {renderManualAssignment()}
+            {renderReassignment()}
             {renderAssigneeActions()}
             {renderCloseActions()}
         </>

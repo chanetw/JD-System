@@ -7,7 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@shared/services/apiService';
-import { useAuthStore } from '@core/stores/authStore';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { Card } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
@@ -37,7 +37,7 @@ const TABS = [
 
 export default function MyQueue() {
     const navigate = useNavigate();
-    const { user } = useAuthStore();
+    const { user } = useAuthStoreV2();
 
     // =====================================
     // Socket.io Integration สำหรับ Real-time Updates

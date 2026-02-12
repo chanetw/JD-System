@@ -13,7 +13,7 @@ import { supabase } from '@shared/services/supabaseClient';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
 import { addWorkDays } from '@shared/utils/slaCalculator';
 import { assignJobFromMatrix } from '@shared/services/modules/autoAssignService';
-import { useAuth } from '@core/stores/authStore';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { retry } from '@shared/utils/retry';
 
 // Holidays cache configuration
@@ -59,7 +59,7 @@ const saveHolidaysToCache = (holidays) => {
 };
 
 const CreateJob = () => {
-    const { user } = useAuth();
+    const { user } = useAuthStoreV2();
     // --- State for Form Data ---
     const [formData, setFormData] = useState({
         subject: '',

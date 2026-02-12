@@ -15,7 +15,7 @@ import Swal from 'sweetalert2';
 import apiDatabase from '@shared/services/apiDatabase';
 import { supabase } from '@shared/services/supabaseClient';
 import { adminService } from '@shared/services/modules/adminService';
-import { useAuth } from '@core/stores/authStore';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { generateTempPassword } from '@shared/utils/passwordGenerator';
 import { ROLES, ROLE_LABELS, ROLE_V1_DISPLAY, ROLE_V2_BADGE_COLORS, hasRole } from '@shared/utils/permission.utils';
 import Button from '@shared/components/Button';
@@ -50,7 +50,7 @@ const useDebounce = (value, delay) => {
 };
 
 export default function UserManagementNew() {
-    const { user } = useAuth(); // ดึง current user จาก Auth Store
+    const { user } = useAuthStoreV2(); // ดึง current user จาก Auth Store
     const [activeTab, setActiveTab] = useState('active');
     const [isLoading, setIsLoading] = useState(false);
     const [registrations, setRegistrations] = useState([]);
@@ -274,6 +274,15 @@ export default function UserManagementNew() {
      * @returns {Object} - Filtered availableScopes with filtered projects
      */
     const getFilteredScopesForUser = (userOrRegistration, allScopes) => {
+        // 🔓 TEMPORARY: Disable scope filtering - show all projects
+        console.log('🔓 [TEMP] Scope filtering DISABLED - showing all projects');
+        return {
+            ...allScopes,
+            _filterApplied: false,
+            _filterDisabled: true
+        };
+
+        /* ORIGINAL FILTERING LOGIC - Commented out for now
         if (!userOrRegistration || !allScopes) return allScopes;
 
         // 1. Get user's department ID - Backend sends departmentId for both users and registrations
@@ -367,6 +376,7 @@ export default function UserManagementNew() {
             _budName: masterData.buds?.find(b => b.id === userBudId)?.name || null,
             _filterApplied: true
         };
+        */
     };
 
     const loadRegistrations = async () => {
@@ -1637,7 +1647,11 @@ export default function UserManagementNew() {
                                             console.log('🔄 Configs changed to:', configs);
                                             setEditRoleConfigs(configs);
                                         }}
-                                        availableScopes={editModal.filteredScopes || availableScopes}
+                                        availableScopes={{
+                                            projects: masterData.projects || [],
+                                            buds: masterData.buds || [],
+                                            tenants: masterData.tenants || []
+                                        }}
                                         loading={scopesLoading}
                                     />
                                 )}
@@ -2013,7 +2027,11 @@ export default function UserManagementNew() {
                                         selectedRoles={approvalData.roles}
                                         roleConfigs={approvalRoleConfigs}
                                         onConfigChange={setApprovalRoleConfigs}
-                                        availableScopes={approveModal.filteredScopes || availableScopes}
+                                        availableScopes={{
+                                            projects: masterData.projects || [],
+                                            buds: masterData.buds || [],
+                                            tenants: masterData.tenants || []
+                                        }}
                                         loading={scopesLoading}
                                     />
                                 )}

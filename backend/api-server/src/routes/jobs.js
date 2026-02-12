@@ -51,16 +51,29 @@ router.get('/', async (req, res) => {
       case 'assignee':
         where.assigneeId = userId;
         break;
-      case 'approver':
+      case 'approver': {
         // 🔥 User Portal Logic: Show ONLY jobs waiting for THIS user to approve
-        where.status = { in: ['pending_approval', 'pending_level_1', 'pending_level_2'] };
-        where.approvals = {
-          some: {
+        // Two-step approach: first find pending approval job IDs, then query jobs
+        const pendingApprovals = await prisma.approval.findMany({
+          where: {
             approverId: userId,
-            status: 'pending'
-          }
-        };
+            status: 'pending',
+            tenantId
+          },
+          select: { jobId: true }
+        });
+        const pendingJobIds = [...new Set(pendingApprovals.map(a => a.jobId))];
+        if (pendingJobIds.length === 0) {
+          return res.json({
+            success: true,
+            data: [],
+            pagination: { page: parseInt(page), limit: parseInt(limit), total: 0, totalPages: 0 }
+          });
+        }
+        where.id = { in: pendingJobIds };
+        where.status = { in: ['pending_approval', 'pending_level_1', 'pending_level_2'] };
         break;
+      }
 
       case 'manager':
         // Legacy/Manager View: See all pending jobs (broad view) inside tenant
@@ -177,7 +190,7 @@ router.get('/', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[Jobs] Get jobs error:', error);
+    console.error('[Jobs] Get jobs error:', error.message, { role: req.query.role, userId: req.user?.userId, stack: error.stack?.split('\n').slice(0, 5).join('\n') });
     res.status(500).json({
       success: false,
       error: 'GET_JOBS_FAILED',
