@@ -16,6 +16,15 @@ const JobActionPanel = ({
     const [selectedAssignee, setSelectedAssignee] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
+    // DEBUG: Check currentUser
+    console.log('[JobActionPanel] currentUser:', {
+        exists: !!currentUser,
+        id: currentUser?.id,
+        email: currentUser?.email,
+        rawRoles: currentUser?.roles,
+        typeof_roles: typeof currentUser?.roles
+    });
+
     // Permission Helpers
     // Support both case variations (admin/Admin, manager/Manager) for V1 and V2 auth formats
     const rawRoles = currentUser?.roles;
@@ -26,19 +35,12 @@ const JobActionPanel = ({
     const isAdmin = normalizedRoles.includes('admin');
     const isDeptManager = normalizedRoles.includes('manager') || normalizedRoles.includes('dept_manager');
 
-    // DEBUG: Log for troubleshooting
-    if (job && currentUser) {
-        console.log('[JobActionPanel] Permission Debug:', {
-            jobId: job.id,
-            currentUserId: currentUser.id,
-            rawRoles: rawRoles,
-            rawRolesType: rawRoles ? typeof rawRoles : 'undefined',
-            rawRolesLength: rawRoles?.length || 0,
-            normalizedRoles,
-            isAdmin,
-            isDeptManager
-        });
-    }
+    console.log('[JobActionPanel] Role Check:', {
+        rawRoles,
+        normalizedRoles,
+        isAdmin,
+        isDeptManager
+    });
 
     // 1. Approval Actions
     const renderApprovalActions = () => {
