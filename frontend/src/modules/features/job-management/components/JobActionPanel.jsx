@@ -61,7 +61,11 @@ const JobActionPanel = ({
 
     // 2. Manual Assignment (Admin/Mgr)
     const renderManualAssignment = () => {
-        if (job.status !== 'approved' || job.assigneeId) return null;
+        // Allow assignment if:
+        // 1. Job is not yet assigned
+        // 2. User is admin or manager
+        // Can assign at any job status (pending, pending dependency, etc.) before approval
+        if (job.assigneeId) return null; // Already assigned - don't show
 
         const canAssign = isAdmin || isDeptManager;
         if (!canAssign) return null;
