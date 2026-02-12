@@ -57,8 +57,11 @@ export default function DJList() {
     // Data Loading
     // ============================================
     useEffect(() => {
-        loadData();
-    }, []);
+        // Only load data when user is authenticated
+        if (user) {
+            loadData();
+        }
+    }, [user]);
 
     /** โหลดข้อมูลงานและข้อมูลอ้างอิงจาก API */
     const loadData = async () => {
