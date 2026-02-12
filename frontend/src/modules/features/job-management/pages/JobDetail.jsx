@@ -45,6 +45,14 @@ export default function JobDetail() {
     const navigate = useNavigate();
     const { user } = useAuthStore();
 
+    // DEBUG: Check user object
+    console.log('[JobDetail] user from authStore:', {
+        exists: !!user,
+        id: user?.id,
+        email: user?.email,
+        roles: user?.roles
+    });
+
     // State
     const [job, setJob] = useState(null);
     const [users, setUsers] = useState([]); // For assignment dropdown
