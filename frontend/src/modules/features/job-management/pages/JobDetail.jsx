@@ -294,7 +294,7 @@ export default function JobDetail() {
     return (
         <div className="space-y-6">
             {/* Header */}
-            <header className="bg-white border-b border-gray-400 -mx-6 -mt-6 px-6 py-4 mb-6 sticky top-0 z-20 shadow-sm">
+            <header className="bg-white border-b border-gray-400 -mx-6 -mt-6 px-6 py-4 mb-6 sticky top-0 z-10 shadow-sm">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <button onClick={() => navigate('/jobs')} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500">
