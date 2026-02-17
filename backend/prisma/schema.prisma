@@ -31,18 +31,16 @@ enum JobStatus {
   in_progress
   rework
   rejected
-  pending_close
   completed
   closed
 }
 
-// ApprovalStatus temporarily changed to String (database doesn't have ENUM)
-// enum ApprovalStatus {
-//   pending
-//   approved
-//   rejected
-//   returned
-// }
+enum ApprovalStatus {
+  pending
+  approved
+  rejected
+  returned
+}
 
 // ========================================
 // MODELS
@@ -57,28 +55,27 @@ model Tenant {
   createdAt DateTime @default(now()) @map("created_at")
 
   // Relations
-  users                   User[]
-  roles                   Role[]
-  userRoles               UserRole[]
-  buds                    Bud[]
-  departments             Department[]
-  projects                Project[]
-  jobTypes                JobType[]
-  jobs                    Job[]
+  users                User[]
+  roles                Role[]
+  userRoles            UserRole[]
+  buds                 Bud[]
+  departments          Department[]
+  projects             Project[]
+  jobTypes             JobType[]
+  jobs                 Job[]
   // jobBriefs     JobBrief[]
-  jobAttachments          JobAttachment[]
-  jobDeliverables         JobDeliverable[]
-  approvalFlows           ApprovalFlow[]
-  approvals               Approval[]
-  jobActivities           JobActivity[]
-  jobComments             JobComment[]
-  notifications           Notification[]
-  pendingCommentBatches   PendingCommentBatch[]  // ✨ NEW: Comment batch notifications
-  holidays                Holiday[]
-  mediaFiles              MediaFile[]
-  auditLogs               AuditLog[]
-  userScopeAssignments    UserScopeAssignment[]
-  budJobAssignments       BudJobAssignment[]
+  jobAttachments       JobAttachment[]
+  jobDeliverables      JobDeliverable[]
+  approvalFlows        ApprovalFlow[]
+  approvals            Approval[]
+  jobActivities        JobActivity[]
+  jobComments          JobComment[]
+  notifications        Notification[]
+  holidays             Holiday[]
+  mediaFiles           MediaFile[]
+  auditLogs            AuditLog[]
+  userScopeAssignments UserScopeAssignment[]
+  budJobAssignments    BudJobAssignment[]
 
   @@map("tenants")
 }
@@ -132,7 +129,6 @@ model User {
   mediaFiles           MediaFile[]
   passwordResets       PasswordResetRequest[]
   jobActivities        JobActivity[]
-  pendingCommentBatches PendingCommentBatch[]
   // V1 Extended: Auto-assign relation
   autoAssignFlows      ApprovalFlow[]         @relation("FlowAutoAssign")
   // Scope assignments (project/bud level access)
@@ -324,7 +320,6 @@ model Job {
   slaShiftLogs    SlaShiftLog[]    @relation("SlaShiftLogs")
   urgentJobShifts SlaShiftLog[]    @relation("UrgentJobShifts")
   jobActivities   JobActivity[]
-  pendingCommentBatches PendingCommentBatch[]
 
   @@unique([tenantId, djId])
   @@index([tenantId])
@@ -446,9 +441,9 @@ model Approval {
   tenantId      Int            @map("tenant_id")
   jobId         Int            @map("job_id")
   stepNumber    Int            @map("step_number")
-  approverId    Int     @map("approver_id")
-  status        String  @default("pending") @db.VarChar(20)
-  comment       String? @db.Text
+  approverId    Int            @map("approver_id")
+  status        ApprovalStatus @default(pending)
+  comment       String?        @db.Text
   approvedAt    DateTime?      @map("approved_at")
   approvalToken String?        @map("approval_token") @db.VarChar(64)
   ipAddress     String?        @map("ip_address") @db.VarChar(45) // IPv6 support
@@ -523,31 +518,6 @@ model Notification {
   logs   NotificationLog[]
 
   @@map("notifications")
-}
-
-model PendingCommentBatch {
-  id              Int      @id @default(autoincrement())
-  tenantId        Int      @map("tenant_id")
-  userId          Int      @map("user_id")
-  jobId           Int      @map("job_id")
-  batchKey        String   @unique @map("batch_key") @db.VarChar(255)
-
-  count           Int      @default(1)
-  firstCommenter  String?  @map("first_commenter") @db.VarChar(255)
-  comments        Json     @default("[]")
-
-  expiresAt       DateTime @map("expires_at")
-  createdAt       DateTime @default(now()) @map("created_at")
-
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
-
-  @@unique([tenantId, userId, jobId])
-  @@index([batchKey])
-  @@index([expiresAt])
-  @@index([tenantId, userId, jobId])
-  @@map("pending_comment_batches")
 }
 
 // ========================================
