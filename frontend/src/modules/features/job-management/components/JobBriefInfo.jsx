@@ -35,14 +35,16 @@ const JobBriefInfo = ({ job }) => {
                                 <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{brief.subHeadline}</dd>
                             </div>
                         )}
-                        <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4">
-                            <dt className="text-sm font-medium text-gray-500">วัตถุประสงค์ (Objective)</dt>
-                            <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                                <div className="prose prose-sm max-w-none text-gray-500 whitespace-pre-line">
-                                    {brief.objective || '-'}
-                                </div>
-                            </dd>
-                        </div>
+                        {brief.objective && (
+                            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4">
+                                <dt className="text-sm font-medium text-gray-500">วัตถุประสงค์ (Objective)</dt>
+                                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                    <div className="prose prose-sm max-w-none text-gray-500 whitespace-pre-line">
+                                        {brief.objective}
+                                    </div>
+                                </dd>
+                            </div>
+                        )}
                         <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4">
                             <dt className="text-sm font-medium text-gray-500">รายละเอียด (Description)</dt>
                             <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">

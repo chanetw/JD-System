@@ -297,63 +297,70 @@ export default function JobDetail() {
         <div className="space-y-6">
             {/* Header */}
             <header className="bg-white border-b border-gray-400 -mx-6 -mt-6 px-6 py-4 mb-6 sticky top-0 z-10 shadow-sm">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <button onClick={() => navigate('/jobs')} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500">
-                            <ArrowLeftIcon className="w-5 h-5" />
-                        </button>
-                        <div>
-                            <div className="flex items-center gap-3">
-                                <h1 className="text-xl font-bold text-gray-900">{job.djId || job.id}</h1>
-                                <Badge status={job.status} />
-                            </div>
-                            <p className="text-sm text-gray-500 mt-1">
-                                {job.subject}
-                                {job.parentJob && <span className="ml-2 text-blue-600 bg-blue-50 px-2 py-0.5 rounded text-xs border border-blue-100">Parent: {job.parentJob.djId}</span>}
-                            </p>
+                <div className="flex items-center justify-between gap-4">
+                    <button onClick={() => navigate('/jobs')} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 flex-shrink-0">
+                        <ArrowLeftIcon className="w-5 h-5" />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <h1 className="text-xl font-bold text-gray-900">{job.djId || job.id}</h1>
+                            <Badge status={job.status} />
                         </div>
+                        <p className="text-sm text-gray-500 mt-1 truncate">
+                            {job.subject}
+                        </p>
+                        {job.parentJob && (
+                            <span className="inline-block mt-2 text-blue-600 bg-blue-50 px-2 py-0.5 rounded text-xs border border-blue-100 font-medium">
+                                📎 Parent: {job.parentJob.djId}
+                            </span>
+                        )}
                     </div>
-                    {/* SLA Logic can go here */}
                 </div>
             </header>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Main Content */}
-                <div className="lg:col-span-2 space-y-6">
-                    {/* Action Block */}
-                    <JobActionPanel
-                        job={job}
-                        currentUser={user}
-                        users={users}
-                        onApprove={handleApprove}
-                        onOpenRejectModal={() => setShowRejectModal(true)}
-                        onStart={handleStartJob}
-                        onOpenCompleteModal={() => setShowCompleteModal(true)}
-                        onManualAssign={handleManualAssign}
-                        onConfirmClose={handleConfirmClose}
-                        onRequestRevision={onRequestRevision}
+            {/* Main Content + Sidebar Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
+                {/* Main Content - Tabs */}
+                <div className="bg-white rounded-xl border border-gray-400 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
+                    {/* Tab Headers */}
+                    <Tabs
+                        tabs={tabs}
+                        activeTab={activeTab}
+                        onChange={setActiveTab}
+                        className="px-6 pt-2"
                     />
 
-                    {/* Tabs */}
-                    <div className="bg-white rounded-xl border border-gray-400 shadow-sm min-h-[500px] flex flex-col">
-                        <Tabs
-                            tabs={tabs}
-                            activeTab={activeTab}
-                            onChange={setActiveTab}
-                            className="px-6 pt-2"
-                        />
-                        <div className="p-6 flex-1 space-y-6">
-                            {activeTab === 'overview' && (
-                                <>
-                                    <JobBriefInfo job={job} />
-                                    <JobApprovalFlow job={job} />
-                                    <ParentJobAssignees job={job} />
-                                </>
-                            )}
-                            {activeTab === 'subjobs' && <SubJobsList jobs={job.childJobs} />}
-                            {activeTab === 'comments' && <JobComments jobId={job.id} currentUser={user} />}
-                            {activeTab === 'activity' && <JobActivityLog jobId={job.id} />}
-                        </div>
+                    {/* Tab Content */}
+                    <div className="p-6 flex-1 space-y-6 overflow-y-auto">
+                        {activeTab === 'overview' && (
+                            <>
+                                {/* Action Block - Approval/Start/Complete only */}
+                                <JobActionPanel
+                                    job={job}
+                                    currentUser={user}
+                                    users={users}
+                                    onApprove={handleApprove}
+                                    onOpenRejectModal={() => setShowRejectModal(true)}
+                                    onStart={handleStartJob}
+                                    onOpenCompleteModal={() => setShowCompleteModal(true)}
+                                    onManualAssign={handleManualAssign}
+                                    onConfirmClose={handleConfirmClose}
+                                    onRequestRevision={onRequestRevision}
+                                />
+
+                                {/* Brief Info */}
+                                <JobBriefInfo job={job} />
+
+                                {/* Approval Flow */}
+                                <JobApprovalFlow job={job} />
+
+                                {/* Parent Job Assignees */}
+                                <ParentJobAssignees job={job} />
+                            </>
+                        )}
+                        {activeTab === 'subjobs' && <SubJobsList jobs={job.childJobs} />}
+                        {activeTab === 'comments' && <JobComments jobId={job.id} currentUser={user} />}
+                        {activeTab === 'activity' && <JobActivityLog jobId={job.id} />}
                     </div>
                 </div>
 
