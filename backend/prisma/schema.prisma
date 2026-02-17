@@ -30,6 +30,7 @@ enum JobStatus {
   assigned
   in_progress
   rework
+  assignee_rejected
   rejected
   completed
   closed
@@ -117,6 +118,7 @@ model User {
   closeRequestedJobs   Job[]                  @relation("CloseRequestedJobs")
   closedJobs           Job[]                  @relation("ClosedJobs")
   completedJobs        Job[]                  @relation("CompletedJobs")
+  rejectedJobs         Job[]                  @relation("RejectedJobs")
   uploadedAttachments  JobAttachment[]
   uploadedDeliverables JobDeliverable[]
   approvals            Approval[]
@@ -271,6 +273,11 @@ model Job {
   closedBy         Int? @map("closed_by")
   completedBy      Int? @map("completed_by")
 
+  // Assignee Rejection Flow
+  rejectedBy       Int?    @map("rejected_by")
+  rejectionSource  String? @map("rejection_source") @db.VarChar(50)
+  rejectionComment String? @map("rejection_comment") @db.Text
+
   // Parent-Child Relationship
   isParent    Boolean @default(false) @map("is_parent")
   parentJobId Int?    @map("parent_job_id")
@@ -305,6 +312,7 @@ model Job {
   closeRequester  User?   @relation("CloseRequestedJobs", fields: [closeRequestedBy], references: [id])
   closedByUser    User?   @relation("ClosedJobs", fields: [closedBy], references: [id])
   completedByUser User?   @relation("CompletedJobs", fields: [completedBy], references: [id])
+  rejector        User?   @relation("RejectedJobs", fields: [rejectedBy], references: [id])
 
   // Parent-Child Self-Relation
   parentJob  Job?  @relation("ParentChildJobs", fields: [parentJobId], references: [id], onDelete: SetNull)
@@ -333,6 +341,7 @@ model Job {
   @@index([tenantId, status, dueDate]) // Dashboard: งานตาม status และ due date
   @@index([assigneeId, status]) // My Queue: งานของฉันตาม status
   @@index([requesterId, createdAt]) // My Requests: งานที่ฉันขอ เรียงตามวันที่
+  @@index([rejectedBy]) // Rejection tracking
   @@map("jobs")
 }
 

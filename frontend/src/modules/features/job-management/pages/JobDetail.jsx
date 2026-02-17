@@ -13,7 +13,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api } from '@shared/services/apiService';
 import { adminService } from '@shared/services/modules/adminService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
-import { ROLE_V1_DISPLAY } from '@shared/utils/permission.utils';
+import { ROLE_V1_DISPLAY, getJobRole, JOB_ROLE_THEMES } from '@shared/utils/permission.utils';
 import { formatDateToThai } from '@shared/utils/dateUtils';
 import Badge from '@shared/components/Badge';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
@@ -61,6 +61,8 @@ export default function JobDetail() {
     const [showCompleteModal, setShowCompleteModal] = useState(false);
     const [completeNote, setCompleteNote] = useState('');
     const [finalLink, setFinalLink] = useState('');
+    const [showAssigneeRejectModal, setShowAssigneeRejectModal] = useState(false);
+    const [assigneeRejectReason, setAssigneeRejectReason] = useState('');
 
     // Alert State
     const [alertState, setAlertState] = useState({ isOpen: false, title: '', message: '', type: 'success' });
@@ -212,16 +214,6 @@ export default function JobDetail() {
         }
     };
 
-    const handleStartJob = async () => {
-        try {
-            const updated = await api.startJob(job.id, 'manual');
-            setJob(prev => ({ ...prev, status: 'in_progress', startedAt: updated.startedAt }));
-            alert('เริ่มงานแล้ว!');
-        } catch (err) {
-            alert('เริ่มงานไม่สำเร็จ');
-        }
-    };
-
     const handleCompleteJob = async () => {
         if (!finalLink.trim()) return alert('ระบุลิงก์ผลงาน');
         try {
@@ -234,6 +226,29 @@ export default function JobDetail() {
             loadJob();
         } catch (err) {
             alert('ส่งงานไม่สำเร็จ');
+        }
+    };
+
+    const handleAssigneeReject = async () => {
+        if (!assigneeRejectReason.trim()) return alert('กรุณาระบุเหตุผลในการปฏิเสธ');
+        try {
+            await api.rejectJobByAssignee(job.id, assigneeRejectReason);
+            alert('ปฏิเสธงานเรียบร้อย รอผู้อนุมัติยืนยัน');
+            setShowAssigneeRejectModal(false);
+            setAssigneeRejectReason('');
+            loadJob();
+        } catch (err) {
+            alert('ปฏิเสธงานไม่สำเร็จ: ' + err.message);
+        }
+    };
+
+    const handleConfirmAssigneeRejection = async () => {
+        try {
+            await api.confirmAssigneeRejection(job.id);
+            alert('ยืนยันการปฏิเสธงานเรียบร้อย');
+            loadJob();
+        } catch (err) {
+            alert('ยืนยันการปฏิเสธไม่สำเร็จ: ' + err.message);
         }
     };
 
@@ -286,6 +301,10 @@ export default function JobDetail() {
         </div>
     );
 
+    // Role Detection & Theme
+    const jobRole = getJobRole(user, job);
+    const theme = JOB_ROLE_THEMES[jobRole] || JOB_ROLE_THEMES.viewer;
+
     const tabs = [
         { id: 'overview', label: 'ภาพรวม (Overview)', icon: DocumentTextIcon },
         { id: 'subjobs', label: `งานย่อย (${job.childJobs?.length || 0})`, icon: QueueListIcon, hidden: !job.isParent }, // Logic corrected
@@ -296,7 +315,7 @@ export default function JobDetail() {
     return (
         <div className="space-y-6">
             {/* Header */}
-            <header className="bg-white border-b border-gray-400 -mx-6 -mt-6 px-6 py-4 mb-6 sticky top-0 z-10 shadow-sm">
+            <header className={`bg-white border-b border-gray-400 border-l-4 ${theme.headerBorder} -mx-6 -mt-6 px-6 py-4 mb-6 sticky top-0 z-10 shadow-sm`}>
                 <div className="flex items-center justify-between gap-4">
                     <button onClick={() => navigate('/jobs')} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 flex-shrink-0">
                         <ArrowLeftIcon className="w-5 h-5" />
@@ -305,6 +324,9 @@ export default function JobDetail() {
                         <div className="flex items-center gap-3 flex-wrap">
                             <h1 className="text-xl font-bold text-gray-900">{job.djId || job.id}</h1>
                             <Badge status={job.status} />
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${theme.badgeClass}`}>
+                                {theme.label}
+                            </span>
                         </div>
                         <p className="text-sm text-gray-500 mt-1 truncate">
                             {job.subject}
@@ -339,13 +361,16 @@ export default function JobDetail() {
                                     job={job}
                                     currentUser={user}
                                     users={users}
+                                    theme={theme}
+                                    jobRole={jobRole}
                                     onApprove={handleApprove}
                                     onOpenRejectModal={() => setShowRejectModal(true)}
-                                    onStart={handleStartJob}
                                     onOpenCompleteModal={() => setShowCompleteModal(true)}
                                     onManualAssign={handleManualAssign}
                                     onConfirmClose={handleConfirmClose}
                                     onRequestRevision={onRequestRevision}
+                                    onOpenAssigneeRejectModal={() => setShowAssigneeRejectModal(true)}
+                                    onConfirmAssigneeRejection={handleConfirmAssigneeRejection}
                                 />
 
                                 {/* Brief Info */}
@@ -369,6 +394,7 @@ export default function JobDetail() {
                     <JobSidebar
                         job={job}
                         currentUser={user}
+                        theme={theme}
                         onReassign={() => setShowReassignModal(true)}
                     />
                 </div>
@@ -418,6 +444,29 @@ export default function JobDetail() {
                         <div className="flex gap-2 justify-end">
                             <Button variant="ghost" onClick={() => setShowCompleteModal(false)}>ยกเลิก</Button>
                             <Button variant="primary" onClick={handleCompleteJob}>ส่งงาน</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Assignee Reject Modal */}
+            {showAssigneeRejectModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                        <h3 className="text-lg font-bold mb-4 text-red-600">ปฏิเสธงาน (Assignee)</h3>
+                        <p className="text-sm text-gray-600 mb-3">
+                            กรุณาระบุเหตุผลในการปฏิเสธงาน คำขอจะถูกส่งไปยังผู้อนุมัติเพื่อพิจารณา
+                        </p>
+                        <textarea
+                            className="w-full border rounded p-2 mb-4"
+                            rows={4}
+                            placeholder="เหตุผลในการปฏิเสธ..."
+                            value={assigneeRejectReason}
+                            onChange={e => setAssigneeRejectReason(e.target.value)}
+                        />
+                        <div className="flex gap-2 justify-end">
+                            <Button variant="ghost" onClick={() => setShowAssigneeRejectModal(false)}>ยกเลิก</Button>
+                            <Button variant="danger" onClick={handleAssigneeReject}>ยืนยันปฏิเสธ</Button>
                         </div>
                     </div>
                 </div>

@@ -2,7 +2,7 @@ import React from 'react';
 import { UserIcon, PencilIcon, CheckIcon, ClockIcon } from '@heroicons/react/24/outline';
 import Badge from '@shared/components/Badge';
 
-const JobSidebar = ({ job, currentUser, onReassign }) => {
+const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
     if (!job) return null;
 
     const isAdmin = currentUser?.roles?.includes('Admin');
@@ -13,7 +13,7 @@ const JobSidebar = ({ job, currentUser, onReassign }) => {
     return (
         <div className="space-y-6">
             {/* Job Info Card */}
-            <div className="bg-white rounded-xl border border-gray-400 shadow-sm">
+            <div className={`bg-white rounded-xl border ${theme?.borderClass || 'border-gray-400'} shadow-sm`}>
                 <div className="px-6 py-4 border-b border-gray-400">
                     <h2 className="font-semibold text-gray-900">รายละเอียดงาน (Job Details)</h2>
                 </div>

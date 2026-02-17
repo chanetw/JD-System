@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
-import { CheckIcon, XMarkIcon, UserIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { CheckIcon, XMarkIcon, UserIcon } from '@heroicons/react/24/outline';
 
 const JobActionPanel = ({
     job,
     currentUser,
     users, // for manual assign dropdown
+    theme,
+    jobRole,
     onApprove,
     onOpenRejectModal,
-    onStart,
     onOpenCompleteModal,
     onManualAssign,
     onConfirmClose,
-    onRequestRevision
+    onRequestRevision,
+    onOpenAssigneeRejectModal,
+    onConfirmAssigneeRejection
 }) => {
     const [selectedAssignee, setSelectedAssignee] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -54,7 +57,7 @@ const JobActionPanel = ({
         if (!canApprove) return null;
 
         return (
-            <div className="bg-white rounded-xl border border-gray-400 shadow-sm p-6 mb-6">
+            <div className={`bg-white rounded-xl border ${theme?.borderClass || 'border-gray-400'} shadow-sm p-6 mb-6`}>
                 <h2 className="font-semibold text-gray-900 mb-4">Actions (Level {job.currentLevel})</h2>
                 <div className="flex gap-3">
                     <button
@@ -157,33 +160,53 @@ const JobActionPanel = ({
         // Old UI didn't disable button render based on user, it just showed "การดำเนินการของผู้รับงาน"
 
         return (
-            <div className="bg-white rounded-xl border border-gray-400 shadow-sm p-6 mb-6">
+            <div className={`bg-white rounded-xl border ${theme?.borderClass || 'border-gray-400'} shadow-sm p-6 mb-6`}>
                 <h2 className="font-semibold text-gray-900 mb-4">การดำเนินการของผู้รับงาน</h2>
 
-                {job.status === 'assigned' && (
-                    <button
-                        onClick={onStart}
-                        className="w-full py-3 px-4 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 flex items-center justify-center gap-2 transition-colors shadow-sm mb-3"
-                    >
-                        <ClockIcon className="w-5 h-5" />
-                        กดเริ่มงาน (Start Job)
-                    </button>
-                )}
-
-                {job.status === 'in_progress' && (
-                    <button
-                        onClick={onOpenCompleteModal}
-                        className="w-full py-3 px-4 bg-green-500 text-white rounded-xl font-medium hover:bg-green-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
-                    >
-                        <CheckIcon className="w-5 h-5" />
-                        ส่งงาน (Complete Job)
-                    </button>
+                {(job.status === 'in_progress' || job.status === 'assigned') && (
+                    <div className="flex gap-3">
+                        <button
+                            onClick={onOpenCompleteModal}
+                            className="flex-1 py-3 px-4 bg-green-500 text-white rounded-xl font-medium hover:bg-green-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                        >
+                            <CheckIcon className="w-5 h-5" />
+                            ส่งงาน
+                        </button>
+                        <button
+                            onClick={onOpenAssigneeRejectModal}
+                            className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                        >
+                            <XMarkIcon className="w-5 h-5" />
+                            ปฏิเสธงาน
+                        </button>
+                    </div>
                 )}
             </div>
         );
     };
 
-    // 4. Close/Revision Actions (Requester)
+    // 4. Assignee Rejection Confirmation (Approver)
+    const renderAssigneeRejectionConfirm = () => {
+        if (job.status !== 'assignee_rejected') return null;
+
+        return (
+            <div className="bg-white rounded-xl border border-red-200 shadow-sm p-6 bg-red-50 mb-6">
+                <h2 className="font-semibold text-red-800 mb-2">ผู้รับงานปฏิเสธงาน</h2>
+                <p className="text-sm text-red-700 mb-2">
+                    เหตุผล: {job.rejectionComment || 'ไม่ระบุ'}
+                </p>
+                <button
+                    onClick={onConfirmAssigneeRejection}
+                    className="w-full py-3 px-4 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                >
+                    <XMarkIcon className="w-5 h-5" />
+                    ยืนยันปฏิเสธงาน
+                </button>
+            </div>
+        );
+    };
+
+    // 5. Close/Revision Actions (Requester)
     const renderCloseActions = () => {
         if (job.status !== 'pending_close') return null;
 
@@ -219,6 +242,7 @@ const JobActionPanel = ({
             {renderManualAssignment()}
             {renderReassignment()}
             {renderAssigneeActions()}
+            {renderAssigneeRejectionConfirm()}
             {renderCloseActions()}
         </>
     );

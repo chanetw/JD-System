@@ -428,6 +428,28 @@ export const jobService = {
         }
     },
 
+    rejectJobByAssignee: async (jobId, comment) => {
+        try {
+            const response = await httpClient.post(`/jobs/${jobId}/reject-by-assignee`, { comment });
+            if (!response.data.success) throw new Error(response.data.message);
+            return response.data;
+        } catch (error) {
+            console.error('[jobService] rejectJobByAssignee error:', error);
+            throw error;
+        }
+    },
+
+    confirmAssigneeRejection: async (jobId, comment) => {
+        try {
+            const response = await httpClient.post(`/jobs/${jobId}/confirm-assignee-rejection`, { comment });
+            if (!response.data.success) throw new Error(response.data.message);
+            return response.data;
+        } catch (error) {
+            console.error('[jobService] confirmAssigneeRejection error:', error);
+            throw error;
+        }
+    },
+
     reassignJob: async (jobId, newAssigneeId, reason, userId, user = null) => {
         console.log(`[Reassign] Job ${jobId} -> New Assignee ${newAssigneeId} by User ${userId}`);
 

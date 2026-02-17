@@ -604,3 +604,93 @@ export const getAccessibleProjects = (user, allProjects = []) => {
         });
     });
 };
+
+// ============================================
+// Job Role Detection & Theme
+// ============================================
+
+/**
+ * ตรวจสอบ role ของ user ต่อ job ที่ดูอยู่
+ * ลำดับความสำคัญ: Admin > Approver > Assignee > Requester
+ *
+ * @param {Object} user - User object
+ * @param {Object} job - Job object
+ * @returns {string} - 'admin' | 'approver' | 'assignee' | 'requester' | 'viewer'
+ */
+export const getJobRole = (user, job) => {
+    if (!user || !job) return 'viewer';
+
+    // Admin มีสิทธิ์สูงสุด
+    if (hasRole(user, ROLES.ADMIN) || hasRole(user, 'Admin') || hasRole(user, 'SuperAdmin')) {
+        return 'admin';
+    }
+
+    // ตรวจสอบว่าเป็น Approver ของงานนี้หรือไม่
+    if (hasRole(user, ROLES.APPROVER) || hasRole(user, 'Approver') || hasRole(user, 'TeamLead')) {
+        return 'approver';
+    }
+
+    // ตรวจสอบว่าเป็น Assignee ของงานนี้
+    if (job.assigneeId === user.id || job.assignee?.id === user.id) {
+        return 'assignee';
+    }
+
+    // ตรวจสอบว่าเป็น Requester ของงานนี้
+    if (job.requesterId === user.id || job.requester?.id === user.id) {
+        return 'requester';
+    }
+
+    return 'viewer';
+};
+
+/**
+ * Theme config สำหรับแต่ละ role (ใช้ Tailwind complete class names)
+ * สีอิงจาก ROLE_V2_BADGE_COLORS ที่มีอยู่แล้ว
+ */
+export const JOB_ROLE_THEMES = {
+    admin: {
+        label: 'ผู้ดูแลระบบ',
+        badgeClass: 'bg-purple-100 text-purple-800',
+        borderClass: 'border-purple-300',
+        accentBg: 'bg-purple-50',
+        accentText: 'text-purple-700',
+        headerBorder: 'border-l-purple-500',
+        dotColor: 'bg-purple-500'
+    },
+    approver: {
+        label: 'ผู้อนุมัติ',
+        badgeClass: 'bg-green-100 text-green-800',
+        borderClass: 'border-green-300',
+        accentBg: 'bg-green-50',
+        accentText: 'text-green-700',
+        headerBorder: 'border-l-green-500',
+        dotColor: 'bg-green-500'
+    },
+    assignee: {
+        label: 'ผู้รับงาน',
+        badgeClass: 'bg-orange-100 text-orange-800',
+        borderClass: 'border-orange-300',
+        accentBg: 'bg-orange-50',
+        accentText: 'text-orange-700',
+        headerBorder: 'border-l-orange-500',
+        dotColor: 'bg-orange-500'
+    },
+    requester: {
+        label: 'ผู้ขอ',
+        badgeClass: 'bg-blue-100 text-blue-800',
+        borderClass: 'border-blue-300',
+        accentBg: 'bg-blue-50',
+        accentText: 'text-blue-700',
+        headerBorder: 'border-l-blue-500',
+        dotColor: 'bg-blue-500'
+    },
+    viewer: {
+        label: 'ผู้ดู',
+        badgeClass: 'bg-gray-100 text-gray-800',
+        borderClass: 'border-gray-300',
+        accentBg: 'bg-gray-50',
+        accentText: 'text-gray-700',
+        headerBorder: 'border-l-gray-400',
+        dotColor: 'bg-gray-400'
+    }
+};

@@ -879,6 +879,68 @@ router.post('/:id/reject', async (req, res) => {
 });
 
 /**
+ * POST /api/jobs/:id/reject-by-assignee
+ * Assignee ปฏิเสธงาน - ส่งกลับให้ Approver คนสุดท้ายพิจารณา
+ */
+router.post('/:id/reject-by-assignee', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { comment } = req.body;
+    const userId = req.user.userId;
+
+    const result = await approvalService.rejectJobByAssignee({
+      jobId: parseInt(id),
+      assigneeId: userId,
+      comment
+    });
+
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('[Jobs] Reject by assignee error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'REJECT_BY_ASSIGNEE_FAILED',
+      message: 'ไม่สามารถปฏิเสธงานได้'
+    });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/confirm-assignee-rejection
+ * Approver ยืนยันการปฏิเสธของ Assignee → งานเปลี่ยนเป็น rejected แจ้ง Requester
+ */
+router.post('/:id/confirm-assignee-rejection', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { comment } = req.body;
+    const userId = req.user.userId;
+
+    const result = await approvalService.confirmAssigneeRejection({
+      jobId: parseInt(id),
+      approverId: userId,
+      comment
+    });
+
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('[Jobs] Confirm assignee rejection error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'CONFIRM_REJECTION_FAILED',
+      message: 'ไม่สามารถยืนยันการปฏิเสธได้'
+    });
+  }
+});
+
+/**
  * POST /api/jobs/parent-child
  * สร้าง Parent Job พร้อม Child Jobs ใน Single Transaction
  *

@@ -377,10 +377,11 @@ export class ApprovalService extends BaseService {
         where: { id: jobId },
         data: {
           status: newStatus,
-          // ถ้าอนุมัติสำเร็จแล้วและมี assignee ให้เปลี่ยนเป็น assigned
+          // ถ้าอนุมัติสำเร็จแล้วและมี assignee ให้ auto-start เป็น in_progress
           ...(newStatus === 'approved' && {
-            status: 'assigned',
-            assignedAt: new Date()
+            status: 'in_progress',
+            assignedAt: new Date(),
+            startedAt: new Date()
           })
         }
       });
@@ -615,7 +616,19 @@ export class ApprovalService extends BaseService {
       if (isFinal) {
         assignResult = await this.autoAssignJob(jobId, flow, job.requesterId);
         if (assignResult.success) {
-          nextStatus = 'assigned';
+          nextStatus = 'in_progress';
+
+          // Auto-Start Notification: แจ้ง Assignee ว่างานเริ่มนับเวลาแล้ว
+          if (assignResult.assigneeId && this.notificationService) {
+            await this.notificationService.createNotification({
+              tenantId: job.tenantId || 1,
+              userId: assignResult.assigneeId,
+              type: 'job_auto_started',
+              title: `งาน ${job.djId} เริ่มทำงานแล้ว`,
+              message: `งาน ${job.djId} - ${job.subject} ได้รับการอนุมัติและเริ่มนับเวลาทำงานแล้ว กรุณาดำเนินการ`,
+              link: `/jobs/${jobId}`
+            }).catch(err => console.warn('[AutoStart] Notification failed:', err.message));
+          }
         }
       }
 
@@ -623,7 +636,7 @@ export class ApprovalService extends BaseService {
       // V1 Extended: Cascade Approval to Children
       // ⚡ Performance: Optimized from N*3 queries → 5 queries for N children
       // ----------------------------------------
-      if (job.isParent && (nextStatus === 'approved' || nextStatus === 'assigned')) {
+      if (job.isParent && (nextStatus === 'approved' || nextStatus === 'in_progress')) {
         // ⚡ Step 1: Get pending children with necessary data
         const pendingChildren = await this.prisma.job.findMany({
           where: { parentJobId: jobId, status: 'pending_approval' },
@@ -696,10 +709,10 @@ export class ApprovalService extends BaseService {
               // Determine assignee based on flow config
               if (flow?.autoAssignType === 'specific_user' && flow.autoAssignUserId) {
                 assigneeId = flow.autoAssignUserId;
-                childFinalStatus = 'assigned';
+                childFinalStatus = 'in_progress';
               } else if (flow?.autoAssignType === 'dept_manager' && child.requester?.department?.managerId) {
                 assigneeId = child.requester.department.managerId;
-                childFinalStatus = 'assigned';
+                childFinalStatus = 'in_progress';
               }
 
               // Prepare update operation
@@ -709,8 +722,9 @@ export class ApprovalService extends BaseService {
                     where: { id: child.id },
                     data: {
                       assigneeId,
-                      status: 'assigned',
+                      status: 'in_progress',
                       assignedAt: new Date(),
+                      startedAt: new Date(),
                       updatedAt: new Date()
                     }
                   })
@@ -935,6 +949,180 @@ export class ApprovalService extends BaseService {
   }
 
   /**
+   * Assignee ปฏิเสธงาน - ส่งกลับไปให้ Approver คนสุดท้ายพิจารณา
+   */
+  async rejectJobByAssignee({ jobId, assigneeId, comment }) {
+    try {
+      const job = await this.prisma.job.findUnique({
+        where: { id: jobId },
+        select: {
+          id: true, djId: true, status: true, tenantId: true,
+          assigneeId: true, requesterId: true, subject: true
+        }
+      });
+
+      if (!job) throw new Error('Job not found');
+
+      // ตรวจสอบว่าเป็น assignee จริงหรือไม่
+      if (job.assigneeId !== assigneeId) {
+        return {
+          success: false,
+          error: 'NOT_ASSIGNEE',
+          message: 'คุณไม่ใช่ผู้รับผิดชอบงานนี้'
+        };
+      }
+
+      // ตรวจสอบสถานะงาน (ต้องเป็น in_progress หรือ assigned)
+      if (!['in_progress', 'assigned'].includes(job.status)) {
+        return {
+          success: false,
+          error: 'INVALID_STATUS',
+          message: `ไม่สามารถปฏิเสธงานในสถานะ ${job.status} ได้`
+        };
+      }
+
+      // ต้องระบุเหตุผล
+      if (!comment || comment.trim() === '') {
+        return {
+          success: false,
+          error: 'COMMENT_REQUIRED',
+          message: 'กรุณาระบุเหตุผลในการปฏิเสธงาน'
+        };
+      }
+
+      // หา Approver คนสุดท้ายที่อนุมัติงานนี้
+      const lastApproval = await this.prisma.approval.findFirst({
+        where: {
+          jobId: jobId,
+          status: 'approved'
+        },
+        orderBy: { stepNumber: 'desc' },
+        select: {
+          id: true,
+          approverId: true,
+          stepNumber: true,
+          approver: {
+            select: { id: true, firstName: true, lastName: true, email: true }
+          }
+        }
+      });
+
+      // อัพเดทสถานะงานเป็น assignee_rejected
+      await this.prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: 'assignee_rejected',
+          rejectedBy: assigneeId,
+          rejectionSource: 'assignee',
+          rejectionComment: comment.trim()
+        }
+      });
+
+      // Log Activity
+      await this.logApprovalActivity({
+        jobId,
+        userId: assigneeId,
+        activityType: 'job_rejected_by_assignee',
+        description: `ผู้รับงานปฏิเสธงาน ${job.djId} - เหตุผล: ${comment}`,
+        metadata: {
+          comment,
+          previousStatus: job.status,
+          lastApproverId: lastApproval?.approverId
+        }
+      });
+
+      // แจ้งเตือน Approver คนสุดท้าย
+      if (lastApproval?.approverId && this.notificationService) {
+        await this.notificationService.createNotification({
+          tenantId: job.tenantId,
+          userId: lastApproval.approverId,
+          type: 'assignee_rejected',
+          title: `ผู้รับงานปฏิเสธงาน ${job.djId}`,
+          message: `ผู้รับงานปฏิเสธงาน "${job.subject}" เหตุผล: ${comment}`,
+          link: `/jobs/${jobId}`
+        }).catch(err => console.warn('[RejectByAssignee] Notification failed:', err.message));
+      }
+
+      return {
+        success: true,
+        data: {
+          status: 'assignee_rejected',
+          lastApprover: lastApproval?.approver || null
+        }
+      };
+    } catch (error) {
+      return this.handleError(error, 'REJECT_BY_ASSIGNEE', 'Job');
+    }
+  }
+
+  /**
+   * Approver ยืนยันการปฏิเสธของ Assignee → งานเปลี่ยนเป็น rejected แจ้ง Requester
+   */
+  async confirmAssigneeRejection({ jobId, approverId, comment }) {
+    try {
+      const job = await this.prisma.job.findUnique({
+        where: { id: jobId },
+        select: {
+          id: true, djId: true, status: true, tenantId: true,
+          requesterId: true, rejectedBy: true, rejectionComment: true, subject: true
+        }
+      });
+
+      if (!job) throw new Error('Job not found');
+
+      // ตรวจสอบสถานะต้องเป็น assignee_rejected
+      if (job.status !== 'assignee_rejected') {
+        return {
+          success: false,
+          error: 'INVALID_STATUS',
+          message: `งานไม่อยู่ในสถานะรอยืนยันการปฏิเสธ (สถานะปัจจุบัน: ${job.status})`
+        };
+      }
+
+      // อัพเดทสถานะเป็น rejected
+      await this.prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: 'rejected'
+        }
+      });
+
+      // Log Activity
+      await this.logApprovalActivity({
+        jobId,
+        userId: approverId,
+        activityType: 'assignee_rejection_confirmed',
+        description: `ผู้อนุมัติยืนยันการปฏิเสธงาน ${job.djId}${comment ? ` - หมายเหตุ: ${comment}` : ''}`,
+        metadata: {
+          approverComment: comment,
+          assigneeComment: job.rejectionComment,
+          previousStatus: job.status
+        }
+      });
+
+      // แจ้งเตือน Requester (ผู้สร้าง DJ) ว่างานถูกปฏิเสธ
+      if (job.requesterId && this.notificationService) {
+        const rejectionReason = job.rejectionComment || 'ไม่ระบุเหตุผล';
+        await this.notificationService.createNotification({
+          tenantId: job.tenantId,
+          userId: job.requesterId,
+          type: 'job_rejected_final',
+          title: `งาน ${job.djId} ถูกปฏิเสธ`,
+          message: `งาน "${job.subject}" ถูกปฏิเสธโดยผู้รับงาน เหตุผล: ${rejectionReason}`,
+          link: `/jobs/${jobId}`
+        }).catch(err => console.warn('[ConfirmRejection] Notification failed:', err.message));
+      }
+
+      return {
+        success: true,
+        data: { status: 'rejected' }
+      };
+    } catch (error) {
+      return this.handleError(error, 'CONFIRM_ASSIGNEE_REJECTION', 'Job');
+    }
+  }
+
+  /**
    * Auto-assign job after approval (Internal use)
    * ⚡ Performance: Optimized from 3 queries → 1 query with includes
    */
@@ -1093,7 +1281,8 @@ export class ApprovalService extends BaseService {
         data: {
           assigneeId,
           assignedAt: new Date(),
-          status: 'assigned'
+          startedAt: new Date(),
+          status: 'in_progress'
         },
         include: {
           assignee: { select: { id: true, firstName: true, lastName: true, email: true } }
