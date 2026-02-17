@@ -9,7 +9,8 @@
  * - แสดงเมนูโปรไฟล์ผู้ใช้งานและการออกจากระบบ (Profile & Logout)
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { useNotificationStore } from '@core/stores/notificationStore';
@@ -29,6 +30,10 @@ export default function Header() {
     const [showProfileMenu, setShowProfileMenu] = useState(false); // เมนูโปรไฟล์
     const [showNoti, setShowNoti] = useState(false);               // เมนูแจ้งเตือน
 
+    // Refs for portal containers (for click-outside detection)
+    const profileMenuRef = useRef(null);
+    const notiMenuRef = useRef(null);
+
     // โหลดข้อมูลแจ้งเตือนเมื่อคอมโพเน็นต์ถูกแสดง หรือเมื่อผู้ใช้เปลี่ยนไป
     useEffect(() => {
         fetchNotifications();
@@ -46,6 +51,28 @@ export default function Header() {
             return () => clearTimeout(timer);
         }
     }, [toast.show]);
+
+    // Close dropdowns when clicking outside (but not inside the portals)
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            // ตรวจสอบว่า click เป็นนอก Header และ portals หรือไม่
+            const header = document.querySelector('header[class*="fixed top-0"]');
+            const isClickInHeader = header && header.contains(e.target);
+            const isClickInProfileMenu = profileMenuRef.current && profileMenuRef.current.contains(e.target);
+            const isClickInNotiMenu = notiMenuRef.current && notiMenuRef.current.contains(e.target);
+
+            // ถ้า click ไม่ได้อยู่ในส่วนเหล่านี้ ให้ปิด menus
+            if (!isClickInHeader && !isClickInProfileMenu && !isClickInNotiMenu) {
+                setShowProfileMenu(false);
+                setShowNoti(false);
+            }
+        };
+
+        if (showProfileMenu || showNoti) {
+            document.addEventListener('mousedown', handleClickOutside);
+            return () => document.removeEventListener('mousedown', handleClickOutside);
+        }
+    }, [showProfileMenu, showNoti]);
 
     /**
      * Handle logout
@@ -104,9 +131,9 @@ export default function Header() {
                         )}
                     </button>
 
-                    {/* รายการแจ้งเตือน Dropdown */}
-                    {showNoti && (
-                        <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-slate-100 py-2 z-20">
+                    {/* รายการแจ้งเตือน Dropdown - Use Portal to escape stacking context */}
+                    {showNoti && createPortal(
+                        <div ref={notiMenuRef} className="fixed right-6 top-20 w-80 bg-white rounded-xl shadow-lg border border-slate-100 py-2 z-[9999]">
                             <div className="px-4 py-2 border-b border-slate-50 flex justify-between items-center">
                                 <h3 className="font-bold text-slate-800">การแจ้งเตือน (Notifications)</h3>
                                 {unreadCount > 0 && (
@@ -148,7 +175,8 @@ export default function Header() {
                                     ))
                                 )}
                             </div>
-                        </div>
+                        </div>,
+                        document.body
                     )}
                 </div>
 
@@ -167,8 +195,9 @@ export default function Header() {
                         </div>
                     </button>
 
-                    {showProfileMenu && (
-                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                    {/* Profile Menu - Use Portal to escape stacking context */}
+                    {showProfileMenu && createPortal(
+                        <div ref={profileMenuRef} className="fixed right-6 top-20 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-[9999]">
                             <div className="px-4 py-2 border-b border-gray-100">
                                 <p className="text-sm font-medium text-gray-900">{user?.displayName}</p>
                                 <p className="text-xs text-gray-500">{user?.email}</p>
@@ -179,7 +208,8 @@ export default function Header() {
                             >
                                 ออกจากระบบ
                             </button>
-                        </div>
+                        </div>,
+                        document.body
                     )}
                 </div>
             </div>

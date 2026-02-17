@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Details - Requester View (ผู้ขออนุมัติ)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            color: #1f2937;
+            padding: 24px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* ========== Header ========== */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 32px;
+            gap: 16px;
+        }
+
+        .header-back {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            color: #f43f5e;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 8px;
+            transition: all 200ms;
+            font-size: 14px;
+        }
+
+        .header-back:hover {
+            background: rgba(244, 63, 94, 0.1);
+        }
+
+        .header-title {
+            flex: 1;
+        }
+
+        .job-id {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 4px;
+        }
+
+        .job-subject {
+            font-size: 14px;
+            color: #475569;
+            margin-bottom: 8px;
+        }
+
+        /* ========== Content Grid ========== */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        @media (max-width: 1200px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ========== Main Content ========== */
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .card {
+            background: white;
+            padding: 28px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e5e7eb;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #f43f5e;
+        }
+
+        .card-title svg {
+            width: 18px;
+            height: 18px;
+            color: #f43f5e;
+        }
+
+        .feature {
+            padding: 16px 0;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        .feature:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .feature-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 6px;
+        }
+
+        .feature-desc {
+            font-size: 13px;
+            color: #6b7280;
+            line-height: 1.6;
+        }
+
+        .badge-allowed {
+            display: inline-block;
+            background: #dcfce7;
+            color: #166534;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            margin-left: 8px;
+        }
+
+        .badge-blocked {
+            display: inline-block;
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            margin-left: 8px;
+        }
+
+        .action-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            padding: 16px;
+            background: #f9fafb;
+            border-radius: 8px;
+            border: 2px solid #f43f5e;
+            margin-top: 12px;
+        }
+
+        .btn {
+            padding: 12px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 200ms;
+        }
+
+        .btn-confirm {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .btn-confirm:hover {
+            background: #c6f6d5;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(34, 197, 94, 0.2);
+        }
+
+        .btn-revise {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .btn-revise:hover {
+            background: #fed7aa;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+        }
+
+        .note {
+            padding: 16px;
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #92400e;
+            margin-top: 16px;
+            line-height: 1.6;
+        }
+
+        /* ========== Sidebar ========== */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .sidebar-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            border: 1px solid #e5e7eb;
+        }
+
+        .sidebar-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .sidebar-badge {
+            display: inline-block;
+            background: #ffe8f0;
+            color: #c2185b;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+
+        .info-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .info-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        /* ========== Responsive ========== */
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .action-buttons {
+                grid-template-columns: 1fr;
+            }
+
+            .card {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-title">
+                <div class="job-id">DJ-2026-0421</div>
+                <div class="job-subject">FB Campaign Creative Design with Multiple Variations</div>
+            </div>
+            <button class="header-back" onclick="history.back()">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+                กลับ
+            </button>
+        </div>
+
+        <!-- Content Grid -->
+        <div class="content-grid">
+            <!-- Main Content -->
+            <div class="main-content">
+                <!-- Requester View Features -->
+                <div class="card">
+                    <div class="card-title">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                        </svg>
+                        สิ่งที่ผู้ขออนุมัติสามารถเห็นและทำได้
+                    </div>
+
+                    <div class="feature">
+                        <div class="feature-title">✓ ข้อมูลงาน (Brief Info)</div>
+                        <div class="feature-desc">
+                            หัวข้อหลัก, หัวข้อรอง, รายละเอียด, ลิงก์ Brief, ไฟล์แนบ
+                            <span class="badge-allowed">เห็น</span>
+                        </div>
+                    </div>
+
+                    <div class="feature">
+                        <div class="feature-title">✓ เส้นทางการอนุมัติ (Approval Flow)</div>
+                        <div class="feature-desc">
+                            Diagram แสดง approvers ทั้งหมด, step ปัจจุบัน, สถานะของการอนุมัติ
+                            <span class="badge-allowed">เห็น</span>
+                        </div>
+                    </div>
+
+                    <div class="feature">
+                        <div class="feature-title">✓ ปุ่มยืนยันปิดงาน (Pending Close)</div>
+                        <div class="feature-desc">
+                            เมื่อผู้รับงานส่งงาน, ให้ requester ตรวจสอบและยืนยัน
+                            <span class="badge-allowed">มี</span>
+                        </div>
+                        <div class="action-buttons">
+                            <button class="btn btn-confirm">✓ ยืนยันปิดงาน</button>
+                            <button class="btn btn-revise">⟲ ขอให้แก้ไข</button>
+                        </div>
+                    </div>
+
+                    <div class="feature">
+                        <div class="feature-title">✓ ความคิดเห็น (Comments)</div>
+                        <div class="feature-desc">
+                            ดูความเห็นจากทั้ง approvers และ assignees, เพิ่มความเห็นตัวเองพร้อม @mention
+                            <span class="badge-allowed">เห็น/เขียน</span>
+                        </div>
+                    </div>
+
+                    <div class="feature">
+                        <div class="feature-title">✓ ประวัติ (Activity Log)</div>
+                        <div class="feature-desc">
+                            ดูประวัติการเปลี่ยนแปลงทั้งหมด, ใครทำอะไรเมื่อไร, Timeline เต็มของการประมวลผล
+                            <span class="badge-allowed">เห็น</span>
+                        </div>
+                    </div>
+
+                    <div class="feature">
+                        <div class="feature-title">✓ ข้อมูลผู้รับผิดชอบ</div>
+                        <div class="feature-desc">
+                            ชื่อผู้รับงาน, บทบาท, ติดต่อ, สารสนเทศเพิ่มเติม
+                            <span class="badge-allowed">เห็น</span>
+                        </div>
+                    </div>
+
+                    <div class="feature">
+                        <div class="feature-title">✓ ข้อมูลโครงการ</div>
+                        <div class="feature-desc">
+                            โครงการ, ประเภทงาน, SLA (กำหนดส่ง), ลำดับความสำคัญ
+                            <span class="badge-allowed">เห็น</span>
+                        </div>
+                    </div>
+
+                    <div class="feature">
+                        <div class="feature-title">✗ ปุ่มอนุมัติ/เริ่มงาน</div>
+                        <div class="feature-desc">
+                            ปุ่มอนุมัติ, ปุ่มปฏิเสธ, ปุ่มเริ่มงาน (สำหรับ roles อื่นเท่านั้น)
+                            <span class="badge-blocked">ไม่มี</span>
+                        </div>
+                    </div>
+
+                    <div class="feature">
+                        <div class="feature-title">✗ ปุ่มเปลี่ยนผู้รับงาน</div>
+                        <div class="feature-desc">
+                            เปลี่ยนผู้รับงาน
+                            <span class="badge-blocked">ไม่มี</span>
+                        </div>
+                    </div>
+
+                    <div class="note">
+                        ⚠️ <strong>หมายเหตุสำคัญ:</strong> ผู้ขออนุมัติ (Requester) คือผู้สร้างงาน ไม่สามารถอนุมัติหรือทำงาน แต่เป็นคนตรวจสอบคุณภาพสุดท้ายก่อนปิดงาน
+                    </div>
+                </div>
+
+                <!-- Role Actions -->
+                <div class="card">
+                    <div class="card-title">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
+                        </svg>
+                        บทบาท (Role Actions)
+                    </div>
+
+                    <div class="feature">
+                        <div class="feature-title">🎯 Primary Action: ติดตามสถานะการอนุมัติ</div>
+                        <div class="feature-desc">
+                            ดูว่าใครอนุมัติแล้ว, อนุมัติไปถึงไหน, เห็น timeline ของการประมวลผล และการเปลี่ยนแปลง
+                        </div>
+                    </div>
+
+                    <div class="feature">
+                        <div class="feature-title">🔄 Secondary Action: ตรวจสอบและยืนยันงานส่ง</div>
+                        <div class="feature-desc">
+                            เมื่อสถานะเป็น <strong>"Pending Close"</strong> (ผู้รับงานส่งงานแล้ว):<br/>
+                            1. ตรวจสอบผลงานจากผู้รับงาน<br/>
+                            2. ดูความเห็นจาก approvers (ถ้ามี requirement)<br/>
+                            3. กดปุ่ม "✓ ยืนยันปิดงาน" เพื่อสิ้นสุด<br/>
+                            4. หรือกดปุ่ม "⟲ ขอให้แก้ไข" ถ้ายังต้องปรับปรุง
+                        </div>
+                    </div>
+
+                    <div class="feature">
+                        <div class="feature-title">📌 Tertiary: เพิ่มความเห็น</div>
+                        <div class="feature-desc">
+                            ให้ feedback แก่ approvers และ assignees เล่าว่างานทำได้ตามที่คิดไว้หรือไม่
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <!-- Role Badge -->
+                <div class="sidebar-card">
+                    <div class="sidebar-badge">
+                        📋 ผู้ขออนุมัติ (Requester)
+                    </div>
+                    <div class="sidebar-title">บทบาท</div>
+                    <div class="info-value" style="line-height: 1.6; color: #6b7280;">
+                        สร้างงาน, ติดตาม, ตรวจสอบ, ยืนยันปิด
+                    </div>
+                </div>
+
+                <!-- Job Status -->
+                <div class="sidebar-card">
+                    <div class="sidebar-title">สถานะงาน</div>
+                    <div class="info-item">
+                        <div class="info-label">สถานะปัจจุบัน</div>
+                        <div class="info-value">⏳ Pending Close</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">SLA</div>
+                        <div class="info-value">19 ก.พ. 2026</div>
+                    </div>
+                </div>
+
+                <!-- Approval Status -->
+                <div class="sidebar-card">
+                    <div class="sidebar-title">สถานะการอนุมัติ</div>
+                    <div class="info-item">
+                        <div class="info-label">ผู้อนุมัติครั้งที่ 1</div>
+                        <div class="info-value">✓ พิม พัฒน์</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">ผู้อนุมัติครั้งที่ 2</div>
+                        <div class="info-value">✓ เสนีย์</div>
+                    </div>
+                    <div class="info-item">
+                        <div class="info-label">ผู้อนุมัติครั้งที่ 3</div>
+                        <div class="info-value">✓ ประจำสาขา</div>
+                    </div>
+                </div>
+
+                <!-- Important Note -->
+                <div style="padding: 16px; background: #ffe8f0; border-radius: 8px; border-left: 4px solid #f43f5e;">
+                    <div style="font-size: 12px; font-weight: 700; color: #f43f5e; margin-bottom: 8px;">
+                        💡 คำแนะนำ
+                    </div>
+                    <div style="font-size: 12px; color: #92400e; line-height: 1.6;">
+                        ตรวจสอบคุณภาพของงานอย่างละเอียดก่อนยืนยันปิด
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

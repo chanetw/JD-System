@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Details - DJ System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            color: #0c4a6e;
+            padding: 24px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* ============================================
+           Header Section
+           ============================================ */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 32px;
+            gap: 16px;
+        }
+
+        .header-back {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: #0369a1;
+            font-weight: 600;
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 8px;
+            transition: all 200ms;
+        }
+
+        .header-back:hover {
+            background: rgba(3, 105, 161, 0.1);
+        }
+
+        .header-title {
+            flex: 1;
+        }
+
+        .job-id {
+            font-size: 28px;
+            font-weight: 700;
+            color: #0c4a6e;
+            margin-bottom: 4px;
+        }
+
+        .job-subject {
+            font-size: 14px;
+            color: #475569;
+            margin-bottom: 8px;
+        }
+
+        .parent-badge {
+            display: inline-block;
+            background: #dbeafe;
+            color: #0369a1;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 200ms;
+        }
+
+        .parent-badge:hover {
+            background: #bfdbfe;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .status-approved {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        /* ============================================
+           Main Grid Layout
+           ============================================ */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        @media (max-width: 1200px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ============================================
+           Main Content - Tabs
+           ============================================ */
+        .tabs {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+        }
+
+        .tab-headers {
+            display: flex;
+            border-bottom: 1px solid #e2e8f0;
+            background: #f8fafc;
+        }
+
+        .tab-header {
+            flex: 1;
+            padding: 16px 20px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            color: #64748b;
+            border-bottom: 3px solid transparent;
+            transition: all 200ms;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tab-header:hover {
+            background: white;
+            color: #0369a1;
+        }
+
+        .tab-header.active {
+            color: #0369a1;
+            border-bottom-color: #0369a1;
+            background: white;
+        }
+
+        .tab-content {
+            padding: 28px 32px;
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* ============================================
+           Brief Info Section
+           ============================================ */
+        .brief-section {
+            margin-bottom: 32px;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #0c4a6e;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .section-title svg {
+            width: 18px;
+            height: 18px;
+            color: #0369a1;
+        }
+
+        .brief-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+        }
+
+        .brief-field {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .brief-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 8px;
+        }
+
+        .brief-value {
+            font-size: 15px;
+            color: #0c4a6e;
+            line-height: 1.5;
+            word-break: break-word;
+        }
+
+        .brief-value.empty {
+            color: #cbd5e1;
+            font-style: italic;
+        }
+
+        .brief-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: #0369a1;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 200ms;
+            cursor: pointer;
+            width: fit-content;
+        }
+
+        .brief-link:hover {
+            color: #0284c7;
+            text-decoration: underline;
+        }
+
+        .brief-link svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* ============================================
+           Approval Flow Section
+           ============================================ */
+        .approval-section {
+            margin-top: 32px;
+            padding: 24px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border-left: 4px solid #0369a1;
+        }
+
+        .timeline {
+            position: relative;
+            padding-left: 32px;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 4px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #cbd5e1;
+        }
+
+        .timeline-item {
+            position: relative;
+            margin-bottom: 24px;
+            last: {
+                margin-bottom: 0;
+            }
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -32px;
+            top: 3px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #cbd5e1;
+            border: 2px solid white;
+            box-shadow: 0 0 0 2px #cbd5e1;
+        }
+
+        .timeline-item.completed::before {
+            background: #22c55e;
+            box-shadow: 0 0 0 2px #22c55e;
+        }
+
+        .timeline-item.current::before {
+            background: #0369a1;
+            box-shadow: 0 0 0 2px #0369a1;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                box-shadow: 0 0 0 2px #0369a1, 0 0 0 6px rgba(3, 105, 161, 0.2);
+            }
+            50% {
+                box-shadow: 0 0 0 2px #0369a1, 0 0 0 10px rgba(3, 105, 161, 0.1);
+            }
+        }
+
+        .timeline-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        .timeline-approver {
+            font-size: 14px;
+            font-weight: 600;
+            color: #0c4a6e;
+            margin-bottom: 4px;
+        }
+
+        .timeline-status {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .status-passed {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .status-current {
+            background: #dbeafe;
+            color: #0369a1;
+            animation: pulse-text 2s infinite;
+        }
+
+        @keyframes pulse-text {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        /* ============================================
+           Sidebar - Job Details
+           ============================================ */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #0c4a6e;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        .details-item {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 16px;
+        }
+
+        .details-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .details-label {
+            font-size: 11px;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 6px;
+        }
+
+        .details-value {
+            font-size: 15px;
+            font-weight: 600;
+            color: #0c4a6e;
+        }
+
+        .details-subtext {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        /* Assignee Card */
+        .assignee-item {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        .assignee-avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #0369a1 0%, #0284c7 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .assignee-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .assignee-name {
+            font-size: 14px;
+            font-weight: 700;
+            color: #0c4a6e;
+        }
+
+        .assignee-role {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        /* Buttons */
+        .btn {
+            width: 100%;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 200ms;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: #0369a1;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0284c7;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #0c4a6e;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e1;
+        }
+
+        .btn svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* Badge Group */
+        .badge-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            background: #f0f9ff;
+            color: #0369a1;
+            border: 1px solid #bfdbfe;
+        }
+
+        .badge-green {
+            background: #dcfce7;
+            color: #166534;
+            border-color: #bbf7d0;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 32px 24px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border: 1px dashed #cbd5e1;
+        }
+
+        .empty-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 12px;
+            color: #cbd5e1;
+        }
+
+        .empty-text {
+            font-size: 14px;
+            color: #64748b;
+        }
+
+        /* Icon Helper */
+        svg {
+            fill: currentColor;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .header-title {
+                width: 100%;
+            }
+
+            .tab-headers {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .tab-content {
+                padding: 20px 16px;
+            }
+
+            .brief-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- ============================================
+             Header
+             ============================================ -->
+        <div class="header">
+            <a href="#" class="header-back">
+                <svg viewBox="0 0 24 24" width="20" height="20">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+                กลับ
+            </a>
+
+            <div class="header-title">
+                <div class="job-id">DJ-260212-0003-01</div>
+                <div class="job-subject">ทัศนธิ FB Campaign1 - Print Ad</div>
+                <div style="margin-top: 8px;">
+                    <span class="parent-badge">📎 Parent: DJ-260212-0003</span>
+                </div>
+            </div>
+
+            <div class="status-badge status-approved">Approved</div>
+        </div>
+
+        <!-- ============================================
+             Main Content + Sidebar
+             ============================================ -->
+        <div class="content-grid">
+            <!-- Main Content -->
+            <div class="tabs">
+                <!-- Tab Headers -->
+                <div class="tab-headers">
+                    <button class="tab-header active" onclick="switchTab(event, 'overview')">
+                        <svg viewBox="0 0 24 24" width="16" height="16">
+                            <path d="M3 4h8v8H3V4m10 0h8v8h-8V4M3 14h8v8H3v-8m10 0h8v8h-8v-8"/>
+                        </svg>
+                        ภาพรวม
+                    </button>
+                    <button class="tab-header" onclick="switchTab(event, 'subjobs')">
+                        <svg viewBox="0 0 24 24" width="16" height="16">
+                            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                        </svg>
+                        งานย่อย (0)
+                    </button>
+                    <button class="tab-header" onclick="switchTab(event, 'comments')">
+                        <svg viewBox="0 0 24 24" width="16" height="16">
+                            <path d="M8 12a4 4 0 108 0 4 4 0 00-8 0zm0-2c0 1.105.896 2 2 2h4a2 2 0 100-4H10a2 2 0 00-2 2z"/>
+                        </svg>
+                        ความคิดเห็น
+                    </button>
+                    <button class="tab-header" onclick="switchTab(event, 'activity')">
+                        <svg viewBox="0 0 24 24" width="16" height="16">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2m0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8m.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
+                        </svg>
+                        ประวัติ
+                    </button>
+                </div>
+
+                <!-- Tab Content: Overview -->
+                <div id="overview" class="tab-content active">
+                    <!-- Brief Info -->
+                    <div class="brief-section">
+                        <div class="section-title">
+                            <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                            ข้อมูลงาน
+                        </div>
+
+                        <div class="brief-grid">
+                            <div class="brief-field">
+                                <div class="brief-label">วัตถุประสงค์</div>
+                                <div class="brief-value empty">ไม่ระบุ</div>
+                            </div>
+
+                            <div class="brief-field">
+                                <div class="brief-label">รายละเอียด</div>
+                                <div class="brief-value empty">ไม่ระบุ</div>
+                            </div>
+
+                            <div class="brief-field">
+                                <div class="brief-label">ลิงก์ Brief</div>
+                                <a href="https://googledrive.com" target="_blank" rel="noopener noreferrer" class="brief-link">
+                                    <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                                    https://googledrive.com
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Approval Flow -->
+                    <div class="approval-section">
+                        <div class="section-title" style="margin-bottom: 20px;">
+                            <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                            เส้นทางการอนุมัติ
+                        </div>
+
+                        <div class="timeline">
+                            <div class="timeline-item completed">
+                                <div class="timeline-label">ลำดับที่ 1</div>
+                                <div class="timeline-approver">Requester Team</div>
+                                <div class="timeline-status status-passed">✓ อนุมัติแล้ว</div>
+                            </div>
+
+                            <div class="timeline-item completed">
+                                <div class="timeline-label">ลำดับที่ 2</div>
+                                <div class="timeline-approver">Manager Approval</div>
+                                <div class="timeline-status status-passed">✓ อนุมัติแล้ว</div>
+                            </div>
+
+                            <div class="timeline-item">
+                                <div class="timeline-label">ปลายทาง</div>
+                                <div class="timeline-approver" style="color: #22c55e; font-weight: 700;">✅ อนุมัติครบแล้ว</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Content: Sub Jobs -->
+                <div id="subjobs" class="tab-content">
+                    <div class="empty-state">
+                        <svg class="empty-icon" viewBox="0 0 24 24">
+                            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"/>
+                        </svg>
+                        <div class="empty-text">ไม่มีงานย่อย</div>
+                    </div>
+                </div>
+
+                <!-- Tab Content: Comments -->
+                <div id="comments" class="tab-content">
+                    <div class="empty-state">
+                        <svg class="empty-icon" viewBox="0 0 24 24">
+                            <path d="M8 12a4 4 0 108 0 4 4 0 00-8 0zm0-2c0 1.105.896 2 2 2h4a2 2 0 100-4H10a2 2 0 00-2 2z"/>
+                        </svg>
+                        <div class="empty-text">ยังไม่มีความเห็น</div>
+                    </div>
+                </div>
+
+                <!-- Tab Content: Activity -->
+                <div id="activity" class="tab-content">
+                    <div class="empty-state">
+                        <svg class="empty-icon" viewBox="0 0 24 24">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2m0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8m.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/>
+                        </svg>
+                        <div class="empty-text">ยังไม่มีประวัติการดำเนินการ</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <!-- Project Details Card -->
+                <div class="card">
+                    <div class="card-title">รายละเอียดโครงการ</div>
+
+                    <div class="details-item">
+                        <div class="details-label">โครงการ</div>
+                        <div class="details-value">BU1 Sena Haus Sukhumvit</div>
+                    </div>
+
+                    <div class="details-item">
+                        <div class="details-label">ประเภทงาน</div>
+                        <div class="details-value">Print Ad</div>
+                        <div class="details-subtext">SLA: 5 วันทำการ</div>
+                    </div>
+
+                    <div class="details-item">
+                        <div class="details-label">ลำดับความสำคัญ</div>
+                        <div class="badge-group">
+                            <span class="badge">Normal</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Assignee Card -->
+                <div class="card">
+                    <div class="card-title">ผู้รับผิดชอบ</div>
+
+                    <div class="details-item">
+                        <div class="assignee-item">
+                            <div class="assignee-avatar">AT</div>
+                            <div class="assignee-info">
+                                <div class="assignee-name">Assignee3 Test</div>
+                                <div class="assignee-role">Graphic Designer</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" style="margin-top: 12px;">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z"/>
+                        </svg>
+                        เปลี่ยน
+                    </button>
+                </div>
+
+                <!-- Timeline Card -->
+                <div class="card">
+                    <div class="card-title">ไทม์ไลน์</div>
+
+                    <div class="details-item">
+                        <div class="details-label">สร้างเมื่อ</div>
+                        <div class="details-value">12 ก.พ. 2026</div>
+                    </div>
+
+                    <div class="details-item">
+                        <div class="details-label">กำหนดส่ง</div>
+                        <div class="details-value">19 ก.พ. 2026</div>
+                    </div>
+
+                    <div class="details-item">
+                        <div class="details-label">สถานะ SLA</div>
+                        <div class="badge-group">
+                            <span class="badge-green">✓ ตรงเวลา</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(event, tabId) {
+            // Remove active class from all tab headers and contents
+            document.querySelectorAll('.tab-header').forEach(h => h.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+            // Add active class to clicked header and corresponding content
+            event.target.closest('.tab-header').classList.add('active');
+            document.getElementById(tabId).classList.add('active');
+        }
+    </script>
+</body>
+</html>

@@ -59,7 +59,7 @@ export default function ApprovalsQueue() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const data = await api.getJobs();
+            const data = await api.getJobsByRole(user);
             // เรียงลำดับตามวันที่สร้างล่าสุดขึ้นก่อน (Newest first)
             let sorted = (Array.isArray(data) ? data : []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 

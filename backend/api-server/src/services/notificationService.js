@@ -335,6 +335,207 @@ export class NotificationService {
       };
     }
   }
+
+  /**
+   * ✨ NEW: Queue comment notification for batching
+   *
+   * Instead of sending notification immediately, queue it to batch multiple comments
+   * into a single notification after 30 seconds
+   *
+   * @param {Object} options - Batch queue options
+   * @param {number} options.tenantId - Tenant ID
+   * @param {number} options.userId - Recipient user ID
+   * @param {number} options.jobId - Job ID
+   * @param {string} options.jobDjId - Job DJ ID (for display)
+   * @param {string} options.commenterName - Name of comment author
+   * @param {string} options.commentPreview - Comment preview text
+   * @param {Object} options.io - Socket.io instance (for real-time updates)
+   * @param {number} options.batchDelay - Delay in ms (default: 30000)
+   * @returns {Promise<Object>}
+   */
+  async queueCommentNotification({
+    tenantId,
+    userId,
+    jobId,
+    jobDjId,
+    commenterName,
+    commentPreview,
+    io = null,
+    batchDelay = 30000  // 30 seconds
+  }) {
+    try {
+      const batchKey = `${tenantId}:${userId}:${jobId}:comment`;
+
+      // Check if batch already exists
+      const existingBatch = await this.prisma.pendingCommentBatch.findUnique({
+        where: { batchKey }
+      });
+
+      if (existingBatch) {
+        // Update existing batch
+        const updatedBatch = await this.prisma.pendingCommentBatch.update({
+          where: { batchKey },
+          data: {
+            count: { increment: 1 },
+            comments: existingBatch.comments.push(commentPreview) && existingBatch.comments,
+            expiresAt: new Date(Date.now() + batchDelay)  // Reset timer
+          }
+        });
+
+        console.log(`[Batch] Updated batch for ${batchKey}. Current count: ${updatedBatch.count}`);
+
+        return {
+          success: true,
+          data: { batch: updatedBatch, action: 'updated' }
+        };
+      } else {
+        // Create new batch
+        const newBatch = await this.prisma.pendingCommentBatch.create({
+          data: {
+            tenantId,
+            userId,
+            jobId,
+            batchKey,
+            count: 1,
+            firstCommenter: commenterName,
+            comments: [commentPreview],
+            expiresAt: new Date(Date.now() + batchDelay)
+          }
+        });
+
+        console.log(`[Batch] Created new batch for ${batchKey}`);
+
+        // Schedule flush after delay
+        setTimeout(() => {
+          this.flushCommentBatch(batchKey, io);
+        }, batchDelay);
+
+        return {
+          success: true,
+          data: { batch: newBatch, action: 'created' }
+        };
+      }
+    } catch (error) {
+      console.error('[NotificationService] Queue comment notification failed:', error);
+      return {
+        success: false,
+        error: 'QUEUE_BATCH_FAILED',
+        message: 'ไม่สามารถเพิ่มการแจ้งเตือนเข้าคิวได้'
+      };
+    }
+  }
+
+  /**
+   * ✨ NEW: Flush comment batch to notification
+   *
+   * When timer expires, create a single notification for all pending comments
+   * and delete the batch
+   *
+   * @param {string} batchKey - Batch key (tenant_id:user_id:job_id:comment)
+   * @param {Object} io - Socket.io instance (optional)
+   * @returns {Promise<void>}
+   */
+  async flushCommentBatch(batchKey, io = null) {
+    try {
+      // Get batch
+      const batch = await this.prisma.pendingCommentBatch.findUnique({
+        where: { batchKey },
+        include: { user: true, job: true }
+      });
+
+      if (!batch) {
+        console.log(`[Batch] Batch ${batchKey} not found (already flushed)`);
+        return;
+      }
+
+      const { tenantId, userId, jobId, count, firstCommenter, comments } = batch;
+
+      // Create notification title
+      const title = count === 1
+        ? `${firstCommenter} ส่งข้อความใน ${batch.job.djId}`
+        : `คุณมี ${count} ข้อความใหม่จาก ${firstCommenter} ใน ${batch.job.djId}`;
+
+      // Create notification message (preview)
+      const message = count === 1
+        ? comments[0]
+        : `${comments[0]?.substring(0, 100) || '...'}...`;
+
+      // Create notification in database
+      const notification = await this.createNotification({
+        tenantId,
+        userId,
+        type: 'job_comment_batch',
+        title,
+        message,
+        link: `/jobs/${jobId}`
+      });
+
+      if (notification.success) {
+        // Send real-time notification if Socket.io available
+        if (io) {
+          const room = `tenant_${tenantId}:user_${userId}`;
+          io.to(room).emit('notification', {
+            type: 'job_comment_batch',
+            title,
+            message,
+            link: `/jobs/${jobId}`,
+            count,
+            jobId,
+            timestamp: new Date().toISOString()
+          });
+        }
+
+        // Delete batch
+        await this.prisma.pendingCommentBatch.delete({
+          where: { batchKey }
+        });
+
+        console.log(`[Batch] Flushed ${count} comments for ${batchKey}`);
+      }
+    } catch (error) {
+      console.error('[NotificationService] Flush comment batch failed:', error);
+    }
+  }
+
+  /**
+   * ✨ NEW: Clear pending batch (when user opens job)
+   *
+   * If user opens job detail before batch expires, clear the pending batch
+   * so it doesn't send notification (user already sees comments)
+   *
+   * @param {number} tenantId - Tenant ID
+   * @param {number} userId - User ID
+   * @param {number} jobId - Job ID
+   * @returns {Promise<Object>}
+   */
+  async clearCommentBatch(tenantId, userId, jobId) {
+    try {
+      const batchKey = `${tenantId}:${userId}:${jobId}:comment`;
+
+      const deleted = await this.prisma.pendingCommentBatch.delete({
+        where: { batchKey }
+      });
+
+      console.log(`[Batch] Cleared batch for ${batchKey}`);
+
+      return {
+        success: true,
+        data: { deleted }
+      };
+    } catch (error) {
+      // Batch might not exist, which is fine
+      if (error.code === 'P2025') {
+        return { success: true, message: 'Batch not found (already cleared)' };
+      }
+
+      console.error('[NotificationService] Clear comment batch failed:', error);
+      return {
+        success: false,
+        error: 'CLEAR_BATCH_FAILED',
+        message: 'ไม่สามารถลบบัตช์ที่รออยู่ได้'
+      };
+    }
+  }
 }
 
 export default NotificationService;

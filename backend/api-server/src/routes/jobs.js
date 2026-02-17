@@ -1534,17 +1534,6 @@ router.post('/:id/confirm-close', async (req, res) => {
       });
     }
 
-    // Emit real-time notification
-    const io = getSocketIO();
-    if (io) {
-      io.to(`tenant_${job.tenantId}:job_${jobId}`).emit('job_closed', {
-        jobId,
-        status: 'completed',
-        closedBy: userId,
-        closedAt: new Date()
-      });
-    }
-
     res.json({
       success: true,
       message: 'Job closed successfully',
@@ -1612,18 +1601,6 @@ router.post('/:id/request-revision', async (req, res) => {
           content: note,
           isSystemMessage: false
         }
-      });
-    }
-
-    // Emit real-time notification to assignee
-    const io = getSocketIO();
-    if (io && job.assigneeId) {
-      io.to(`tenant_${job.tenantId}:user_${job.assigneeId}`).emit('revision_requested', {
-        jobId,
-        status: 'in_progress',
-        requestedBy: userId,
-        requestedAt: new Date(),
-        note
       });
     }
 
