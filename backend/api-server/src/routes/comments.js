@@ -275,32 +275,21 @@ router.post('/jobs/:jobId/comments', async (req, res) => {
       }
     });
 
-    // Send notifications (with batching for regular comments)
+    // Send notifications
     const notificationPromises = Array.from(notifyUserIds).map(recipientId => {
       const isMentioned = mentionedUsers.some(u => u.id === recipientId);
+      const notificationType = isMentioned ? 'comment_mention' : 'job_comment';
+      const notificationTitle = isMentioned
+        ? `${commenterName} mentioned you in ${job.djId}`
+        : `New comment on ${job.djId}`;
 
-      // ✨ NEW: @mentioned users get instant notification (important!)
-      if (isMentioned) {
-        return notificationService.createNotification({
-          tenantId,
-          userId: recipientId,
-          type: 'comment_mention',
-          title: `${commenterName} mentioned you in ${job.djId}`,
-          message: comment.substring(0, 200) + (comment.length > 200 ? '...' : ''),
-          link: `/jobs/${jobId}`
-        });
-      }
-
-      // ✨ NEW: Regular comments are queued for batching (prevents notification spam)
-      return notificationService.queueCommentNotification({
+      return notificationService.createNotification({
         tenantId,
         userId: recipientId,
-        jobId: parseInt(jobId),
-        jobDjId: job.djId,
-        commenterName,
-        commentPreview: comment.substring(0, 100),
-        io: req.app.get('io'),  // Pass Socket.io instance
-        batchDelay: parseInt(process.env.COMMENT_BATCH_DELAY_MS || 30000)
+        type: notificationType,
+        title: notificationTitle,
+        message: comment.substring(0, 200) + (comment.length > 200 ? '...' : ''),
+        link: `/jobs/${jobId}`
       });
     });
 

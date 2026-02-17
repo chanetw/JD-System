@@ -90,16 +90,6 @@ export function authenticateToken(req, res, next) {
       role: user.role
     };
 
-    // ✅ FIX: Normalize roles to lowercase for consistent permission checks
-    // Handles both string array ["Admin", "Requester"] and object array [{name: "Admin"}]
-    normalizedUser.normalizedRoles = (normalizedUser.roles || []).map(r => {
-      if (typeof r === 'string') return r.toLowerCase();
-      if (typeof r === 'object' && r !== null) {
-        return (r.roleName || r.name || '').toLowerCase();
-      }
-      return '';
-    }).filter(Boolean);
-
     // Validate required fields
     if (!normalizedUser.tenantId || !normalizedUser.userId) {
       console.warn('[Auth] Token missing required fields:', {
