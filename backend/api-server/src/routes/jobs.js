@@ -53,25 +53,66 @@ router.get('/', async (req, res) => {
         break;
       case 'approver': {
         // 🔥 User Portal Logic: Show ONLY jobs waiting for THIS user to approve
-        // Two-step approach: first find pending approval job IDs, then query jobs
-        const pendingApprovals = await prisma.approval.findMany({
-          where: {
-            approverId: userId,
-            status: 'pending',
-            tenantId
-          },
-          select: { jobId: true }
+        // Uses approval_flows.approverSteps (JSON) to match user with current level
+        console.log('[Approver Query] 🔍 Finding approval flows for user:', userId, 'tenantId:', tenantId);
+
+        // Step 1: Get all active approval flows in this tenant
+        const allFlows = await prisma.approvalFlow.findMany({
+          where: { tenantId, isActive: true },
+          select: { id: true, projectId: true, jobTypeId: true, approverSteps: true, name: true }
         });
-        const pendingJobIds = [...new Set(pendingApprovals.map(a => a.jobId))];
-        if (pendingJobIds.length === 0) {
+        console.log('[Approver Query] 📋 Total active flows in tenant:', allFlows.length);
+        allFlows.forEach(f => {
+          const steps = f.approverSteps || [];
+          const allApproverIds = steps.flatMap(s => (s.approvers || []).map(a => a.userId));
+          console.log(`  Flow #${f.id} "${f.name}" project:${f.projectId} jobType:${f.jobTypeId} approverIds:[${allApproverIds}]`);
+        });
+
+        // Step 2: Find flows where this user is an approver, and at which level
+        const orConditions = [];
+        for (const flow of allFlows) {
+          const steps = flow.approverSteps || [];
+          for (const step of steps) {
+            const isApprover = step.approvers?.some(a => {
+              const stepUserId = parseInt(a.userId);
+              const match = stepUserId === userId;
+              if (match) console.log(`  ✅ MATCH: flow #${flow.id} level ${step.level} approver ${a.name} (${a.userId}) == user ${userId}`);
+              return match;
+            });
+            if (isApprover) {
+              // Map level to job status: level 1 = 'pending_approval', level N = 'pending_level_N'
+              const statusForLevel = step.level === 1 ? 'pending_approval' : `pending_level_${step.level}`;
+              const condition = {
+                projectId: flow.projectId,
+                status: statusForLevel
+              };
+              // If flow is job-type-specific, filter by jobTypeId too
+              if (flow.jobTypeId) {
+                condition.jobTypeId = flow.jobTypeId;
+              }
+              orConditions.push(condition);
+            }
+          }
+        }
+
+        console.log('[Approver Query] 📊 Found', orConditions.length, 'matching flow+level combinations');
+        if (orConditions.length > 0) {
+          console.log('[Approver Query] OR conditions:', JSON.stringify(orConditions));
+        }
+
+        if (orConditions.length === 0) {
+          console.log('[Approver Query] ⚠️ User is not an approver in any flow - returning empty');
           return res.json({
             success: true,
             data: [],
+            message: 'คุณยังไม่ได้ถูกเพิ่มเป็นผู้อนุมัติในโครงการใดๆ กรุณาติดต่อ Admin เพื่อขอสิทธิ์',  // ✅ FIX: Added helpful message
             pagination: { page: parseInt(page), limit: parseInt(limit), total: 0, totalPages: 0 }
           });
         }
-        where.id = { in: pendingJobIds };
-        where.status = { in: ['pending_approval', 'pending_level_1', 'pending_level_2'] };
+
+        // Step 3: Query jobs matching any of the conditions
+        where.OR = orConditions;
+        console.log('[Approver Query] 🎯 Querying with', orConditions.length, 'OR conditions');
         break;
       }
 
@@ -113,6 +154,10 @@ router.get('/', async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const take = parseInt(limit);
 
+    if (role.toLowerCase() === 'approver') {
+      console.log('[Approver Query] 📦 Final where:', JSON.stringify(where, null, 2));
+    }
+
     const [jobs, total] = await Promise.all([
       prisma.job.findMany({
         where,
@@ -149,6 +194,11 @@ router.get('/', async (req, res) => {
       }),
       prisma.job.count({ where })
     ]);
+
+    if (role.toLowerCase() === 'approver') {
+      console.log(`[Approver Query] 🏁 Result: ${total} total jobs, ${jobs.length} returned`);
+      jobs.forEach(j => console.log(`  - Job #${j.id} (${j.djId}) status:${j.status} project:${j.project?.name}`));
+    }
 
     // Transform to frontend format
     const transformed = jobs.map(j => ({
@@ -617,6 +667,7 @@ router.get('/:id', async (req, res) => {
             djId: true,
             subject: true,
             status: true,
+            requesterId: true,  // ✅ FIX: Added for parent/child access check
             jobType: { select: { id: true, name: true } },
             assignee: { select: { id: true, displayName: true } },
             dueDate: true
@@ -631,7 +682,8 @@ router.get('/:id', async (req, res) => {
             id: true,
             djId: true,
             subject: true,
-            status: true
+            status: true,
+            requesterId: true  // ✅ FIX: Added for parent/child access check
           }
         }
       }
@@ -646,14 +698,45 @@ router.get('/:id', async (req, res) => {
     }
 
     // Check permission (null-safe roles check)
-    // Support both case variations (admin/Admin, manager/Manager) for V1 and V2 auth formats
-    const userRoles = req.user.roles || [];
-    const normalizedRoles = userRoles.map(r => r?.toLowerCase() || '');
+    // ✅ FIX: Use pre-normalized roles from auth middleware
+    const normalizedRoles = req.user.normalizedRoles || [];
 
-    const hasAccess = job.requesterId === req.user.userId ||
+    let hasAccess = job.requesterId === req.user.userId ||
       job.assigneeId === req.user.userId ||
       normalizedRoles.includes('admin') ||
       normalizedRoles.includes('manager');
+
+    // ✅ FIX: Check if user is requester of parent job (for child jobs)
+    if (!hasAccess && job.parentJobId && job.parentJob) {
+      hasAccess = job.parentJob.requesterId === req.user.userId;
+    }
+
+    // ✅ FIX: Check if user is requester of any child job (for parent jobs)
+    if (!hasAccess && job.isParent && job.childJobs && job.childJobs.length > 0) {
+      hasAccess = job.childJobs.some(child => child.requesterId === req.user.userId);
+    }
+
+    // Check if user is an approver for this job's project via approval_flows
+    if (!hasAccess && normalizedRoles.includes('approver')) {
+      const approverFlows = await prisma.approvalFlow.findMany({
+        where: {
+          tenantId: req.user.tenantId,
+          projectId: job.projectId,
+          isActive: true
+        },
+        select: { approverSteps: true }
+      });
+      for (const flow of approverFlows) {
+        const steps = flow.approverSteps || [];
+        const isApprover = steps.some(step =>
+          step.approvers?.some(a => parseInt(a.userId) === req.user.userId)
+        );
+        if (isApprover) {
+          hasAccess = true;
+          break;
+        }
+      }
+    }
 
     if (!hasAccess) {
       return res.status(403).json({
@@ -1388,6 +1471,170 @@ router.post('/:id/complete', async (req, res) => {
   } catch (error) {
     console.error('[Jobs] Complete error:', error);
     res.status(500).json({ success: false, message: 'Failed to complete job' });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/confirm-close
+ * Confirm job closure (Requester action)
+ * Moves job from pending_close to completed
+ */
+router.post('/:id/confirm-close', async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    const userId = req.user.userId;
+    const { note } = req.body;
+
+    // Verify job exists and is in pending_close status
+    const job = await prisma.job.findUnique({
+      where: { id: jobId }
+    });
+
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    if (job.status !== 'pending_close') {
+      return res.status(400).json({
+        success: false,
+        message: `Job status must be 'pending_close', currently '${job.status}'`
+      });
+    }
+
+    // Update job to completed status
+    const updatedJob = await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: 'completed',
+        closedAt: new Date(),
+        closedBy: userId
+      }
+    });
+
+    // Log activity
+    await prisma.jobActivity.create({
+      data: {
+        jobId,
+        userId,
+        activityType: 'job_closed',
+        description: 'ยืนยันปิดงาน (Job Closed Confirmed)',
+        metadata: { note }
+      }
+    });
+
+    // Add comment if note provided
+    if (note) {
+      await prisma.jobComment.create({
+        data: {
+          jobId,
+          userId,
+          content: note,
+          isSystemMessage: false
+        }
+      });
+    }
+
+    // Emit real-time notification
+    const io = getSocketIO();
+    if (io) {
+      io.to(`tenant_${job.tenantId}:job_${jobId}`).emit('job_closed', {
+        jobId,
+        status: 'completed',
+        closedBy: userId,
+        closedAt: new Date()
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Job closed successfully',
+      job: updatedJob
+    });
+  } catch (error) {
+    console.error('[Jobs] Confirm close error:', error);
+    res.status(500).json({ success: false, message: 'Failed to close job' });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/request-revision
+ * Request revision on job (Requester action)
+ * Moves job from pending_close back to in_progress
+ */
+router.post('/:id/request-revision', async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    const userId = req.user.userId;
+    const { note } = req.body;
+
+    // Verify job exists and is in pending_close status
+    const job = await prisma.job.findUnique({
+      where: { id: jobId }
+    });
+
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    if (job.status !== 'pending_close') {
+      return res.status(400).json({
+        success: false,
+        message: `Job status must be 'pending_close', currently '${job.status}'`
+      });
+    }
+
+    // Update job back to in_progress status
+    const updatedJob = await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: 'in_progress',
+        reworkCount: (job.reworkCount || 0) + 1
+      }
+    });
+
+    // Log activity
+    await prisma.jobActivity.create({
+      data: {
+        jobId,
+        userId,
+        activityType: 'revision_requested',
+        description: 'ขอให้แก้ไข (Revision Requested)',
+        metadata: { note }
+      }
+    });
+
+    // Add comment if note provided
+    if (note) {
+      await prisma.jobComment.create({
+        data: {
+          jobId,
+          userId,
+          content: note,
+          isSystemMessage: false
+        }
+      });
+    }
+
+    // Emit real-time notification to assignee
+    const io = getSocketIO();
+    if (io && job.assigneeId) {
+      io.to(`tenant_${job.tenantId}:user_${job.assigneeId}`).emit('revision_requested', {
+        jobId,
+        status: 'in_progress',
+        requestedBy: userId,
+        requestedAt: new Date(),
+        note
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Revision requested successfully',
+      job: updatedJob
+    });
+  } catch (error) {
+    console.error('[Jobs] Request revision error:', error);
+    res.status(500).json({ success: false, message: 'Failed to request revision' });
   }
 });
 

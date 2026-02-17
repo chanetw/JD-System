@@ -254,24 +254,40 @@ export default function JobDetail() {
     const handleConfirmClose = async () => {
         if (!confirm('ยืนยันปิดงาน?')) return;
         try {
-            // Simplified logic call - assume api supports or use generic update
-            // Since apiService logic for close is client-side in old file, 
-            // we should ideally add api.closeJob. But old code used updateJob helper (not in apiService?).
-            // Let's assume api.updateStatus or similar exists or we manually update status?
-            // The old code had `updateJob` function locally defined?
-            // Wait, old code line 420: `const updatedJob = await updateJob(id, ...)`
-            // I need to implement `updateJob` if it's missing or use use generic update if available.
-            // I'll skip implementing fully new API call here and just alert for now or try generic if I had one.
-            // Actually, let's just use `api.completeJob` or similar if appropriate, but close is different.
-            // I'll alert "API Implemenation Pending" if api is missing.
-            alert('API Close Job กำลังพัฒนา (Pending Implementation)');
+            const response = await api.post(`/jobs/${id}/confirm-close`, {
+                note: ''
+            });
+            if (response.data.success) {
+                alert('ปิดงานเรียบร้อย');
+                // Reload job data
+                loadJob();
+            } else {
+                alert('Error: ' + response.data.message);
+            }
         } catch (err) {
-            console.error(err);
+            console.error('Error confirming close:', err);
+            alert('Error: ' + (err.message || 'ไม่ทราบสาเหตุ'));
         }
     };
 
     const onRequestRevision = async () => {
-        alert('API Request Revision กำลังพัฒนา (Pending Implementation)');
+        const revisionNote = prompt('กรุณาระบุจุดแก้ไข (Optional):');
+        if (revisionNote === null) return; // User cancelled
+        try {
+            const response = await api.post(`/jobs/${id}/request-revision`, {
+                note: revisionNote || ''
+            });
+            if (response.data.success) {
+                alert('ขอให้แก้ไขเรียบร้อย');
+                // Reload job data
+                loadJob();
+            } else {
+                alert('Error: ' + response.data.message);
+            }
+        } catch (err) {
+            console.error('Error requesting revision:', err);
+            alert('Error: ' + (err.message || 'ไม่ทราบสาเหตุ'));
+        }
     };
 
 

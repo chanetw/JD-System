@@ -892,7 +892,7 @@ export class ApprovalService extends BaseService {
       const updatedJob = await this.prisma.job.update({
         where: { id: jobId },
         data: {
-          status: 'completed',
+          status: 'pending_close',
           completedAt: new Date(),
           completedBy: userId,
           finalFiles: attachments // attachments array
@@ -903,8 +903,8 @@ export class ApprovalService extends BaseService {
       await this.logApprovalActivity({
         jobId,
         userId, // Assignee
-        activityType: 'job_completed',
-        description: 'ส่งมอบงาน (Job Completed)',
+        activityType: 'job_submitted_for_close',
+        description: 'ส่งมอบงาน - รอยืนยันปิดงาน (Job Submitted - Waiting for Close Confirmation)',
         metadata: { note, attachments }
       });
 
