@@ -39,6 +39,7 @@ import ParentJobAssignees from '../components/ParentJobAssignees';
 import JobApprovalFlow from '../components/JobApprovalFlow';
 import JobSidebar from '../components/JobSidebar';
 import JobActionPanel from '../components/JobActionPanel';
+import ExtendDueDateModal from '../components/ExtendDueDateModal';
 
 export default function JobDetail() {
     const { id } = useParams();
@@ -63,6 +64,7 @@ export default function JobDetail() {
     const [finalLink, setFinalLink] = useState('');
     const [showAssigneeRejectModal, setShowAssigneeRejectModal] = useState(false);
     const [assigneeRejectReason, setAssigneeRejectReason] = useState('');
+    const [showExtendModal, setShowExtendModal] = useState(false); // เพิ่ม Extend Modal state
 
     // Alert State
     const [alertState, setAlertState] = useState({ isOpen: false, title: '', message: '', type: 'success' });
@@ -371,6 +373,7 @@ export default function JobDetail() {
                                     onRequestRevision={onRequestRevision}
                                     onOpenAssigneeRejectModal={() => setShowAssigneeRejectModal(true)}
                                     onConfirmAssigneeRejection={handleConfirmAssigneeRejection}
+                                    onOpenExtendModal={() => setShowExtendModal(true)}
                                 />
 
                                 {/* Brief Info */}
@@ -501,6 +504,26 @@ export default function JobDetail() {
                     </div>
                 </div>
             )}
+
+            {/* Extend Due Date Modal */}
+            <ExtendDueDateModal
+                job={job}
+                isOpen={showExtendModal}
+                onClose={() => setShowExtendModal(false)}
+                onSuccess={(updatedData) => {
+                    // Reload job data
+                    loadJob();
+                    // Show success message
+                    setAlertState({
+                        isOpen: true,
+                        title: 'สำเร็จ',
+                        message: `Extend งานสำเร็จ Due Date ใหม่: ${new Date(updatedData.newDueDate).toLocaleDateString('th-TH')}`,
+                        type: 'success'
+                    });
+                }}
+            />
+
+            {/* Other Modals (Reject, Reassign, etc.) remain unchanged */}
         </div>
     );
 }

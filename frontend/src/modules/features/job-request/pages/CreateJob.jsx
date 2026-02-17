@@ -15,6 +15,7 @@ import { addWorkDays } from '@shared/utils/slaCalculator';
 import { assignJobFromMatrix } from '@shared/services/modules/autoAssignService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { retry } from '@shared/utils/retry';
+import AcceptanceDatePicker from '../components/AcceptanceDatePicker';
 
 // Holidays cache configuration
 const HOLIDAYS_CACHE_KEY = 'dj_holidays_cache';
@@ -69,7 +70,8 @@ const CreateJob = () => {
         description: '',
         headline: '',
         sub_headline: '',
-        priority: 'normal'
+        priority: 'normal',
+        acceptanceDate: '' // เพิ่ม acceptance date
     });
 
     // --- State for Master Data & UI ---
@@ -86,8 +88,11 @@ const CreateJob = () => {
 
     // --- Fetch Master Data on Mount ---
     useEffect(() => {
-        fetchMasterData();
-    }, []);
+        // Only fetch if user is loaded to ensure roles are available
+        if (user) {
+            fetchMasterData();
+        }
+    }, [user]);
 
     /**
      * ดึงข้อมูล Master Data จาก Backend API
@@ -102,11 +107,38 @@ const CreateJob = () => {
             const data = await api.getMasterDataCombined();
 
             if (data) {
+                // 🔍 DEBUG: Log full user object to understand its structure
+                console.log('🔍 [CreateJob] User Object:', {
+                    fullUser: user,
+                    hasRoles: !!user?.roles,
+                    hasRoleName: !!user?.roleName,
+                    hasRole: !!user?.role,
+                    rolesValue: user?.roles,
+                    roleNameValue: user?.roleName,
+                    roleValue: user?.role
+                });
+
                 // Check User Role (Admin can see all, others see only scoped projects)
-                // user.roles is array of strings (e.g. ['admin', 'requester'])
-                const isAdmin = user?.roles?.some(r =>
-                    ['admin', 'Admin', 'administrator', 'Administrator'].includes(r)
-                ) || false;
+                // ✅ FIX: Improved role normalization to match JobActionPanel.jsx
+                const rawRoles = user?.roles || [];
+                const userRoleName = user?.roleName || '';
+
+                const normalizedRoles = (() => {
+                    const roles = [];
+                    if (userRoleName) roles.push(userRoleName.toLowerCase());
+
+                    if (Array.isArray(rawRoles)) {
+                        rawRoles.forEach(r => {
+                            if (typeof r === 'string') roles.push(r.toLowerCase());
+                            if (typeof r === 'object' && r !== null) {
+                                roles.push((r?.roleName || r?.name || '').toLowerCase());
+                            }
+                        });
+                    }
+                    return roles.filter(Boolean);
+                })();
+
+                const isAdmin = normalizedRoles.some(r => ['admin', 'administrator'].includes(r));
 
                 let visibleProjects = data.projects || [];
 
@@ -128,6 +160,7 @@ const CreateJob = () => {
 
                 console.log('🔍 [CreateJob] Debug Data:', {
                     userRoles: user?.roles,
+                    normalizedRoles,
                     isAdmin,
                     scopedProjectsLength: data.availableScopes?.projects?.length,
                     allProjectsLength: data.projects?.length,
@@ -240,6 +273,7 @@ const CreateJob = () => {
                 status: 'pending_approval',
                 requester_id: user.id,
                 due_date: calculatedDueDate?.toISOString(),
+                acceptanceDate: formData.acceptanceDate || null, // เพิ่ม acceptance date
             };
 
             // 2. Prepare items data
@@ -373,6 +407,26 @@ const CreateJob = () => {
                             </div>
                         </div>
                     </div>
+                )}
+
+                {/* Acceptance Date Picker */}
+                {formData.job_type_id && (
+                    <AcceptanceDatePicker
+                        jobType={jobTypes.find(t => t.id === parseInt(formData.job_type_id))}
+                        selectedDate={formData.acceptanceDate}
+                        onChange={(date) => {
+                            setFormData(prev => ({ ...prev, acceptanceDate: date }));
+
+                            // คำนวณ Due Date ใหม่จาก Acceptance Date
+                            const selectedType = jobTypes.find(t => t.id === parseInt(formData.job_type_id));
+                            if (selectedType && selectedType.sla && date) {
+                                const dueDate = addWorkDays(new Date(date), selectedType.sla, holidays);
+                                setCalculatedDueDate(dueDate);
+                            }
+                        }}
+                        holidays={holidays}
+                        disabled={submitting}
+                    />
                 )}
 
                 {/* Section 2: รายละเอียดชิ้นงาน (Job Items) */}

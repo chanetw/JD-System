@@ -288,6 +288,14 @@ model Job {
   startedAt        DateTime? @map("started_at") @db.Timestamptz
   completedAt      DateTime? @map("completed_at") @db.Timestamptz
 
+  // Job Acceptance & Extension
+  acceptanceDate   DateTime? @map("acceptance_date") @db.Timestamptz
+  acceptanceMethod String?   @default("auto") @map("acceptance_method") @db.VarChar(20)
+  originalDueDate  DateTime? @map("original_due_date") @db.Timestamptz
+  extensionCount   Int       @default(0) @map("extension_count")
+  lastExtendedAt   DateTime? @map("last_extended_at") @db.Timestamptz
+  extensionReason  String?   @map("extension_reason") @db.Text
+
   // Job Chain / Dependency
   predecessorId Int?      @map("predecessor_id")
   slaDays       Int?      @default(0) @map("sla_days") // Store original SLA for recalculation
@@ -342,6 +350,8 @@ model Job {
   @@index([assigneeId, status]) // My Queue: งานของฉันตาม status
   @@index([requesterId, createdAt]) // My Requests: งานที่ฉันขอ เรียงตามวันที่
   @@index([rejectedBy]) // Rejection tracking
+  @@index([acceptanceDate]) // Job acceptance tracking
+  @@index([extensionCount]) // Extension tracking
   @@map("jobs")
 }
 

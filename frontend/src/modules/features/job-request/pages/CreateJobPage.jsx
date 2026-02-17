@@ -18,9 +18,10 @@ import { FormInput, FormSelect, FormTextarea } from '@shared/components/FormInpu
 import Button from '@shared/components/Button';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
 import Modal from '@shared/components/Modal';
-import { calculateDueDate, formatDateToThai } from '@shared/utils/slaCalculator';
+import { calculateDueDate, formatDateToThai, addWorkDays } from '@shared/utils/slaCalculator';
 import { getAccessibleProjects, hasRole, isAdmin } from '@shared/utils/permission.utils';
-import { XMarkIcon, ClockIcon, LinkIcon, PlusIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, ClockIcon, LinkIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline'; // Added TrashIcon
+import AcceptanceDatePicker from '../components/AcceptanceDatePicker'; // New Component
 
 /**
  * CreateDJ Component
@@ -84,7 +85,8 @@ export default function CreateDJ() {
         sellingPoints: [],   // จุดเด่นที่ต้องการเน้น (Tags)
         price: '',           // ราคา/โปรโมชั่น
         attachments: [],     // รายการไฟล์แนบ
-        subItems: []         // ชิ้นงานย่อยที่เลือก (เช่น FB, IG)
+        subItems: [],        // ชิ้นงานย่อยที่เลือก (เช่น FB, IG)
+        acceptanceDate: ''   // วันที่รับงาน (New Field)
     });
 
     /** ข้อความสำหรับเพิ่ม Selling Point ใหม่ลงใน Tags */
@@ -115,6 +117,9 @@ export default function CreateDJ() {
 
     // === การโหลดข้อมูลตั้งต้น (Loading Master Data) ===
     useEffect(() => {
+        // ⚠️ FIX: Only load data when user is available
+        if (!user) return;
+
         /** ดึงข้อมูลโครงการ, ประเภทงาน และวันหยุดจาก API */
         const loadData = async () => {
             setIsLoading(true);
@@ -126,6 +131,17 @@ export default function CreateDJ() {
                 data.projects = data.projects?.filter(p => p.isActive) || [];
                 data.jobTypes = data.jobTypes?.filter(jt => jt.isActive) || [];
                 data.buds = data.buds?.filter(b => b.isActive) || [];
+
+                // 🔍 DEBUG: Log full user object structure
+                console.log('🔍 [CreateJobPage] User Object:', {
+                    fullUser: user,
+                    hasRoles: !!user?.roles,
+                    hasRoleName: !!user?.roleName,
+                    hasRole: !!user?.role,
+                    rolesValue: user?.roles,
+                    roleNameValue: user?.roleName,
+                    roleValue: user?.role
+                });
 
                 // Multi-Role: กรองโครงการตาม scope ที่ user มีสิทธิ์
                 const isAdminUser = isAdmin(user);
@@ -165,7 +181,7 @@ export default function CreateDJ() {
             }
         };
         loadData();
-    }, []);
+    }, [user]); // ✅ FIX: Added user dependency
 
     // === Auto-jump Calendar ไปเดือนที่มี Deadline ===
     useEffect(() => {
@@ -751,6 +767,7 @@ export default function CreateDJ() {
                 tenantId: user?.tenant_id || 1,
                 requesterName: user?.displayName || user?.display_name || 'Unknown User',
                 flowSnapshot: approvalFlow,
+                acceptanceDate: formData.acceptanceDate || null, // ส่งค่า acceptanceDate ไปด้วย
                 status: status
             };
 
@@ -1168,6 +1185,49 @@ export default function CreateDJ() {
                         </CardBody>
                     </Card >
 
+                    {/* ✨ NEW SECTION: วันที่รับงาน (Job Acceptance) */}
+                    <Card className="border-l-4 border-l-blue-500 shadow-md">
+                        <CardHeader
+                            title="📅 วันที่รับงาน (Job Acceptance Date)"
+                            badge="New"
+                            className="text-blue-700"
+                        />
+                        <CardBody className="space-y-4">
+                            {!formData.jobTypeId && selectedJobTypes.length === 0 ? (
+                                <div className="text-gray-500 text-sm p-4 bg-gray-50 rounded border border-dashed text-center">
+                                    กรุณาเลือกประเภทงานก่อน จึงจะสามารถเลือกวันรับงานได้
+                                </div>
+                            ) : (
+                                <>
+                                    <AcceptanceDatePicker
+                                        // ส่งข้อมูล Job Type ที่เลือกเพื่อให้คำนวณ SLA
+                                        // กรณี Single Job
+                                        jobType={masterData.jobTypes.find(t => t.id === parseInt(formData.jobTypeId))}
+                                        // กรณี Multi Job (ส่ง array ไปด้วยเผื่อ component รองรับ หรือใช้ logic ภายนอก)
+                                        selectedJobTypes={selectedJobTypes}
+
+                                        // รับค่าวันที่ที่เลือกกลับมา
+                                        selectedDate={formData.acceptanceDate}
+                                        onChange={(date) => {
+                                            setFormData(prev => ({ ...prev, acceptanceDate: date }));
+
+                                            // Optional: Dispatch event or effect to re-calc SLA preview
+                                        }}
+
+                                        // ข้อมูลวันหยุดและ SLA logic
+                                        holidays={holidays}
+                                        disabled={isSubmitting}
+                                    />
+
+                                    {/* หมายเหตุเพิ่มเติม */}
+                                    <p className="text-xs text-gray-400 mt-2">
+                                        * วันที่รับงานจะมีผลต่อการคำนวณกำหนดส่งงาน (Due Date) ตาม SLA ของประเภทงาน
+                                    </p>
+                                </>
+                            )}
+                        </CardBody>
+                    </Card>
+
                     {/* ส่วนที่ 2: รายละเอียดงาน (Brief) */}
                     < Card >
                         <CardHeader title="รายละเอียดงาน (Brief)" badge="2" />
@@ -1336,7 +1396,9 @@ export default function CreateDJ() {
                                         // กรณี Single-Job: ใช้ jobTypeId จาก formData
                                         const singleJobType = masterData.jobTypes.find(t => t.id === parseInt(formData.jobTypeId));
                                         if (singleJobType?.sla) {
-                                            return formatDateToThai(calculateDueDate(new Date(), singleJobType.sla, holidays));
+                                            // ✅ FIX: Use acceptanceDate if available, otherwise Today
+                                            const startDate = formData.acceptanceDate ? new Date(formData.acceptanceDate) : new Date();
+                                            return formatDateToThai(calculateDueDate(startDate, singleJobType.sla, holidays));
                                         }
                                         // ยังไม่ได้เลือก Job Type
                                         return '-';
@@ -1776,10 +1838,6 @@ function CheckItem({ label, checked }) {
 
 // === ไอคอนพื้นฐาน (Base Icons) ===
 
-/** @component ไอคอนถังขยะ (Trash Icon) */
-function TrashIcon({ className }) {
-    return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>;
-}
 
 /** @component ไอคอนเครื่องหมายถูก (Check Circle Icon) */
 function CheckCircleIcon({ className }) {

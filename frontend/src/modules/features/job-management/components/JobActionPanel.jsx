@@ -14,7 +14,8 @@ const JobActionPanel = ({
     onConfirmClose,
     onRequestRevision,
     onOpenAssigneeRejectModal,
-    onConfirmAssigneeRejection
+    onConfirmAssigneeRejection,
+    onOpenExtendModal // เพิ่ม callback สำหรับ Extend Modal
 }) => {
     const [selectedAssignee, setSelectedAssignee] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -164,21 +165,32 @@ const JobActionPanel = ({
                 <h2 className="font-semibold text-gray-900 mb-4">การดำเนินการของผู้รับงาน</h2>
 
                 {(job.status === 'in_progress' || job.status === 'assigned') && (
-                    <div className="flex gap-3">
-                        <button
-                            onClick={onOpenCompleteModal}
-                            className="flex-1 py-3 px-4 bg-green-500 text-white rounded-xl font-medium hover:bg-green-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
-                        >
-                            <CheckIcon className="w-5 h-5" />
-                            ส่งงาน
-                        </button>
-                        <button
-                            onClick={onOpenAssigneeRejectModal}
-                            className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
-                        >
-                            <XMarkIcon className="w-5 h-5" />
-                            ปฏิเสธงาน
-                        </button>
+                    <div className="space-y-3">
+                        <div className="flex gap-3">
+                            <button
+                                onClick={onOpenCompleteModal}
+                                className="flex-1 py-3 px-4 bg-green-500 text-white rounded-xl font-medium hover:bg-green-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                            >
+                                <CheckIcon className="w-5 h-5" />
+                                ส่งงาน
+                            </button>
+                            <button
+                                onClick={onOpenAssigneeRejectModal}
+                                className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                            >
+                                <XMarkIcon className="w-5 h-5" />
+                                ปฏิเสธงาน
+                            </button>
+                        </div>
+                        {/* Extend Button */}
+                        {onOpenExtendModal && (
+                            <button
+                                onClick={onOpenExtendModal}
+                                className="w-full py-2 px-4 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 flex items-center justify-center gap-2 transition-colors text-sm"
+                            >
+                                🔄 ขอ Extend งาน
+                            </button>
+                        )}
                     </div>
                 )}
             </div>

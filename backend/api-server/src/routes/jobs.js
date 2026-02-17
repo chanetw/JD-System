@@ -354,6 +354,35 @@ router.post('/', async (req, res) => {
     const djId = `${datePrefix}${String(jobCount + 1).padStart(4, '0')}`;
 
     // ============================================
+    // Step 4.5: Handle Acceptance Date & SLA Calculation
+    // คำนวณวันรับงานและ Due Date จาก SLA
+    // ============================================
+    const jobAcceptanceService = require('../services/jobAcceptanceService');
+
+    let acceptanceDate = req.body.acceptanceDate ? new Date(req.body.acceptanceDate) : null;
+    let calculatedDueDate = new Date(dueDate);
+    let acceptanceMethod = 'auto';
+
+    // ถ้ามีการระบุ Acceptance Date มา
+    if (acceptanceDate) {
+      acceptanceMethod = 'manual';
+
+      // คำนวณ Due Date ใหม่จาก Acceptance Date + SLA
+      if (jobType.slaWorkingDays) {
+        calculatedDueDate = jobAcceptanceService.calculateDueDate(
+          acceptanceDate,
+          jobType.slaWorkingDays
+        );
+
+        console.log(`[Jobs] Calculated Due Date from Acceptance Date: ${calculatedDueDate}`);
+      }
+    } else {
+      // ถ้าไม่ระบุ Acceptance Date ให้ใช้วันที่สร้างงาน
+      acceptanceDate = now;
+      acceptanceMethod = 'auto';
+    }
+
+    // ============================================
     // Step 5: Create Job (Transaction)
     // ใช้ Transaction เพื่อรับประกันความสมบูรณ์ของข้อมูล
     // ============================================
@@ -369,12 +398,17 @@ router.post('/', async (req, res) => {
           status: initialStatus,
           priority,
           requesterId: userId,
-          dueDate: new Date(dueDate),
+          dueDate: calculatedDueDate,
           objective: objective || null,
           headline: headline || null,
           subHeadline: subHeadline || null,
           description: description || null,
-          assigneeId: assigneeId ? parseInt(assigneeId) : null
+          assigneeId: assigneeId ? parseInt(assigneeId) : null,
+          // Job Acceptance fields
+          acceptanceDate: acceptanceDate,
+          acceptanceMethod: acceptanceMethod,
+          originalDueDate: calculatedDueDate,
+          slaDays: jobType.slaWorkingDays || 0
         }
       });
 
@@ -1447,9 +1481,103 @@ router.post('/:id/complete', async (req, res) => {
     }
 
     res.json(result);
+  }
+});
+
+/**
+ * POST /api/jobs/:id/extend
+ * Extend job due date (Assignee only)
+ * 
+ * Body: {
+ *   extensionDays: number,
+ *   reason: string
+ * }
+ */
+router.post('/:id/extend', async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    const userId = req.user.userId;
+    const { extensionDays, reason } = req.body;
+
+    // Validation
+    if (!extensionDays || extensionDays <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Extension days must be greater than 0'
+      });
+    }
+
+    if (!reason || reason.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Extension reason is required'
+      });
+    }
+
+    // Import jobAcceptanceService
+    const jobAcceptanceService = require('../services/jobAcceptanceService');
+
+    const updatedJob = await jobAcceptanceService.extendJobManually(
+      jobId,
+      userId,
+      extensionDays,
+      reason
+    );
+
+    res.json({
+      success: true,
+      message: `Job extended by ${extensionDays} day(s)`,
+      data: {
+        jobId: updatedJob.id,
+        djId: updatedJob.djId,
+        originalDueDate: updatedJob.originalDueDate,
+        newDueDate: updatedJob.dueDate,
+        extensionCount: updatedJob.extensionCount,
+        extensionReason: updatedJob.extensionReason
+      }
+    });
   } catch (error) {
-    console.error('[Jobs] Complete error:', error);
-    res.status(500).json({ success: false, message: 'Failed to complete job' });
+    console.error('[Jobs] Extend error:', error);
+
+    if (error.message === 'Job not found') {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    if (error.message === 'Only assignee can extend the job') {
+      return res.status(403).json({ success: false, message: 'Only assignee can extend the job' });
+    }
+
+    if (error.message === 'Cannot extend job in current status') {
+      return res.status(400).json({ success: false, message: 'Cannot extend job in current status' });
+    }
+
+    res.status(500).json({ success: false, message: 'Failed to extend job' });
+  }
+});
+
+/**
+ * GET /api/jobs/:id/sla-info
+ * Get SLA information for a job
+ */
+router.get('/:id/sla-info', async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+
+    const jobAcceptanceService = require('../services/jobAcceptanceService');
+    const slaInfo = await jobAcceptanceService.getJobSlaInfo(jobId);
+
+    res.json({
+      success: true,
+      data: slaInfo
+    });
+  } catch (error) {
+    console.error('[Jobs] SLA Info error:', error);
+
+    if (error.message === 'Job not found') {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    res.status(500).json({ success: false, message: 'Failed to get SLA info' });
   }
 });
 

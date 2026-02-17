@@ -133,6 +133,11 @@ export const hasRole = (user, roleName) => {
         );
     }
 
+    // ✅ NEW: Check roleName property (V2 Auth System)
+    if (user.roleName) {
+        return user.roleName.toLowerCase() === roleName.toLowerCase();
+    }
+
     // ⚠️ Legacy fallback: ตรวจสอบจาก role field เดิม
     return user.role === roleName;
 };
