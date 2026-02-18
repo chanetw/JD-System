@@ -11,6 +11,7 @@
 
 const prisma = require('../config/database');
 const { addBusinessDays, differenceInBusinessDays, parseISO, format } = require('date-fns');
+const NotificationService = require('./notificationService');
 
 /**
  * คำนวณ Due Date จาก Acceptance Date และ SLA
@@ -99,10 +100,14 @@ async function applyAutoExtension(jobId, extensionDays, originalDueDate, transac
  * @returns {Promise<Object>} Updated job
  */
 async function extendJobManually(jobId, userId, extensionDays, reason) {
-    // ดึงข้อมูลงานปัจจุบัน
+    // ดึงข้อมูลงานปัจจุบัน (รวม requester และ project สำหรับ notification)
     const job = await prisma.job.findUnique({
         where: { id: jobId },
-        include: { assignee: true }
+        include: {
+            assignee: true,
+            requester: true,
+            project: true
+        }
     });
 
     if (!job) {
@@ -154,6 +159,47 @@ async function extendJobManually(jobId, userId, extensionDays, reason) {
             }
         }
     });
+
+    // แจ้งเตือน Requester เมื่อมีการขอเลื่อนงาน
+    if (job.requesterId) {
+        const notificationService = new NotificationService();
+        const assigneeName = job.assignee?.displayName || `${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}`.trim();
+        const projectName = job.project?.name || 'โครงการ';
+
+        const notificationMessage = `ผู้รับงาน ${assigneeName} ขอเลื่อนงาน "${job.subject}" (${job.djId}) ของ${projectName} ออกไป ${extensionDays} วันทำการ\n\nเหตุผล: ${reason}\n\nDue Date เดิม: ${format(currentDueDate, 'dd/MM/yyyy')}\nDue Date ใหม่: ${format(newDueDate, 'dd/MM/yyyy')}`;
+
+        await notificationService.createNotification({
+            tenantId: job.tenantId,
+            userId: job.requesterId,
+            type: 'job_extended',
+            title: `งาน ${job.djId} ถูกขอเลื่อน`,
+            message: notificationMessage,
+            link: `/jobs/${jobId}`
+        }).catch(err => console.warn('[ExtendJobManually] Notification failed:', err.message));
+
+        // ส่งอีเมล (ถ้ามี email service)
+        try {
+            const EmailService = require('./emailService');
+            const emailService = new EmailService();
+
+            if (job.requester?.email) {
+                await emailService.sendExtensionNotification({
+                    to: job.requester.email,
+                    jobId: job.djId,
+                    jobSubject: job.subject,
+                    assigneeName: assigneeName,
+                    projectName: projectName,
+                    extensionDays: extensionDays,
+                    reason: reason,
+                    oldDueDate: format(currentDueDate, 'dd/MM/yyyy'),
+                    newDueDate: format(newDueDate, 'dd/MM/yyyy'),
+                    jobLink: `/jobs/${jobId}`
+                });
+            }
+        } catch (emailErr) {
+            console.warn('[ExtendJobManually] Email notification failed:', emailErr.message);
+        }
+    }
 
     return updatedJob;
 }

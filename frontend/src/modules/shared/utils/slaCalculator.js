@@ -122,6 +122,45 @@ export const getWorkingDays = (startDate, endDate, holidays = []) => {
 };
 
 /**
+ * คำนวณวันเริ่มงานโดยย้อนกลับจากวันกำหนดส่ง (Due Date) ตามจำนวนวันทำการ
+ * @param {Date|string} dueDate - วันกำหนดส่งงาน (Due Date)
+ * @param {number} slaDays - จำนวนวันทำการ (SLA)
+ * @param {Array} holidays - รายการวันหยุดนักขัตฤกษ์
+ * @returns {Date} วันเริ่มงาน (Start Date) ที่คำนวณย้อนกลับแล้ว
+ */
+export const subtractWorkDays = (dueDate, slaDays, holidays = []) => {
+    // แปลง dueDate เป็น Date object
+    let currentDate = new Date(dueDate);
+
+    // สร้าง Set ของวันหยุด
+    const holidaySet = new Set(
+        holidays.map(h => {
+            const dateStr = typeof h === 'string' ? h : (h.date || h.Day);
+            return formatDateToString(new Date(dateStr));
+        })
+    );
+
+    let daysRemaining = slaDays;
+
+    // วนลูปย้อนกลับจนกว่าจะนับครบ SLA Days
+    while (daysRemaining > 0) {
+        // ย้อนกลับไปวันก่อนหน้า
+        currentDate.setDate(currentDate.getDate() - 1);
+
+        // ตรวจสอบว่าเป็นวันทำการหรือไม่
+        const isWeekend = isWeekendDay(currentDate);
+        const isHoliday = holidaySet.has(formatDateToString(currentDate));
+
+        // ถ้าเป็นวันทำการ (ไม่ใช่วันหยุดและไม่ใช่สุดสัปดาห์)
+        if (!isWeekend && !isHoliday) {
+            daysRemaining--;
+        }
+    }
+
+    return currentDate;
+};
+
+/**
  * Alias for calculateDueDate (Backward Compatibility)
  */
 export const addWorkDays = calculateDueDate;

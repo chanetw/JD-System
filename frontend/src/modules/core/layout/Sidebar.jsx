@@ -145,6 +145,9 @@ export default function Sidebar() {
                             ปฏิทินวันหยุด
                         </SidebarLink>
 
+                        <SidebarLink to="/admin/tenant-settings" icon={Cog6ToothIcon}>
+                            ตั้งค่าระบบ (Tenant)
+                        </SidebarLink>
 
                     </>
                 )}

@@ -86,7 +86,7 @@ export default function CreateDJ() {
         price: '',           // ราคา/โปรโมชั่น
         attachments: [],     // รายการไฟล์แนบ
         subItems: [],        // ชิ้นงานย่อยที่เลือก (เช่น FB, IG)
-        acceptanceDate: ''   // วันที่รับงาน (New Field)
+        dueDate: ''          // วันส่งงาน (Due Date) - New Field
     });
 
     /** ข้อความสำหรับเพิ่ม Selling Point ใหม่ลงใน Tags */
@@ -161,10 +161,26 @@ export default function CreateDJ() {
                     }
                 }
 
+                // 🔍 DEBUG: Detailed logging of jobTypes structure to verify SLA field
+                const firstJobType = data.jobTypes?.[0];
                 console.log('🔍 [CreateJob] Master Data Loaded:', {
                     projects: data.projects?.length,
+                    jobTypes: data.jobTypes?.length,
                     isAdmin: isAdminUser,
-                    userRoles: user?.roles
+                    userRoles: user?.roles,
+                    // Detailed inspection of first job type
+                    firstJobType: firstJobType ? {
+                        id: firstJobType.id,
+                        name: firstJobType.name,
+                        sla: firstJobType.sla,
+                        slaWorkingDays: firstJobType.slaWorkingDays,
+                        allKeys: Object.keys(firstJobType)
+                    } : 'No jobTypes',
+                    sampleJobTypes: data.jobTypes?.slice(0, 3).map(jt => ({
+                        name: jt.name,
+                        sla: jt.sla,
+                        slaWorkingDays: jt.slaWorkingDays
+                    }))
                 });
 
                 setMasterData(data);
@@ -767,7 +783,7 @@ export default function CreateDJ() {
                 tenantId: user?.tenant_id || 1,
                 requesterName: user?.displayName || user?.display_name || 'Unknown User',
                 flowSnapshot: approvalFlow,
-                acceptanceDate: formData.acceptanceDate || null, // ส่งค่า acceptanceDate ไปด้วย
+                dueDate: formData.dueDate || null, // วันส่งงาน (Due Date)
                 status: status
             };
 
@@ -895,40 +911,60 @@ export default function CreateDJ() {
                                 onChange={handleChange}
                             />
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <FormSelect
-                                        label="ความสำคัญ (Priority)"
-                                        name="priority"
-                                        value={formData.priority}
-                                        onChange={handleChange}
+                            {/* Priority Selection - Button Group */}
+                            <div className="space-y-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    ความสำคัญ (Priority) <span className="text-red-500">*</span>
+                                </label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, priority: 'Normal' })}
+                                        className={`
+                                            px-4 py-2 rounded-lg font-medium transition-all duration-200
+                                            ${formData.priority === 'Normal'
+                                                ? 'bg-blue-500 text-white shadow-md ring-2 ring-blue-300'
+                                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                            }
+                                        `}
                                     >
-                                        <option value="Low">ต่ำ (Low)</option>
-                                        <option value="Normal">ปกติ (Normal)</option>
-                                        <option value="Urgent">🔥 ด่วนมาก (Urgent)</option>
-                                    </FormSelect>
-                                    {formData.priority === 'Urgent' && (
-                                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 animate-fadeIn space-y-2">
-                                            <p className="font-bold flex items-center gap-1">
-                                                ⚠️ งานด่วนต้องผ่านการอนุมัติเสมอ
-                                            </p>
-                                            <p className="text-xs">
-                                                เนื่องจากงานด่วนกระทบต่อ SLA ของงานอื่นๆ จึงต้องได้รับการอนุมัติก่อนเข้าสู่ระบบ
-                                                (แม้ว่าประเภทงานจะตั้งค่าข้ามการอนุมัติไว้ก็ตาม)
-                                            </p>
-                                            <p className="text-xs text-red-700 font-medium">
-                                                📌 ผลกระทบ: งานอื่นในมือ Graphic คนเดียวกันจะถูกเลื่อนกำหนดส่งออกไป <strong>+2 วันทำการ</strong> โดยอัตโนมัติ
-                                            </p>
-                                        </div>
-                                    )}
+                                        งานปกติ (Normal)
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, priority: 'Urgent' })}
+                                        className={`
+                                            px-4 py-2 rounded-lg font-medium transition-all duration-200
+                                            ${formData.priority === 'Urgent'
+                                                ? 'bg-red-500 text-white shadow-md ring-2 ring-red-300 animate-pulse'
+                                                : 'bg-gray-100 text-gray-700 hover:bg-red-50 hover:text-red-700'
+                                            }
+                                        `}
+                                    >
+                                        งานด่วน (Urgent)
+                                    </button>
                                 </div>
+
+                                {/* Warning Message for Urgent */}
+                                {formData.priority === 'Urgent' && (
+                                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800 animate-fadeIn">
+                                        <p className="font-semibold mb-2">
+                                            งานด่วนต้องผ่านการอนุมัติเสมอ
+                                        </p>
+                                        <p className="text-xs text-red-700 leading-relaxed">
+                                            เนื่องจากงานด่วนกระทบต่อ SLA ของงานอื่นๆ จึงต้องได้รับการอนุมัติก่อนเข้าสู่ระบบ
+                                            (แม้ว่าประเภทงานจะตั้งค่าข้ามการอนุมัติไว้ก็ตาม)
+                                        </p>
+                                    </div>
+                                )}
                             </div>
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                     ประเภทงาน (Job Types) <span className="text-red-500">*</span>
                                     {selectedJobTypes.length > 1 && (
-                                        <span className="ml-2 text-xs text-purple-600 font-normal">
+                                        <span className="ml-2 text-xs text-rose-600 font-normal">
                                             (Parent-Child Mode: {selectedJobTypes.length} รายการ)
                                         </span>
                                     )}
@@ -955,7 +991,7 @@ export default function CreateDJ() {
                                             addJobType(select.value);
                                             select.value = '';
                                         }}
-                                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-1"
+                                        className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors flex items-center gap-1"
                                     >
                                         <span>+</span> เพิ่ม
                                     </button>
@@ -967,15 +1003,15 @@ export default function CreateDJ() {
                                         {selectedJobTypes.map((jt, index) => (
                                             <div
                                                 key={index}
-                                                className="border border-purple-200 rounded-lg overflow-hidden"
+                                                className="border border-rose-200 rounded-lg overflow-hidden"
                                             >
                                                 {/* Header (Always Visible) */}
-                                                <div className="flex items-center gap-3 p-3 bg-purple-50">
+                                                <div className="flex items-center gap-3 p-3 bg-rose-50">
                                                     {/* Toggle Button */}
                                                     <button
                                                         type="button"
                                                         onClick={() => toggleJobTypeExpand(index)}
-                                                        className="w-6 h-6 flex items-center justify-center text-purple-600 hover:bg-purple-100 rounded transition-colors"
+                                                        className="w-6 h-6 flex items-center justify-center text-rose-600 hover:bg-rose-100 rounded transition-colors"
                                                         title={jt.isExpanded ? 'ปิด' : 'เปิดเลือกชิ้นงาน'}
                                                     >
                                                         {jt.isExpanded ? '▼' : '▶'}
@@ -984,7 +1020,7 @@ export default function CreateDJ() {
                                                     {/* Job Type Info & Dependency */}
                                                     <div className="flex-1">
                                                         <div className="flex items-center gap-2">
-                                                            <span className="text-sm font-medium text-purple-800">
+                                                            <span className="text-sm font-medium text-rose-800">
                                                                 {index + 1}. {jt.name}
                                                             </span>
                                                             {/* Dependency Badge */}
@@ -997,7 +1033,7 @@ export default function CreateDJ() {
 
                                                         {/* Sub-line info */}
                                                         <div className="flex items-center gap-3 mt-1">
-                                                            <span className="text-xs text-purple-600">
+                                                            <span className="text-xs text-rose-600">
                                                                 SLA: {jt.sla || 7} วัน
                                                             </span>
 
@@ -1006,7 +1042,7 @@ export default function CreateDJ() {
                                                                 <div className="flex items-center gap-2">
                                                                     <label className="text-xs text-gray-500">เริ่มงาน:</label>
                                                                     <select
-                                                                        className="text-xs border border-gray-400 rounded px-2 py-0.5 bg-white focus:outline-none focus:border-purple-300"
+                                                                        className="text-xs border border-gray-400 rounded px-2 py-0.5 bg-white focus:outline-none focus:border-rose-300"
                                                                         value={jt.predecessorIndex === null ? '' : jt.predecessorIndex}
                                                                         onChange={(e) => {
                                                                             const val = e.target.value;
@@ -1029,7 +1065,7 @@ export default function CreateDJ() {
                                                         </div>
 
                                                         {Object.keys(jt.subItems || {}).length > 0 && (
-                                                            <span className="mt-1 inline-block px-2 py-0.5 bg-purple-200 text-purple-700 text-xs rounded-full">
+                                                            <span className="mt-1 inline-block px-2 py-0.5 bg-rose-200 text-rose-700 text-xs rounded-full">
                                                                 {Object.values(jt.subItems).reduce((a, b) => a + b, 0)} ชิ้น
                                                             </span>
                                                         )}
@@ -1048,7 +1084,7 @@ export default function CreateDJ() {
 
                                                 {/* Accordion Content (Sub-items) */}
                                                 {jt.isExpanded && (
-                                                    <div className="p-3 bg-white border-t border-purple-100">
+                                                    <div className="p-3 bg-white border-t border-rose-100">
                                                         {jt.availableSubItems && jt.availableSubItems.length > 0 ? (
                                                             <div className="space-y-2">
                                                                 <p className="text-xs text-gray-500 mb-2">
@@ -1061,13 +1097,13 @@ export default function CreateDJ() {
                                                                     return (
                                                                         <div
                                                                             key={item.id}
-                                                                            className={`flex items-center gap-3 p-2 rounded-lg border transition-all ${isSelected ? 'border-purple-400 bg-purple-50' : 'border-gray-400'}`}
+                                                                            className={`flex items-center gap-3 p-2 rounded-lg border transition-all ${isSelected ? 'border-rose-400 bg-rose-50' : 'border-gray-400'}`}
                                                                         >
                                                                             <input
                                                                                 type="checkbox"
                                                                                 checked={isSelected}
                                                                                 onChange={(e) => updateJobTypeSubItem(index, item.id, e.target.checked ? 1 : null)}
-                                                                                className="w-4 h-4 text-purple-600 rounded border-gray-300"
+                                                                                className="w-4 h-4 text-rose-600 rounded border-gray-300"
                                                                             />
                                                                             <div className="flex-1 min-w-0">
                                                                                 <span className="text-sm text-gray-700">{item.name}</span>
@@ -1079,19 +1115,19 @@ export default function CreateDJ() {
                                                                                         type="button"
                                                                                         onClick={() => updateJobTypeSubItem(index, item.id, quantity - 1)}
                                                                                         disabled={quantity <= 1}
-                                                                                        className="w-6 h-6 flex items-center justify-center bg-purple-100 text-purple-700 rounded hover:bg-purple-200 disabled:opacity-50"
+                                                                                        className="w-6 h-6 flex items-center justify-center bg-rose-100 text-rose-700 rounded hover:bg-rose-200 disabled:opacity-50"
                                                                                     >−</button>
                                                                                     <input
                                                                                         type="number"
                                                                                         min="1"
                                                                                         value={quantity}
                                                                                         onChange={(e) => updateJobTypeSubItem(index, item.id, parseInt(e.target.value) || 1)}
-                                                                                        className="w-12 h-6 text-center text-sm border border-purple-200 rounded"
+                                                                                        className="w-12 h-6 text-center text-sm border border-rose-200 rounded"
                                                                                     />
                                                                                     <button
                                                                                         type="button"
                                                                                         onClick={() => updateJobTypeSubItem(index, item.id, quantity + 1)}
-                                                                                        className="w-6 h-6 flex items-center justify-center bg-purple-100 text-purple-700 rounded hover:bg-purple-200"
+                                                                                        className="w-6 h-6 flex items-center justify-center bg-rose-100 text-rose-700 rounded hover:bg-rose-200"
                                                                                     >+</button>
                                                                                 </div>
                                                                             )}
@@ -1110,8 +1146,8 @@ export default function CreateDJ() {
                                         ))}
 
                                         {/* 📊 Summary Panel - สรุปงานทั้งหมด */}
-                                        <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-rose-50 border border-purple-200 rounded-lg">
-                                            <h4 className="text-sm font-bold text-purple-800 mb-3 flex items-center gap-2">
+                                        <div className="mt-4 p-4 bg-gradient-to-r from-rose-50 to-rose-100 border border-rose-200 rounded-lg">
+                                            <h4 className="text-sm font-bold text-rose-800 mb-3 flex items-center gap-2">
                                                 📊 สรุปงานทั้งหมด
                                             </h4>
 
@@ -1123,7 +1159,7 @@ export default function CreateDJ() {
                                                     return (
                                                         <div key={idx} className="flex items-center justify-between text-sm bg-white p-2 rounded border border-gray-100">
                                                             <div className="flex flex-col">
-                                                                <span className="font-medium text-purple-700">
+                                                                <span className="font-medium text-rose-700">
                                                                     {idx + 1}. {jt.name}
                                                                 </span>
                                                                 {jt.predecessorIndex !== null && jt.predecessorIndex !== undefined && (
@@ -1147,9 +1183,9 @@ export default function CreateDJ() {
                                             </div>
 
                                             {/* สรุปรวม */}
-                                            <div className="pt-3 border-t border-purple-200">
+                                            <div className="pt-3 border-t border-rose-200">
                                                 <div className="flex flex-wrap justify-between items-center gap-2">
-                                                    <span className="font-bold text-purple-800">
+                                                    <span className="font-bold text-rose-800">
                                                         📦 รวมทั้งสิ้น: {selectedJobTypes.reduce((sum, jt) =>
                                                             sum + Object.values(jt.subItems || {}).reduce((a, b) => a + b, 0), 0
                                                         )} ชิ้น
@@ -1185,33 +1221,43 @@ export default function CreateDJ() {
                         </CardBody>
                     </Card >
 
-                    {/* ✨ NEW SECTION: วันที่รับงาน (Job Acceptance) */}
-                    <Card className="border-l-4 border-l-blue-500 shadow-md">
+                    {/* ✨ NEW SECTION: วันส่งงาน (Due Date Selection) */}
+                    <Card className="shadow-md">
                         <CardHeader
-                            title="📅 วันที่รับงาน (Job Acceptance Date)"
-                            badge="New"
-                            className="text-blue-700"
+                            title="วันส่งงาน (Due Date)"
+                            className="text-rose-700"
                         />
                         <CardBody className="space-y-4">
                             {!formData.jobTypeId && selectedJobTypes.length === 0 ? (
                                 <div className="text-gray-500 text-sm p-4 bg-gray-50 rounded border border-dashed text-center">
-                                    กรุณาเลือกประเภทงานก่อน จึงจะสามารถเลือกวันรับงานได้
+                                    กรุณาเลือกประเภทงานก่อน จึงจะสามารถเลือกวันส่งงานได้
                                 </div>
                             ) : (
                                 <>
                                     <AcceptanceDatePicker
-                                        // ส่งข้อมูล Job Type ที่เลือกเพื่อให้คำนวณ SLA
-                                        // กรณี Single Job
-                                        jobType={masterData.jobTypes.find(t => t.id === parseInt(formData.jobTypeId))}
-                                        // กรณี Multi Job (ส่ง array ไปด้วยเผื่อ component รองรับ หรือใช้ logic ภายนอก)
-                                        selectedJobTypes={selectedJobTypes}
+                                        // ส่งข้อมูล Job Type พร้อม Total SLA สำหรับ Sequential Jobs
+                                        jobType={(() => {
+                                            if (selectedJobTypes.length > 0) {
+                                                // Multi-job: คำนวณ Total SLA จาก dependency chain
+                                                const totalSLA = selectedJobTypes.reduce((sum, jt) => sum + (jt.sla || 0), 0);
+                                                return {
+                                                    ...selectedJobTypes[0],
+                                                    sla: totalSLA,
+                                                    name: `${selectedJobTypes.length} งานต่อเนื่อง (Total SLA: ${totalSLA} วัน)`
+                                                };
+                                            } else {
+                                                // Single job
+                                                return masterData.jobTypes.find(t => t.id === parseInt(formData.jobTypeId));
+                                            }
+                                        })()}
 
-                                        // รับค่าวันที่ที่เลือกกลับมา
-                                        selectedDate={formData.acceptanceDate}
+                                        // ส่ง Priority สำหรับ validation
+                                        priority={formData.priority}
+
+                                        // รับค่า Due Date ที่เลือกกลับมา
+                                        selectedDate={formData.dueDate}
                                         onChange={(date) => {
-                                            setFormData(prev => ({ ...prev, acceptanceDate: date }));
-
-                                            // Optional: Dispatch event or effect to re-calc SLA preview
+                                            setFormData(prev => ({ ...prev, dueDate: date }));
                                         }}
 
                                         // ข้อมูลวันหยุดและ SLA logic
@@ -1221,7 +1267,7 @@ export default function CreateDJ() {
 
                                     {/* หมายเหตุเพิ่มเติม */}
                                     <p className="text-xs text-gray-400 mt-2">
-                                        * วันที่รับงานจะมีผลต่อการคำนวณกำหนดส่งงาน (Due Date) ตาม SLA ของประเภทงาน
+                                        * เลือกวันที่ต้องการให้ส่งงาน - ระบบจะคำนวณวันเริ่มงานโดยอัตโนมัติตาม SLA
                                     </p>
                                 </>
                             )}
@@ -1328,7 +1374,7 @@ export default function CreateDJ() {
                                                     <div className="flex items-center gap-2 mb-0.5">
                                                         <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">ลำดับที่ {level.level}</p>
                                                         {level.approvers?.length > 1 && (
-                                                            <span className={`text-[9px] px-1 rounded font-bold ${level.logic === 'all' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                            <span className={`text-[9px] px-1 rounded font-bold ${level.logic === 'all' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}`}>
                                                                 {level.logic === 'all' ? 'ครบทุกคน (ALL)' : 'ใครก็ได้ (ANY)'}
                                                             </span>
                                                         )}
@@ -1393,14 +1439,11 @@ export default function CreateDJ() {
                                             }
                                         }
 
-                                        // กรณี Single-Job: ใช้ jobTypeId จาก formData
-                                        const singleJobType = masterData.jobTypes.find(t => t.id === parseInt(formData.jobTypeId));
-                                        if (singleJobType?.sla) {
-                                            // ✅ FIX: Use acceptanceDate if available, otherwise Today
-                                            const startDate = formData.acceptanceDate ? new Date(formData.acceptanceDate) : new Date();
-                                            return formatDateToThai(calculateDueDate(startDate, singleJobType.sla, holidays));
+                                        // กรณี Single-Job: แสดง Due Date ที่เลือก
+                                        if (formData.dueDate) {
+                                            return formatDateToThai(new Date(formData.dueDate));
                                         }
-                                        // ยังไม่ได้เลือก Job Type
+                                        // ยังไม่ได้เลือก Due Date
                                         return '-';
                                     })()}
                                 </h2>

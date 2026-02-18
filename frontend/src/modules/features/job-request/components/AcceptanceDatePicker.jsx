@@ -1,338 +1,333 @@
 /**
- * AcceptanceDatePicker Component
- * 
- * Component สำหรับเลือกวันรับงาน (Acceptance Date) พร้อม:
- * - แสดง SLA Suggestion
- * - คำนวณ Due Date อัตโนมัติ
- * - แสดงคำเตือนถ้าเลือกเกิน SLA
- * - รองรับ Sequential Child Jobs
+ * AcceptanceDatePicker Component (Calendar UI)
+ *
+ * Interactive calendar for selecting job due date with:
+ * - Calendar grid with month/year navigation
+ * - Clickable dates for selection
+ * - Visual indicators (today, selected, start date, holidays)
+ * - Priority-based validation (Normal vs Urgent)
+ * - Rose color theme
+ * - Backward calculation: Due Date → Start Date (automatic)
  */
 
-import React, { useState, useEffect } from 'react';
-import { addWorkDays, formatDate } from '@shared/utils/slaCalculator';
+import { useState, useEffect } from 'react';
+import { addWorkDays, subtractWorkDays, formatDate } from '@shared/utils/slaCalculator';
 
 const AcceptanceDatePicker = ({
     jobType,
+    priority = 'Normal',
     selectedDate,
     onChange,
     holidays = [],
-    childJobs = [],
     disabled = false
 }) => {
-    const [suggestedDate, setSuggestedDate] = useState(null);
-    const [calculatedDueDate, setCalculatedDueDate] = useState(null);
-    const [warning, setWarning] = useState('');
-    const [childTimeline, setChildTimeline] = useState([]);
+    const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
+    const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
+    const [calculatedStartDate, setCalculatedStartDate] = useState(null);
+    const [minSelectableDate, setMinSelectableDate] = useState(null);
 
-    // คำนวณ Suggested Date และ Due Date
+    // คำนวณ Start Date และ Min Selectable Due Date
     useEffect(() => {
-        if (!jobType || !jobType.slaWorkingDays) return;
+        if (!jobType || !jobType.sla) return;
 
         const today = new Date();
-        const suggested = addWorkDays(today, 1, holidays); // แนะนำให้เริ่มพรุ่งนี้
-        setSuggestedDate(suggested);
+        today.setHours(0, 0, 0, 0);
 
-        // ถ้ามีการเลือกวันแล้ว คำนวณ Due Date
+        // คำนวณ Min Due Date ตาม Priority
+        let minDueDate;
+        if (priority === 'Urgent') {
+            // งานด่วน: เลือกได้เลยตั้งแต่พรุ่งนี้ (ไม่ต้องคำนวณ SLA)
+            // Example: วันนี้ 18 ก.พ. → เลือกได้ตั้งแต่ 19 ก.พ. เป็นต้นไป (แทรกคิวได้เลย)
+            minDueDate = new Date(today);
+            minDueDate.setDate(minDueDate.getDate() + 1); // พรุ่งนี้
+            minDueDate.setHours(0, 0, 0, 0);
+        } else {
+            // งานปกติ: Due Date ≥ วันนี้ + SLA + 1
+            // Example: วันนี้ 17, SLA 2 วัน → Due = 19 → Due Date เลือกได้ตั้งแต่ 20 เป็นต้นไป
+            const urgentMinDueDate = addWorkDays(today, jobType.sla, holidays);
+            minDueDate = new Date(urgentMinDueDate);
+            minDueDate.setDate(minDueDate.getDate() + 1);
+            minDueDate.setHours(0, 0, 0, 0);
+        }
+        setMinSelectableDate(minDueDate);
+
+        // ถ้ามีการเลือก Due Date แล้ว คำนวณย้อนกลับหา Start Date
         if (selectedDate) {
-            const dueDate = addWorkDays(new Date(selectedDate), jobType.slaWorkingDays, holidays);
-            setCalculatedDueDate(dueDate);
+            const startDate = subtractWorkDays(new Date(selectedDate), jobType.sla, holidays);
+            setCalculatedStartDate(startDate);
 
-            // ตรวจสอบว่าเลือกเกิน SLA หรือไม่
-            const daysDiff = Math.ceil((new Date(selectedDate) - suggested) / (1000 * 60 * 60 * 24));
-            if (daysDiff > 7) {
-                setWarning(`⚠️ วันที่เลือกห่างจากวันนี้ ${daysDiff} วัน (มากกว่า 1 สัปดาห์)`);
-            } else {
-                setWarning('');
-            }
-
-            // คำนวณ Timeline สำหรับ Child Jobs
-            if (childJobs && childJobs.length > 0) {
-                calculateChildTimeline(new Date(selectedDate));
+            // Auto-jump calendar to selected month
+            const selected = new Date(selectedDate);
+            setCalendarMonth(selected.getMonth());
+            setCalendarYear(selected.getFullYear());
+        } else {
+            // ✅ Auto-jump to month with selectable dates (if different from current month)
+            if (minDueDate.getMonth() !== today.getMonth() || minDueDate.getFullYear() !== today.getFullYear()) {
+                setCalendarMonth(minDueDate.getMonth());
+                setCalendarYear(minDueDate.getFullYear());
             }
         }
-    }, [jobType, selectedDate, holidays, childJobs]);
+    }, [jobType, selectedDate, holidays, priority]);
 
-    /**
-     * คำนวณ Timeline สำหรับ Child Jobs (Sequential)
-     */
-    const calculateChildTimeline = (startDate) => {
-        let currentStart = startDate;
-        const timeline = [];
+    // สร้าง holiday set สำหรับ quick lookup
+    const holidaySet = new Set(
+        holidays.map(h => {
+            const date = new Date(h.date);
+            return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+        })
+    );
 
-        for (const child of childJobs) {
-            const dueDate = addWorkDays(currentStart, child.slaWorkingDays, holidays);
+    // ฟังก์ชันสร้าง Calendar Grid
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-            timeline.push({
-                name: child.name,
-                startDate: currentStart,
-                dueDate: dueDate,
-                slaDays: child.slaWorkingDays
-            });
+    const firstDayOfMonth = new Date(calendarYear, calendarMonth, 1);
+    const lastDayOfMonth = new Date(calendarYear, calendarMonth + 1, 0);
+    const startDayOfWeek = firstDayOfMonth.getDay();
 
-            // งานถัดไปเริ่มหลังจากงานนี้เสร็จ
-            currentStart = dueDate;
+    // สร้าง Array วันในเดือน
+    const daysInMonth = [];
+    for (let i = 0; i < startDayOfWeek; i++) {
+        daysInMonth.push(null);
+    }
+    for (let day = 1; day <= lastDayOfMonth.getDate(); day++) {
+        daysInMonth.push(day);
+    }
+
+    // ฟังก์ชันตรวจสอบประเภทวัน
+    const isToday = (day) => {
+        return day === today.getDate() &&
+            calendarMonth === today.getMonth() &&
+            calendarYear === today.getFullYear();
+    };
+
+    const isSelected = (day) => {
+        if (!selectedDate) return false;
+        const selected = new Date(selectedDate);
+        return day === selected.getDate() &&
+            calendarMonth === selected.getMonth() &&
+            calendarYear === selected.getFullYear();
+    };
+
+    const isWeekend = (day) => {
+        const date = new Date(calendarYear, calendarMonth, day);
+        return date.getDay() === 0 || date.getDay() === 6;
+    };
+
+    const isHolidayDay = (day) => {
+        return holidaySet.has(`${calendarYear}-${calendarMonth}-${day}`);
+    };
+
+    const isSelectable = (day) => {
+        if (!minSelectableDate) return false;
+        const date = new Date(calendarYear, calendarMonth, day);
+        date.setHours(0, 0, 0, 0);
+        return date >= minSelectableDate;
+    };
+
+    // ฟังก์ชันเลื่อนเดือน
+    const goToPrevMonth = () => {
+        if (calendarMonth === 0) {
+            setCalendarMonth(11);
+            setCalendarYear(calendarYear - 1);
+        } else {
+            setCalendarMonth(calendarMonth - 1);
         }
-
-        setChildTimeline(timeline);
     };
 
-    /**
-     * Handle Date Change
-     */
-    const handleDateChange = (e) => {
-        const newDate = e.target.value;
-        onChange(newDate);
-    };
-
-    /**
-     * ใช้วันที่แนะนำ
-     */
-    const useSuggestedDate = () => {
-        if (suggestedDate) {
-            onChange(suggestedDate.toISOString().split('T')[0]);
+    const goToNextMonth = () => {
+        if (calendarMonth === 11) {
+            setCalendarMonth(0);
+            setCalendarYear(calendarYear + 1);
+        } else {
+            setCalendarMonth(calendarMonth + 1);
         }
     };
+
+    // ฟังก์ชัน Handle Date Click
+    const handleDateClick = (day) => {
+        if (disabled) return;
+        if (!isSelectable(day)) return;
+
+        // ✅ FIX: ใช้ manual format เพื่อหลีก timezone offset
+        const dateString = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        onChange(dateString);
+    };
+
+    // ชื่อเดือนภาษาไทย
+    const thaiMonthsShort = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+        'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 
     return (
         <div className="acceptance-date-picker">
-            <div className="form-group">
-                <label className="form-label">
-                    <span className="required">*</span> วันที่ต้องการเริ่มงาน (Acceptance Date)
-                </label>
-
-                {/* Date Input */}
-                <div className="date-input-wrapper">
-                    <input
-                        type="date"
-                        className="form-control"
-                        value={selectedDate || ''}
-                        onChange={handleDateChange}
-                        disabled={disabled}
-                        min={new Date().toISOString().split('T')[0]}
-                    />
-
-                    {suggestedDate && (
-                        <button
-                            type="button"
-                            className="btn btn-sm btn-outline-primary"
-                            onClick={useSuggestedDate}
-                            disabled={disabled}
-                        >
-                            ใช้วันที่แนะนำ ({formatDate(suggestedDate)})
-                        </button>
+            {/* Priority Info */}
+            <div className="mb-3 p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-semibold text-rose-800">เลือกวันส่งงาน (Due Date)</span>
+                    {priority === 'Urgent' && (
+                        <span className="ml-auto text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">
+                            งานด่วน
+                        </span>
                     )}
                 </div>
-
-                {/* SLA Preview */}
-                {selectedDate && calculatedDueDate && (
-                    <div className="sla-preview">
-                        <div className="preview-card">
-                            <div className="preview-header">
-                                <span className="icon">📅</span>
-                                <span className="title">SLA Preview</span>
-                            </div>
-                            <div className="preview-body">
-                                <div className="preview-row">
-                                    <span className="label">วันเริ่มงาน:</span>
-                                    <span className="value">{formatDate(new Date(selectedDate))}</span>
-                                </div>
-                                <div className="preview-row">
-                                    <span className="label">SLA:</span>
-                                    <span className="value">{jobType.slaWorkingDays} วันทำการ</span>
-                                </div>
-                                <div className="preview-row highlight">
-                                    <span className="label">วันส่งงาน (Due Date):</span>
-                                    <span className="value">{formatDate(calculatedDueDate)}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Warning */}
-                        {warning && (
-                            <div className="alert alert-warning">
-                                {warning}
-                            </div>
-                        )}
-
-                        {/* Child Jobs Timeline */}
-                        {childTimeline.length > 0 && (
-                            <div className="child-timeline">
-                                <h4>📊 Timeline งานต่อเนื่อง</h4>
-                                <div className="timeline-list">
-                                    {childTimeline.map((item, index) => (
-                                        <div key={index} className="timeline-item">
-                                            <div className="timeline-marker">{index + 1}</div>
-                                            <div className="timeline-content">
-                                                <div className="timeline-title">{item.name}</div>
-                                                <div className="timeline-dates">
-                                                    <span>เริ่ม: {formatDate(item.startDate)}</span>
-                                                    <span className="separator">→</span>
-                                                    <span>ส่ง: {formatDate(item.dueDate)}</span>
-                                                    <span className="sla-badge">({item.slaDays} วัน)</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="timeline-summary">
-                                    <strong>รวมทั้งหมด:</strong> {childTimeline.reduce((sum, item) => sum + item.slaDays, 0)} วันทำการ
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* Help Text */}
-                <small className="form-text text-muted">
-                    💡 ระบบจะคำนวณวันส่งงานอัตโนมัติจาก SLA ของประเภทงาน
-                </small>
+                <p className="text-xs text-rose-700">
+                    {priority === 'Urgent'
+                        ? `งานด่วน: เลือกได้ตั้งแต่พรุ่งนี้ (แทรกคิวได้เลย)`
+                        : `งานปกติ: เลือกได้ตั้งแต่ (วันนี้+${jobType?.sla || 0}+1 วัน)`
+                    }
+                </p>
             </div>
 
-            <style jsx>{`
-        .acceptance-date-picker {
-          margin-bottom: 1.5rem;
-        }
+            {/* Next Month Notice */}
+            {minSelectableDate && !selectedDate &&
+             minSelectableDate.getMonth() !== calendarMonth && (
+                <div className="mb-3 p-2.5 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2">
+                    <span className="text-base">💡</span>
+                    <p className="text-xs text-blue-700 leading-relaxed">
+                        วันส่งงานที่เร็วที่สุดอยู่ในเดือน <strong>{thaiMonthsShort[minSelectableDate.getMonth()]} {minSelectableDate.getFullYear() + 543}</strong> - กดลูกศรด้านบนเพื่อเลื่อนดูปฏิทินเดือนถัดไป
+                    </p>
+                </div>
+            )}
 
-        .date-input-wrapper {
-          display: flex;
-          gap: 0.5rem;
-          align-items: center;
-        }
+            {/* Calendar */}
+            <div className="border border-rose-300 rounded-lg p-3 bg-white shadow-sm">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-3">
+                    <button
+                        type="button"
+                        onClick={goToPrevMonth}
+                        disabled={disabled}
+                        className="w-7 h-7 flex items-center justify-center text-rose-600 hover:bg-rose-50 rounded transition-colors disabled:opacity-50"
+                        title="เดือนก่อนหน้า"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </button>
+                    <p className="text-sm text-rose-800 font-semibold">
+                        {thaiMonthsShort[calendarMonth]} {calendarYear + 543}
+                    </p>
+                    <button
+                        type="button"
+                        onClick={goToNextMonth}
+                        disabled={disabled}
+                        className="w-7 h-7 flex items-center justify-center text-rose-600 hover:bg-rose-50 rounded transition-colors disabled:opacity-50"
+                        title="เดือนถัดไป"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                    </button>
+                </div>
 
-        .date-input-wrapper input {
-          flex: 1;
-        }
+                {/* Day Headers */}
+                <div className="grid grid-cols-7 gap-1 text-center text-xs mb-2">
+                    <span className="text-rose-400 font-medium">อา</span>
+                    <span className="text-gray-500 font-medium">จ</span>
+                    <span className="text-gray-500 font-medium">อ</span>
+                    <span className="text-gray-500 font-medium">พ</span>
+                    <span className="text-gray-500 font-medium">พฤ</span>
+                    <span className="text-gray-500 font-medium">ศ</span>
+                    <span className="text-rose-400 font-medium">ส</span>
+                </div>
 
-        .sla-preview {
-          margin-top: 1rem;
-        }
+                {/* Calendar Grid */}
+                <div className="grid grid-cols-7 gap-1 text-center text-xs">
+                    {daysInMonth.map((day, index) => {
+                        if (day === null) {
+                            return <span key={index} className="p-2"></span>;
+                        }
 
-        .preview-card {
-          background: #f8f9fa;
-          border: 1px solid #dee2e6;
-          border-radius: 8px;
-          padding: 1rem;
-          margin-bottom: 0.5rem;
-        }
+                        const selectable = isSelectable(day);
+                        const weekend = isWeekend(day);
+                        const holiday = isHolidayDay(day);
+                        const todayDate = isToday(day);
+                        const selectedDueDate = isSelected(day);
 
-        .preview-header {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          margin-bottom: 0.75rem;
-          font-weight: 600;
-        }
+                        let className = "p-2 rounded transition-all ";
 
-        .preview-row {
-          display: flex;
-          justify-content: space-between;
-          padding: 0.5rem 0;
-          border-bottom: 1px solid #e9ecef;
-        }
+                        if (selectedDueDate) {
+                            // วันส่งงาน (Due Date) ที่เลือก - Rose-500 (Bold)
+                            className += "bg-rose-500 text-white font-bold cursor-pointer hover:bg-rose-600";
+                        } else if (todayDate) {
+                            // วันนี้ - Green
+                            className += "bg-green-500 text-white font-medium";
+                        } else if (!selectable) {
+                            // ห้ามเลือก - สีจางมาก + disabled
+                            className += "text-gray-200 bg-gray-50 cursor-not-allowed opacity-40";
+                        } else if (weekend || holiday) {
+                            // วันหยุด (แต่เลือกได้) - เลือกได้
+                            className += "text-gray-600 hover:bg-rose-50 hover:text-rose-600 cursor-pointer border border-transparent hover:border-rose-200";
+                        } else {
+                            // วันธรรมดา เลือกได้ - สีปกติ + Clickable
+                            className += "text-gray-800 hover:bg-rose-100 hover:text-rose-700 cursor-pointer font-medium border border-transparent hover:border-rose-300";
+                        }
 
-        .preview-row:last-child {
-          border-bottom: none;
-        }
+                        return (
+                            <button
+                                key={index}
+                                type="button"
+                                onClick={() => handleDateClick(day)}
+                                disabled={disabled || !selectable}
+                                className={className}
+                                title={
+                                    selectedDueDate ? 'วันส่งงาน (Due Date)' :
+                                        todayDate ? 'วันนี้' :
+                                            !selectable ? 'ไม่สามารถเลือกได้' :
+                                                'คลิกเพื่อเลือกวันนี้'
+                                }
+                            >
+                                {day}
+                            </button>
+                        );
+                    })}
+                </div>
 
-        .preview-row.highlight {
-          background: #e7f3ff;
-          margin: 0 -1rem;
-          padding: 0.5rem 1rem;
-          border-radius: 4px;
-        }
+                {/* Legend */}
+                <div className="flex gap-3 mt-3 pt-3 border-t border-rose-100 text-xs justify-center flex-wrap">
+                    <span className="flex items-center gap-1">
+                        <span className="w-3 h-3 bg-green-500 rounded"></span>
+                        <span className="text-gray-600">วันนี้</span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                        <span className="w-3 h-3 bg-rose-500 rounded"></span>
+                        <span className="text-gray-600">วันส่งงาน</span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                        <span className="w-3 h-3 bg-gray-200 rounded"></span>
+                        <span className="text-gray-600">ห้ามเลือก</span>
+                    </span>
+                </div>
+            </div>
 
-        .preview-row .label {
-          color: #6c757d;
-        }
+            {/* Selected Date Info */}
+            {selectedDate && calculatedStartDate && (
+                <div className="mt-3 grid grid-cols-3 gap-3">
+                    {/* Box 1: วันส่งงาน */}
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                        <span className="text-rose-600 font-medium text-xs block mb-1">วันส่งงาน</span>
+                        <span className="text-rose-900 font-bold text-sm block">{formatDate(new Date(selectedDate))}</span>
+                    </div>
 
-        .preview-row .value {
-          font-weight: 600;
-        }
+                    {/* Box 2: SLA */}
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                        <span className="text-rose-600 font-medium text-xs block mb-1">SLA</span>
+                        <span className="text-rose-900 font-bold text-sm block">{jobType?.sla || 0} วันทำการ</span>
+                    </div>
 
-        .alert {
-          padding: 0.75rem;
-          border-radius: 4px;
-          margin-top: 0.5rem;
-        }
+                    {/* Box 3: วันเริ่มงาน */}
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                        <span className="text-rose-600 font-medium text-xs block mb-1">วันเริ่มงาน</span>
+                        <span className="text-rose-900 font-bold text-sm block">{formatDate(calculatedStartDate)}</span>
+                        <span className="text-xs text-rose-500 block mt-0.5">(อัตโนมัติ)</span>
+                    </div>
+                </div>
+            )}
 
-        .alert-warning {
-          background: #fff3cd;
-          border: 1px solid #ffc107;
-          color: #856404;
-        }
-
-        .child-timeline {
-          margin-top: 1rem;
-          padding: 1rem;
-          background: #f8f9fa;
-          border-radius: 8px;
-        }
-
-        .child-timeline h4 {
-          margin: 0 0 1rem 0;
-          font-size: 1rem;
-        }
-
-        .timeline-list {
-          display: flex;
-          flex-direction: column;
-          gap: 0.75rem;
-        }
-
-        .timeline-item {
-          display: flex;
-          gap: 1rem;
-          align-items: flex-start;
-        }
-
-        .timeline-marker {
-          width: 32px;
-          height: 32px;
-          background: #007bff;
-          color: white;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: 600;
-          flex-shrink: 0;
-        }
-
-        .timeline-content {
-          flex: 1;
-        }
-
-        .timeline-title {
-          font-weight: 600;
-          margin-bottom: 0.25rem;
-        }
-
-        .timeline-dates {
-          display: flex;
-          gap: 0.5rem;
-          align-items: center;
-          font-size: 0.875rem;
-          color: #6c757d;
-        }
-
-        .separator {
-          color: #007bff;
-        }
-
-        .sla-badge {
-          background: #e7f3ff;
-          padding: 0.125rem 0.5rem;
-          border-radius: 12px;
-          font-size: 0.75rem;
-        }
-
-        .timeline-summary {
-          margin-top: 1rem;
-          padding-top: 1rem;
-          border-top: 2px solid #dee2e6;
-          text-align: right;
-        }
-      `}</style>
+            {/* Help Text */}
+            <p className="mt-2 text-xs text-gray-500 text-center">
+                เลือกวันที่ต้องการให้ส่งงาน (Due Date) - ระบบจะคำนวณวันเริ่มงานให้อัตโนมัติ
+            </p>
         </div>
     );
 };

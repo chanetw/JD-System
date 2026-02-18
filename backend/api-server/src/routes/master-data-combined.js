@@ -232,11 +232,14 @@ router.get('/', async (req, res) => {
                 projects,
                 departments,
                 // Transform jobTypes to use 'sla' instead of 'slaWorkingDays'
-                jobTypes: jobTypes.map(jt => ({
-                    ...jt,
-                    sla: jt.slaWorkingDays,
-                    slaWorkingDays: undefined  // Remove original field
-                })),
+                jobTypes: jobTypes.map(jt => {
+                    const transformed = {
+                        ...jt,
+                        sla: jt.slaWorkingDays
+                    };
+                    delete transformed.slaWorkingDays;  // Remove original field
+                    return transformed;
+                }),
                 availableScopes
             },
             meta: {
