@@ -1058,13 +1058,16 @@ export class ApprovalService extends BaseService {
   /**
    * Approver ยืนยันการปฏิเสธของ Assignee → งานเปลี่ยนเป็น rejected แจ้ง Requester
    */
-  async confirmAssigneeRejection({ jobId, approverId, comment }) {
+  async confirmAssigneeRejection({ jobId, approverId, comment, ccEmails = [] }) {
     try {
       const job = await this.prisma.job.findUnique({
         where: { id: jobId },
         select: {
           id: true, djId: true, status: true, tenantId: true,
-          requesterId: true, rejectedBy: true, rejectionComment: true, subject: true
+          requesterId: true, rejectedBy: true, rejectionComment: true, subject: true,
+          requester: {
+            select: { id: true, email: true, firstName: true, lastName: true }
+          }
         }
       });
 
@@ -1096,7 +1099,8 @@ export class ApprovalService extends BaseService {
         metadata: {
           approverComment: comment,
           assigneeComment: job.rejectionComment,
-          previousStatus: job.status
+          previousStatus: job.status,
+          ccEmails: ccEmails
         }
       });
 
@@ -1113,12 +1117,144 @@ export class ApprovalService extends BaseService {
         }).catch(err => console.warn('[ConfirmRejection] Notification failed:', err.message));
       }
 
+      // ส่ง Email แจ้งเตือน Requester และ CC
+      if (job.requester?.email) {
+        try {
+          const EmailService = require('./emailService');
+          const emailService = new EmailService();
+
+          const rejectionReason = job.rejectionComment || 'ไม่ระบุเหตุผล';
+          const recipientEmails = [job.requester.email];
+
+          // เพิ่ม CC emails (กรอง duplicate)
+          const uniqueCcEmails = ccEmails.filter(email =>
+            email && !recipientEmails.includes(email)
+          );
+
+          await emailService.sendJobRejectionNotification({
+            to: job.requester.email,
+            cc: uniqueCcEmails,
+            jobId: job.djId,
+            jobSubject: job.subject,
+            rejectionReason: rejectionReason,
+            approverComment: comment,
+            jobLink: `/jobs/${jobId}`
+          });
+        } catch (emailErr) {
+          console.warn('[ConfirmRejection] Email notification failed:', emailErr.message);
+        }
+      }
+
       return {
         success: true,
         data: { status: 'rejected' }
       };
     } catch (error) {
       return this.handleError(error, 'CONFIRM_ASSIGNEE_REJECTION', 'Job');
+    }
+  }
+
+  /**
+   * Deny Assignee Rejection (Approver forces Assignee to continue working)
+   *
+   * @param {Object} params
+   * @param {number} params.jobId - Job ID
+   * @param {number} params.approverId - Approver who denies the rejection
+   * @param {string} params.reason - Reason for denial
+   * @returns {Promise<Object>} Result object
+   */
+  async denyAssigneeRejection({ jobId, approverId, reason }) {
+    try {
+      const job = await this.prisma.job.findUnique({
+        where: { id: jobId },
+        select: {
+          id: true, djId: true, status: true, tenantId: true,
+          requesterId: true, assigneeId: true, rejectedBy: true,
+          rejectionComment: true, subject: true,
+          assignee: {
+            select: { id: true, email: true, firstName: true, lastName: true, displayName: true }
+          }
+        }
+      });
+
+      if (!job) throw new Error('Job not found');
+
+      // ตรวจสอบสถานะต้องเป็น assignee_rejected
+      if (job.status !== 'assignee_rejected') {
+        return {
+          success: false,
+          error: 'INVALID_STATUS',
+          message: `งานไม่อยู่ในสถานะรอยืนยันการปฏิเสธ (สถานะปัจจุบัน: ${job.status})`
+        };
+      }
+
+      // อัพเดทสถานะกลับเป็น in_progress และ set rejection denial flags
+      await this.prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: 'in_progress',
+          rejectionDeniedAt: new Date(),
+          rejectionDeniedBy: approverId,
+          // Clear rejection fields
+          rejectedBy: null,
+          rejectionSource: null,
+          rejectionComment: null
+        }
+      });
+
+      // Log Activity
+      await this.logApprovalActivity({
+        jobId,
+        userId: approverId,
+        activityType: 'assignee_rejection_denied',
+        description: `ผู้อนุมัติไม่อนุมัติการปฏิเสธงาน ${job.djId} - ${reason}`,
+        metadata: {
+          denialReason: reason,
+          assigneeComment: job.rejectionComment,
+          previousStatus: job.status
+        }
+      });
+
+      // แจ้งเตือน Assignee ว่าคำขอปฏิเสธถูกปฏิเสธ (ต้องทำงานต่อ)
+      if (job.assigneeId && this.notificationService) {
+        await this.notificationService.createNotification({
+          tenantId: job.tenantId,
+          userId: job.assigneeId,
+          type: 'rejection_denied',
+          title: `คำขอปฏิเสธงาน ${job.djId} ไม่ได้รับอนุมัติ`,
+          message: `กรุณาทำงาน "${job.subject}" ต่อ หรือขอขยายเวลา (Extend)\n\nเหตุผล: ${reason}`,
+          link: `/jobs/${jobId}`
+        }).catch(err => console.warn('[DenyRejection] Notification failed:', err.message));
+      }
+
+      // ส่ง Email แจ้งเตือน Assignee พร้อมแนะนำให้ใช้ Extend
+      if (job.assignee?.email) {
+        try {
+          const EmailService = require('./emailService');
+          const emailService = new EmailService();
+
+          await emailService.sendRejectionDeniedNotification({
+            to: job.assignee.email,
+            jobId: job.djId,
+            jobSubject: job.subject,
+            denialReason: reason,
+            assigneeName: job.assignee.displayName || `${job.assignee.firstName} ${job.assignee.lastName}`,
+            jobLink: `/jobs/${jobId}`
+          });
+        } catch (emailErr) {
+          console.warn('[DenyRejection] Email notification failed:', emailErr.message);
+        }
+      }
+
+      return {
+        success: true,
+        data: {
+          status: 'in_progress',
+          rejectionDeniedAt: new Date()
+        }
+      };
+    } catch (error) {
+      return this.handleError(error, 'DENY_ASSIGNEE_REJECTION', 'Job');
     }
   }
 

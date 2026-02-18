@@ -48,12 +48,13 @@ enum ApprovalStatus {
 // ========================================
 
 model Tenant {
-  id        Int      @id @default(autoincrement())
-  name      String   @db.VarChar(200)
-  code      String   @unique @db.VarChar(50)
-  subdomain String?  @unique @db.VarChar(100)
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
+  id                         Int      @id @default(autoincrement())
+  name                       String   @db.VarChar(200)
+  code                       String   @unique @db.VarChar(50)
+  subdomain                  String?  @unique @db.VarChar(100)
+  isActive                   Boolean  @default(true) @map("is_active")
+  createdAt                  DateTime @default(now()) @map("created_at")
+  defaultRejectionCcEmails   String[] @default([]) @map("default_rejection_cc_emails")
 
   // Relations
   users                User[]
@@ -119,6 +120,7 @@ model User {
   closedJobs           Job[]                  @relation("ClosedJobs")
   completedJobs        Job[]                  @relation("CompletedJobs")
   rejectedJobs         Job[]                  @relation("RejectedJobs")
+  rejectionDeniedJobs  Job[]                  @relation("RejectionDeniedJobs")
   uploadedAttachments  JobAttachment[]
   uploadedDeliverables JobDeliverable[]
   approvals            Approval[]
@@ -274,9 +276,11 @@ model Job {
   completedBy      Int? @map("completed_by")
 
   // Assignee Rejection Flow
-  rejectedBy       Int?    @map("rejected_by")
-  rejectionSource  String? @map("rejection_source") @db.VarChar(50)
-  rejectionComment String? @map("rejection_comment") @db.Text
+  rejectedBy         Int?      @map("rejected_by")
+  rejectionSource    String?   @map("rejection_source") @db.VarChar(50)
+  rejectionComment   String?   @map("rejection_comment") @db.Text
+  rejectionDeniedAt  DateTime? @map("rejection_denied_at") @db.Timestamptz
+  rejectionDeniedBy  Int?      @map("rejection_denied_by")
 
   // Parent-Child Relationship
   isParent    Boolean @default(false) @map("is_parent")
@@ -317,10 +321,11 @@ model Job {
   jobType         JobType @relation(fields: [jobTypeId], references: [id])
   requester       User    @relation("RequesterJobs", fields: [requesterId], references: [id])
   assignee        User?   @relation("AssigneeJobs", fields: [assigneeId], references: [id])
-  closeRequester  User?   @relation("CloseRequestedJobs", fields: [closeRequestedBy], references: [id])
-  closedByUser    User?   @relation("ClosedJobs", fields: [closedBy], references: [id])
-  completedByUser User?   @relation("CompletedJobs", fields: [completedBy], references: [id])
-  rejector        User?   @relation("RejectedJobs", fields: [rejectedBy], references: [id])
+  closeRequester    User?   @relation("CloseRequestedJobs", fields: [closeRequestedBy], references: [id])
+  closedByUser      User?   @relation("ClosedJobs", fields: [closedBy], references: [id])
+  completedByUser   User?   @relation("CompletedJobs", fields: [completedBy], references: [id])
+  rejector          User?   @relation("RejectedJobs", fields: [rejectedBy], references: [id])
+  rejectionDenier   User?   @relation("RejectionDeniedJobs", fields: [rejectionDeniedBy], references: [id])
 
   // Parent-Child Self-Relation
   parentJob  Job?  @relation("ParentChildJobs", fields: [parentJobId], references: [id], onDelete: SetNull)
@@ -350,6 +355,8 @@ model Job {
   @@index([assigneeId, status]) // My Queue: งานของฉันตาม status
   @@index([requesterId, createdAt]) // My Requests: งานที่ฉันขอ เรียงตามวันที่
   @@index([rejectedBy]) // Rejection tracking
+  @@index([rejectionDeniedAt]) // Rejection denial tracking
+  @@index([rejectionDeniedBy]) // Rejection denial tracking
   @@index([acceptanceDate]) // Job acceptance tracking
   @@index([extensionCount]) // Extension tracking
   @@map("jobs")

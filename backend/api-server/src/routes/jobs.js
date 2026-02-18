@@ -945,18 +945,24 @@ router.post('/:id/reject-by-assignee', async (req, res) => {
 
 /**
  * POST /api/jobs/:id/confirm-assignee-rejection
- * Approver ยืนยันการปฏิเสธของ Assignee → งานเปลี่ยนเป็น rejected แจ้ง Requester
+ * Approver ยืนยันการปฏิเสธของ Assignee → งานเปลี่ยนเป็น rejected แจ้ง Requester + CC emails
+ *
+ * Body: {
+ *   comment?: string,
+ *   ccEmails?: string[] // Optional CC email list
+ * }
  */
 router.post('/:id/confirm-assignee-rejection', async (req, res) => {
   try {
     const { id } = req.params;
-    const { comment } = req.body;
+    const { comment, ccEmails } = req.body;
     const userId = req.user.userId;
 
     const result = await approvalService.confirmAssigneeRejection({
       jobId: parseInt(id),
       approverId: userId,
-      comment
+      comment,
+      ccEmails: ccEmails || []
     });
 
     if (result.success) {
@@ -970,6 +976,50 @@ router.post('/:id/confirm-assignee-rejection', async (req, res) => {
       success: false,
       error: 'CONFIRM_REJECTION_FAILED',
       message: 'ไม่สามารถยืนยันการปฏิเสธได้'
+    });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/deny-assignee-rejection
+ * Approver ไม่อนุมัติการปฏิเสธ → สั่งให้ Assignee ทำงานต่อ + แนะนำให้ Extend
+ *
+ * Body: {
+ *   reason: string // Required - เหตุผลที่ไม่อนุมัติการปฏิเสธ
+ * }
+ */
+router.post('/:id/deny-assignee-rejection', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const userId = req.user.userId;
+
+    // Validation
+    if (!reason || reason.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'REASON_REQUIRED',
+        message: 'กรุณาระบุเหตุผลที่ไม่อนุมัติการปฏิเสธ'
+      });
+    }
+
+    const result = await approvalService.denyAssigneeRejection({
+      jobId: parseInt(id),
+      approverId: userId,
+      reason: reason.trim()
+    });
+
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('[Jobs] Deny assignee rejection error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'DENY_REJECTION_FAILED',
+      message: 'ไม่สามารถปฏิเสธคำขอยกเลิกได้'
     });
   }
 });
@@ -1481,6 +1531,13 @@ router.post('/:id/complete', async (req, res) => {
     }
 
     res.json(result);
+  } catch (error) {
+    console.error('[Jobs] Complete job error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'COMPLETE_JOB_FAILED',
+      message: 'ไม่สามารถจบงานได้'
+    });
   }
 });
 

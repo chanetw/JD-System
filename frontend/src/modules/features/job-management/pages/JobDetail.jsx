@@ -64,6 +64,12 @@ export default function JobDetail() {
     const [finalLink, setFinalLink] = useState('');
     const [showAssigneeRejectModal, setShowAssigneeRejectModal] = useState(false);
     const [assigneeRejectReason, setAssigneeRejectReason] = useState('');
+    const [showDenyRejectionModal, setShowDenyRejectionModal] = useState(false);
+    const [denyRejectionReason, setDenyRejectionReason] = useState('');
+    const [showConfirmRejectionModal, setShowConfirmRejectionModal] = useState(false);
+    const [confirmRejectionComment, setConfirmRejectionComment] = useState('');
+    const [confirmRejectionCcEmails, setConfirmRejectionCcEmails] = useState([]);
+    const [newCcEmail, setNewCcEmail] = useState('');
     const [showExtendModal, setShowExtendModal] = useState(false); // เพิ่ม Extend Modal state
 
     // Alert State
@@ -244,13 +250,53 @@ export default function JobDetail() {
         }
     };
 
+    const openConfirmRejectionModal = async () => {
+        try {
+            // Load default CC emails from tenant settings
+            const response = await api.get('/tenant-settings');
+            const defaultCcEmails = response.data?.data?.defaultRejectionCcEmails || [];
+            setConfirmRejectionCcEmails(defaultCcEmails);
+            setConfirmRejectionComment('');
+            setNewCcEmail('');
+            setShowConfirmRejectionModal(true);
+        } catch (err) {
+            console.error('Failed to load tenant settings:', err);
+            // Show modal anyway with empty CC list
+            setConfirmRejectionCcEmails([]);
+            setShowConfirmRejectionModal(true);
+        }
+    };
+
     const handleConfirmAssigneeRejection = async () => {
         try {
-            await api.confirmAssigneeRejection(job.id);
-            alert('ยืนยันการปฏิเสธงานเรียบร้อย');
+            await api.post(`/jobs/${job.id}/confirm-assignee-rejection`, {
+                comment: confirmRejectionComment.trim() || undefined,
+                ccEmails: confirmRejectionCcEmails
+            });
+            alert('ยืนยันการปฏิเสธงานเรียบร้อย อีเมลแจ้งเตือนถูกส่งแล้ว');
+            setShowConfirmRejectionModal(false);
+            setConfirmRejectionComment('');
+            setConfirmRejectionCcEmails([]);
             loadJob();
         } catch (err) {
-            alert('ยืนยันการปฏิเสธไม่สำเร็จ: ' + err.message);
+            alert('ยืนยันการปฏิเสธไม่สำเร็จ: ' + (err.response?.data?.message || err.message));
+        }
+    };
+
+    const handleDenyRejection = async () => {
+        if (!denyRejectionReason.trim()) {
+            return alert('กรุณาระบุเหตุผลที่ไม่อนุมัติการปฏิเสธ');
+        }
+        try {
+            await api.post(`/jobs/${job.id}/deny-assignee-rejection`, {
+                reason: denyRejectionReason.trim()
+            });
+            alert('ไม่อนุมัติคำขอปฏิเสธเรียบร้อย ผู้รับงานจะต้องดำเนินการต่อหรือขอ Extend');
+            setShowDenyRejectionModal(false);
+            setDenyRejectionReason('');
+            loadJob();
+        } catch (err) {
+            alert('เกิดข้อผิดพลาด: ' + (err.response?.data?.message || err.message));
         }
     };
 
@@ -372,7 +418,8 @@ export default function JobDetail() {
                                     onConfirmClose={handleConfirmClose}
                                     onRequestRevision={onRequestRevision}
                                     onOpenAssigneeRejectModal={() => setShowAssigneeRejectModal(true)}
-                                    onConfirmAssigneeRejection={handleConfirmAssigneeRejection}
+                                    onConfirmAssigneeRejection={openConfirmRejectionModal}
+                                    onDenyRejection={() => setShowDenyRejectionModal(true)}
                                     onOpenExtendModal={() => setShowExtendModal(true)}
                                 />
 
@@ -470,6 +517,166 @@ export default function JobDetail() {
                         <div className="flex gap-2 justify-end">
                             <Button variant="ghost" onClick={() => setShowAssigneeRejectModal(false)}>ยกเลิก</Button>
                             <Button variant="danger" onClick={handleAssigneeReject}>ยืนยันปฏิเสธ</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Deny Rejection Modal */}
+            {showDenyRejectionModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                        <h3 className="text-lg font-bold mb-4 text-blue-600">ไม่อนุมัติคำขอปฏิเสธงาน</h3>
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                            <p className="text-sm text-blue-800 mb-2">
+                                <strong>ผู้รับงาน:</strong> {job?.assignee?.displayName || 'N/A'}
+                            </p>
+                            <p className="text-sm text-blue-800">
+                                <strong>เหตุผลปฏิเสธ:</strong> {job?.rejectionComment || 'ไม่ระบุ'}
+                            </p>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-3">
+                            การปฏิเสธคำขอนี้จะบังคับให้ผู้รับงานทำงานต่อ พร้อมแนะนำให้ขอ Extend หากต้องการเวลาเพิ่ม
+                        </p>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            เหตุผลที่ไม่อนุมัติ <span className="text-red-500">*</span>
+                        </label>
+                        <textarea
+                            className="w-full border rounded p-2 mb-4"
+                            rows={4}
+                            placeholder="เช่น งานสามารถทำได้ภายในเวลาที่กำหนด, มีทรัพยากรเพียงพอ, หากต้องการเวลาเพิ่มให้ขอ Extend แทน"
+                            value={denyRejectionReason}
+                            onChange={e => setDenyRejectionReason(e.target.value)}
+                        />
+                        <div className="flex gap-2 justify-end">
+                            <Button variant="ghost" onClick={() => {
+                                setShowDenyRejectionModal(false);
+                                setDenyRejectionReason('');
+                            }}>ยกเลิก</Button>
+                            <Button variant="primary" onClick={handleDenyRejection}>ยืนยัน (บังคับให้ทำต่อ)</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Confirm Assignee Rejection Modal with CC Emails */}
+            {showConfirmRejectionModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                        <h3 className="text-lg font-bold mb-4 text-red-600">ยืนยันการปฏิเสธงาน</h3>
+
+                        {/* Job Info */}
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                            <p className="text-sm text-red-800 mb-2">
+                                <strong>งาน:</strong> {job?.djId} - {job?.subject}
+                            </p>
+                            <p className="text-sm text-red-800 mb-2">
+                                <strong>ผู้รับงาน:</strong> {job?.assignee?.displayName || 'N/A'}
+                            </p>
+                            <p className="text-sm text-red-800">
+                                <strong>เหตุผลปฏิเสธ:</strong> {job?.rejectionComment || 'ไม่ระบุ'}
+                            </p>
+                        </div>
+
+                        {/* Approver Comment */}
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                ความเห็นเพิ่มเติม (Optional)
+                            </label>
+                            <textarea
+                                className="w-full border rounded p-2"
+                                rows={3}
+                                placeholder="เช่น ได้รับการพิจารณาแล้ว, เหตุผลเหมาะสม"
+                                value={confirmRejectionComment}
+                                onChange={e => setConfirmRejectionComment(e.target.value)}
+                            />
+                        </div>
+
+                        {/* CC Emails Section */}
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                📧 CC อีเมลแจ้งเตือน
+                            </label>
+                            <p className="text-xs text-gray-500 mb-3">
+                                อีเมลเหล่านี้จะได้รับการแจ้งเตือนการปฏิเสธงาน (นอกเหนือจาก Requester)
+                            </p>
+
+                            {/* CC Email List */}
+                            <div className="space-y-2 mb-3">
+                                {confirmRejectionCcEmails.length > 0 ? (
+                                    confirmRejectionCcEmails.map((email, index) => (
+                                        <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 border border-gray-200 rounded">
+                                            <span className="flex-1 text-sm text-gray-700">{email}</span>
+                                            <button
+                                                onClick={() => {
+                                                    setConfirmRejectionCcEmails(confirmRejectionCcEmails.filter((_, i) => i !== index));
+                                                }}
+                                                className="text-red-500 hover:text-red-700 text-sm px-2"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="text-xs text-gray-400 italic text-center py-2">ไม่มีอีเมล CC</p>
+                                )}
+                            </div>
+
+                            {/* Add CC Email */}
+                            <div className="flex gap-2">
+                                <input
+                                    type="email"
+                                    className="flex-1 border rounded p-2 text-sm"
+                                    placeholder="เพิ่มอีเมล CC..."
+                                    value={newCcEmail}
+                                    onChange={e => setNewCcEmail(e.target.value)}
+                                    onKeyPress={e => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            const email = newCcEmail.trim();
+                                            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                                            if (email && emailRegex.test(email) && !confirmRejectionCcEmails.includes(email)) {
+                                                setConfirmRejectionCcEmails([...confirmRejectionCcEmails, email]);
+                                                setNewCcEmail('');
+                                            }
+                                        }
+                                    }}
+                                />
+                                <button
+                                    onClick={() => {
+                                        const email = newCcEmail.trim();
+                                        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                                        if (!email) return;
+                                        if (!emailRegex.test(email)) return alert('รูปแบบอีเมลไม่ถูกต้อง');
+                                        if (confirmRejectionCcEmails.includes(email)) return alert('อีเมลนี้มีอยู่แล้ว');
+                                        setConfirmRejectionCcEmails([...confirmRejectionCcEmails, email]);
+                                        setNewCcEmail('');
+                                    }}
+                                    className="px-4 py-2 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+                                >
+                                    เพิ่ม
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Warning */}
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                            <p className="text-xs text-amber-800">
+                                ⚠️ การยืนยันจะปิดงานนี้และส่งอีเมลแจ้งเตือนไปยัง Requester และ CC ทั้งหมด
+                            </p>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex gap-2 justify-end">
+                            <Button variant="ghost" onClick={() => {
+                                setShowConfirmRejectionModal(false);
+                                setConfirmRejectionComment('');
+                                setConfirmRejectionCcEmails([]);
+                                setNewCcEmail('');
+                            }}>ยกเลิก</Button>
+                            <Button variant="danger" onClick={handleConfirmAssigneeRejection}>
+                                ยืนยันการปฏิเสธงาน
+                            </Button>
                         </div>
                     </div>
                 </div>

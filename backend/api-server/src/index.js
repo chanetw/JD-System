@@ -46,6 +46,7 @@ import commentsRoutes from './routes/comments.js'; // ✓ NEW: Job Comments with
 import activitiesRoutes from './routes/activities.js'; // ✓ NEW: Job Activities
 import analyticsRoutes from './routes/analytics.js'; // ✓ NEW: Analytics Tracking
 import masterDataCombinedRoutes from './routes/master-data-combined.js'; // ⚡ Performance: Combined master data endpoint
+import tenantSettingsRoutes from './routes/tenant-settings.js'; // ✓ NEW: Tenant Settings (CC emails, etc.)
 
 // V2 Flow Templates REMOVED - Using V1 Extended instead
 
@@ -278,6 +279,7 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/storage', storageRoutes);
 app.use('/api/analytics', analyticsRoutes); // ✓ NEW: Analytics API (routes: /api/analytics/track-click, /api/analytics/stats)
 app.use('/api/master-data-combined', masterDataCombinedRoutes); // ⚡ Performance: Combined endpoint (6-7 calls → 1 call)
+app.use('/api/tenant-settings', tenantSettingsRoutes); // ✓ NEW: Tenant Settings API (routes: /api/tenant-settings, /api/tenant-settings/rejection-cc-emails)
 
 
 // Routes will be added here in the future

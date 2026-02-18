@@ -15,6 +15,7 @@ const JobActionPanel = ({
     onRequestRevision,
     onOpenAssigneeRejectModal,
     onConfirmAssigneeRejection,
+    onDenyRejection, // เพิ่ม callback สำหรับ Deny Rejection
     onOpenExtendModal // เพิ่ม callback สำหรับ Extend Modal
 }) => {
     const [selectedAssignee, setSelectedAssignee] = useState('');
@@ -182,14 +183,19 @@ const JobActionPanel = ({
                                 ปฏิเสธงาน
                             </button>
                         </div>
-                        {/* Extend Button */}
-                        {onOpenExtendModal && (
-                            <button
-                                onClick={onOpenExtendModal}
-                                className="w-full py-2 px-4 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 flex items-center justify-center gap-2 transition-colors text-sm"
-                            >
-                                🔄 ขอ Extend งาน
-                            </button>
+                        {/* Extend Button - Only show after rejection denial */}
+                        {onOpenExtendModal && job.rejectionDeniedAt && (
+                            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                <p className="text-xs text-blue-700 mb-2">
+                                    💡 คำขอปฏิเสธงานไม่ได้รับอนุมัติ หากต้องการเวลาเพิ่มเติม กรุณาขอ Extend
+                                </p>
+                                <button
+                                    onClick={onOpenExtendModal}
+                                    className="w-full py-2 px-4 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 flex items-center justify-center gap-2 transition-colors text-sm"
+                                >
+                                    🔄 ขอ Extend งาน
+                                </button>
+                            </div>
                         )}
                     </div>
                 )}
@@ -204,16 +210,25 @@ const JobActionPanel = ({
         return (
             <div className="bg-white rounded-xl border border-red-200 shadow-sm p-6 bg-red-50 mb-6">
                 <h2 className="font-semibold text-red-800 mb-2">ผู้รับงานปฏิเสธงาน</h2>
-                <p className="text-sm text-red-700 mb-2">
+                <p className="text-sm text-red-700 mb-4">
                     เหตุผล: {job.rejectionComment || 'ไม่ระบุ'}
                 </p>
-                <button
-                    onClick={onConfirmAssigneeRejection}
-                    className="w-full py-3 px-4 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
-                >
-                    <XMarkIcon className="w-5 h-5" />
-                    ยืนยันปฏิเสธงาน
-                </button>
+                <div className="flex gap-3">
+                    <button
+                        onClick={onConfirmAssigneeRejection}
+                        className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                    >
+                        <XMarkIcon className="w-5 h-5" />
+                        ยืนยันปฏิเสธงาน
+                    </button>
+                    <button
+                        onClick={onDenyRejection}
+                        className="flex-1 py-3 px-4 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                    >
+                        <CheckIcon className="w-5 h-5" />
+                        ไม่อนุมัติคำขอ (ให้ทำต่อ)
+                    </button>
+                </div>
             </div>
         );
     };
