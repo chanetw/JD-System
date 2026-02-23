@@ -11,6 +11,7 @@
 import { NavLink } from 'react-router-dom';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { FolderIcon, Cog6ToothIcon, UserGroupIcon, BuildingOfficeIcon } from '@heroicons/react/24/outline';
+import { isAdmin as checkIsAdmin, isApprover as checkIsApprover, hasAnyRole } from '@shared/utils/permission.utils';
 
 /**
  * @component Sidebar
@@ -20,27 +21,12 @@ export default function Sidebar() {
     /** ข้อมูลผู้ใช้งานปัจจุบันจาก store */
     const { user } = useAuthStoreV2();
 
-    /** รายชื่อ Role ที่ถือว่าเป็นผู้ปฏิบัติงาน (Work Recipients) */
-    const RECIPIENT_ROLES = ['Assignee', 'graphic', 'editor'];
-
-    /** ตรวจสอบสิทธิ์ Admin เท่านั้น */
-    const isAdmin = user?.roleName === 'Admin' ||
-        (user?.roles && user.roles.includes('Admin'));
-
-    /** ตรวจสอบสิทธิ์ Assignee (ต้องมี Role ผู้รับงาน) */
-    const isAssignee = RECIPIENT_ROLES.includes(user?.roleName) ||
-        (user?.roles && user.roles.some(r => RECIPIENT_ROLES.includes(r)));
-
-    /** ตรวจสอบสิทธิ์สร้างงาน (Admin, Requester, Approver) */
-    const canCreateJob = ['Admin', 'Requester', 'Approver'].includes(user?.roleName);
-
-    /** ตรวจสอบสิทธิ์เข้าถึง Analytics Dashboard (Phase 1: Admin only) */
+    /** ตรวจสอบสิทธิ์ (case-insensitive ผ่าน permission.utils) */
+    const isAdmin = checkIsAdmin(user);
+    const isAssignee = hasAnyRole(user, ['Assignee', 'graphic', 'editor']);
+    const canCreateJob = hasAnyRole(user, ['Admin', 'Requester', 'Approver']);
     const canAccessAnalytics = isAdmin;
-
-    /** ตรวจสอบสิทธิ์ Approver (Approver หรือ Admin) */
-    const isApprover = user?.roleName === 'Approver' ||
-        user?.roleName === 'Admin' ||
-        (user?.roles && (user.roles.includes('Approver') || user.roles.includes('Admin')));
+    const isApprover = checkIsApprover(user) || isAdmin;
 
     return (
         // ============================================

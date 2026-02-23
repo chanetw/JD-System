@@ -87,7 +87,8 @@ const authenticateToken = (req, res, next) => {
 
 const requireRoles = (...allowedRoles) => (req, res, next) => {
   if (!req.user) return res.status(401).json(errorResponse('UNAUTHORIZED', 'Authentication required'));
-  if (!allowedRoles.includes(req.user.role)) {
+  const userRole = req.user.role?.toLowerCase() || '';
+  if (!allowedRoles.some(r => r.toLowerCase() === userRole)) {
     return res.status(403).json(errorResponse('FORBIDDEN', `Required role: ${allowedRoles.join(' or ')}`));
   }
   next();
@@ -98,7 +99,7 @@ const requireTeamLead = requireRoles('Admin', 'Requester', 'Approver');
 
 const scopeToOrganization = (req, res, next) => {
   if (!req.user) return res.status(401).json(errorResponse('UNAUTHORIZED', 'Authentication required'));
-  if (req.user.role !== 'Admin' && !req.query.organizationId) {
+  if (req.user.role?.toLowerCase() !== 'admin' && !req.query.organizationId) {
     req.query.organizationId = String(req.user.organizationId);
   }
   next();

@@ -16,6 +16,7 @@ import { Link } from 'react-router-dom';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import api from '@shared/services/apiService';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
+import { hasAnyRole } from '@shared/utils/permission.utils';
 
 /**
  * @component Dashboard
@@ -113,12 +114,12 @@ export default function Dashboard() {
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
                     <p className="text-gray-500">
-                        สวัสดี, {user?.displayName || user?.firstName || 'ผู้ใช้งาน'} <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full text-gray-600">({user?.roleName || 'User'})</span>
+                        สวัสดี, {user?.firstName || user?.firstName || 'ผู้ใช้งาน'} <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full text-gray-600">({user?.roleName || 'User'})</span>
                     </p>
                 </div>
 
                 {/* ปุ่ม Create DJ (เฉพาะ Admin และ Requester) */}
-                {(['Admin', 'Requester'].includes(user?.roleName) || user?.role === 'Admin') && (
+                {hasAnyRole(user, ['Admin', 'Requester']) && (
                     <Link
                         to="/create"
                         className="flex items-center gap-2 px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors shadow-sm"

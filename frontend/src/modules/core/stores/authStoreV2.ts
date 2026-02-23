@@ -463,20 +463,22 @@ export const useHasPermission = (resource: string, action: string): boolean => {
   return (resourcePerms as Record<string, boolean>)[action] === true;
 };
 
-// Role check helpers (V1 naming: Admin, Requester, Approver, Assignee)
+// Role check helpers (case-insensitive, V1 naming: Admin, Requester, Approver, Assignee)
 export const useIsSuperAdmin = (): boolean => {
   const user = useUser();
-  return user?.roleName === 'Admin';
+  return user?.roleName?.toLowerCase() === 'admin';
 };
 
 export const useIsOrgAdmin = (): boolean => {
   const user = useUser();
-  return user?.roleName === 'Admin' || user?.roleName === 'Requester';
+  const role = user?.roleName?.toLowerCase() || '';
+  return role === 'admin' || role === 'requester';
 };
 
 export const useIsTeamLead = (): boolean => {
   const user = useUser();
-  return user?.roleName === 'Admin' || user?.roleName === 'Requester' || user?.roleName === 'Approver';
+  const role = user?.roleName?.toLowerCase() || '';
+  return role === 'admin' || role === 'requester' || role === 'approver';
 };
 
 export default useAuthStoreV2;

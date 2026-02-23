@@ -125,21 +125,23 @@ export const ROLE_V2_BADGE_COLORS = {
 export const hasRole = (user, roleName) => {
     if (!user) return false;
 
-    // ✅ Multi-Role: ตรวจสอบจาก roles array
+    const target = roleName.toLowerCase();
+
+    // ✅ Multi-Role: ตรวจสอบจาก roles array (case-insensitive)
     if (user.roles && Array.isArray(user.roles)) {
-        return user.roles.some(r =>
-            r.name === roleName &&
-            r.isActive !== false
-        );
+        return user.roles.some(r => {
+            const name = (typeof r === 'string' ? r : r.name) || '';
+            return name.toLowerCase() === target && r.isActive !== false;
+        });
     }
 
-    // ✅ NEW: Check roleName property (V2 Auth System)
+    // ✅ Check roleName property (V2 Auth System)
     if (user.roleName) {
-        return user.roleName.toLowerCase() === roleName.toLowerCase();
+        return user.roleName.toLowerCase() === target;
     }
 
-    // ⚠️ Legacy fallback: ตรวจสอบจาก role field เดิม
-    return user.role === roleName;
+    // ⚠️ Legacy fallback: ตรวจสอบจาก role field เดิม (case-insensitive)
+    return user.role?.toLowerCase() === target;
 };
 
 /**
@@ -500,7 +502,7 @@ export const getPrimaryRole = (user) => {
     const priority = [ROLES.ADMIN, ROLES.APPROVER, ROLES.REQUESTER, ROLES.ASSIGNEE];
 
     for (const role of priority) {
-        if (roles.includes(role)) return role;
+        if (roles.some(r => r?.toLowerCase() === role.toLowerCase())) return role;
     }
 
     return roles[0] || user.role || null;
@@ -655,12 +657,12 @@ export const getJobRole = (user, job) => {
 export const JOB_ROLE_THEMES = {
     admin: {
         label: 'ผู้ดูแลระบบ',
-        badgeClass: 'bg-purple-100 text-purple-800',
-        borderClass: 'border-purple-300',
-        accentBg: 'bg-purple-50',
-        accentText: 'text-purple-700',
-        headerBorder: 'border-l-purple-500',
-        dotColor: 'bg-purple-500'
+        badgeClass: 'bg-rose-100 text-rose-800',
+        borderClass: 'border-gray-400',
+        accentBg: 'bg-rose-50',
+        accentText: 'text-rose-700',
+        headerBorder: 'border-l-rose-500',
+        dotColor: 'bg-rose-500'
     },
     approver: {
         label: 'ผู้อนุมัติ',

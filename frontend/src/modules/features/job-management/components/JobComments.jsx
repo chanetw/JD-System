@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from '@shared/services/apiService';
 import { UserIcon, TrashIcon, PaperAirplaneIcon } from '@heroicons/react/24/outline';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
@@ -6,12 +6,21 @@ import Button from '@shared/components/Button';
 import { formatDistanceToNow } from 'date-fns';
 import { th } from 'date-fns/locale';
 
-const JobComments = ({ jobId, currentUser }) => {
+const JobComments = ({ jobId, currentUser, isEmbedded = false }) => {
     const [comments, setComments] = useState([]);
     const [newComment, setNewComment] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState(null);
+    const messagesEndRef = useRef(null);
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    useEffect(() => {
+        scrollToBottom();
+    }, [comments]);
 
     useEffect(() => {
         if (jobId) {
@@ -26,7 +35,8 @@ const JobComments = ({ jobId, currentUser }) => {
             if (result.success) {
                 setComments(result.data.map(c => ({
                     id: c.id,
-                    author: c.user?.displayName || 'Unknown',
+                    // รวมชื่อ-นามสกุล ถ้าไม่มีให้ใช้ displayName เป็น fallback
+                    author: [c.user?.firstName, c.user?.lastName].filter(Boolean).join(' ') || c.user?.displayName || 'Unknown',
                     avatar: c.user?.avatarUrl,
                     message: c.comment,
                     timestamp: c.createdAt,
@@ -51,7 +61,11 @@ const JobComments = ({ jobId, currentUser }) => {
             if (result.success) {
                 const addedComment = {
                     id: result.data.id,
-                    author: result.data.user?.displayName || currentUser?.displayName || 'Unknown',
+                    // รวมชื่อ-นามสกุล ถ้าไม่มีให้ดึงจาก currentUser หรือใช้ Unknown
+                    author: [result.data.user?.firstName, result.data.user?.lastName].filter(Boolean).join(' ')
+                        || [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ')
+                        || currentUser?.displayName
+                        || 'Unknown',
                     avatar: result.data.user?.avatarUrl || currentUser?.avatarUrl,
                     message: result.data.comment,
                     timestamp: result.data.createdAt,
@@ -89,8 +103,16 @@ const JobComments = ({ jobId, currentUser }) => {
     if (isLoading) return <LoadingSpinner />;
 
     return (
-        <div className="flex flex-col h-full">
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 max-h-[500px]">
+        <div className={`flex flex-col h-full bg-white ${!isEmbedded ? 'rounded-xl shadow-sm border border-gray-400 overflow-hidden' : ''}`}>
+            {!isEmbedded && (
+                <div className="border-b border-gray-400 px-6 py-4 flex justify-between items-center bg-white">
+                    <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                        <ChatBubbleLeftRightIcon className="w-5 h-5 text-gray-500" />
+                        ความคิดเห็น ({comments.length})
+                    </h2>
+                </div>
+            )}
+            <div className={`flex-1 overflow-y-auto ${isEmbedded ? 'p-4' : 'p-6'} space-y-6 bg-white/50 backdrop-blur-sm relative ${isEmbedded ? 'max-h-[300px]' : 'max-h-[500px]'}`}>
                 {comments.length === 0 ? (
                     <div className="text-center text-gray-500 py-8">
                         ยังไม่มีความคิดเห็น เริ่มต้นการสนทนาได้เลย
@@ -120,7 +142,7 @@ const JobComments = ({ jobId, currentUser }) => {
                                 </p>
                                 <p className="mt-1 text-sm text-gray-700">{comment.message}</p>
                             </div>
-                            {(comment.userId === currentUser?.id || currentUser?.roles?.includes('Admin')) && (
+                            {(comment.userId === currentUser?.id || currentUser?.roles?.some(r => (typeof r === 'string' ? r : r?.name)?.toLowerCase() === 'admin') || currentUser?.roleName?.toLowerCase() === 'admin') && (
                                 <button
                                     onClick={() => handleDeleteComment(comment.id)}
                                     className="text-gray-400 hover:text-red-500"
@@ -131,21 +153,30 @@ const JobComments = ({ jobId, currentUser }) => {
                         </div>
                     ))
                 )}
+                {/* Dummy ref to scroll to bottom */}
+                <div ref={messagesEndRef} />
             </div>
 
-            <div className="border-t border-gray-400 p-4 bg-gray-50">
+            <div className={`border-t border-gray-200 ${isEmbedded ? 'p-4' : 'p-6'} bg-white`}>
                 <form onSubmit={handleAddComment} className="flex space-x-3">
-                    <img
-                        className="h-8 w-8 rounded-full"
-                        src={currentUser?.avatarUrl || 'https://via.placeholder.com/150'}
-                        alt=""
-                    />
+                    {/* Avatar ส่วนผู้ใช้ปัจจุบัน: แสดงรูปหรือ Icon ถ้าไม่มีรูป */}
+                    {currentUser?.avatarUrl ? (
+                        <img
+                            className="h-8 w-8 rounded-full object-cover"
+                            src={currentUser.avatarUrl}
+                            alt=""
+                        />
+                    ) : (
+                        <span className="h-8 w-8 rounded-full bg-rose-100 flex items-center justify-center text-xs font-semibold text-rose-600">
+                            {([currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ') || currentUser?.displayName || '?').charAt(0).toUpperCase()}
+                        </span>
+                    )}
                     <div className="flex-1 min-w-0">
                         <label htmlFor="comment" className="sr-only">Comment</label>
                         <textarea
                             id="comment"
                             rows={2}
-                            className="shadow-sm block w-full focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border border-gray-300 rounded-md"
+                            className="shadow-sm block w-full focus:ring-rose-500 focus:border-rose-500 sm:text-sm border border-gray-300 rounded-md"
                             placeholder="แสดงความคิดเห็น..."
                             value={newComment}
                             onChange={(e) => setNewComment(e.target.value)}

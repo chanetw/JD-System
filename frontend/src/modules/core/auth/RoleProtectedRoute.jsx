@@ -24,8 +24,12 @@ export default function RoleProtectedRoute({ children, allowedRoles }) {
     const userRole = user?.roleName;
     const userRoles = user?.roles || [];
 
-    const hasRole = allowedRoles.includes(userRole) ||
-        userRoles.some(role => allowedRoles.includes(role));
+    const allowedLower = allowedRoles.map(r => r.toLowerCase());
+    const hasRole = allowedLower.includes(userRole?.toLowerCase()) ||
+        userRoles.some(role => {
+            const name = (typeof role === 'string' ? role : role?.name) || '';
+            return allowedLower.includes(name.toLowerCase());
+        });
 
     if (!hasRole) {
         // ถ้าไม่มีสิทธิ์ ให้ส่งกลับไปหน้า Dashboard (หรือหน้าที่เหมาะสม)

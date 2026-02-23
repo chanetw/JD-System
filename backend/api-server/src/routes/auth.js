@@ -175,7 +175,7 @@ export async function setRLSContextMiddleware(req, res, next) {
  * Middleware สำหรับตรวจสอบความเป็น Admin
  * Supports both V1 (roles array) and V2 (role string) token formats
  */
-export function requireAdmin(req, res, next) {
+export async function requireAdmin(req, res, next) {
   if (!req.user) {
     return res.status(403).json({
       success: false,
@@ -184,13 +184,15 @@ export function requireAdmin(req, res, next) {
     });
   }
 
-  // Check V1 format (roles array)
-  if (req.user.roles && Array.isArray(req.user.roles) && req.user.roles.includes('admin')) {
+  // Case-insensitive check for Admin-level roles (Admin or Requester)
+  const { hasAdminRole } = await import('../helpers/roleHelper.js');
+
+  if (hasAdminRole(req.user.roles)) {
     return next();
   }
 
-  // Check role string format - Admin roles: Admin, Requester (V1 naming)
-  if (req.user.role && ['Admin', 'Requester', 'admin'].includes(req.user.role)) {
+  // Check single role string (V2 format)
+  if (req.user.role && (req.user.role.toLowerCase() === 'admin' || req.user.role.toLowerCase() === 'requester')) {
     return next();
   }
 

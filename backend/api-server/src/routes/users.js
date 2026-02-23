@@ -16,12 +16,8 @@ import { getSupabaseClient } from '../config/supabase.js';
 const router = express.Router();
 const userService = new UserService();
 
-// Helper: Check if user has admin-level permissions (V1 naming)
-function hasAdminRole(roles) {
-  if (!roles || !Array.isArray(roles)) return false;
-  // V1: Admin, Requester (can manage users)
-  return roles.some(role => ['admin', 'Admin', 'Requester'].includes(role));
-}
+// Case-insensitive role helper (centralized)
+import { hasAdminRole } from '../helpers/roleHelper.js';
 
 // ทุก routes ต้องมีการ authenticate และตั้งค่า RLS context
 router.use(authenticateToken);

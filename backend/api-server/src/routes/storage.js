@@ -17,6 +17,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import { SupabaseStorageService, isUsingSupabase } from '../config/supabase.js';
+import { hasRole } from '../helpers/roleHelper.js';
 import { getDatabase } from '../config/database.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -330,7 +331,7 @@ router.delete('/files/:id', async (req, res) => {
     }
 
     // ตรวจสอบสิทธิ์ (admin หรือ ผู้อัปโหลดเท่านั้น)
-    if (!req.user.roles.includes('admin') && file.uploadedBy !== req.user.userId) {
+    if (!hasRole(req.user.roles, 'admin') && file.uploadedBy !== req.user.userId) {
       return res.status(403).json({
         success: false,
         error: 'INSUFFICIENT_PERMISSIONS',

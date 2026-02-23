@@ -13,6 +13,7 @@ import express from 'express';
 import { ApprovalService } from '../services/approvalService.js';
 import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import NotificationService from '../services/notificationService.js';
+import { hasRole } from '../helpers/roleHelper.js';
 
 const router = express.Router();
 const approvalService = new ApprovalService();
@@ -54,7 +55,7 @@ router.post('/request', authenticateToken, setRLSContextMiddleware, async (req, 
       });
     }
 
-    if (job.requesterId !== req.user.userId && !req.user.roles.includes('admin')) {
+    if (job.requesterId !== req.user.userId && !hasRole(req.user.roles, 'admin')) {
       return res.status(403).json({
         success: false,
         error: 'INSUFFICIENT_PERMISSIONS',
@@ -318,7 +319,7 @@ router.get('/history/:jobId', authenticateToken, setRLSContextMiddleware, async 
     // ตรวจสอบว่าผู้ใช้มีสิทธิ์ดูงานนี้หรือไม่
     const hasAccess = job.requesterId === req.user.userId || 
                      job.assigneeId === req.user.userId || 
-                     req.user.roles.includes('admin');
+                     hasRole(req.user.roles, 'admin');
 
     if (!hasAccess) {
       return res.status(403).json({

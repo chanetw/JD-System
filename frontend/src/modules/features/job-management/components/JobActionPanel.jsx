@@ -125,9 +125,9 @@ const JobActionPanel = ({
                         disabled={isLoading}
                     >
                         <option value="">-- เลือกผู้รับงาน --</option>
-                        {users.filter(u => u.roles?.includes('Assignee') || u.roles?.includes('senior_designer') || u.roles?.includes('creative')).map(u => (
+                        {users.filter(u => u.roles?.some(r => ['assignee', 'senior_designer', 'creative'].includes((typeof r === 'string' ? r : r?.name)?.toLowerCase()))).map(u => (
                             <option key={u.id} value={u.id}>
-                                {u.displayName || `${u.firstName} ${u.lastName}`}
+                                {`${u.firstName} ${u.lastName}`}
                             </option>
                         ))}
                     </select>
@@ -185,13 +185,13 @@ const JobActionPanel = ({
                         </div>
                         {/* Extend Button - Only show after rejection denial */}
                         {onOpenExtendModal && job.rejectionDeniedAt && (
-                            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                <p className="text-xs text-blue-700 mb-2">
+                            <div className="mt-3 p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                                <p className="text-xs text-rose-700 mb-2">
                                     💡 คำขอปฏิเสธงานไม่ได้รับอนุมัติ หากต้องการเวลาเพิ่มเติม กรุณาขอ Extend
                                 </p>
                                 <button
                                     onClick={onOpenExtendModal}
-                                    className="w-full py-2 px-4 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 flex items-center justify-center gap-2 transition-colors text-sm"
+                                    className="w-full py-2 px-4 bg-rose-500 text-white rounded-lg font-medium hover:bg-rose-600 flex items-center justify-center gap-2 transition-colors text-sm"
                                 >
                                     🔄 ขอ Extend งาน
                                 </button>
@@ -223,7 +223,7 @@ const JobActionPanel = ({
                     </button>
                     <button
                         onClick={onDenyRejection}
-                        className="flex-1 py-3 px-4 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                        className="flex-1 py-3 px-4 bg-rose-500 text-white rounded-xl font-medium hover:bg-rose-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
                     >
                         <CheckIcon className="w-5 h-5" />
                         ไม่อนุมัติคำขอ (ให้ทำต่อ)

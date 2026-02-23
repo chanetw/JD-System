@@ -13,6 +13,7 @@ import express from 'express';
 import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import { getDatabase } from '../config/database.js';
 import { NotificationService } from '../services/notificationService.js';
+import { hasRole } from '../helpers/roleHelper.js';
 
 const router = express.Router();
 const notificationService = new NotificationService();
@@ -23,17 +24,42 @@ router.use(setRLSContextMiddleware);
 
 /**
  * Check if user has access to view/comment on a job
+ * รองรับทั้ง V1 (user.roles array) และ V2 (user.roleName string) auth formats
  * @param {Object} job - Job object with requesterId and assigneeId
  * @param {Object} user - User object from request
  * @returns {boolean}
  */
 const hasJobAccess = (job, user) => {
+  // รวม Role จากทั้ง roles[] และ roleName ให้เป็น array เดียว
+  const normalizedRoles = [];
+  if (Array.isArray(user.roles)) {
+    normalizedRoles.push(...user.roles.map(r => (typeof r === 'string' ? r : r?.name)?.toLowerCase() || ''));
+  }
+  if (user.roleName) {
+    normalizedRoles.push(user.roleName.toLowerCase());
+  }
   return (
     job.requesterId === user.userId ||
     job.assigneeId === user.userId ||
-    user.roles?.includes('admin') ||
-    user.roles?.includes('manager')
+    normalizedRoles.includes('admin') ||
+    normalizedRoles.includes('manager')
   );
+};
+
+/**
+ * Check if user is admin (รองรับ V1 และ V2 auth formats)
+ * @param {Object} user - User object from request
+ * @returns {boolean}
+ */
+const isAdmin = (user) => {
+  const normalizedRoles = [];
+  if (Array.isArray(user.roles)) {
+    normalizedRoles.push(...user.roles.map(r => (typeof r === 'string' ? r : r?.name)?.toLowerCase() || ''));
+  }
+  if (user.roleName) {
+    normalizedRoles.push(user.roleName.toLowerCase());
+  }
+  return normalizedRoles.includes('admin');
 };
 
 /**
@@ -107,7 +133,8 @@ router.get('/jobs/:jobId/comments', async (req, res) => {
           user: {
             select: {
               id: true,
-              displayName: true,
+              firstName: true,
+              lastName: true,
               email: true,
               avatarUrl: true
             }
@@ -240,7 +267,8 @@ router.post('/jobs/:jobId/comments', async (req, res) => {
         user: {
           select: {
             id: true,
-            displayName: true,
+            firstName: true,
+            lastName: true,
             email: true,
             avatarUrl: true
           }
@@ -251,9 +279,9 @@ router.post('/jobs/:jobId/comments', async (req, res) => {
     // Get commenter info
     const commenter = await prisma.user.findUnique({
       where: { id: userId },
-      select: { displayName: true }
+      select: { firstName: true, lastName: true }
     });
-    const commenterName = commenter?.displayName || 'Unknown';
+    const commenterName = [commenter?.firstName, commenter?.lastName].filter(Boolean).join(' ') || 'Unknown';
 
     // Prepare notification recipients
     const notifyUserIds = new Set();
@@ -370,7 +398,7 @@ router.put('/jobs/:jobId/comments/:commentId', async (req, res) => {
     }
 
     // Only comment author or admin can edit
-    if (existingComment.userId !== userId && !req.user.roles?.includes('admin')) {
+    if (existingComment.userId !== userId && !isAdmin(req.user)) {
       return res.status(403).json({
         success: false,
         error: 'INSUFFICIENT_PERMISSIONS',
@@ -460,7 +488,7 @@ router.delete('/jobs/:jobId/comments/:commentId', async (req, res) => {
     }
 
     // Only comment author or admin can delete
-    if (existingComment.userId !== userId && !req.user.roles?.includes('admin')) {
+    if (existingComment.userId !== userId && !isAdmin(req.user)) {
       return res.status(403).json({
         success: false,
         error: 'INSUFFICIENT_PERMISSIONS',
