@@ -473,7 +473,7 @@ export default function UserManagementNew() {
     const handleResetPassword = async (userToReset) => {
         const result = await Swal.fire({
             title: `รีเซ็ตรหัสผ่าน?`,
-            text: `ต้องการรีเซ็ตรหัสผ่านของ ${userToReset.displayName} ใช่หรือไม่? ระบบจะสุ่มรหัสผ่านใหม่และส่งไปยังอีเมลของผู้ใช้ทันที`,
+            text: `ต้องการรีเซ็ตรหัสผ่านของ ${userToReset.firstName} ใช่หรือไม่? ระบบจะสุ่มรหัสผ่านใหม่และส่งไปยังอีเมลของผู้ใช้ทันที`,
             icon: 'warning',
             showCancelButton: true,
             confirmButtonColor: '#f59e0b',
@@ -688,7 +688,7 @@ export default function UserManagementNew() {
         if (targetDeptId) {
             const targetDept = departmentMap.get(targetDeptId);
             if (targetDept?.managerId && targetDept.managerId !== editModal.user.id) {
-                const oldManagerName = targetDept.manager?.displayName || targetDept.manager?.first_name || 'Manager เดิม';
+                const oldManagerName = targetDept.manager?.firstName || targetDept.manager?.first_name || 'Manager เดิม';
                 warnings.push(`⚠️ แผนก "<b>${targetDept.name}</b>" มี Manager อยู่แล้ว (<b>${oldManagerName}</b>) จะถูกแทนที่`);
             }
         }
@@ -968,7 +968,7 @@ export default function UserManagementNew() {
             if (debouncedSearchTerm) {
                 const lowerTerm = debouncedSearchTerm.toLowerCase();
                 const matchName = (u.name || '').toLowerCase().includes(lowerTerm);
-                const matchDisplay = (u.displayName || '').toLowerCase().includes(lowerTerm);
+                const matchDisplay = ('').toLowerCase().includes(lowerTerm);
                 const matchEmail = (u.email || '').toLowerCase().includes(lowerTerm);
                 if (!matchName && !matchDisplay && !matchEmail) return false;
             }
@@ -1149,7 +1149,7 @@ export default function UserManagementNew() {
                                                         )}
                                                         <div>
                                                             <div className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                                                                {user.displayName || user.name}
+                                                                {user.name}
                                                                 {isManager && (
                                                                     <span className="inline-flex items-center rounded-md bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700 ring-1 ring-inset ring-purple-700/10">
                                                                         Manager
@@ -1274,9 +1274,25 @@ export default function UserManagementNew() {
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${ROLE_V2_BADGE_COLORS[user.roleName] || 'bg-gray-100 text-gray-800'}`}>
-                                                        {ROLE_V1_DISPLAY[user.roleName] || user.roleName || 'N/A'}
-                                                    </span>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {user.roles && user.roles.length > 0 ? (
+                                                            user.roles.map((roleObj, idx) => {
+                                                                const roleName = typeof roleObj === 'string' ? roleObj : roleObj?.name;
+                                                                return (
+                                                                    <span
+                                                                        key={idx}
+                                                                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${ROLE_V2_BADGE_COLORS[roleName] || 'bg-gray-100 text-gray-800'}`}
+                                                                    >
+                                                                        {ROLE_V1_DISPLAY[roleName] || roleName}
+                                                                    </span>
+                                                                );
+                                                            })
+                                                        ) : (
+                                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                                                {ROLE_V1_DISPLAY[user.role] || user.role || 'N/A'}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-center">
                                                     <button
@@ -1913,7 +1929,7 @@ export default function UserManagementNew() {
                                                                 {dept.name}
                                                                 {/* Show warning if dept already has a DIFFERENT manager */}
                                                                 {dept.manager && dept.manager.id !== editModal.user.id
-                                                                    ? ` (⚠️ ปัจจุบัน: ${dept.manager.displayName || dept.manager.first_name})`
+                                                                    ? ` (⚠️ ปัจจุบัน: ${dept.manager.firstName || dept.manager.first_name})`
                                                                     : ''}
                                                             </option>
                                                         ))}

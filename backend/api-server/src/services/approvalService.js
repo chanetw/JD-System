@@ -329,8 +329,15 @@ export class ApprovalService extends BaseService {
    */
   async logApprovalActivity({ jobId, approverId, activityType, description, ipAddress, metadata }) {
     try {
+      const job = await this.prisma.job.findUnique({
+        where: { id: jobId },
+        select: { tenantId: true }
+      });
+      if (!job) return;
+
       await this.prisma.jobActivity.create({
         data: {
+          tenantId: job.tenantId,
           jobId,
           userId: approverId,
           activityType,
@@ -338,7 +345,7 @@ export class ApprovalService extends BaseService {
           metadata: {
             ...metadata,
             ipAddress,
-            userAgent: metadata.userAgent || 'Unknown',
+            userAgent: metadata?.userAgent || 'Unknown',
             timestamp: new Date().toISOString()
           }
         }
@@ -916,7 +923,7 @@ export class ApprovalService extends BaseService {
       // Log Activity
       await this.logApprovalActivity({
         jobId,
-        userId, // Assignee
+        approverId: userId, // Assignee
         activityType: 'job_completed',
         description: 'ส่งมอบงาน (Job Completed)',
         metadata: { note, attachments }
@@ -924,21 +931,25 @@ export class ApprovalService extends BaseService {
 
       // Add note as comment if present
       if (note) {
-        // Check if Comments are JSON or related model. 
-        // Previous code in JobDetail added comment via updateJob 'comments' field (JSON).
-        // So we should append to 'comments' JSON array
-        const currentComments = job.comments || [];
-        const newComment = {
-          id: `comment-${Date.now()}`,
-          author: 'System', // Or User Name if we fetch it. simpler to mark as system or completion note
-          message: `[Job Completed] ${note}`,
-          timestamp: new Date().toISOString()
-        };
-        await this.prisma.job.update({
-          where: { id: jobId },
+        await this.prisma.jobComment.create({
           data: {
-            comments: [...currentComments, newComment]
+            tenantId: job.tenantId,
+            jobId: jobId,
+            userId: userId,
+            comment: `[ส่งงาน] ${note}`
           }
+        });
+      }
+
+      // Notify Requester
+      if (this.notificationService && job.requesterId) {
+        await this.notificationService.createNotification({
+          tenantId: job.tenantId,
+          userId: job.requesterId, // The person who requested the job
+          type: 'job_completed',
+          title: `✅ งานส่งมอบแล้ว: ${job.djId}`,
+          message: note ? `หมายเหตุ: ${note}` : `งาน ${job.subject} ดำเนินการเสร็จสิ้น`,
+          link: `/jobs/${job.id}`
         });
       }
 
@@ -1647,6 +1658,106 @@ export class ApprovalService extends BaseService {
     }
 
     return 1; // Default: 1 level
+  }
+
+  /**
+   * Auto-approve ถ้า requester อยู่ใน approval flow ของ level ปัจจุบัน
+   * เหมือนกับ requester กด approve ด้วยตัวเอง — เฉพาะ level ที่ตัวเองมีสิทธิ์
+   *
+   * @param {Object} params
+   * @param {number} params.jobId - Job ID
+   * @param {number} params.requesterId - Requester User ID
+   * @param {number} params.projectId - Project ID
+   * @param {number} params.jobTypeId - JobType ID
+   * @param {number} params.tenantId - Tenant ID
+   * @returns {Promise<Object>} - { autoApproved, newStatus, isFinal, approvalId }
+   */
+  async autoApproveIfRequesterIsApprover({ jobId, requesterId, projectId, jobTypeId, tenantId }) {
+    try {
+      // 1. ดึง approval flow
+      const flow = await this.getApprovalFlow(projectId, jobTypeId);
+      if (!flow || !flow.approverSteps || !Array.isArray(flow.approverSteps)) {
+        return { autoApproved: false };
+      }
+
+      // 2. หา level 1 (pending_approval = level 1)
+      const level1 = flow.approverSteps.find(s =>
+        s.stepNumber === 1 || s.level === 1
+      );
+      if (!level1 || !level1.approvers || !Array.isArray(level1.approvers)) {
+        return { autoApproved: false };
+      }
+
+      // 3. เช็ค: requester อยู่ใน level 1 approvers ไหม?
+      const isApproverAtLevel1 = level1.approvers.some(a => {
+        const approverId = a.id || a.userId;
+        return approverId === requesterId || approverId === String(requesterId);
+      });
+
+      if (!isApproverAtLevel1) {
+        return { autoApproved: false };
+      }
+
+      console.log(`[AutoApprove] Requester ${requesterId} is approver at Level 1 for job ${jobId}`);
+
+      // 4. สร้าง approval record + mark as approved (เหมือน approveJobViaWeb)
+      const approval = await this.prisma.approval.create({
+        data: {
+          jobId,
+          approverId: requesterId,
+          stepNumber: 1,
+          status: 'approved',
+          approvedAt: new Date(),
+          comment: 'Auto-approved: ผู้สร้างงานเป็นผู้อนุมัติ',
+          tenantId
+        }
+      });
+
+      // 5. Advance job status (reuse logic from approveJobViaWeb)
+      const totalLevels = this.getApprovalLevels(flow);
+      let newStatus, isFinal;
+
+      if (totalLevels > 1) {
+        // ยังมี level ถัดไป → pending_level_2
+        newStatus = 'pending_level_2';
+        isFinal = false;
+      } else {
+        // level เดียว → approved
+        newStatus = 'approved';
+        isFinal = true;
+      }
+
+      await this.prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: newStatus,
+          ...(isFinal ? { startedAt: new Date() } : {})
+        }
+      });
+
+      // 6. Log activity (non-blocking)
+      await this.prisma.activityLog.create({
+        data: {
+          jobId,
+          userId: requesterId,
+          action: 'job_auto_approved',
+          message: `Auto-approved Level 1: ผู้สร้างเป็นผู้อนุมัติ`,
+          detail: JSON.stringify({ level: 1, autoApproved: true, newStatus, totalLevels })
+        }
+      }).catch(err => console.warn('[AutoApprove] Activity log failed:', err.message));
+
+      console.log(`[AutoApprove] Job ${jobId} auto-approved → ${newStatus} (isFinal: ${isFinal})`);
+
+      return {
+        autoApproved: true,
+        newStatus,
+        isFinal,
+        approvalId: approval.id
+      };
+    } catch (error) {
+      console.error('[ApprovalService] autoApproveIfRequesterIsApprover error:', error);
+      return { autoApproved: false };
+    }
   }
 
   /**

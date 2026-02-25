@@ -43,56 +43,77 @@ router.get('/', async (req, res) => {
 
     let where = { tenantId };
 
-    // Role-based filtering
-    switch (role.toLowerCase()) {
-      case 'requester':
-        where.requesterId = userId;
-        break;
-      case 'assignee':
-        where.assigneeId = userId;
-        break;
-      case 'approver': {
-        // 🔥 User Portal Logic: Show ONLY jobs waiting for THIS user to approve
-        // Two-step approach: first find pending approval job IDs, then query jobs
-        const pendingApprovals = await prisma.approval.findMany({
-          where: {
-            approverId: userId,
-            status: 'pending',
-            tenantId
-          },
-          select: { jobId: true }
-        });
-        const pendingJobIds = [...new Set(pendingApprovals.map(a => a.jobId))];
-        if (pendingJobIds.length === 0) {
-          return res.json({
-            success: true,
-            data: [],
-            pagination: { page: parseInt(page), limit: parseInt(limit), total: 0, totalPages: 0 }
-          });
-        }
-        where.id = { in: pendingJobIds };
-        where.status = { in: ['pending_approval', 'pending_level_1', 'pending_level_2'] };
-        break;
-      }
+    // Multi-role support: role can be comma-separated (e.g. "requester,approver")
+    const roles = role.split(',').map(r => r.trim().toLowerCase()).filter(Boolean);
 
-      case 'manager':
-        // Legacy/Manager View: See all pending jobs (broad view) inside tenant
-        where.status = { in: ['pending_approval', 'pending_level_1', 'pending_level_2'] };
-        // Visibility Logic: Hide children if parent is still pending (Show only Parent)
-        where.AND = [
-          {
-            OR: [
-              { isParent: true },
-              { parentJobId: null },
-              { parentJob: { status: { notIn: ['pending_approval'] } } }
-            ]
-          }
-        ];
-        break;
-      case 'superadmin':
-      case 'admin':
-        // Admin sees all jobs (no additional filter)
-        break;
+    // Helper: build where condition for a single role
+    const buildRoleCondition = async (singleRole) => {
+      switch (singleRole) {
+        case 'requester':
+          return { requesterId: userId };
+        case 'assignee':
+          return { assigneeId: userId };
+        case 'approver': {
+          const pendingApprovals = await prisma.approval.findMany({
+            where: { approverId: userId, status: 'pending', tenantId },
+            select: { jobId: true }
+          });
+          const pendingJobIds = [...new Set(pendingApprovals.map(a => a.jobId))];
+          if (pendingJobIds.length === 0) return null; // no matching jobs
+          return {
+            id: { in: pendingJobIds },
+            status: { in: ['pending_approval', 'pending_level_1', 'pending_level_2'] }
+          };
+        }
+        case 'manager':
+          return {
+            status: { in: ['pending_approval', 'pending_level_1', 'pending_level_2'] },
+            AND: [{
+              OR: [
+                { isParent: true },
+                { parentJobId: null },
+                { parentJob: { status: { notIn: ['pending_approval'] } } }
+              ]
+            }]
+          };
+        case 'superadmin':
+        case 'admin':
+          return {}; // no additional filter = see all
+        default:
+          return { requesterId: userId }; // fallback to requester
+      }
+    };
+
+    if (roles.length === 1) {
+      // Single role: backward compatible (same logic as before)
+      const condition = await buildRoleCondition(roles[0]);
+      if (condition === null) {
+        // approver with no pending jobs
+        return res.json({
+          success: true,
+          data: [],
+          pagination: { page: parseInt(page), limit: parseInt(limit), total: 0, totalPages: 0 }
+        });
+      }
+      Object.assign(where, condition);
+    } else {
+      // Multi-role: union with OR
+      const orConditions = [];
+      for (const r of roles) {
+        const condition = await buildRoleCondition(r);
+        if (condition !== null && Object.keys(condition).length > 0) {
+          orConditions.push(condition);
+        }
+        // admin/superadmin = see all → skip OR, just use tenant filter
+        if (r === 'admin' || r === 'superadmin') {
+          orConditions.length = 0; // clear, admin sees everything
+          break;
+        }
+      }
+      if (orConditions.length > 0) {
+        where.OR = orConditions;
+      }
+      // if orConditions is empty (admin case), where stays as { tenantId } = see all
     }
 
     // Status filtering
@@ -126,6 +147,11 @@ router.get('/', async (req, res) => {
           startedAt: true,
           completedAt: true,
           createdAt: true,
+          activityLogs: {
+            select: { createdAt: true },
+            orderBy: { createdAt: 'desc' },
+            take: 1
+          },
           // Relations with selected fields only
           project: {
             select: { id: true, name: true, code: true }
@@ -167,6 +193,7 @@ router.get('/', async (req, res) => {
       projectCode: j.project?.code,
       deadline: j.dueDate,
       createdAt: j.createdAt,
+      updatedAt: j.completedAt || j.activityLogs?.[0]?.createdAt || j.createdAt,
       requesterId: j.requesterId,
       requester: j.requester?.displayName || `${j.requester?.firstName} ${j.requester?.lastName}`.trim(),
       requesterAvatar: j.requester?.avatarUrl,
@@ -175,7 +202,8 @@ router.get('/', async (req, res) => {
       assigneeAvatar: j.assignee?.avatarUrl,
       // Parent-Child relationship metadata
       isParent: j.isParent || false,
-      parentJobId: j.parentJobId || null
+      parentJobId: j.parentJobId || null,
+      completedAt: j.completedAt
     }));
 
     res.json({
@@ -451,11 +479,11 @@ router.post('/', async (req, res) => {
           finalAssigneeId = assignResult.assigneeId;
           autoAssigned = true;
 
-          // อัปเดตงานให้เป็น 'assigned' พร้อมระบุผู้รับผิดชอบ
+          // อัปเดตงานให้เป็น 'in_progress' พร้อมระบุผู้รับผิดชอบ
           await tx.job.update({
             where: { id: newJob.id },
             data: {
-              status: 'assigned',
+              status: 'in_progress',
               assigneeId: finalAssigneeId,
               // ถ้ามอบหมายแล้ว ถือว่าเริ่มงานทันที
               startedAt: new Date()
@@ -463,7 +491,7 @@ router.post('/', async (req, res) => {
           });
 
           // อัปเดต Status ใน result
-          newJob.status = 'assigned';
+          newJob.status = 'in_progress';
           newJob.assigneeId = finalAssigneeId;
         }
       }
@@ -476,24 +504,68 @@ router.post('/', async (req, res) => {
     });
 
     // ============================================
+    // Step 7.5: Auto-Approve if requester is approver at level 1
+    // ถ้าผู้สร้างงานอยู่ใน Approval Flow level ปัจจุบัน → auto-approve เฉพาะ level นั้น
+    // ============================================
+    let autoApproveResult = null;
+    if (!isSkip && result.job.status === 'pending_approval') {
+      autoApproveResult = await approvalService.autoApproveIfRequesterIsApprover({
+        jobId: result.job.id,
+        requesterId: userId,
+        projectId: parseInt(projectId),
+        jobTypeId: parseInt(jobTypeId),
+        tenantId
+      });
+
+      if (autoApproveResult.autoApproved) {
+        result.job.status = autoApproveResult.newStatus;
+
+        // ถ้า final approval (level เดียว) → auto-assign ด้วย
+        if (autoApproveResult.isFinal && !result.assigneeId) {
+          const assignResult = await approvalService.autoAssignJobWithFallback(
+            result.job.id,
+            flow,
+            userId,
+            parseInt(projectId),
+            parseInt(jobTypeId)
+          );
+
+          if (assignResult.success && assignResult.assigneeId) {
+            result.assigneeId = assignResult.assigneeId;
+            result.autoAssigned = true;
+            result.job.status = 'in_progress';
+            result.job.assigneeId = assignResult.assigneeId;
+          }
+        }
+
+        console.log(`[Jobs] Auto-approved job ${djId}: ${autoApproveResult.newStatus}`);
+      }
+    }
+
+    // ============================================
     // Step 8: Create Activity Log
     // บันทึกประวัติการสร้างงาน
     // ============================================
     try {
+      const logMessage = autoApproveResult?.autoApproved
+        ? `สร้างงาน ${djId} (Auto-Approved Level 1)`
+        : isSkip
+          ? `สร้างงาน ${djId} (Skip Approval)`
+          : `สร้างงาน ${djId} รอการอนุมัติ`;
+
       await prisma.activityLog.create({
         data: {
           jobId: result.job.id,
           userId,
           action: 'job_created',
-          message: isSkip
-            ? `สร้างงาน ${djId} (Skip Approval)`
-            : `สร้างงาน ${djId} รอการอนุมัติ`,
+          message: logMessage,
           detail: {
             isSkip,
             flowName: flow?.name || 'Default',
             skipApproval: flow?.skipApproval || false,
             autoAssignType: flow?.autoAssignType || 'manual',
-            autoAssigned: result.autoAssigned
+            autoAssigned: result.autoAssigned,
+            autoApproved: autoApproveResult?.autoApproved || false
           }
         }
       });
@@ -514,7 +586,7 @@ router.post('/', async (req, res) => {
     // Step 10: Return Response
     // ส่งข้อมูลงานที่สร้างกลับไปพร้อม Flow Info
     // ============================================
-    console.log(`[Jobs] Created job ${djId} with status: ${result.job.status}, skip: ${isSkip}, autoAssigned: ${result.autoAssigned}`);
+    console.log(`[Jobs] Created job ${djId} with status: ${result.job.status}, skip: ${isSkip}, autoAssigned: ${result.autoAssigned}, autoApproved: ${autoApproveResult?.autoApproved || false}`);
 
     res.status(201).json({
       success: true,
@@ -534,6 +606,7 @@ router.post('/', async (req, res) => {
         flowInfo: {
           templateName: assignment?.template?.name || 'Default (No Template)',
           isSkipped: isSkip,
+          autoApproved: autoApproveResult?.autoApproved || false,
           autoAssigned: result.autoAssigned
         }
       }
@@ -583,6 +656,9 @@ router.get('/:id', async (req, res) => {
           select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, email: true }
         },
         assignee: {
+          select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, email: true }
+        },
+        completedByUser: {
           select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, email: true }
         },
         jobItems: {
@@ -679,10 +755,16 @@ router.get('/:id', async (req, res) => {
       });
     }
 
-    // Check permission (null-safe roles check)
-    // Support both case variations (admin/Admin, manager/Manager) for V1 and V2 auth formats
-    const userRoles = req.user.roles || [];
-    const normalizedRoles = userRoles.map(r => r?.toLowerCase() || '');
+    // ตรวจสอบสิทธิ์การเข้าถึง (Permission Check)
+    // รองรับทั้ง V1 (user.roles array) และ V2 (user.roleName string) auth formats
+    // และรองรับ case ทั้ง 'admin' และ 'Admin' จาก token ทั้ง V1 และ V2
+    const normalizedRoles = [];
+    if (Array.isArray(req.user.roles)) {
+      normalizedRoles.push(...req.user.roles.map(r => r?.toLowerCase() || ''));
+    }
+    if (req.user.roleName) {
+      normalizedRoles.push(req.user.roleName.toLowerCase());
+    }
 
     const hasAccess = job.requesterId === req.user.userId ||
       job.assigneeId === req.user.userId ||
@@ -695,6 +777,15 @@ router.get('/:id', async (req, res) => {
         error: 'INSUFFICIENT_PERMISSIONS',
         message: 'คุณไม่มีสิทธิ์ดูงานนี้'
       });
+    }
+
+    // ดึงข้อมูล ApprovalFlow สำหรับ render UI (หลังจาก Permission Check)
+    // ห่อด้วย try-catch เพื่อป้องกัน timeout ไม่ให้กระทบ response หลัก
+    let approvalFlow = null;
+    try {
+      approvalFlow = await approvalService.getApprovalFlow(job.projectId, job.jobTypeId);
+    } catch (flowErr) {
+      console.warn('[Jobs] getApprovalFlow warning (non-blocking):', flowErr.message);
     }
 
     // Transform to frontend format
@@ -721,14 +812,14 @@ router.get('/:id', async (req, res) => {
       requesterId: job.requesterId,
       requester: {
         id: job.requester?.id,
-        name: job.requester?.displayName || `${job.requester?.firstName} ${job.requester?.lastName}`.trim(),
+        name: `${job.requester?.firstName || ''} ${job.requester?.lastName || ''}`.trim(),
         email: job.requester?.email,
         avatar: job.requester?.avatarUrl
       },
       assigneeId: job.assigneeId,
       assignee: job.assignee ? {
         id: job.assignee.id,
-        name: job.assignee.displayName || `${job.assignee.firstName} ${job.assignee.lastName}`.trim(),
+        name: `${job.assignee.firstName || ''} ${job.assignee.lastName || ''}`.trim(),
         email: job.assignee.email,
         avatar: job.assignee.avatarUrl
       } : null,
@@ -741,7 +832,7 @@ router.get('/:id', async (req, res) => {
         subject: child.subject,
         status: child.status,
         jobType: child.jobType?.name,
-        assignee: child.assignee?.displayName,
+        assignee: child.assignee ? `${child.assignee.firstName || ''} ${child.assignee.lastName || ''}`.trim() : null,
         deadline: child.dueDate
       })) || [],
       // Parent job for child
@@ -753,6 +844,16 @@ router.get('/:id', async (req, res) => {
       } : null,
       items: job.jobItems || [],
       attachments: job.attachments || [],
+
+      // Completion Details
+      completedAt: job.completedAt,
+      finalFiles: job.finalFiles,
+      completedByUser: job.completedByUser ? {
+        id: job.completedByUser.id,
+        name: `${job.completedByUser.firstName || ''} ${job.completedByUser.lastName || ''}`.trim(),
+        email: job.completedByUser.email,
+        avatar: job.completedByUser.avatarUrl
+      } : null,
       // Comments for discussion thread
       comments: job.comments?.map(c => ({
         id: c.id,
@@ -760,7 +861,7 @@ router.get('/:id', async (req, res) => {
         createdAt: c.createdAt,
         user: {
           id: c.user?.id,
-          name: c.user?.displayName || `${c.user?.firstName} ${c.user?.lastName}`.trim(),
+          name: `${c.user?.firstName || ''} ${c.user?.lastName || ''}`.trim(),
           avatar: c.user?.avatarUrl
         }
       })) || [],
@@ -773,11 +874,11 @@ router.get('/:id', async (req, res) => {
         createdAt: a.createdAt,
         user: a.user ? {
           id: a.user.id,
-          name: a.user.displayName || `${a.user.firstName} ${a.user.lastName}`.trim(),
+          name: `${a.user.firstName || ''} ${a.user.lastName || ''}`.trim(),
           avatar: a.user.avatarUrl
         } : null
       })) || [],
-      // 🆕 Transform approvals with approver details
+      // Transform approvals with approver details
       approvals: job.approvals?.map(a => ({
         id: a.id,
         stepNumber: a.stepNumber,
@@ -786,18 +887,28 @@ router.get('/:id', async (req, res) => {
         approvedAt: a.approvedAt,
         approver: {
           id: a.approver.id,
-          displayName: a.approver.displayName ||
-            `${a.approver.firstName} ${a.approver.lastName}`.trim(),
+          name: `${a.approver.firstName || ''} ${a.approver.lastName || ''}`.trim(),
           email: a.approver.email,
           avatar: a.approver.avatarUrl
         }
-      })) || []
+      })) || [],
+      // flowSnapshot: ข้อมูล ApprovalFlow template สำหรับ render UI
+      // Frontend ใช้ค่านี้เพื่อแสดง Timeline ของ Approval Flow
+      // หมายเหตุ: ApprovalFlow model เก็บขั้นตอนการอนุมัติใน field `approverSteps` (ชื่อใน DB)
+      // แต่ Frontend component (JobApprovalFlow.jsx) รับข้อมูลในรูปแบบ `levels` (ชื่อที่ Front ใช้)
+      // ดังนั้นต้อง map approverSteps → levels ตรงนี้
+      flowSnapshot: approvalFlow ? {
+        levels: Array.isArray(approvalFlow.approverSteps) ? approvalFlow.approverSteps : [],
+        skipApproval: approvalFlow.skipApproval || false,
+        defaultAssignee: approvalFlow.autoAssignUser || null
+      } : null
     };
 
     res.json({
       success: true,
       data: transformed
     });
+
 
   } catch (error) {
     console.error('[Jobs] Get job by ID error:', error);
@@ -1337,8 +1448,8 @@ router.post('/parent-child', async (req, res) => {
             // 🔥 Sequential Job: Must wait for predecessor
             childStatus = 'pending_dependency';
           } else if (!needsApproval) {
-            // If skip approval: assigned (if has assignee) OR approved (waiting for assignee)
-            childStatus = assigneeId ? 'assigned' : 'approved';
+            // If skip approval: in_progress (if has assignee) OR approved (waiting for assignee)
+            childStatus = assigneeId ? 'in_progress' : 'approved';
           }
         }
 
@@ -1489,6 +1600,88 @@ function calculateWorkingDays(startDate, workingDays) {
 
   return result;
 }
+
+/**
+ * POST /api/jobs/:id/reassign
+ * เปลี่ยนผู้รับผิดชอบงาน
+ */
+router.post('/:id/reassign', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { newAssigneeId, reason } = req.body;
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
+
+    const prisma = getDatabase();
+
+    // 1. ตรวจสอบว่ามีงานหรือไม่ และตรวจสิทธิ์
+    const job = await prisma.job.findUnique({
+      where: { id: Number(id), tenantId },
+      include: {
+        requester: true,
+        assignee: true,
+      }
+    });
+
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'ไม่พบงานที่ระบุ' });
+    }
+
+    // Permission Check: Owner, Assignee, Admin, Manager
+    // This uses Prisma which bypasses RLS
+    // Role checks are usually done up the chain, or we just trust the token
+    const isOwnerOrAssignee = job.requesterId === userId || job.assigneeId === userId;
+    const { hasRole } = await import('../helpers/roleHelper.js');
+    const isAdminOrManager = hasRole(req.user.roles, 'admin') || hasRole(req.user.roles, 'manager');
+
+    if (!isOwnerOrAssignee && !isAdminOrManager) {
+      return res.status(403).json({ success: false, message: 'ไม่มีสิทธิ์ย้ายงาน' });
+    }
+
+    // 2. ตรวจสอบ Assignee ใหม่
+    const newAssignee = await prisma.user.findUnique({
+      where: { id: Number(newAssigneeId) }
+    });
+
+    if (!newAssignee) {
+      return res.status(404).json({ success: false, message: 'ไม่พบผู้รับงานใหม่' });
+    }
+
+    // 3. Update Job
+    await prisma.job.update({
+      where: { id: Number(id) },
+      data: {
+        assignee: { connect: { id: Number(newAssigneeId) } },
+      }
+    });
+
+    // 4. Log Activity
+    await prisma.activityLog.create({
+      data: {
+        jobId: Number(id),
+        userId: userId,
+        action: 'reassigned',
+        message: `ย้ายผู้รับผิดชอบงานไปที่ ${newAssignee.firstName} ${newAssignee.lastName}. เหตุผล: ${reason || '-'}`
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        assignee: {
+          id: newAssignee.id,
+          name: `${newAssignee.firstName} ${newAssignee.lastName}`,
+          email: newAssignee.email,
+          avatar: newAssignee.avatarUrl
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('[Jobs] Reassign error:', error);
+    res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการย้ายงาน' });
+  }
+});
 
 /**
  * POST /api/jobs/:id/complete

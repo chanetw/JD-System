@@ -44,33 +44,42 @@ export const jobService = {
 
     getJobsByRole: async (user) => {
         try {
-            // ✓ NEW: Use Backend REST API with RLS context
-            // Handle V1 (roles array) and V2 (role object or roleName string)
+            // Multi-role support: collect ALL user roles and send as comma-separated
+            // Backend will return union of jobs from all applicable roles
 
-            // Guard against null/undefined user
             if (!user) {
                 console.warn('[getJobsByRole] User is null or undefined, returning empty jobs list');
                 return [];
             }
 
-            let role = 'requester';
+            // Collect all roles from various auth formats (V1 array, V2 object/string)
+            let allRoles = [];
 
-            if (typeof user.role === 'string') {
-                role = user.role;
-            } else if (user.role && user.role.name) {
-                role = user.role.name;
-            } else if (user.roleName) {
-                role = user.roleName;
-            } else if (user.roles && user.roles.length > 0) {
-                role = user.roles[0]?.name || user.roles[0]?.roleName || user.roles[0];
+            if (user.roles && Array.isArray(user.roles) && user.roles.length > 0) {
+                allRoles = user.roles.map(r => {
+                    if (typeof r === 'string') return r;
+                    return r?.name || r?.roleName || '';
+                }).filter(Boolean);
             }
 
-            const userId = user.id;
+            // Fallback: single role formats
+            if (allRoles.length === 0) {
+                if (typeof user.role === 'string') {
+                    allRoles = [user.role];
+                } else if (user.role && user.role.name) {
+                    allRoles = [user.role.name];
+                } else if (user.roleName) {
+                    allRoles = [user.roleName];
+                }
+            }
 
-            console.log(`[getJobsByRole] Filtering for Role: ${role}, UserID: ${userId}`);
+            // Send comma-separated roles to backend
+            const roleParam = allRoles.map(r => r.toLowerCase()).join(',') || 'requester';
+
+            console.log(`[getJobsByRole] Fetching for roles: ${roleParam}, UserID: ${user.id}`);
 
             const response = await httpClient.get('/jobs', {
-                params: { role: role.toLowerCase() }
+                params: { role: roleParam }
             });
 
             if (!response.data.success) {
@@ -79,7 +88,7 @@ export const jobService = {
             }
 
             const jobs = response.data.data || [];
-            console.log(`[jobService] getJobsByRole: Fetched ${jobs.length} jobs (Role: ${role})`);
+            console.log(`[jobService] getJobsByRole: Fetched ${jobs.length} jobs (Roles: ${roleParam})`);
             return jobs;
 
         } catch (error) {
@@ -96,51 +105,27 @@ export const jobService = {
      */
     getAssigneeJobs: async (userId, filterStatus = 'all') => {
         try {
-            // Base query: ดึงงานที่ assignee_id ตรงกับ user
-            let query = supabase
-                .from('jobs')
-                .select(`
-                    *,
-                    project:projects(name, code),
-                    job_type:job_types(name, icon, color_theme, sla_days),
-                    requester:users!jobs_requester_id_fkey(first_name, last_name, display_name, avatar_url)
-                `)
-                .eq('assignee_id', userId);
+            const response = await httpClient.get('/jobs', {
+                params: { role: 'assignee', status: filterStatus }
+            });
 
-            // Filter ตามกลุ่มสถานะ
-            switch (filterStatus) {
-                case 'todo':
-                    query = query.in('status', ['assigned']); // งานใหม่ที่ยังไม่เริ่ม
-                    break;
-                case 'in_progress':
-                    query = query.eq('status', 'in_progress'); // กำลังทำ
-                    break;
-                case 'waiting':
-                    query = query.in('status', ['correction', 'pending_approval']); // รอคนอื่น
-                    break;
-                case 'done':
-                    query = query.in('status', ['completed', 'closed']); // เสร็จแล้ว
-                    break;
-            }
-
-            // Order by due_date (urgent first)
-            query = query.order('due_date', { ascending: true });
-
-            const { data, error } = await query;
-            if (error) {
-                console.warn('getAssigneeJobs error:', error.message);
+            if (!response.data.success) {
+                console.warn('[jobService] getAssigneeJobs failed:', response.data.message);
                 return [];
             }
-            console.log(`[jobService] getAssigneeJobs: Fetched ${data?.length || 0} jobs (Filter: ${filterStatus})`);
+
+            const data = response.data.data || [];
+            console.log(`[jobService] getAssigneeJobs: Fetched ${data.length} jobs (Filter: ${filterStatus})`);
+
             // คำนวณ Health Status สำหรับแต่ละงาน
             return data.map(job => {
                 const now = new Date();
-                const dueDate = new Date(job.due_date);
+                const dueDate = new Date(job.deadline || job.dueDate || new Date());
                 const hoursRemaining = (dueDate - now) / (1000 * 60 * 60);
 
                 let healthStatus = 'normal';
 
-                if (filterStatus === 'done') {
+                if (filterStatus === 'done' || ['completed', 'closed'].includes(job.status)) {
                     healthStatus = 'normal'; // งานเสร็จแล้วไม่ต้องสน SLA
                 } else if (hoursRemaining < 0) {
                     healthStatus = 'critical'; // เลยกำหนด (Overdue)
@@ -152,16 +137,16 @@ export const jobService = {
 
                 return {
                     id: job.id,
-                    djId: job.dj_id,
+                    djId: job.djId,
                     subject: job.subject,
                     status: job.status,
                     priority: job.priority,
-                    deadline: job.due_date,
-                    projectCode: job.project?.code,
-                    projectName: job.project?.name,
-                    jobTypeName: job.job_type?.name,
-                    requesterName: job.requester?.display_name || 'Unknown',
-                    requesterAvatar: job.requester?.avatar_url,
+                    deadline: job.deadline || job.dueDate,
+                    projectCode: job.projectCode,
+                    projectName: job.project,
+                    jobTypeName: job.jobType,
+                    requesterName: job.requester,
+                    requesterAvatar: job.requesterAvatar,
                     healthStatus: healthStatus,
                     hoursRemaining: Math.round(hoursRemaining * 10) / 10
                 };
@@ -191,7 +176,7 @@ export const jobService = {
             const data = response.data.data;
 
             // Map Backend V2 data to Frontend component expectation
-            return {
+            const mapped = {
                 ...data,
                 // Ensure field names match what JobDetail.jsx expects
                 brief: {
@@ -212,8 +197,19 @@ export const jobService = {
                 requester_id: data.requesterId,
                 assignee_id: data.assigneeId,
                 project_id: data.projectId,
-                job_type_id: data.jobTypeId
+                job_type_id: data.jobTypeId,
+                // Completion Data
+                completedAt: data.completedAt,
+                completedByUser: data.completedByUser,
+                finalFiles: data.finalFiles
             };
+
+            console.log('[jobService] getJobById mapped:', {
+                completedAt: mapped.completedAt,
+                finalFiles: mapped.finalFiles
+            });
+
+            return mapped;
 
         } catch (error) {
             console.error('[jobService] getJobById error:', error);
@@ -453,71 +449,28 @@ export const jobService = {
     reassignJob: async (jobId, newAssigneeId, reason, userId, user = null) => {
         console.log(`[Reassign] Job ${jobId} -> New Assignee ${newAssigneeId} by User ${userId}`);
 
-        // ========================================
-        // Permission Check
-        // ========================================
-        // Get current job to check assignee
-        const { data: currentJob, error: jobFetchErr } = await supabase.from('jobs')
-            .select('assignee_id')
-            .eq('id', jobId)
-            .single();
+        try {
+            const response = await httpClient.post(`/jobs/${jobId}/reassign`, {
+                newAssigneeId,
+                reason
+            });
 
-        if (jobFetchErr) throw jobFetchErr;
-
-        // Get user roles if not provided
-        let userRoles = [];
-        if (user?.roles) {
-            userRoles = user.roles.map(r => (typeof r === 'string' ? r : r?.roleName || '').toLowerCase());
-        }
-
-        // Permission check: Can reassign if:
-        // 1. User is the current assignee, OR
-        // 2. User is admin or manager
-        const isCurrentAssignee = currentJob.assignee_id === userId;
-        const isAdminOrManager = userRoles.includes('admin') || userRoles.includes('manager');
-
-        if (!isCurrentAssignee && !isAdminOrManager) {
-            const error = new Error('ไม่มีสิทธิ์ย้ายงาน: คุณเป็นผู้รับงานเท่านั้น');
-            error.code = 'PERMISSION_DENIED';
-            throw error;
-        }
-
-        // 1. Update Assignee
-        const { error } = await supabase.from('jobs')
-            .update({ assignee_id: newAssigneeId })
-            .eq('id', jobId);
-
-        if (error) throw error;
-
-        // 2. Fetch New Assignee Info (ข้อมูลเต็ม)
-        const { data: userData } = await supabase.from('users')
-            .select('id, display_name, first_name, last_name, avatar_url, email')
-            .eq('id', newAssigneeId)
-            .single();
-
-        const assigneeName = userData?.display_name || 'Unknown';
-
-        // 3. Log Activity
-        await supabase.from('activity_logs').insert([{
-            job_id: jobId,
-            user_id: userId,
-            action: 'reassigned',
-            message: `Reassigned to ${assigneeName}. Note: ${reason || '-'}`
-        }]);
-
-        // 4. Send Notification (Optional: Notify new assignee)
-        await notificationService.sendNotification('job_assigned', jobId);
-
-        // 🔥 NEW: Return ข้อมูล Assignee ใหม่
-        return {
-            success: true,
-            assignee: {
-                id: userData.id,
-                name: assigneeName,
-                email: userData.email,
-                avatar: userData.avatar_url
+            if (!response.data.success) {
+                throw new Error(response.data.message);
             }
-        };
+
+            // Backend returns assignee data
+            return {
+                success: true,
+                assignee: response.data.data.assignee
+            };
+        } catch (error) {
+            console.error('[jobService] reassignJob error:', error);
+            const errorMessage = error.response?.data?.message || error.message || 'ไม่มีสิทธิ์ย้ายงาน หรือดึงข้อมูลผิดพลาด';
+            const enhancedError = new Error(errorMessage);
+            enhancedError.code = error.response?.status === 403 ? 'PERMISSION_DENIED' : 'API_ERROR';
+            throw enhancedError;
+        }
     },
 
 
@@ -852,7 +805,7 @@ export const jobService = {
             // Get user roles if not provided
             let userRoles = [];
             if (user?.roles) {
-                userRoles = user.roles.map(r => (typeof r === 'string' ? r : r?.roleName || '').toLowerCase());
+                userRoles = user.roles.map(r => (typeof r === 'string' ? r : r?.name || r?.roleName || '').toLowerCase());
             }
 
             // Permission check: Only Admin and Manager can manually assign

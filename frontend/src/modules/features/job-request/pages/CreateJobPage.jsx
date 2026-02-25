@@ -94,6 +94,8 @@ export default function CreateDJ() {
 
     /** สถานะแสดง/ซ่อน Brief Link Input (สำหรับ Add Link button) */
     const [showBriefLinkInput, setShowBriefLinkInput] = useState(false);
+    /** เก็บลิงค์ชั่วคราวก่อนกดปุ่ม แนบลิงค์ */
+    const [tempBriefLink, setTempBriefLink] = useState('');
 
     // === สถานะการตรวจสอบและแจ้งเตือน (States: Validation & Feedback) ===
     /** รายการข้อผิดพลาดที่พบจากฟอร์ม */
@@ -153,11 +155,14 @@ export default function CreateDJ() {
                     if (scopedProjects.length > 0) {
                         data.projects = scopedProjects;
                     } else {
-                        // Fallback: If no scopes returned but user is not admin, 
-                        // check if we should fallback to empty or keep all (if legacy)
-                        // For now, strict mode: empty if no scopes
-                        data.projects = [];
-                        console.warn('[CreateJob] User has no assigned project scopes');
+                        // Fallback: Use permission.utils.js to filter by user scopes
+                        // Handles Tenant/BUD/Project level scope assignments
+                        const accessibleProjects = getAccessibleProjects(user, data.projects);
+                        data.projects = accessibleProjects;
+
+                        if (accessibleProjects.length === 0) {
+                            console.warn('[CreateJob] User has no assigned project scopes');
+                        }
                     }
                 }
 
@@ -781,7 +786,7 @@ export default function CreateDJ() {
                 },
                 requesterId: user?.id,
                 tenantId: user?.tenant_id || 1,
-                requesterName: user?.displayName || user?.display_name || 'Unknown User',
+                requesterName: user?.firstName || user?.display_name || 'Unknown User',
                 flowSnapshot: approvalFlow,
                 dueDate: formData.dueDate || null, // วันส่งงาน (Due Date)
                 status: status
@@ -1299,15 +1304,15 @@ export default function CreateDJ() {
                     < Card >
                         <CardHeader title="ลิงค์รายละเอียด (Brief Link)" badge="3" />
                         <CardBody className="space-y-4">
-                            {/* Brief Link - แสดงเป็น Card เมื่อมีลิงค์ */}
                             {formData.briefLink ? (
+                                /* Brief Link - แสดงเป็น Card เมื่อมีลิงค์ */
                                 <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center text-green-600">
                                             <LinkIcon className="w-5 h-5" />
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium text-green-800">✓ เพิ่มลิงค์แล้ว</p>
+                                            <p className="text-sm font-medium text-green-800">✓ แนบลิงค์เรียบร้อยแล้ว</p>
                                             <a
                                                 href={formData.briefLink}
                                                 target="_blank"
@@ -1322,30 +1327,50 @@ export default function CreateDJ() {
                                         type="button"
                                         onClick={() => {
                                             setFormData(prev => ({ ...prev, briefLink: '' }));
-                                            setShowBriefLinkInput(true);
+                                            setTempBriefLink(formData.briefLink); // เอาลิงค์เดิมกลับมาแก้ได้ง่ายๆ
                                         }}
                                         className="text-gray-400 hover:text-red-500 ml-2"
-                                        title="เปลี่ยนลิงค์"
+                                        title="แก้ไขลิงค์"
                                     >
                                         <TrashIcon className="w-5 h-5" />
                                     </button>
                                 </div>
                             ) : (
-                                /* Brief Link Input - แสดงตลอดเมื่อยังไม่มีลิงค์ */
+                                /* Brief Link Input - แสดงตอนยังไม่มีลิงค์ */
                                 <div className="space-y-3">
                                     <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
                                         <p className="text-sm text-amber-800 font-medium mb-2">⚠️ จำเป็นต้องใส่ลิงค์เพื่อส่งงาน</p>
                                         <p className="text-xs text-amber-600">กรุณาใส่ลิงค์ Google Drive, Notion หรือเอกสารออนไลน์ที่มีรายละเอียดงาน</p>
                                     </div>
-                                    <FormInput
-                                        label="ลิงค์รายละเอียด (Brief Link) *"
-                                        name="briefLink"
-                                        type="url"
-                                        placeholder="https://drive.google.com/file/d/... หรือลิงค์เอกสารอื่น"
-                                        value={formData.briefLink}
-                                        onChange={handleChange}
-                                        required
-                                    />
+
+                                    <div className="flex gap-2 items-start">
+                                        <div className="flex-1">
+                                            <FormInput
+                                                label="ลิงค์รายละเอียด (Brief Link) *"
+                                                name="tempBriefLink"
+                                                type="url"
+                                                placeholder="https://drive.google.com/..."
+                                                value={tempBriefLink}
+                                                onChange={(e) => setTempBriefLink(e.target.value)}
+                                            />
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (tempBriefLink.trim()) {
+                                                    setFormData(prev => ({ ...prev, briefLink: tempBriefLink.trim() }));
+                                                }
+                                            }}
+                                            disabled={!tempBriefLink.trim()}
+                                            className={`mt-6 px-4 py-2.5 rounded-lg flex items-center gap-2 font-medium transition-colors ${tempBriefLink.trim()
+                                                    ? 'bg-rose-600 text-white hover:bg-rose-700 shadow-sm'
+                                                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                                }`}
+                                        >
+                                            <LinkIcon className="w-4 h-4" />
+                                            แนบลิงค์
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </CardBody>
