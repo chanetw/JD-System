@@ -15,6 +15,7 @@ import { chainConfig } from '../config/chainConfig.js';
 import ApprovalService from '../services/approvalService.js';
 import JobService from '../services/jobService.js';
 import chainService from '../services/chainService.js';
+import jobChainService from '../services/jobChainService.js';
 
 const approvalService = new ApprovalService();
 const jobService = new JobService();
@@ -50,19 +51,51 @@ router.get('/', async (req, res) => {
     const buildRoleCondition = async (singleRole) => {
       switch (singleRole) {
         case 'requester':
-          return { requesterId: userId };
+          // ✅ NEW: Requester sees only parent jobs or single jobs (not individual children)
+          return {
+            requesterId: userId,
+            OR: [
+              { isParent: true },                        // parent jobs
+              {
+                isParent: false,                         // ✅ FIX: Boolean NOT NULL, use false only
+                parentJobId: null                        // not a child (single jobs)
+              }
+            ]
+          };
         case 'assignee':
-          return { assigneeId: userId };
+          // ✅ NEW: Assignee sees only child jobs assigned to them or single jobs (not parent)
+          return {
+            assigneeId: userId,
+            OR: [
+              { isParent: false, parentJobId: { not: null } }, // child jobs assigned to them
+              {
+                isParent: false,                         // ✅ FIX: Boolean NOT NULL, use false only
+                parentJobId: null                        // not a child (single jobs)
+              }
+            ]
+          };
         case 'approver': {
+          // ✅ Approver sees jobs in pending_approval status
+          // First, try to find jobs with pending approval assigned to this approver
           const pendingApprovals = await prisma.approval.findMany({
             where: { approverId: userId, status: 'pending', tenantId },
             select: { jobId: true }
           });
           const pendingJobIds = [...new Set(pendingApprovals.map(a => a.jobId))];
-          if (pendingJobIds.length === 0) return null; // no matching jobs
+
+          // If approver has specific assignments, show those
+          if (pendingJobIds.length > 0) {
+            return {
+              id: { in: pendingJobIds },
+              status: { in: ['pending_approval', 'pending_level_1', 'pending_level_2'] },
+              isParent: false  // ✅ FIX: isParent is Boolean (not nullable), false = child + single jobs
+            };
+          }
+
+          // Fallback: Show all jobs in pending_approval status (for approvers without explicit assignments)
           return {
-            id: { in: pendingJobIds },
-            status: { in: ['pending_approval', 'pending_level_1', 'pending_level_2'] }
+            status: { in: ['pending_approval', 'pending_level_1', 'pending_level_2'] },
+            isParent: false  // ✅ FIX: isParent is Boolean (not nullable), false = child + single jobs
           };
         }
         case 'manager':
@@ -540,6 +573,31 @@ router.post('/', async (req, res) => {
 
         console.log(`[Jobs] Auto-approved job ${djId}: ${autoApproveResult.newStatus}`);
       }
+    } else if (isSkip) {
+      // ✅ FIX: Create implicit approval record for skipped approval flows
+      // When approval flow is skipped, still create an approval record for audit trail
+      try {
+        const finalStatus = result.job.status; // Will be 'approved' or 'in_progress'
+
+        await prisma.approval.create({
+          data: {
+            jobId: result.job.id,
+            approverId: userId, // Requester implicitly approves
+            stepNumber: 1,
+            status: 'approved',
+            approvedAt: new Date(),
+            comment: result.autoAssigned
+              ? `Auto-approved & auto-assigned: Skipped approval flow with auto-assignment`
+              : `Auto-approved: Skipped approval flow (awaiting assignee)`,
+            tenantId
+          }
+        });
+
+        console.log(`[Jobs] Created implicit approval for ${djId} (skip approval, status: ${finalStatus})`);
+      } catch (approvalErr) {
+        console.warn(`[Jobs] Failed to create approval record for ${djId}:`, approvalErr.message);
+        // Don't fail the whole operation if approval record creation fails
+      }
     }
 
     // ============================================
@@ -728,7 +786,7 @@ router.get('/:id', async (req, res) => {
             subject: true,
             status: true,
             jobType: { select: { id: true, name: true } },
-            assignee: { select: { id: true, displayName: true } },
+            assignee: { select: { id: true, firstName: true, lastName: true, displayName: true } },
             dueDate: true
           },
           where: { isParent: false },  // ⚡ Performance: Only non-parent children
@@ -832,7 +890,7 @@ router.get('/:id', async (req, res) => {
         subject: child.subject,
         status: child.status,
         jobType: child.jobType?.name,
-        assignee: child.assignee ? `${child.assignee.firstName || ''} ${child.assignee.lastName || ''}`.trim() : null,
+        assignee: child.assignee ? (child.assignee.displayName || `${child.assignee.firstName || ''} ${child.assignee.lastName || ''}`.trim()) : null,
         deadline: child.dueDate
       })) || [],
       // Parent job for child
@@ -999,7 +1057,9 @@ router.post('/:id/reject', async (req, res) => {
     const { id } = req.params;
     const { comment } = req.body;
     const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
     const ipAddress = req.ip || req.connection.remoteAddress || 'unknown';
+    const prisma = getDatabase();
 
     const result = await approvalService.rejectJobViaWeb({
       jobId: parseInt(id),
@@ -1008,7 +1068,52 @@ router.post('/:id/reject', async (req, res) => {
       ipAddress
     });
 
+    // ✅ NEW: Cancel chained/child jobs when job is rejected
     if (result.success) {
+      try {
+        // Get job details to check for chains/children
+        const job = await prisma.job.findUnique({
+          where: { id: parseInt(id) },
+          select: {
+            djId: true,
+            isParent: true,
+            nextJobId: true
+          }
+        });
+
+        let cancelledJobIds = [];
+
+        if (job) {
+          if (job.isParent) {
+            // Cancel all child jobs
+            cancelledJobIds = await jobChainService.cancelChildJobs(
+              parseInt(id),
+              tenantId,
+              `Parent job (${job.djId}) rejected by approver`,
+              userId
+            );
+            console.log(`[Jobs] Cancelled ${cancelledJobIds.length} child jobs after parent rejection`);
+          } else if (job.nextJobId) {
+            // Cancel downstream chain
+            cancelledJobIds = await jobChainService.cancelChainedJobs(
+              parseInt(id),
+              tenantId,
+              `Previous job (${job.djId}) rejected by approver`,
+              userId
+            );
+            console.log(`[Jobs] Cancelled ${cancelledJobIds.length} downstream jobs in chain`);
+          }
+
+          // Add cancelled jobs info to result
+          if (cancelledJobIds.length > 0) {
+            result.cancelledJobs = cancelledJobIds.length;
+          }
+        }
+      } catch (chainErr) {
+        console.error('[Jobs] Chain cancellation warning (non-blocking):', chainErr);
+        // Don't fail the rejection if chain cancellation fails
+      }
+
       res.json(result);
     } else {
       res.status(400).json(result);
@@ -1131,6 +1236,525 @@ router.post('/:id/deny-assignee-rejection', async (req, res) => {
       success: false,
       error: 'DENY_REJECTION_FAILED',
       message: 'ไม่สามารถปฏิเสธคำขอยกเลิกได้'
+    });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/request-rejection
+ * Assignee ขอปฏิเสธงาน - สร้าง rejection_request รอ Approver อนุมัติ
+ *
+ * ระบบใหม่: ใช้ rejection_requests table พร้อม auto-close timeout (24h)
+ * - Assignee ส่งคำขอปฏิเสธพร้อมเหตุผล
+ * - Approver จะได้รับการแจ้งเตือน
+ * - ถ้า Approver ไม่ตอบกลับภายใน 24h → auto-approve
+ *
+ * @body {string} reason - เหตุผลในการขอปฏิเสธ (Required)
+ */
+router.post('/:id/request-rejection', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
+    const prisma = getDatabase();
+
+    // Validation
+    if (!reason || reason.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'REASON_REQUIRED',
+        message: 'กรุณาระบุเหตุผลในการขอปฏิเสธงาน'
+      });
+    }
+
+    // Get job details
+    const job = await prisma.job.findUnique({
+      where: { id: parseInt(id), tenantId },
+      select: {
+        id: true,
+        djId: true,
+        status: true,
+        assigneeId: true,
+        projectId: true,
+        jobTypeId: true,
+        requesterId: true
+      }
+    });
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        error: 'JOB_NOT_FOUND',
+        message: 'ไม่พบงานที่ระบุ'
+      });
+    }
+
+    // Check if user is the assignee
+    if (job.assigneeId !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: 'INSUFFICIENT_PERMISSIONS',
+        message: 'คุณไม่ได้เป็นผู้รับผิดชอบงานนี้'
+      });
+    }
+
+    // Check if job can be rejected
+    const validStatuses = ['in_progress', 'assigned', 'rework'];
+    if (!validStatuses.includes(job.status)) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_STATUS',
+        message: `ไม่สามารถขอปฏิเสธงานในสถานะ ${job.status} ได้`
+      });
+    }
+
+    // Check if there's already a pending rejection request
+    const existingRequest = await prisma.rejectionRequest.findFirst({
+      where: {
+        jobId: parseInt(id),
+        status: 'pending',
+        tenantId
+      }
+    });
+
+    if (existingRequest) {
+      return res.status(400).json({
+        success: false,
+        error: 'REJECTION_REQUEST_EXISTS',
+        message: 'มีคำขอปฏิเสธงานนี้อยู่แล้ว กรุณารอการพิจารณา'
+      });
+    }
+
+    // Get approval flow to determine approvers
+    let approverIds = [];
+    let approverLevel = null;
+    let approvalLogic = 'ANY'; // Default: any approver can approve
+
+    try {
+      const approvalFlow = await approvalService.getApprovalFlow(job.projectId, job.jobTypeId);
+
+      if (approvalFlow && approvalFlow.approverSteps && approvalFlow.approverSteps.length > 0) {
+        // Use first level approvers for rejection approval
+        const level1 = approvalFlow.approverSteps.find(s => s.stepNumber === 1);
+        if (level1 && level1.approvers) {
+          approverLevel = 1;
+          approverIds = level1.approvers.map(a => a.id || a.userId).filter(Boolean);
+          approvalLogic = level1.allMustApprove ? 'ALL' : 'ANY';
+        }
+      }
+    } catch (flowErr) {
+      console.warn('[Jobs] Could not get approval flow for rejection request:', flowErr);
+    }
+
+    // If no approvers found from flow, use requester as fallback
+    if (approverIds.length === 0) {
+      approverIds = [job.requesterId];
+      approvalLogic = 'ANY';
+    }
+
+    // Calculate auto-close time (24 hours from now)
+    const autoCloseAt = new Date();
+    autoCloseAt.setHours(autoCloseAt.getHours() + 24);
+
+    // Create rejection request
+    const rejectionRequest = await prisma.rejectionRequest.create({
+      data: {
+        jobId: parseInt(id),
+        requestedBy: userId,
+        reason: reason.trim(),
+        status: 'pending',
+        approverLevel,
+        approverIds,
+        approvalLogic,
+        autoCloseAt,
+        autoCloseEnabled: true,
+        tenantId
+      }
+    });
+
+    // Update job status to pending_rejection
+    await prisma.job.update({
+      where: { id: parseInt(id) },
+      data: { status: 'pending_rejection' }
+    });
+
+    // Log activity
+    await prisma.jobActivity.create({
+      data: {
+        jobId: parseInt(id),
+        userId,
+        action: 'rejection_requested',
+        message: 'Assignee ขอปฏิเสธงาน',
+        detail: {
+          reason: reason.trim(),
+          rejectionRequestId: rejectionRequest.id,
+          autoCloseAt: autoCloseAt.toISOString()
+        },
+        tenantId
+      }
+    }).catch(err => console.error('[Jobs] Failed to log activity:', err));
+
+    // TODO: Send notification to approvers (via Socket.io or email)
+
+    res.json({
+      success: true,
+      message: 'ส่งคำขอปฏิเสธงานเรียบร้อย รอการพิจารณา',
+      data: {
+        rejectionRequestId: rejectionRequest.id,
+        status: 'pending',
+        autoCloseAt: autoCloseAt.toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('[Jobs] Request rejection error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'REQUEST_REJECTION_FAILED',
+      message: 'ไม่สามารถส่งคำขอปฏิเสธงานได้'
+    });
+  }
+});
+
+/**
+ * POST /api/rejection-requests/:id/approve
+ * Approver อนุมัติคำขอปฏิเสธจาก Assignee
+ *
+ * - อัปเดตสถานะ rejection_request เป็น 'approved'
+ * - เปลี่ยนสถานะงานเป็น 'rejected_by_assignee'
+ * - ยกเลิกงานที่เชื่อมโยง (chain/children)
+ *
+ * @body {string} comment - ความเห็นจาก Approver (Optional)
+ */
+router.post('/rejection-requests/:id/approve', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { comment } = req.body;
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
+    const prisma = getDatabase();
+
+    // Get rejection request
+    const rejectionRequest = await prisma.rejectionRequest.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        job: {
+          select: {
+            id: true,
+            djId: true,
+            status: true,
+            isParent: true,
+            nextJobId: true,
+            parentJobId: true
+          }
+        }
+      }
+    });
+
+    if (!rejectionRequest) {
+      return res.status(404).json({
+        success: false,
+        error: 'REQUEST_NOT_FOUND',
+        message: 'ไม่พบคำขอปฏิเสธที่ระบุ'
+      });
+    }
+
+    // Check tenant
+    if (rejectionRequest.tenantId !== tenantId) {
+      return res.status(403).json({
+        success: false,
+        error: 'INSUFFICIENT_PERMISSIONS',
+        message: 'คุณไม่มีสิทธิ์เข้าถึงคำขอนี้'
+      });
+    }
+
+    // Check if user is in approver list
+    if (!rejectionRequest.approverIds.includes(userId)) {
+      return res.status(403).json({
+        success: false,
+        error: 'NOT_APPROVER',
+        message: 'คุณไม่ใช่ผู้อนุมัติสำหรับคำขอนี้'
+      });
+    }
+
+    // Check if request is still pending
+    if (rejectionRequest.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        error: 'REQUEST_ALREADY_PROCESSED',
+        message: `คำขอนี้ถูกดำเนินการแล้ว (${rejectionRequest.status})`
+      });
+    }
+
+    // Update rejection request to approved
+    await prisma.rejectionRequest.update({
+      where: { id: parseInt(id) },
+      data: {
+        status: 'approved',
+        approvedBy: userId,
+        approvedAt: new Date()
+      }
+    });
+
+    // Update job status to rejected_by_assignee
+    await prisma.job.update({
+      where: { id: rejectionRequest.jobId },
+      data: { status: 'rejected_by_assignee' }
+    });
+
+    // Log activity
+    await prisma.jobActivity.create({
+      data: {
+        jobId: rejectionRequest.jobId,
+        userId,
+        action: 'rejection_approved',
+        message: 'Approver อนุมัติคำขอปฏิเสธจาก Assignee',
+        detail: {
+          rejectionRequestId: rejectionRequest.id,
+          comment: comment || null
+        },
+        tenantId
+      }
+    }).catch(err => console.error('[Jobs] Failed to log activity:', err));
+
+    // Optional: Add comment if provided
+    if (comment && comment.trim().length > 0) {
+      await prisma.jobComment.create({
+        data: {
+          jobId: rejectionRequest.jobId,
+          userId,
+          comment: comment.trim(),
+          tenantId
+        }
+      }).catch(err => console.error('[Jobs] Failed to create comment:', err));
+    }
+
+    // Cancel chained jobs (if any)
+    let cancelledJobIds = [];
+    try {
+      if (rejectionRequest.job.isParent) {
+        // Cancel all child jobs
+        cancelledJobIds = await jobChainService.cancelChildJobs(
+          rejectionRequest.jobId,
+          tenantId,
+          `Parent job (${rejectionRequest.job.djId}) rejected by assignee`,
+          userId
+        );
+      } else if (rejectionRequest.job.nextJobId) {
+        // Cancel downstream chain
+        cancelledJobIds = await jobChainService.cancelChainedJobs(
+          rejectionRequest.jobId,
+          tenantId,
+          `Previous job (${rejectionRequest.job.djId}) rejected by assignee`,
+          userId
+        );
+      }
+    } catch (chainErr) {
+      console.error('[Jobs] Chain cancellation warning (non-blocking):', chainErr);
+    }
+
+    // ✅ NEW: Check Parent Job Closure (Partial Rejection Support)
+    try {
+      if (rejectionRequest.job.parentJobId) {
+        // This is a child job, check if parent can be closed
+        const closureCheck = await jobChainService.checkParentJobClosure(
+          rejectionRequest.job.parentJobId,
+          tenantId
+        );
+
+        if (closureCheck.canClose) {
+          // Update parent job status
+          await prisma.job.update({
+            where: { id: rejectionRequest.job.parentJobId },
+            data: { status: closureCheck.newStatus }
+          });
+
+          // Log activity on parent job
+          await prisma.jobActivity.create({
+            data: {
+              jobId: rejectionRequest.job.parentJobId,
+              userId,
+              action: 'parent_job_closed',
+              message: closureCheck.newStatus === 'partially_completed'
+                ? 'Parent job partially completed: บาง child jobs ถูกปฏิเสธ'
+                : `Parent job status updated: ${closureCheck.reason}`,
+              detail: {
+                closureReason: closureCheck.reason,
+                stats: closureCheck.stats,
+                triggeredByRejection: true
+              },
+              tenantId
+            }
+          }).catch(err => console.error('[Jobs] Failed to log parent closure:', err));
+
+          console.log(
+            `[Jobs] Parent Job Closure (after rejection): Parent ${rejectionRequest.job.parentJobId} → ${closureCheck.newStatus}`,
+            closureCheck.stats
+          );
+        }
+      }
+    } catch (closureError) {
+      console.error('[Jobs] Parent job closure check failed (non-blocking):', closureError);
+      // Don't fail the request
+    }
+
+    // TODO: Send notification to requester and assignee
+
+    res.json({
+      success: true,
+      message: 'อนุมัติคำขอปฏิเสธเรียบร้อย',
+      data: {
+        jobId: rejectionRequest.jobId,
+        status: 'rejected_by_assignee',
+        cancelledJobs: cancelledJobIds.length
+      }
+    });
+
+  } catch (error) {
+    console.error('[Jobs] Approve rejection request error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'APPROVE_REJECTION_FAILED',
+      message: 'ไม่สามารถอนุมัติคำขอปฏิเสธได้'
+    });
+  }
+});
+
+/**
+ * POST /api/rejection-requests/:id/deny
+ * Approver ปฏิเสธคำขอปฏิเสธจาก Assignee - สั่งให้ทำงานต่อ
+ *
+ * - อัปเดตสถานะ rejection_request เป็น 'denied'
+ * - เปลี่ยนสถานะงานกลับเป็น 'in_progress'
+ * - แนะนำให้ Assignee ขอ Extend deadline
+ *
+ * @body {string} reason - เหตุผลที่ไม่อนุมัติ (Required)
+ */
+router.post('/rejection-requests/:id/deny', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
+    const prisma = getDatabase();
+
+    // Validation
+    if (!reason || reason.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'REASON_REQUIRED',
+        message: 'กรุณาระบุเหตุผลที่ไม่อนุมัติคำขอปฏิเสธ'
+      });
+    }
+
+    // Get rejection request
+    const rejectionRequest = await prisma.rejectionRequest.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        job: {
+          select: {
+            id: true,
+            djId: true,
+            status: true
+          }
+        }
+      }
+    });
+
+    if (!rejectionRequest) {
+      return res.status(404).json({
+        success: false,
+        error: 'REQUEST_NOT_FOUND',
+        message: 'ไม่พบคำขอปฏิเสธที่ระบุ'
+      });
+    }
+
+    // Check tenant
+    if (rejectionRequest.tenantId !== tenantId) {
+      return res.status(403).json({
+        success: false,
+        error: 'INSUFFICIENT_PERMISSIONS',
+        message: 'คุณไม่มีสิทธิ์เข้าถึงคำขอนี้'
+      });
+    }
+
+    // Check if user is in approver list
+    if (!rejectionRequest.approverIds.includes(userId)) {
+      return res.status(403).json({
+        success: false,
+        error: 'NOT_APPROVER',
+        message: 'คุณไม่ใช่ผู้อนุมัติสำหรับคำขอนี้'
+      });
+    }
+
+    // Check if request is still pending
+    if (rejectionRequest.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        error: 'REQUEST_ALREADY_PROCESSED',
+        message: `คำขอนี้ถูกดำเนินการแล้ว (${rejectionRequest.status})`
+      });
+    }
+
+    // Update rejection request to denied
+    await prisma.rejectionRequest.update({
+      where: { id: parseInt(id) },
+      data: {
+        status: 'denied',
+        approvedBy: userId,
+        approvedAt: new Date()
+      }
+    });
+
+    // Revert job status back to in_progress
+    await prisma.job.update({
+      where: { id: rejectionRequest.jobId },
+      data: { status: 'in_progress' }
+    });
+
+    // Log activity
+    await prisma.jobActivity.create({
+      data: {
+        jobId: rejectionRequest.jobId,
+        userId,
+        action: 'rejection_denied',
+        message: 'Approver ไม่อนุมัติคำขอปฏิเสธ - สั่งให้ Assignee ทำงานต่อ',
+        detail: {
+          rejectionRequestId: rejectionRequest.id,
+          reason: reason.trim()
+        },
+        tenantId
+      }
+    }).catch(err => console.error('[Jobs] Failed to log activity:', err));
+
+    // Add comment with reason
+    await prisma.jobComment.create({
+      data: {
+        jobId: rejectionRequest.jobId,
+        userId,
+        comment: `❌ ไม่อนุมัติคำขอปฏิเสธ: ${reason.trim()}\n\n💡 แนะนำ: หากต้องการเวลาเพิ่ม กรุณาขอ Extend Deadline แทน`,
+        tenantId
+      }
+    }).catch(err => console.error('[Jobs] Failed to create comment:', err));
+
+    // TODO: Send notification to assignee
+
+    res.json({
+      success: true,
+      message: 'ไม่อนุมัติคำขอปฏิเสธ - Assignee ต้องทำงานต่อ',
+      data: {
+        jobId: rejectionRequest.jobId,
+        status: 'in_progress'
+      }
+    });
+
+  } catch (error) {
+    console.error('[Jobs] Deny rejection request error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'DENY_REJECTION_FAILED',
+      message: 'ไม่สามารถปฏิเสธคำขอได้'
     });
   }
 });
@@ -1482,6 +2106,28 @@ router.post('/parent-child', async (req, res) => {
           }
         });
 
+        // ✅ FIX: Create implicit approval record for skipped/auto-approved flows
+        // This ensures ALL jobs have an audit trail in the approvals table
+        // even when approval flow is skipped or auto-approved
+        if (!isDraft && (childStatus === 'approved' || childStatus === 'in_progress')) {
+          // Job is skipping approval flow - record this as implicit auto-approval
+          await tx.approval.create({
+            data: {
+              jobId: childJob.id,
+              approverId: userId, // Requester implicitly approves
+              stepNumber: 1,
+              status: 'approved',
+              approvedAt: new Date(),
+              comment: childStatus === 'approved'
+                ? 'Auto-approved: No approval flow required for this job type'
+                : 'Auto-approved: Job assigned with implicit approval by requester',
+              tenantId
+            }
+          });
+
+          console.log(`[Parent-Child] Created implicit approval for ${childDjId} (status: ${childStatus})`);
+        }
+
         childJobs.push({
           id: childJob.id,
           djId: childJob.djId,
@@ -1550,7 +2196,68 @@ router.post('/parent-child', async (req, res) => {
     });
 
     // ============================================
-    // Step 3: Send Response
+    // Step 3: Auto-Approve child jobs if requester is approver
+    // ============================================
+    if (!isDraft) {
+      let anyAutoApproved = false;
+
+      for (const child of result.children) {
+        if (child.status === 'pending_approval') {
+          const autoResult = await approvalService.autoApproveIfRequesterIsApprover({
+            jobId: child.id,
+            requesterId: userId,
+            projectId: parseInt(projectId),
+            jobTypeId: child.jobTypeId,
+            tenantId
+          });
+
+          if (autoResult.autoApproved) {
+            child.status = autoResult.newStatus;
+            anyAutoApproved = true;
+            console.log(`[Parent-Child] Auto-approved child ${child.djId}: ${autoResult.newStatus}`);
+
+            // บันทึก Activity Log สำหรับ child job แต่ละตัวที่ถูก Auto-approve
+            // เพื่อสร้าง Audit Trail ที่สมบูรณ์
+            const prismaOuter = getDatabase();
+            await prismaOuter.activityLog.create({
+              data: {
+                jobId: child.id,
+                userId,
+                action: 'job_auto_approved',
+                message: `Auto-approved child job ${child.djId} → ${autoResult.newStatus}`,
+                detail: JSON.stringify({
+                  autoApproved: true,
+                  newStatus: autoResult.newStatus,
+                  isFinal: autoResult.isFinal,
+                  approvalId: autoResult.approvalId,
+                  isChildJob: true,
+                  parentJobId: result.parent.id
+                })
+              }
+            }).catch(err => console.warn(`[Parent-Child] Activity log failed for ${child.djId}:`, err.message));
+          }
+        }
+      }
+
+      // If any child was auto-approved, update parent status too
+      if (anyAutoApproved) {
+        const allChildStatuses = result.children.map(c => c.status);
+        const allApproved = allChildStatuses.every(s => s !== 'pending_approval');
+
+        if (allApproved) {
+          const prisma = getDatabase();
+          await prisma.job.update({
+            where: { id: result.parent.id },
+            data: { status: 'approved' }
+          });
+          result.parent.status = 'approved';
+          console.log(`[Parent-Child] All children approved → Parent status: approved`);
+        }
+      }
+    }
+
+    // ============================================
+    // Step 4: Send Response
     // ============================================
     console.log(`[Parent-Child] ✅ Transaction completed: ${result.parent.djId} with ${result.children.length} children`);
 
@@ -1720,6 +2427,59 @@ router.post('/:id/complete', async (req, res) => {
       } catch (chainError) {
         console.error('[Jobs] Sequential Job Trigger Failed:', chainError);
         // Don't fail the request, just log error
+      }
+
+      // ✅ NEW: Check Parent Job Closure (Partial Rejection Support)
+      try {
+        const prisma = getDatabase();
+        const tenantId = req.user.tenantId;
+
+        // Get the completed job to check if it's a child job
+        const completedJob = await prisma.job.findUnique({
+          where: { id: jobId },
+          select: { parentJobId: true }
+        });
+
+        if (completedJob && completedJob.parentJobId) {
+          // This is a child job, check if parent can be closed
+          const closureCheck = await jobChainService.checkParentJobClosure(
+            completedJob.parentJobId,
+            tenantId
+          );
+
+          if (closureCheck.canClose) {
+            // Update parent job status
+            await prisma.job.update({
+              where: { id: completedJob.parentJobId },
+              data: { status: closureCheck.newStatus }
+            });
+
+            // Log activity on parent job
+            await prisma.jobActivity.create({
+              data: {
+                jobId: completedJob.parentJobId,
+                userId,
+                action: 'parent_job_closed',
+                message: closureCheck.newStatus === 'completed'
+                  ? 'Parent job completed: ทุก child jobs เสร็จสมบูรณ์'
+                  : 'Parent job partially completed: บาง child jobs ถูกปฏิเสธ',
+                detail: {
+                  closureReason: closureCheck.reason,
+                  stats: closureCheck.stats
+                },
+                tenantId
+              }
+            }).catch(err => console.error('[Jobs] Failed to log parent closure:', err));
+
+            console.log(
+              `[Jobs] Parent Job Closure: Parent ${completedJob.parentJobId} → ${closureCheck.newStatus}`,
+              closureCheck.stats
+            );
+          }
+        }
+      } catch (closureError) {
+        console.error('[Jobs] Parent job closure check failed (non-blocking):', closureError);
+        // Don't fail the request
       }
     }
 

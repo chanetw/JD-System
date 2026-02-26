@@ -45,13 +45,56 @@ class JobService {
                     }
                 });
 
+                // ✅ FIX: Create implicit approval record for dependent jobs
+                // When dependent job moves from pending_dependency to assigned,
+                // it should have an approval record in the audit trail
+                // This ensures all sequential jobs have complete approval history
+                try {
+                    // Check if this job already has an approval record
+                    const existingApproval = await this.prisma.approval.findFirst({
+                        where: { jobId: job.id }
+                    });
+
+                    if (!existingApproval) {
+                        // Get requester info for audit trail
+                        const jobDetails = await this.prisma.job.findUnique({
+                            where: { id: job.id },
+                            select: { requesterId: true, tenantId: true }
+                        });
+
+                        if (jobDetails?.requesterId) {
+                            await this.prisma.approval.create({
+                                data: {
+                                    jobId: job.id,
+                                    approverId: jobDetails.requesterId, // System/requester approval
+                                    stepNumber: 1,
+                                    status: 'approved',
+                                    approvedAt: new Date(),
+                                    comment: `Auto-approved: Dependent job auto-started by predecessor completion`,
+                                    tenantId: jobDetails.tenantId
+                                }
+                            });
+
+                            console.log(`[JobService] Created implicit approval for dependent job #${job.id}`);
+                        }
+                    }
+                } catch (approvalErr) {
+                    console.warn(`[JobService] Failed to create approval record for job #${job.id}:`, approvalErr.message);
+                    // Don't fail the whole operation if approval record creation fails
+                }
+
                 // Add Activity Log
                 await this.prisma.activityLog.create({
                     data: {
                         jobId: job.id,
                         userId: userId, // System action triggered by user
                         action: 'auto_start',
-                        message: `Auto-started because predecessor Job #${jobId} was completed. New Due Date: ${newDueDate.toISOString()}`
+                        message: `Auto-started because predecessor Job #${jobId} was completed. New Due Date: ${newDueDate.toISOString()}`,
+                        detail: JSON.stringify({
+                            predecessorJobId: jobId,
+                            autoApproved: true,
+                            reason: 'dependent_job_auto_start'
+                        })
                     }
                 });
 
