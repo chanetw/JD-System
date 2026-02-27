@@ -343,10 +343,18 @@ class ChainService {
 
     // Reject each descendant
     for (const job of descendants) {
+      // Determine rejection source type
+      const isChildOfParent = await prisma.job.findFirst({
+        where: { id: job.id, parentJobId: rejectedJobId }
+      });
+
+      const rejectionSource = isChildOfParent ? 'cascade_parent' : 'cascade_predecessor';
+
       await prisma.job.update({
         where: { id: job.id },
         data: {
           status: 'rejected',
+          rejectionSource,  // ✅ NEW: Track cascade rejection source
           updatedAt: new Date()
         }
       });
