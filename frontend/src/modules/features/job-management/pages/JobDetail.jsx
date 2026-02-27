@@ -98,20 +98,34 @@ export default function JobDetail() {
 
     const loadUsers = async () => {
         try {
-            // Fetch users with a high limit to get everyone for the dropdown
+            console.log('[JobDetail] 🔍 Loading users for assignee dropdown...');
+
+            // Fetch all users from backend
             const usersData = await adminService.getUsers(1, 1000);
             const usersList = usersData?.data || usersData || [];
 
-            // Filter users to only include those who are 'Assignee' or 'Admin'
-            const eligibleUsers = (Array.isArray(usersList) ? usersList : []).filter(u => {
-                if (!u.roles) return false;
-                const roles = u.roles.map(r => (typeof r === 'string' ? r : r?.name || r?.roleName || '').toLowerCase());
-                return roles.includes('assignee') || roles.includes('graphic') || roles.includes('admin');
+            console.log('[JobDetail] 📊 Total users from API:', usersList.length);
+            console.log('[JobDetail] 👤 Sample user (first):', usersList[0]);
+
+            // Filter for Assignee role only (frontend filtering)
+            const assigneeUsers = (Array.isArray(usersList) ? usersList : []).filter(u => {
+                const hasRoles = u.roles && Array.isArray(u.roles);
+                if (!hasRoles) {
+                    console.log('[JobDetail] ⚠️ User without roles:', u.id, u.name);
+                    return false;
+                }
+
+                const isAssignee = u.roles.some(r => r.name && r.name.toLowerCase() === 'assignee');
+                if (isAssignee) {
+                    console.log('[JobDetail] ✅ Assignee found:', u.name, 'roles:', u.roles.map(r => r.name));
+                }
+                return isAssignee;
             });
 
-            setUsers(eligibleUsers);
+            console.log('[JobDetail] 🎯 Filtered assignee users:', assigneeUsers.length);
+            setUsers(assigneeUsers);
         } catch (error) {
-            console.error('Failed to load users:', error);
+            console.error('[JobDetail] ❌ Failed to load users:', error);
             setUsers([]);
         }
     };
@@ -865,7 +879,7 @@ export default function JobDetail() {
                         >
                             <option value="">เลือกผู้รับงาน...</option>
                             {users.map(u => (
-                                <option key={u.id} value={u.id}>{u.firstName}</option>
+                                <option key={u.id} value={u.id}>{u.name}</option>
                             ))}
                         </select>
                         <textarea

@@ -158,16 +158,15 @@ export class UserService extends BaseService {
         ];
       }
 
-      // Filter by role
-      if (role) {
-        where.userRoles = {
-          some: {
-            role: {
-              name: role
-            }
-          }
-        };
-      }
+      // TEMPORARY: Role filter disabled due to Prisma query issue
+      // Filter will be done on frontend instead
+      // if (role) {
+      //   where.userRoles = {
+      //     some: {
+      //       roleName: role
+      //     }
+      //   };
+      // }
 
       const result = await this.paginate('user', {
         page,

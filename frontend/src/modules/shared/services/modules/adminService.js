@@ -964,8 +964,6 @@ export const adminService = {
 
     updateUser: async (id, userData) => {
         // ✓ Use Backend API instead of direct Supabase (RLS blocked)
-        console.log('[adminService] Updating user via Backend API:', id, userData);
-
         const payload = {
             firstName: userData.firstName,
             lastName: userData.lastName,
@@ -983,7 +981,6 @@ export const adminService = {
             throw new Error(response.data.message || 'Failed to update user');
         }
 
-        console.log('[adminService] User updated successfully:', response.data);
         return response.data.data;
     },
 
@@ -991,12 +988,13 @@ export const adminService = {
      * ดึงรายการผู้ใช้ทั้งหมดผ่าน Backend API (Support Pagination)
      * @param {number} page - หน้าที่ต้องการ (default 1)
      * @param {number} limit - จำนวนต่อหน้า (default 20)
+     * @param {Object} filters - ตัวกรองเพิ่มเติม (e.g., { role: 'Assignee' })
      * @returns {Promise<Object>} Object containing { data: usersArray, pagination: paginationMeta }
      */
-    getUsers: async (page = 1, limit = 20) => {
+    getUsers: async (page = 1, limit = 20, filters = {}) => {
         try {
             const response = await httpClient.get('/users', {
-                params: { page, limit }
+                params: { page, limit, ...filters }
             });
 
             if (!response.data.success) {
@@ -1008,14 +1006,6 @@ export const adminService = {
             const resultData = response.data.data;
             const usersRaw = resultData.data || [];
             const pagination = resultData.pagination || {};
-
-            console.log('[adminService] getUsers raw data sample:', usersRaw.slice(0, 2).map(u => ({
-                id: u.id,
-                name: u.firstName,
-                department: u.department,
-                roleName: u.roleName,
-                userRoles: u.userRoles
-            })));
 
             const users = usersRaw.map(u => {
                 // Process scope assignments to match UI expectations
