@@ -32,15 +32,12 @@ enum JobStatus {
   rework
   assignee_rejected
   rejected
+  rejected_by_assignee     // Assignee rejected (approved by Approver)
+  cancelled                // Cancelled due to parent/chain rejection
+  pending_rejection        // Assignee requested rejection, waiting approval
+  partially_completed      // Parent job completed (some children rejected)
   completed
   closed
-}
-
-enum ApprovalStatus {
-  pending
-  approved
-  rejected
-  returned
 }
 
 // ========================================
@@ -78,6 +75,7 @@ model Tenant {
   auditLogs            AuditLog[]
   userScopeAssignments UserScopeAssignment[]
   budJobAssignments    BudJobAssignment[]
+  rejectionRequests    RejectionRequest[] // ✅ NEW
 
   @@map("tenants")
 }
@@ -137,6 +135,9 @@ model User {
   autoAssignFlows      ApprovalFlow[]         @relation("FlowAutoAssign")
   // Scope assignments (project/bud level access)
   scopeAssignments     UserScopeAssignment[]
+  // ✅ NEW: Rejection requests
+  rejectionRequestsCreated  RejectionRequest[] @relation("RejectionRequester")
+  rejectionRequestsApproved RejectionRequest[] @relation("RejectionApprover")
 
   @@unique([tenantId, email])
   @@index([departmentId])
@@ -281,6 +282,7 @@ model Job {
   rejectionComment   String?   @map("rejection_comment") @db.Text
   rejectionDeniedAt  DateTime? @map("rejection_denied_at") @db.Timestamptz
   rejectionDeniedBy  Int?      @map("rejection_denied_by")
+  cancellationReason String?   @map("cancellation_reason") @db.Text // ✅ NEW: Reason for cancellation (parent/chain rejection)
 
   // Parent-Child Relationship
   isParent    Boolean @default(false) @map("is_parent")
@@ -302,10 +304,14 @@ model Job {
 
   // Job Chain / Dependency
   predecessorId Int?      @map("predecessor_id")
+  nextJobId     Int?      @map("next_job_id")
   slaDays       Int?      @default(0) @map("sla_days") // Store original SLA for recalculation
 
   predecessor Job?  @relation("JobDependency", fields: [predecessorId], references: [id])
   successors  Job[] @relation("JobDependency")
+
+  nextJob Job?  @relation("JobSequence", fields: [nextJobId], references: [id])
+  prevJobs Job[] @relation("JobSequence")
   closeRequestedAt DateTime? @map("close_requested_at") @db.Timestamptz
   closedAt         DateTime? @map("closed_at") @db.Timestamptz
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
@@ -341,6 +347,7 @@ model Job {
   slaShiftLogs    SlaShiftLog[]    @relation("SlaShiftLogs")
   urgentJobShifts SlaShiftLog[]    @relation("UrgentJobShifts")
   jobActivities   JobActivity[]
+  rejectionRequests RejectionRequest[] // ✅ NEW: Rejection requests from assignees
 
   @@unique([tenantId, djId])
   @@index([tenantId])
@@ -468,7 +475,7 @@ model Approval {
   jobId         Int            @map("job_id")
   stepNumber    Int            @map("step_number")
   approverId    Int            @map("approver_id")
-  status        ApprovalStatus @default(pending)
+  status        String         @default("pending") @db.VarChar(50)
   comment       String?        @db.Text
   approvedAt    DateTime?      @map("approved_at")
   approvalToken String?        @map("approval_token") @db.VarChar(64)
@@ -798,4 +805,45 @@ model UserScopeAssignment {
   @@index([userId])
   @@index([tenantId])
   @@map("user_scope_assignments")
+}
+
+// ========================================
+// ✅ NEW: REJECTION REQUEST MODEL
+// ========================================
+
+model RejectionRequest {
+  id               Int      @id @default(autoincrement())
+  jobId            Int      @map("job_id")
+  requestedBy      Int      @map("requested_by")
+  reason           String   @db.Text
+  status           String   @default("pending") @db.VarChar(50) // pending, approved, denied, auto_approved
+
+  // Approval flow info
+  approverLevel    Int?     @map("approver_level")
+  approverIds      Int[]    @default([]) @map("approver_ids")
+  approvalLogic    String?  @map("approval_logic") @db.VarChar(10) // ALL or ANY
+
+  // Approval result
+  approvedBy       Int?     @map("approved_by")
+  approvedAt       DateTime? @map("approved_at") @db.Timestamptz
+
+  // Auto-close timeout (24h default)
+  autoCloseAt      DateTime? @map("auto_close_at") @db.Timestamptz
+  autoCloseEnabled Boolean   @default(false) @map("auto_close_enabled")
+
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+  tenantId         Int      @map("tenant_id")
+
+  // Relations
+  job              Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  requester        User     @relation("RejectionRequester", fields: [requestedBy], references: [id], onDelete: Cascade)
+  approver         User?    @relation("RejectionApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([requestedBy])
+  @@index([status])
+  @@index([tenantId])
+  @@index([autoCloseAt, status], name: "idx_auto_close")
+  @@map("rejection_requests")
 }
