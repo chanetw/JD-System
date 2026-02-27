@@ -55,15 +55,18 @@ export default function ApprovalsQueue() {
         loadData();
     }, [user]);
 
-    /** ดึงข้อมูลงานจาก API และคัดกรองตามสิทธิ์ของผู้ใช้งาน (Authorization Filtering) */
+    /** ดึงข้อมูลงานจาก API พร้อม Multi-Role Support */
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const data = await api.getJobs();
+            // ✅ NEW: ใช้ getJobsByRole() เพื่อรองรับ multi-role
+            // Backend จะส่ง union ของงานจากทุก roles ของ user
+            const data = await api.getJobsByRole(user);
+
             // เรียงลำดับตามวันที่สร้างล่าสุดขึ้นก่อน (Newest first)
             let sorted = (Array.isArray(data) ? data : []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-            // === Scope-based Filtering (ใหม่) ===
+            // === Scope-based Filtering ===
             // ดึง scopes ของ user จาก database
             if (user?.id) {
                 const scopes = await getUserScopes(user.id);
@@ -71,29 +74,16 @@ export default function ApprovalsQueue() {
 
                 if (!hasTenantScope && scopes.length > 0) {
                     // ถ้ามี scope แต่ไม่ใช่ Tenant level ให้ filter ตาม project
-                    const allowedProjectIds = await getAllowedProjectIds(user.id, user.tenant_id);
+                    const allowedProjectIds = await getAllowedProjectIds(user.id, user.tenantId);
                     sorted = sorted.filter(job => allowedProjectIds.has(job.projectId || job.project_id));
-                    console.log('📋 Filtered by scope:', sorted.length, 'jobs');
+                    console.log('📋 [ApprovalsQueue] Filtered by scope:', sorted.length, 'jobs');
                 }
             }
 
-            // กฎการคัดกรองตามบทบาท (Filter Logic by Role) - เก็บไว้เป็น fallback
-            // Support both single role (roleName) and multiple roles (roles array)
-            const userRole = user?.roleName || user?.roles?.[0];
-            if (userRole === 'Approver' || userRole === 'Admin') {
-                // ผู้อนุมัติและ Admin สามารถเห็นและจัดการงานทั้งหมดใน scope
-                setJobs(sorted);
-            } else if (userRole === 'Requester') {
-                // ผู้ขอใช้บริการ (Requester) เห็นเฉพาะงานที่ตนเองเป็นคนสร้างเท่านั้น
-                const myJobs = sorted.filter(job => job.requesterId === user?.id);
-                setJobs(myJobs);
-            } else {
-                // ผู้ปฏิบัติงาน (Assignee) เห็นงานที่ได้รับมอบหมายมาเท่านั้น
-                const assignedJobs = sorted.filter(job => job.assigneeId === user?.id);
-                setJobs(assignedJobs);
-            }
+            console.log(`[ApprovalsQueue] Loaded ${sorted.length} jobs for user:`, user?.email, 'Roles:', user?.roles || [user?.roleName]);
+            setJobs(sorted);
         } catch (error) {
-            console.error("เกิดข้อผิดพลาดในการโหลดรายการงาน:", error);
+            console.error("[ApprovalsQueue] Error loading jobs:", error);
         } finally {
             setIsLoading(false);
         }
@@ -101,7 +91,11 @@ export default function ApprovalsQueue() {
 
     /** การคัดกรองข้อมูลตามแท็บสถานะ (Tab Filtering) */
     const filteredJobs = jobs.filter(job => {
-        if (activeTab === 'waiting') return job.status === 'pending_approval';
+        // ✅ FIX: แสดงทุก level ของการอนุมัติ (pending_approval, pending_level_2, pending_level_3, ...)
+        if (activeTab === 'waiting') {
+            return job.status === 'pending_approval' ||
+                   job.status?.startsWith('pending_level_');
+        }
         if (activeTab === 'returned') return job.status === 'returned' || job.status === 'rejected';
         if (activeTab === 'history') return job.status === 'approved';
         return false;
@@ -163,7 +157,7 @@ export default function ApprovalsQueue() {
                     <TabButton
                         active={activeTab === 'waiting'}
                         onClick={() => setActiveTab('waiting')}
-                        count={jobs.filter(j => j.status === 'pending_approval').length}
+                        count={jobs.filter(j => j.status === 'pending_approval' || j.status?.startsWith('pending_level_')).length}
                         label="รออนุมัติงาน"
                         icon={<ClockIcon className="w-5 h-5" />}
                     />
@@ -187,11 +181,10 @@ export default function ApprovalsQueue() {
           สรุปสถิติเบื้องต้น (Summary Stats)
           ============================================ */}
             {activeTab === 'waiting' && (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <StatCard label="งานรออนุมัติ" value={filteredJobs.length} icon={<ClockIcon className="w-5 h-5 text-rose-600" />} color="rose" />
                     <StatCard label="งานเร่งด่วน (Urgent)" value={filteredJobs.filter(j => j.priority === 'Urgent').length} icon={<ExclamationTriangleIcon className="w-5 h-5 text-red-600" />} color="red" />
                     <StatCard label="งานทั้งหมดในระบบ" value={jobs.length} icon={<CheckBadgeIcon className="w-5 h-5 text-green-600" />} color="green" />
-                    <StatCard label="อัตราการทำงาน" value="98%" icon={<ArrowPathIcon className="w-5 h-5 text-yellow-600" />} color="yellow" />
                 </div>
             )}
 
@@ -211,7 +204,7 @@ export default function ApprovalsQueue() {
                                 <Th>ประเภทงาน</Th>
                                 <Th>หัวข้อ</Th>
                                 <Th>ผู้เปิดงาน</Th>
-                                <Th>วันที่ส่งมา</Th>
+                                <Th>วันที่สร้าง</Th>
                                 <Th>สถานะ SLA</Th>
                                 <Th>ความสำคัญ</Th>
                                 <Th className="text-center">การจัดการ</Th>
@@ -238,7 +231,7 @@ export default function ApprovalsQueue() {
                                         bud={job.bud}
                                         type={job.jobType}
                                         subject={job.subject}
-                                        requester={job.requesterName}
+                                        requester={job.requester}
                                         submitted={new Date(job.createdAt).toLocaleDateString('th-TH')}
                                         sla={job.currentLevel ? `Level ${job.currentLevel}` : '-'}
                                         priority={<Badge status={job.priority?.toLowerCase() || 'normal'} />}

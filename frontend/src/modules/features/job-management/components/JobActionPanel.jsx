@@ -46,17 +46,52 @@ const JobActionPanel = ({
     const renderApprovalActions = () => {
         const isPending = job.currentLevel > 0 && job.currentLevel < 999;
 
+        console.log('[JobActionPanel] 🔍 Approval Check:', {
+            jobStatus: job.status,
+            currentLevel: job.currentLevel,
+            isPending,
+            hasFlowSnapshot: !!job.flowSnapshot,
+            currentUserId: currentUser?.id,
+            currentUserIdType: typeof currentUser?.id,
+            currentUserEmail: currentUser?.email
+        });
+
         let canApprove = false;
         if (isPending && job.flowSnapshot) {
             const currentLevelConfig = job.flowSnapshot.levels.find(l => l.level === job.currentLevel);
+            console.log('[JobActionPanel] 🔍 Current Level Config:', {
+                level: job.currentLevel,
+                found: !!currentLevelConfig,
+                approversCount: currentLevelConfig?.approvers?.length,
+                approvers: currentLevelConfig?.approvers?.map(a => ({
+                    id: a.id,
+                    idType: typeof a.id,
+                    userId: a.userId,
+                    userIdType: typeof a.userId,
+                    name: a.name
+                }))
+            });
             if (currentLevelConfig && currentLevelConfig.approvers) {
-                canApprove = currentLevelConfig.approvers.some(a => a.id === currentUser?.id) ||
-                    currentLevelConfig.approvers.some(a => a.userId === currentUser?.id);
+                // ✅ FIX: Use loose equality (==) to handle string vs number comparison
+                // Backend may return userId as string '4', currentUser.id is number 4
+                canApprove = currentLevelConfig.approvers.some(a => a.id == currentUser?.id) ||
+                    currentLevelConfig.approvers.some(a => a.userId == currentUser?.id);
+
+                console.log('[JobActionPanel] ✅ Can Approve Result:', {
+                    canApprove,
+                    currentUserId: currentUser?.id,
+                    approvers: currentLevelConfig.approvers.map(a => a.userId || a.id)
+                });
             }
         }
         if (isAdmin && isPending) canApprove = true;
 
-        if (!canApprove) return null;
+        if (!canApprove) {
+            console.log('[JobActionPanel] ❌ Cannot approve - no buttons shown');
+            return null;
+        }
+
+        console.log('[JobActionPanel] ✅ Can approve - showing buttons');
 
         return (
             <div className={`bg-white rounded-xl border ${theme?.borderClass || 'border-gray-400'} shadow-sm p-6 mb-6`}>
@@ -153,13 +188,10 @@ const JobActionPanel = ({
 
     // 3. Assignee Actions (Start/Complete)
     const renderAssigneeActions = () => {
-        if (job.status !== 'assigned' && job.status !== 'in_progress') return null;
+        // ✅ FIX: Check role first - only assignee or admin can see these buttons
+        if (jobRole !== 'assignee' && jobRole !== 'admin') return null;
 
-        // Technically anyone can see this panel in the old code if status matches, 
-        // but typically only assignee or admin buttons work. 
-        // The buttons themselves calls API which checks permission.
-        // We'll show to everyone as per old UI, but maybe disable if not assignee?
-        // Old UI didn't disable button render based on user, it just showed "การดำเนินการของผู้รับงาน"
+        if (job.status !== 'assigned' && job.status !== 'in_progress') return null;
 
         return (
             <div className={`bg-white rounded-xl border ${theme?.borderClass || 'border-gray-400'} shadow-sm p-6 mb-6`}>

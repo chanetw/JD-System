@@ -42,7 +42,8 @@ const hasJobAccess = (job, user) => {
     job.requesterId === user.userId ||
     job.assigneeId === user.userId ||
     normalizedRoles.includes('admin') ||
-    normalizedRoles.includes('manager')
+    normalizedRoles.includes('manager') ||
+    normalizedRoles.includes('approver')  // ✅ Allow approvers to view and comment
   );
 };
 

@@ -44,9 +44,11 @@ const JobApprovalFlow = ({ job }) => {
 
         {/* Map each level */}
         {flowSnapshot.levels.map((level, idx) => {
-          const isPassed = currentLevel > level.level;
-          const isCurrent = currentLevel === level.level;
           const approval = approvals.find(a => a.stepNumber === level.level);
+          // ✅ FIX: Check approval record instead of currentLevel
+          // isPassed = true if approval record exists (means it's been approved)
+          const isPassed = !!approval;
+          const isCurrent = !approval && currentLevel === level.level;
 
           return (
             <div key={idx} className="relative flex items-start gap-4">
@@ -55,7 +57,7 @@ const JobApprovalFlow = ({ job }) => {
                 className={`absolute -left-[21px] w-3 h-3 rounded-full border-2 border-white ring-1 z-10
                   ${isPassed ? 'bg-green-500 ring-green-500' :       // ✅ ผ่านแล้ว
                     isCurrent ? 'bg-rose-500 ring-rose-500 animate-pulse' :  // 🔴 กำลังรอ
-                    'bg-gray-200 ring-gray-300'}`}                   // ⚪ ยังไม่ถึง
+                      'bg-gray-200 ring-gray-300'}`}                   // ⚪ ยังไม่ถึง
               ></div>
 
               <div className="flex-1 min-w-0">
@@ -69,8 +71,8 @@ const JobApprovalFlow = ({ job }) => {
                   <span
                     className={`inline-block text-[9px] px-1.5 py-0.5 rounded font-bold ml-2
                       ${level.logic === 'all'
-                        ? 'bg-purple-100 text-purple-700'
-                        : 'bg-blue-100 text-blue-700'}`}
+                        ? 'bg-rose-100 text-rose-700'
+                        : 'bg-gray-100 text-gray-700'}`}
                   >
                     {level.logic === 'all' ? 'ครบทุกคน (ALL)' : 'ใครก็ได้ (ANY)'}
                   </span>
@@ -80,7 +82,7 @@ const JobApprovalFlow = ({ job }) => {
                 <div className="mt-2 space-y-1">
                   {level.approvers?.map((approver, i) => (
                     <div key={i} className="flex items-center gap-2">
-                      <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                      <div className="w-6 h-6 bg-rose-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
                         {approver.name?.[0]?.toUpperCase() || 'A'}
                       </div>
                       <p className="text-sm font-medium text-gray-900">{approver.name}</p>
@@ -96,7 +98,10 @@ const JobApprovalFlow = ({ job }) => {
                   {isPassed && approval && (
                     <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 rounded-full text-xs font-medium border border-green-100">
                       <CheckIcon className="w-3 h-3" />
-                      อนุมัติ{level.level} ({approval.approver?.displayName || 'ผู้อนุมัติ'})
+                      อนุมัติ{level.level} ({approval.approver?.firstName || 'ผู้อนุมัติ'})
+                      {approval.comment?.includes('Auto-approved') && (
+                        <span className="text-[10px] font-bold text-green-800 ml-1">✨ Auto</span>
+                      )}
                     </span>
                   )}
                   {isCurrent && (

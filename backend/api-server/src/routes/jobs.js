@@ -51,16 +51,11 @@ router.get('/', async (req, res) => {
     const buildRoleCondition = async (singleRole) => {
       switch (singleRole) {
         case 'requester':
-          // ✅ NEW: Requester sees only parent jobs or single jobs (not individual children)
+          // ✅ Requester sees ALL jobs they created (parent, child, and single jobs)
+          // This provides full transparency - if they create a parent with 3 children,
+          // they should see all 4 jobs (1 parent + 3 children)
           return {
-            requesterId: userId,
-            OR: [
-              { isParent: true },                        // parent jobs
-              {
-                isParent: false,                         // ✅ FIX: Boolean NOT NULL, use false only
-                parentJobId: null                        // not a child (single jobs)
-              }
-            ]
+            requesterId: userId
           };
         case 'assignee':
           // ✅ NEW: Assignee sees only child jobs assigned to them or single jobs (not parent)
@@ -75,32 +70,38 @@ router.get('/', async (req, res) => {
             ]
           };
         case 'approver': {
-          // ✅ Approver sees jobs in pending_approval status
-          // First, try to find jobs with pending approval assigned to this approver
-          const pendingApprovals = await prisma.approval.findMany({
-            where: { approverId: userId, status: 'pending', tenantId },
-            select: { jobId: true }
+          // ✅ Approver sees ALL jobs with any pending approval status
+          // Frontend JobActionPanel will determine if user can approve based on approval flow
+          // This query gets all pending jobs - both explicit (pending_approval/pending_level_N)
+          // JobActionPanel checks flowSnapshot to show approve buttons only when authorized
+          const allJobs = await prisma.job.findMany({
+            where: {
+              tenantId,
+              OR: [
+                { status: 'pending_approval' },
+                { status: { startsWith: 'pending_level_' } }
+              ],
+              isParent: false  // Only child + single jobs (not parent jobs)
+            },
+            select: { id: true }
           });
-          const pendingJobIds = [...new Set(pendingApprovals.map(a => a.jobId))];
 
-          // If approver has specific assignments, show those
-          if (pendingJobIds.length > 0) {
-            return {
-              id: { in: pendingJobIds },
-              status: { in: ['pending_approval', 'pending_level_1', 'pending_level_2'] },
-              isParent: false  // ✅ FIX: isParent is Boolean (not nullable), false = child + single jobs
-            };
+          const jobIds = allJobs.map(j => j.id);
+
+          if (jobIds.length === 0) {
+            return null;  // Signal no jobs found
           }
 
-          // Fallback: Show all jobs in pending_approval status (for approvers without explicit assignments)
           return {
-            status: { in: ['pending_approval', 'pending_level_1', 'pending_level_2'] },
-            isParent: false  // ✅ FIX: isParent is Boolean (not nullable), false = child + single jobs
+            id: { in: jobIds }
           };
         }
         case 'manager':
           return {
-            status: { in: ['pending_approval', 'pending_level_1', 'pending_level_2'] },
+            OR: [
+              { status: 'pending_approval' },
+              { status: { startsWith: 'pending_level_' } }
+            ],
             AND: [{
               OR: [
                 { isParent: true },
@@ -827,7 +828,8 @@ router.get('/:id', async (req, res) => {
     const hasAccess = job.requesterId === req.user.userId ||
       job.assigneeId === req.user.userId ||
       normalizedRoles.includes('admin') ||
-      normalizedRoles.includes('manager');
+      normalizedRoles.includes('manager') ||
+      normalizedRoles.includes('approver');  // ✅ Allow approvers to view jobs
 
     if (!hasAccess) {
       return res.status(403).json({
@@ -1799,7 +1801,8 @@ router.post('/parent-child', async (req, res) => {
       briefLink,
       briefFiles,
       jobTypes = [],
-      deadline
+      deadline,
+      items = []      // Job items (ขนาด, จำนวนชิ้นงาน)
     } = req.body;
 
     // Check if this is a draft save
@@ -1993,6 +1996,39 @@ router.post('/parent-child', async (req, res) => {
       console.log(`[Parent-Child] Created parent job: ${parentDjId}`);
 
       // ----------------------------------------
+      // 2.3.1: Create Job Items for Parent (ถ้ามี)
+      // ----------------------------------------
+      if (items && items.length > 0) {
+        await tx.designJobItem.createMany({
+          data: items.map(item => ({
+            jobId: parentJob.id,
+            name: item.name,
+            quantity: item.quantity || 1,
+            status: 'pending'
+          }))
+        });
+        console.log(`[Parent-Child] Created ${items.length} job items for parent`);
+      }
+
+      // ✅ FIX: Create implicit approval record for parent job if skipping approval
+      if (!isDraft && parentStatus === 'assigned') {
+        // Parent job is skipping approval flow - record this as implicit auto-approval
+        await tx.approval.create({
+          data: {
+            jobId: parentJob.id,
+            approverId: userId,
+            stepNumber: 1,
+            status: 'approved',
+            approvedAt: new Date(),
+            comment: 'Auto-approved: Parent job created with all children skipping approval flow',
+            tenantId
+          }
+        });
+
+        console.log(`[Parent-Child] Created implicit approval for parent ${parentDjId} (status: ${parentStatus})`);
+      }
+
+      // ----------------------------------------
       // 2.4: Create Child Jobs
       // ----------------------------------------
       const childJobs = [];
@@ -2062,19 +2098,37 @@ router.post('/parent-child', async (req, res) => {
           const flowNeedsApproval = childNeedsApprovalMap.get(parseInt(childConfig.jobTypeId));
           const isUrgent = priority.toLowerCase() === 'urgent';
 
-          // Needs approval if Flow requires it OR Urgent...
-          // AND if it's a dependent job, it should wait (pending_dependency)
           const needsApproval = flowNeedsApproval || isUrgent;
 
-          childStatus = 'pending_approval';
-
-          if (predecessorId) {
-            // 🔥 Sequential Job: Must wait for predecessor
-            childStatus = 'pending_dependency';
-          } else if (!needsApproval) {
-            // If skip approval: in_progress (if has assignee) OR approved (waiting for assignee)
-            childStatus = assigneeId ? 'in_progress' : 'approved';
+          if (needsApproval) {
+            // ✅ Needs approval: Go through approval flow first
+            // Even if job has predecessor, it must be approved first
+            // After approval completes, it will transition to pending_dependency (if has predecessor)
+            childStatus = 'pending_approval';
+          } else {
+            // ✅ Skip approval flows
+            if (predecessorId) {
+              // Has predecessor but no approval needed → wait for predecessor
+              childStatus = 'pending_dependency';
+            } else {
+              // No approval, no predecessor → ready to work
+              childStatus = assigneeId ? 'in_progress' : 'approved';
+            }
           }
+        }
+
+        // ✅ เพิ่มรายละเอียด items ในคำอธิบายงาน (ถ้ามี)
+        // กรองเฉพาะ items ที่เป็นของ job type นี้
+        const childItems = items && items.length > 0
+          ? items.filter(item => item.jobTypeId === parseInt(childConfig.jobTypeId))
+          : [];
+
+        let childDescription = briefData.description || '';
+        if (childItems.length > 0) {
+          const itemsSummary = childItems.map(item => `- ${item.name} (จำนวน: ${item.quantity || 1})`).join('\n');
+          childDescription = childDescription
+            ? `${childDescription}\n\n📦 รายการที่ต้องส่งมอบ:\n${itemsSummary}`
+            : `📦 รายการที่ต้องส่งมอบ:\n${itemsSummary}`;
         }
 
         // Create child job
@@ -2088,7 +2142,7 @@ router.post('/parent-child', async (req, res) => {
             objective: briefData.objective,
             headline: briefData.headline,
             subHeadline: briefData.subHeadline,
-            description: briefData.description,
+            description: childDescription, // ✅ รวม items summary
             briefLink: briefData.briefLink,
             briefFiles: briefData.briefFiles,
             status: childStatus,
@@ -2105,6 +2159,19 @@ router.post('/parent-child', async (req, res) => {
             slaDays: slaWorkingDays // Save original SLA for recalculation
           }
         });
+
+        // ✅ คัดลอก Job Items ไปยัง Child Job (เฉพาะของ job type นี้)
+        if (childItems.length > 0) {
+          await tx.designJobItem.createMany({
+            data: childItems.map(item => ({
+              jobId: childJob.id,
+              name: item.name,
+              quantity: item.quantity || 1,
+              status: 'pending'
+            }))
+          });
+          console.log(`[Parent-Child] Created ${childItems.length} items for child ${childJob.djId}`);
+        }
 
         // ✅ FIX: Create implicit approval record for skipped/auto-approved flows
         // This ensures ALL jobs have an audit trail in the approvals table
@@ -2239,19 +2306,97 @@ router.post('/parent-child', async (req, res) => {
         }
       }
 
+      // ✅ FIXED: Auto-Approve parent job BEFORE checking if all children are approved
+      // (Need to do this while parent.status is still 'pending_approval')
+      if (result.parent.status === 'pending_approval') {
+        // ✅ FIX: หา child ที่ไม่ skip approval เพื่อใช้ flow ที่ถูกต้อง
+        // ไม่ควรใช้ child แรก (อาจเป็น skip approval เช่น EDM)
+        const nonSkipChild = result.children.find(c => c.status && c.status.startsWith('pending_'));
+        const jobTypeIdForFlow = nonSkipChild?.jobTypeId || null; // ใช้ null = default flow
+
+        console.log(`[Parent-Child] Using jobTypeId=${jobTypeIdForFlow} for parent auto-approve (nonSkipChild: ${nonSkipChild?.djId || 'none'})`);
+
+        console.log(`[Parent-Child] 🔍 Auto-approve params:`, {
+          parentJobId: result.parent.id,
+          parentDjId: result.parent.djId,
+          requesterId: userId,
+          requesterFromReq: req.user.userId,
+          projectId: parseInt(projectId),
+          jobTypeId: jobTypeIdForFlow
+        });
+
+        const parentAutoResult = await approvalService.autoApproveIfRequesterIsApprover({
+          jobId: result.parent.id,
+          requesterId: userId,
+          projectId: parseInt(projectId),
+          jobTypeId: jobTypeIdForFlow, // ✅ ใช้ child ที่ต้อง approve หรือ default flow
+          tenantId
+        });
+
+        if (parentAutoResult.autoApproved) {
+          result.parent.status = parentAutoResult.newStatus;
+          console.log(`[Parent-Child] Auto-approved parent ${result.parent.djId}: ${parentAutoResult.newStatus}`);
+        }
+      }
+
       // If any child was auto-approved, update parent status too
       if (anyAutoApproved) {
         const allChildStatuses = result.children.map(c => c.status);
-        const allApproved = allChildStatuses.every(s => s !== 'pending_approval');
+        // ✅ FIX: เช็คว่า Child ผ่านการอนุมัติครบทุกขั้นแล้วจริงๆ
+        // สถานะที่ถือว่า "ผ่านแล้ว" คือ in_progress, approved, completed
+        // สถานะที่ยังรอ: pending_approval, pending_level_2, pending_level_3, pending_dependency ฯลฯ
+        const PENDING_STATUSES = ['pending_approval', 'pending_dependency', 'draft'];
+        const isPendingStatus = (s) => s.startsWith('pending_') || PENDING_STATUSES.includes(s);
+        const allApproved = allChildStatuses.every(s => !isPendingStatus(s));
 
         if (allApproved) {
+          // ✅ FIX: Create approval records properly instead of directly updating status
+          // Get approval flow to determine how many levels need approval
+          const flow = await approvalService.getApprovalFlow(
+            parseInt(projectId),
+            result.children[0]?.jobTypeId || 1
+          );
+          const totalLevels = approvalService.getApprovalLevels(flow);
+
+          // Create approval records for all remaining levels
           const prisma = getDatabase();
+          const existingApprovals = await prisma.approval.findMany({
+            where: { jobId: result.parent.id },
+            select: { stepNumber: true }
+          });
+          const existingSteps = new Set(existingApprovals.map(a => a.stepNumber));
+
+          // Create missing approval records for all levels
+          for (let level = 1; level <= totalLevels; level++) {
+            if (!existingSteps.has(level)) {
+              try {
+                await prisma.approval.create({
+                  data: {
+                    jobId: result.parent.id,
+                    approverId: userId,
+                    stepNumber: level,
+                    status: 'approved',
+                    approvedAt: new Date(),
+                    comment: `Auto-approved Level ${level}: All child jobs completed`,
+                    tenantId
+                  }
+                });
+                console.log(`[Parent-Child] Created approval record for parent ${result.parent.djId} Level ${level}`);
+              } catch (err) {
+                console.warn(`[Parent-Child] Failed to create approval record Level ${level}:`, err.message);
+              }
+            }
+          }
+
+          // Now update status to approved
           await prisma.job.update({
             where: { id: result.parent.id },
             data: { status: 'approved' }
           });
           result.parent.status = 'approved';
-          console.log(`[Parent-Child] All children approved → Parent status: approved`);
+          console.log(`[Parent-Child] All children approved → Parent status: approved with ${totalLevels} approval records`);
+        } else {
+          console.log(`[Parent-Child] Some children still pending: ${allChildStatuses.join(', ')} → Parent stays: ${result.parent.status}`);
         }
       }
     }
