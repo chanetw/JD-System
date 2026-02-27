@@ -36,7 +36,7 @@ export const routes = [
  */
 export const moduleInfo = {
     name: 'job-request',
-    displayName: 'สร้างงานใหม่',
+    
     icon: 'PlusCircleIcon',
     description: 'หน้าจอสำหรับสร้างรายการงานออกแบบใหม่'
 };

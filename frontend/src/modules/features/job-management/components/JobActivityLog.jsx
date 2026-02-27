@@ -64,7 +64,7 @@ const JobActivityLog = ({ jobId }) => {
                                     <div>
                                         <p className="text-sm text-gray-500">
                                             <span className="font-medium text-gray-900">
-                                                {activity.user?.displayName || 'Unknown User'}
+                                                {activity.user?.firstName ? `${activity.user.firstName} ${activity.user.lastName}` : 'Unknown User'}
                                             </span>{' '}
                                             {translateAction(activity.action)}
                                         </p>

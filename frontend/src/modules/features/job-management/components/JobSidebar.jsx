@@ -35,10 +35,10 @@ const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
                         <div className="flex items-center justify-between bg-gray-50 p-2 rounded-lg group">
                             <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 bg-rose-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                                    {job.assigneeName?.[0] || 'U'}
+                                    {job.assignee?.displayName?.[0] || job.assignee?.name?.[0] || job.assignee?.[0] || 'U'}
                                 </div>
                                 <div>
-                                    <p className="text-sm font-medium text-gray-900">{job.assigneeName || 'Unassigned'}</p>
+                                    <p className="text-sm font-medium text-gray-900">{job.assignee?.displayName || job.assignee?.name || job.assignee || 'Unassigned'}</p>
                                     <p className="text-xs text-gray-500">Graphic Designer</p>
                                 </div>
                             </div>
@@ -90,14 +90,45 @@ const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
                                             </div>
 
                                             {isPassed && (
-                                                <div className="mt-2 text-sm text-gray-900 font-semibold line-through opacity-60">
-                                                    {level.approvers?.map(a => a.name).join(', ')}
+                                                <div className="flex flex-wrap gap-3 mt-2">
+                                                    {approval ? (
+                                                        // ✅ ตรวจสอบ: มี approval record จริง → แสดงข้อมูลผู้อนุมัติจริง
+                                                        <div className="flex flex-col items-start gap-1 p-2 bg-green-50/50 rounded-lg border border-green-100">
+                                                            <span className="text-sm font-semibold text-gray-900">
+                                                                {approval.approver?.firstName
+                                                                    ? `${approval.approver.firstName} ${approval.approver.lastName || ''}`
+                                                                    : (level.approvers?.[0]?.name || 'ผู้อนุมัติ')}
+                                                            </span>
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-[10px] font-medium border border-green-100">
+                                                                <CheckIcon className="w-3 h-3" /> Approved
+                                                                {approval.comment?.includes('Auto-approved') && (
+                                                                    <span className="text-[9px] font-bold text-green-800 ml-1">✨ Auto</span>
+                                                                )}
+                                                            </span>
+                                                            {approval.approvedAt && (
+                                                                <span className="text-[10px] text-gray-400">
+                                                                    {new Date(approval.approvedAt).toLocaleDateString('th-TH', {
+                                                                        day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit'
+                                                                    })}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    ) : level.approvers && level.approvers.length > 0 ? (
+                                                        // Fallback: ไม่มี record → ใช้ template
+                                                        level.approvers.map((app, idx) => (
+                                                            <div key={idx} className="flex flex-col items-start gap-1 p-2 bg-green-50/50 rounded-lg border border-green-100">
+                                                                <span className="text-sm font-semibold text-gray-900">{app.name}</span>
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-[10px] font-medium border border-green-100">
+                                                                    <CheckIcon className="w-3 h-3" /> Approved
+                                                                </span>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-[10px] font-medium border border-green-100 mt-1">
+                                                            <CheckIcon className="w-3 h-3" /> Approved
+                                                        </span>
+                                                    )}
                                                 </div>
-                                            )}
-                                            {isPassed && (
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-[10px] font-medium mt-1 border border-green-100">
-                                                    <CheckIcon className="w-3 h-3" /> Approved {actualApproverName && `by ${actualApproverName}`}
-                                                </span>
                                             )}
                                             {isCurrent && (
                                                 <div className="flex flex-wrap gap-3 mt-2">

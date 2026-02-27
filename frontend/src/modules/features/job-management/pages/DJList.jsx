@@ -17,6 +17,7 @@ import { api } from '@shared/services/apiService';
 import { formatDateToThai } from '@shared/utils/dateUtils';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { getUserScopes, getAllowedProjectIds } from '@shared/utils/scopeHelpers';
+import { hasRole } from '@shared/utils/permission.utils';
 
 // Icons
 import {
@@ -277,12 +278,14 @@ export default function DJList() {
                     <h1 className="text-2xl font-bold text-gray-900">รายการงาน DJ (DJ List)</h1>
                     <p className="text-gray-500">ค้นหาและติดตามสถานะงาน Design Job ทั้งหมด</p>
                 </div>
-                <Link to="/create">
-                    <Button>
-                        <PlusIcon className="w-5 h-5" />
-                        สร้างงานใหม่ (Create DJ)
-                    </Button>
-                </Link>
+                {!hasRole(user, 'assignee') && (
+                    <Link to="/create">
+                        <Button>
+                            <PlusIcon className="w-5 h-5" />
+                            สร้างงานใหม่ (Create DJ)
+                        </Button>
+                    </Link>
+                )}
             </div>
 
             {/* Search Bar */}
@@ -318,7 +321,7 @@ export default function DJList() {
                         label="ประเภทงาน (Job Type)"
                         value={filters.jobType}
                         onChange={(val) => handleFilterChange('jobType', val)}
-                        options={masterData.jobTypes.map(jt => jt.name)}
+                        options={[...new Set(masterData.jobTypes.map(jt => jt.name))]}
                     />
                     <FilterSelect
                         label="สถานะ (Status)"
@@ -395,10 +398,10 @@ export default function DJList() {
                                     <Th>ประเภทงาน</Th>
                                     <Th>หัวข้อ</Th>
                                     <Th>สถานะ</Th>
-                                    <Th>วันที่ส่งมา</Th>
+                                    <Th>วันที่สร้าง</Th>
                                     <Th>กำหนดส่ง</Th>
                                     <Th>สถานะ SLA</Th>
-                                    <Th>ผู้ออกแบบ</Th>
+                                    <Th>วันที่ส่งงาน</Th>
                                     <Th>การจัดการ</Th>
                                 </tr>
                             </thead>
@@ -415,7 +418,7 @@ export default function DJList() {
                                         submitDate={job.createdAt ? formatDateToThai(new Date(job.createdAt)) : '-'}
                                         deadline={job.deadline ? formatDateToThai(new Date(job.deadline)) : '-'}
                                         sla={calculateSLA(job)}
-                                        assignee={job.assigneeName || '-'}
+                                        assignee={job.completedAt ? formatDateToThai(new Date(job.completedAt)) : '-'}
                                         isParent={job.isParent}
                                         parentJobId={job.parentJobId}
                                         childInfo={job.childInfo}
@@ -551,12 +554,7 @@ function JobRow({ id, pkId, project, type, subject, status, submitDate, deadline
             <td className="px-4 py-3 text-sm font-medium text-gray-700">{deadline}</td>
             <td className="px-4 py-3 text-center">{sla}</td>
             <td className="px-4 py-3 text-sm">
-                <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center text-[10px] text-gray-400 font-bold uppercase">
-                        {assignee?.[0] || '-'}
-                    </div>
-                    <span>{assignee}</span>
-                </div>
+                <span>{assignee}</span>
             </td>
             <td className="px-4 py-3 text-center">
                 <Link to={`/jobs/${pkId}`} className="text-sm text-rose-600 font-medium hover:text-rose-700">

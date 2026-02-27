@@ -47,7 +47,7 @@ export const routes = [
  */
 export const moduleInfo = {
     name: 'job-management',
-    displayName: 'จัดการงาน',
+    
     icon: 'ClipboardDocumentListIcon',
     description: 'หน้าจอสำหรับดูรายการงาน, รายละเอียด และคิวอนุมัติ'
 };

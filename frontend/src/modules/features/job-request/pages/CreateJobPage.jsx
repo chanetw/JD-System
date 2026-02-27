@@ -792,6 +792,25 @@ export default function CreateDJ() {
                 status: status
             };
 
+            // เตรียม items data จาก selectedJobTypes (พร้อม jobTypeId)
+            if (selectedJobTypes.length > 0) {
+                const items = selectedJobTypes.flatMap(jt =>
+                    Object.entries(jt.subItems || {})
+                        .filter(([_, quantity]) => quantity > 0)
+                        .map(([itemId, quantity]) => {
+                            const item = jt.availableSubItems?.find(i => i.id === parseInt(itemId));
+                            return {
+                                name: item?.name || `Item ${itemId}`,
+                                quantity: quantity,
+                                jobTypeId: jt.jobTypeId // เพิ่ม jobTypeId เพื่อให้ backend filter ได้
+                            };
+                        })
+                );
+                if (items.length > 0) {
+                    jobPayload.items = items;
+                }
+            }
+
             // ถ้าเลือกหลาย Job Type -> ใช้ Parent-Child Mode
             if (selectedJobTypes.length > 0) {
                 // Map predecessorIndex to payload ensure it's integer or null

@@ -11,6 +11,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api } from '@shared/services/apiService';
+import Swal from 'sweetalert2';
 import { adminService } from '@shared/services/modules/adminService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { ROLE_V1_DISPLAY, getJobRole, JOB_ROLE_THEMES } from '@shared/utils/permission.utils';
@@ -39,7 +40,14 @@ import ParentJobAssignees from '../components/ParentJobAssignees';
 import JobApprovalFlow from '../components/JobApprovalFlow';
 import JobSidebar from '../components/JobSidebar';
 import JobActionPanel from '../components/JobActionPanel';
+import JobDeliveryCard from '../components/JobDeliveryCard';
 import ExtendDueDateModal from '../components/ExtendDueDateModal';
+import JobChainStatus from '../components/JobChainStatus';
+import ParentJobChildrenList from '../components/ParentJobChildrenList';
+import RejectionRequestModal from '../components/RejectionRequestModal';
+import RejectionApprovalCard from '../components/RejectionApprovalCard';
+import JobItems from '../components/JobItems';
+import JobAssigneeInfo from '../components/JobAssigneeInfo';
 
 export default function JobDetail() {
     const { id } = useParams();
@@ -71,6 +79,7 @@ export default function JobDetail() {
     const [confirmRejectionCcEmails, setConfirmRejectionCcEmails] = useState([]);
     const [newCcEmail, setNewCcEmail] = useState('');
     const [showExtendModal, setShowExtendModal] = useState(false); // เพิ่ม Extend Modal state
+    const [showRejectionRequestModal, setShowRejectionRequestModal] = useState(false); // NEW: Rejection Request Modal
 
     // Alert State
     const [alertState, setAlertState] = useState({ isOpen: false, title: '', message: '', type: 'success' });
@@ -89,9 +98,18 @@ export default function JobDetail() {
 
     const loadUsers = async () => {
         try {
-            const usersData = await adminService.getUsers();
+            // Fetch users with a high limit to get everyone for the dropdown
+            const usersData = await adminService.getUsers(1, 1000);
             const usersList = usersData?.data || usersData || [];
-            setUsers(Array.isArray(usersList) ? usersList : []);
+
+            // Filter users to only include those who are 'Assignee' or 'Admin'
+            const eligibleUsers = (Array.isArray(usersList) ? usersList : []).filter(u => {
+                if (!u.roles) return false;
+                const roles = u.roles.map(r => (typeof r === 'string' ? r : r?.name || r?.roleName || '').toLowerCase());
+                return roles.includes('assignee') || roles.includes('graphic') || roles.includes('admin');
+            });
+
+            setUsers(eligibleUsers);
         } catch (error) {
             console.error('Failed to load users:', error);
             setUsers([]);
@@ -122,7 +140,12 @@ export default function JobDetail() {
                 // Enrich Flow Snapshot
                 if (jobData.projectId) {
                     try {
-                        const flowResult = await api.getApprovalFlowByProject(jobData.projectId);
+                        // ส่ง jobTypeId ไปด้วยเพื่อดึง Flow เฉพาะของ Job Type นี้
+                        // (ถ้าเป็น Child Job จะได้ Flow ของ jobType นั้น ไม่ใช่ Default)
+                        const flowResult = await api.getApprovalFlowByProject(
+                            jobData.projectId,
+                            jobData.jobTypeId  // ✅ เพิ่ม: ส่ง jobTypeId สำหรับ child job
+                        );
                         if (flowResult && flowResult.levels) {
                             jobData.flowSnapshot = {
                                 levels: flowResult.levels.map(l => ({
@@ -144,7 +167,7 @@ export default function JobDetail() {
                     jobData.currentLevel = 1;
                 } else if (jobData.status && jobData.status.startsWith('pending_level_')) {
                     jobData.currentLevel = parseInt(jobData.status.split('_')[2]);
-                } else if (['approved', 'in_progress', 'completed', 'closed'].includes(jobData.status)) {
+                } else if (['approved', 'assigned', 'in_progress', 'pending_close', 'completed', 'closed'].includes(jobData.status)) {
                     jobData.currentLevel = 999;
                 } else {
                     jobData.currentLevel = 0;
@@ -179,74 +202,135 @@ export default function JobDetail() {
     // ============================================
     const handleReassign = async () => {
         if (!selectedAssignee || !reassignReason.trim()) {
-            alert('กรุณาเลือกผู้รับงานใหม่และระบุเหตุผล');
+            Swal.fire({
+                icon: 'warning',
+                title: 'ข้อมูลไม่ครบถ้วน',
+                text: 'กรุณาเลือกผู้รับงานใหม่และระบุเหตุผล',
+                confirmButtonColor: '#3085d6',
+            });
             return;
         }
 
         try {
             const result = await api.reassignJob(job.id, selectedAssignee, reassignReason, user?.id || 1, user);
             if (result.success) {
-                alert('ย้ายงานสำเร็จ');
+                Swal.fire({
+                    icon: 'success',
+                    title: 'ย้ายงานสำเร็จ',
+                    text: 'อัปเดตผู้รับผิดชอบงานเรียบร้อยแล้ว',
+                    confirmButtonColor: '#28a745',
+                });
                 setShowReassignModal(false);
                 setReassignReason('');
                 loadJob();
             } else {
-                alert('ย้ายงานไม่สำเร็จ: ' + result.error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'ย้ายงานไม่สำเร็จ',
+                    text: result.error || 'เกิดข้อผิดพลาดบางอย่าง',
+                    confirmButtonColor: '#d33',
+                });
             }
         } catch (err) {
             console.error(err);
-            alert('เกิดข้อผิดพลาด: ' + (err.message || 'ไม่ทราบสาเหตุ'));
+            Swal.fire({
+                icon: 'error',
+                title: 'เกิดข้อผิดพลาด',
+                text: err.message || 'ไม่ทราบสาเหตุ กรุณาลองใหม่อีกครั้ง',
+                confirmButtonColor: '#d33',
+            });
         }
     };
 
     const handleApprove = async () => {
         try {
             await api.approveJob(job.id, user?.id || 1, 'Approved via Web');
-            alert('อนุมัติงานสำเร็จ!');
+            await Swal.fire({
+                icon: 'success',
+                title: 'อนุมัติงานสำเร็จ!',
+                confirmButtonColor: '#e11d48',
+                timer: 1500
+            });
             loadJob();
         } catch (err) {
-            alert('เกิดข้อผิดพลาด: ' + err.message);
+            Swal.fire({
+                icon: 'error',
+                title: 'เกิดข้อผิดพลาด',
+                text: err.message,
+                confirmButtonColor: '#e11d48'
+            });
         }
     };
 
     const handleReject = async () => {
-        if (!rejectReason.trim()) return alert('ระบุเหตุผล');
+        if (!rejectReason.trim()) {
+            return Swal.fire({ icon: 'warning', title: 'กรุณาระบุเหตุผล', confirmButtonColor: '#e11d48' });
+        }
         try {
             await api.rejectJob(job.id, rejectReason, 'return', user?.id || 1);
-            alert('ส่งกลับแก้ไขสำเร็จ');
+            await Swal.fire({
+                icon: 'success',
+                title: 'ส่งกลับแก้ไขสำเร็จ',
+                confirmButtonColor: '#e11d48',
+                timer: 1500
+            });
             setShowRejectModal(false);
             setRejectReason('');
             loadJob();
         } catch (err) {
-            alert('เกิดข้อผิดพลาด: ' + err.message);
+            Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message, confirmButtonColor: '#e11d48' });
         }
     };
 
     const handleCompleteJob = async () => {
-        if (!finalLink.trim()) return alert('ระบุลิงก์ผลงาน');
+        if (!finalLink.trim()) {
+            return Swal.fire({
+                icon: 'warning',
+                title: 'กรุณาระบุลิงก์ผลงาน',
+                text: 'จำเป็นต้องแนบลิงก์ผลงานก่อนส่งงาน',
+                confirmButtonColor: '#e11d48'
+            });
+        }
         try {
             await api.completeJob(job.id, {
                 note: completeNote,
                 attachments: [{ name: 'Final Link', url: finalLink }]
             });
-            alert('ส่งงานเรียบร้อย!');
+            await Swal.fire({
+                icon: 'success',
+                title: 'ส่งมอบงานสำเร็จ!',
+                text: 'ระบบได้แจ้งเตือนไปยังผู้สั่งงานเรียบร้อยแล้ว',
+                confirmButtonColor: '#e11d48'
+            });
             setShowCompleteModal(false);
             loadJob();
         } catch (err) {
-            alert('ส่งงานไม่สำเร็จ');
+            Swal.fire({
+                icon: 'error',
+                title: 'ส่งงานไม่สำเร็จ',
+                text: err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์',
+                confirmButtonColor: '#e11d48'
+            });
         }
     };
 
     const handleAssigneeReject = async () => {
-        if (!assigneeRejectReason.trim()) return alert('กรุณาระบุเหตุผลในการปฏิเสธ');
+        if (!assigneeRejectReason.trim()) {
+            return Swal.fire({ icon: 'warning', title: 'กรุณาระบุเหตุผลในการปฏิเสธ', confirmButtonColor: '#e11d48' });
+        }
         try {
             await api.rejectJobByAssignee(job.id, assigneeRejectReason);
-            alert('ปฏิเสธงานเรียบร้อย รอผู้อนุมัติยืนยัน');
+            await Swal.fire({
+                icon: 'success',
+                title: 'ปฏิเสธงานเรียบร้อย',
+                text: 'รอผู้อนุมัติยืนยันการยกเลิกงาน',
+                confirmButtonColor: '#e11d48'
+            });
             setShowAssigneeRejectModal(false);
             setAssigneeRejectReason('');
             loadJob();
         } catch (err) {
-            alert('ปฏิเสธงานไม่สำเร็จ: ' + err.message);
+            Swal.fire({ icon: 'error', title: 'ปฏิเสธงานไม่สำเร็จ', text: err.message, confirmButtonColor: '#e11d48' });
         }
     };
 
@@ -300,6 +384,54 @@ export default function JobDetail() {
         }
     };
 
+    // ============================================
+    // NEW: Rejection Request Handlers (rejection_requests table system)
+    // ============================================
+    const handleRequestRejection = async (reason) => {
+        try {
+            const response = await api.post(`/jobs/${job.id}/request-rejection`, { reason });
+            await Swal.fire({
+                icon: 'success',
+                title: 'ส่งคำขอปฏิเสธเรียบร้อย',
+                html: 'คำขอของคุณถูกส่งไปยัง Approver<br/><small class="text-gray-500">หาก Approver ไม่ตอบกลับภายใน 24 ชม. ระบบจะอนุมัติอัตโนมัติ</small>',
+                confirmButtonColor: '#e11d48'
+            });
+            loadJob();
+        } catch (err) {
+            throw new Error(err.response?.data?.message || err.message || 'ไม่สามารถส่งคำขอได้');
+        }
+    };
+
+    const handleApproveRejectionRequest = async (requestId, comment) => {
+        try {
+            await api.post(`/rejection-requests/${requestId}/approve`, { comment });
+            await Swal.fire({
+                icon: 'success',
+                title: 'อนุมัติคำขอปฏิเสธเรียบร้อย',
+                text: 'งานถูกปฏิเสธแล้ว',
+                confirmButtonColor: '#e11d48'
+            });
+            loadJob();
+        } catch (err) {
+            throw new Error(err.response?.data?.message || err.message || 'ไม่สามารถอนุมัติคำขอได้');
+        }
+    };
+
+    const handleDenyRejectionRequest = async (requestId, reason) => {
+        try {
+            await api.post(`/rejection-requests/${requestId}/deny`, { reason });
+            await Swal.fire({
+                icon: 'info',
+                title: 'ไม่อนุมัติคำขอปฏิเสธ',
+                text: 'Assignee ต้องทำงานต่อ',
+                confirmButtonColor: '#e11d48'
+            });
+            loadJob();
+        } catch (err) {
+            throw new Error(err.response?.data?.message || err.message || 'ไม่สามารถปฏิเสธคำขอได้');
+        }
+    };
+
     const handleManualAssign = async (jobId, assigneeId) => {
         try {
             const result = await api.assignJobManually(jobId, assigneeId, user?.id, 'manual', user);
@@ -345,7 +477,7 @@ export default function JobDetail() {
     if (error || !job) return (
         <div className="flex flex-col items-center justify-center min-h-screen text-red-500">
             {error || 'ไม่พบงาน'}
-            <Link to="/jobs" className="text-blue-500 mt-4">กลับ</Link>
+            <Link to="/jobs" className="text-rose-500 mt-4 font-medium hover:underline">← กลับหน้าหลัก</Link>
         </div>
     );
 
@@ -356,7 +488,6 @@ export default function JobDetail() {
     const tabs = [
         { id: 'overview', label: 'ภาพรวม (Overview)', icon: DocumentTextIcon },
         { id: 'subjobs', label: `งานย่อย (${job.childJobs?.length || 0})`, icon: QueueListIcon, hidden: !job.isParent }, // Logic corrected
-        { id: 'comments', label: 'ความคิดเห็น', icon: ChatBubbleLeftRightIcon }, // Count moved to internal
         { id: 'activity', label: 'ประวัติ (History)', icon: ClockIcon }
     ].filter(t => !t.hidden);
 
@@ -380,7 +511,7 @@ export default function JobDetail() {
                             {job.subject}
                         </p>
                         {job.parentJob && (
-                            <span className="inline-block mt-2 text-blue-600 bg-blue-50 px-2 py-0.5 rounded text-xs border border-blue-100 font-medium">
+                            <span className="inline-block mt-2 text-rose-600 bg-rose-50 px-2 py-0.5 rounded text-xs border border-rose-100 font-medium">
                                 📎 Parent: {job.parentJob.djId}
                             </span>
                         )}
@@ -423,18 +554,58 @@ export default function JobDetail() {
                                     onOpenExtendModal={() => setShowExtendModal(true)}
                                 />
 
+                                {/* Delivered Work (Only visible if completed/closed) */}
+                                <JobDeliveryCard job={job} />
+
+                                {/* Assignee Info */}
+                                <div className="bg-white px-4 py-5 sm:px-6 shadow sm:rounded-lg">
+                                    <JobAssigneeInfo job={job} />
+                                </div>
+
                                 {/* Brief Info */}
                                 <JobBriefInfo job={job} />
 
-                                {/* Approval Flow */}
-                                <JobApprovalFlow job={job} />
+                                {/* Job Items (Design Deliverables) */}
+                                <JobItems job={job} />
 
-                                {/* Parent Job Assignees */}
+                                {/* Job Chain Status (for sequential jobs A→B→C) */}
+                                <JobChainStatus job={job} />
+
+                                {/* Parent Job Children List (for parent jobs with multiple children) */}
+                                <ParentJobChildrenList job={job} />
+
+                                {/* Parent Job Assignees (aggregated assignees from all children) */}
                                 <ParentJobAssignees job={job} />
+
+                                {/* Rejection Request Card (for Approvers to approve/deny rejection requests) */}
+                                {job.rejectionRequest && job.rejectionRequest.status === 'pending' && (
+                                    <RejectionApprovalCard
+                                        rejectionRequest={job.rejectionRequest}
+                                        onApprove={handleApproveRejectionRequest}
+                                        onDeny={handleDenyRejectionRequest}
+                                    />
+                                )}
+
+                                {/* Comments Section (Embedded in Overview) */}
+                                <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col mt-6" style={{ maxHeight: '450px' }}>
+                                    <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex justify-between items-center">
+                                        <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                                            <ChatBubbleLeftRightIcon className="w-5 h-5 text-gray-500" />
+                                            ความคิดเห็น (Comments)
+                                        </h3>
+                                        <span className="text-xs text-gray-500 bg-white px-2 py-1 rounded border border-gray-200">
+                                            ล่าสุด
+                                        </span>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto bg-gray-50/50">
+                                        <div className="p-0">
+                                            <JobComments jobId={job.id} currentUser={user} isEmbedded={true} />
+                                        </div>
+                                    </div>
+                                </div>
                             </>
                         )}
                         {activeTab === 'subjobs' && <SubJobsList jobs={job.childJobs} />}
-                        {activeTab === 'comments' && <JobComments jobId={job.id} currentUser={user} />}
                         {activeTab === 'activity' && <JobActivityLog jobId={job.id} />}
                     </div>
                 </div>
@@ -526,12 +697,12 @@ export default function JobDetail() {
             {showDenyRejectionModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg p-6 max-w-md w-full">
-                        <h3 className="text-lg font-bold mb-4 text-blue-600">ไม่อนุมัติคำขอปฏิเสธงาน</h3>
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                            <p className="text-sm text-blue-800 mb-2">
-                                <strong>ผู้รับงาน:</strong> {job?.assignee?.displayName || 'N/A'}
+                        <h3 className="text-lg font-bold mb-4 text-rose-600">ไม่อนุมัติคำขอปฏิเสธงาน</h3>
+                        <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 mb-4">
+                            <p className="text-sm text-rose-800 mb-2">
+                                <strong>ผู้รับงาน:</strong> {job?.assignee?.firstName || 'N/A'}
                             </p>
-                            <p className="text-sm text-blue-800">
+                            <p className="text-sm text-rose-800">
                                 <strong>เหตุผลปฏิเสธ:</strong> {job?.rejectionComment || 'ไม่ระบุ'}
                             </p>
                         </div>
@@ -571,7 +742,7 @@ export default function JobDetail() {
                                 <strong>งาน:</strong> {job?.djId} - {job?.subject}
                             </p>
                             <p className="text-sm text-red-800 mb-2">
-                                <strong>ผู้รับงาน:</strong> {job?.assignee?.displayName || 'N/A'}
+                                <strong>ผู้รับงาน:</strong> {job?.assignee?.firstName || 'N/A'}
                             </p>
                             <p className="text-sm text-red-800">
                                 <strong>เหตุผลปฏิเสธ:</strong> {job?.rejectionComment || 'ไม่ระบุ'}
@@ -652,7 +823,7 @@ export default function JobDetail() {
                                         setConfirmRejectionCcEmails([...confirmRejectionCcEmails, email]);
                                         setNewCcEmail('');
                                     }}
-                                    className="px-4 py-2 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+                                    className="px-4 py-2 bg-rose-500 text-white rounded text-sm hover:bg-rose-600"
                                 >
                                     เพิ่ม
                                 </button>
@@ -694,7 +865,7 @@ export default function JobDetail() {
                         >
                             <option value="">เลือกผู้รับงาน...</option>
                             {users.map(u => (
-                                <option key={u.id} value={u.id}>{u.displayName || u.firstName}</option>
+                                <option key={u.id} value={u.id}>{u.firstName}</option>
                             ))}
                         </select>
                         <textarea
@@ -728,6 +899,14 @@ export default function JobDetail() {
                         type: 'success'
                     });
                 }}
+            />
+
+            {/* NEW: Rejection Request Modal (uses rejection_requests table) */}
+            <RejectionRequestModal
+                isOpen={showRejectionRequestModal}
+                onClose={() => setShowRejectionRequestModal(false)}
+                job={job}
+                onSubmit={handleRequestRejection}
             />
 
             {/* Other Modals (Reject, Reassign, etc.) remain unchanged */}

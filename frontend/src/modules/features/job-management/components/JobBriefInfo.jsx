@@ -58,10 +58,14 @@ const JobBriefInfo = ({ job }) => {
                                 <dt className="text-sm font-medium text-gray-500">ลิงก์ Brief (Brief Link)</dt>
                                 <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
                                     <a
-                                        href={job.briefLink}
+                                        href={
+                                            job.briefLink.startsWith('http://') || job.briefLink.startsWith('https://')
+                                                ? job.briefLink
+                                                : `https://${job.briefLink}`
+                                        }
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 hover:underline"
+                                        className="flex items-center gap-2 text-rose-600 hover:text-rose-800 hover:underline"
                                     >
                                         <LinkIcon className="w-4 h-4" />
                                         {job.briefLink}
@@ -81,7 +85,7 @@ const JobBriefInfo = ({ job }) => {
                                                     <span className="ml-2 flex-1 w-0 truncate">{file.name}</span>
                                                 </div>
                                                 <div className="ml-4 flex-shrink-0">
-                                                    <a href={file.url} target="_blank" rel="noopener noreferrer" className="font-medium text-indigo-600 hover:text-indigo-500">
+                                                    <a href={file.url} target="_blank" rel="noopener noreferrer" className="font-medium text-rose-600 hover:text-rose-500">
                                                         ดาวน์โหลด
                                                     </a>
                                                 </div>

@@ -32,7 +32,7 @@ const SubJobsList = ({ jobs }) => {
                                     <div className="sm:flex">
                                         <p className="flex items-center text-sm text-gray-500">
                                             <UserIcon className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" aria-hidden="true" />
-                                            {job.assignee?.displayName || 'Unassigned'}
+                                            {job.assignee?.firstName || 'Unassigned'}
                                         </p>
                                     </div>
                                     <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
