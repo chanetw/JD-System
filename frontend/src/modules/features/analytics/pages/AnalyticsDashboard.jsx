@@ -184,7 +184,7 @@ export default function AnalyticsDashboard() {
                 id: job.id,
                 djNumber: job.dj_id,
                 assignee: {
-                    displayName: job.assignee?.display_name,
+                    name: job.assignee?.firstName ? `${job.assignee.firstName} ${job.assignee.lastName}` : (job.assignee?.first_name || 'Unassigned'),
                     firstName: job.assignee?.display_name?.split(' ')[0]
                 },
                 deadline: job.due_date,

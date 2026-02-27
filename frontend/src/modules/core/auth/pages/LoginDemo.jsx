@@ -151,7 +151,7 @@ export default function LoginDemo() {
                                 <optgroup key={role} label={roleLabels[role] || role}>
                                     {roleUsers.map((u) => (
                                         <option key={u.id} value={u.id}>
-                                            {u.displayName} ({u.email})
+                                            {u.firstName} ({u.email})
                                         </option>
                                     ))}
                                 </optgroup>
@@ -171,7 +171,7 @@ export default function LoginDemo() {
                                             {selected.firstName?.[0] || 'U'}
                                         </div>
                                         <div>
-                                            <p className="font-medium text-slate-800">{selected.displayName}</p>
+                                            <p className="font-medium text-slate-800">{selected.firstName}</p>
                                             <p className="text-sm text-slate-500">{selected.email}</p>
                                             <span className={`inline-block mt-1 px-2 py-0.5 text-xs rounded-full ${selected.roles?.includes('Admin') ? 'bg-purple-100 text-purple-700' :
                                                 (selected.roles?.includes('Requester') || selected.roles?.includes('marketing')) ? 'bg-blue-100 text-blue-700' :

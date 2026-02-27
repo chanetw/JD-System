@@ -60,7 +60,7 @@ export default function Header() {
         // ============================================
         // Header Container
         // ============================================
-        <header className="fixed top-0 left-64 right-0 h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 z-10">
+        <header className="fixed top-0 left-64 right-0 h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 z-40">
 
             {/* ============================================
           Search Box - ช่องค้นหา

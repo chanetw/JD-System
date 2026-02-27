@@ -429,7 +429,7 @@ export default function NotificationSettings() {
                                                         <div key={userId} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
                                                             <div className="flex items-center gap-2">
                                                                 <UserIcon className="w-4 h-4 text-gray-400" />
-                                                                <span className="text-sm">{u.displayName || `${u.firstName} ${u.lastName}`}</span>
+                                                                <span className="text-sm">{`${u.firstName} ${u.lastName}`}</span>
                                                             </div>
                                                             <button
                                                                 onClick={() => removeUser(userId)}
@@ -569,7 +569,7 @@ export default function NotificationSettings() {
                                 .filter(u => !settings.customUserIds?.includes(u.id))
                                 .map(u => (
                                     <option key={u.id} value={u.id}>
-                                        {u.displayName || `${u.firstName} ${u.lastName}`} ({u.email})
+                                        {`${u.firstName} ${u.lastName}`} ({u.email})
                                     </option>
                                 ))
                             }

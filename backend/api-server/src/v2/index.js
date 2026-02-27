@@ -60,9 +60,12 @@ const formatUserResponse = (user) => ({
   firstName: user.firstName,
   lastName: user.lastName,
   fullName: `${user.firstName} ${user.lastName}`,
+  displayName: user.displayName || undefined,
+  avatarUrl: user.avatarUrl || undefined,
   roleId: user.roleId,
   // Use role object if available, otherwise check roleName property, or default to Member
   roleName: user.role?.name || user.roleName || 'Assignee',
+  roles: user.roles || undefined, // ✅ Multi-role support: all user roles as array
   isActive: user.isActive,
   lastLoginAt: user.lastLoginAt,
   createdAt: user.createdAt,
@@ -209,7 +212,7 @@ router.post('/auth/login', async (req, res, next) => {
 
     // Find user in V1 users table via adapter
     const user = await PrismaV1Adapter.findUserByEmail(email, tenantId);
-    if (!user) return res.status(401).json(errorResponse('INVALID_CREDENTIALS', 'Invalid email or password'));
+    if (!user) return res.status(401).json(errorResponse('USER_NOT_FOUND', 'ไม่พบผู้ใช้งานในระบบ กรุณาตรวจสอบอีเมลอีกครั้ง'));
 
     // Check user registration/approval status
     const authStatus = await PrismaV1Adapter.checkUserAuthStatus(user.id);
@@ -232,7 +235,7 @@ router.post('/auth/login', async (req, res, next) => {
 
     // Verify password
     const isValid = await verifyPassword(password, userWithPassword.passwordHash);
-    if (!isValid) return res.status(401).json(errorResponse('INVALID_CREDENTIALS', 'Invalid email or password'));
+    if (!isValid) return res.status(401).json(errorResponse('INVALID_PASSWORD', 'รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง'));
 
     // Update last login time
     await PrismaV1Adapter.updateLastLogin(user.id);
@@ -251,6 +254,7 @@ router.post('/auth/login', async (req, res, next) => {
       fullName: `${user.firstName} ${user.lastName}`,
       roleId: user.roleId || 0,
       roleName: user.roleName || 'Assignee',
+      roles: user.roles || undefined, // ✅ Multi-role support: all user roles as array
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
       isActive: user.isActive,

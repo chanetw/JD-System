@@ -22,11 +22,13 @@ export interface IV1User {
   firstName: string;
   lastName: string;
   displayName: string | null;
+  avatarUrl?: string | null; // ✅ NEW: User avatar URL
   title: string | null;
   phone: string | null;
   departmentId: number | null;
   roleId: number | null;
   roleName: RoleName | null;
+  roles?: (RoleName | string)[]; // ✅ NEW: Array of all user roles for multi-role support
   isActive: boolean;
   lastLoginAt: Date | null;
   registeredAt: Date | null;

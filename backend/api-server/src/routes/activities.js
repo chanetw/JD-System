@@ -24,11 +24,16 @@ router.use(setRLSContextMiddleware);
  * @returns {boolean}
  */
 const hasJobAccess = (job, user) => {
+    // Determine user roles from various possible properties
+    const roles = Array.isArray(user.roles)
+        ? user.roles.map(r => r.toLowerCase())
+        : (user.roleName ? [user.roleName.toLowerCase()] : []);
+
     return (
         job.requesterId === user.userId ||
         job.assigneeId === user.userId ||
-        user.roles?.includes('admin') ||
-        user.roles?.includes('manager')
+        roles.includes('admin') ||
+        roles.includes('manager')
     );
 };
 
@@ -79,14 +84,15 @@ router.get('/jobs/:jobId/activities', async (req, res) => {
         const [activities, total] = await Promise.all([
             prisma.activityLog.findMany({
                 where: {
-                    jobId: parseInt(jobId),
-                    tenantId
+                    jobId: parseInt(jobId)
                 },
                 include: {
                     user: {
                         select: {
                             id: true,
-                            displayName: true,
+                            // Use standard User fields from Prisma schema
+                            firstName: true,
+                            lastName: true,
                             email: true,
                             avatarUrl: true
                         }
@@ -98,8 +104,7 @@ router.get('/jobs/:jobId/activities', async (req, res) => {
             }),
             prisma.activityLog.count({
                 where: {
-                    jobId: parseInt(jobId),
-                    tenantId
+                    jobId: parseInt(jobId)
                 }
             })
         ]);

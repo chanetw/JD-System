@@ -119,7 +119,7 @@ export const routes = [
  */
 export const moduleInfo = {
     name: 'admin',
-    displayName: 'จัดการระบบ',
+    
     icon: 'Cog6ToothIcon',
     description: 'หน้าจอสำหรับผู้ดูแลระบบ (Admin Only)'
 };

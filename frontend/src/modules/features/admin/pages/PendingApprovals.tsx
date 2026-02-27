@@ -46,7 +46,7 @@ const PendingApprovals: React.FC = () => {
   const [approvedUserInfo, setApprovedUserInfo] = useState<{
     email: string;
     temporaryPassword: string;
-    displayName: string;
+    name: string;
     emailSent: boolean;
   } | null>(null);
 
@@ -115,7 +115,7 @@ const PendingApprovals: React.FC = () => {
       setApprovedUserInfo({
         email: data.data.email,
         temporaryPassword: data.data.temporaryPassword,
-        displayName: data.data.displayName || `${userToApprove?.firstName} ${userToApprove?.lastName}`,
+        name: `${userToApprove?.firstName} ${userToApprove?.lastName}`,
         emailSent: data.data.emailSent || false
       });
 
@@ -214,11 +214,10 @@ const PendingApprovals: React.FC = () => {
 
       {/* Action Message */}
       {actionMessage && (
-        <div className={`px-4 py-3 rounded-lg ${
-          actionMessage.type === 'success'
-            ? 'bg-green-50 border border-green-200 text-green-700'
-            : 'bg-red-50 border border-red-200 text-red-700'
-        }`}>
+        <div className={`px-4 py-3 rounded-lg ${actionMessage.type === 'success'
+          ? 'bg-green-50 border border-green-200 text-green-700'
+          : 'bg-red-50 border border-red-200 text-red-700'
+          }`}>
           {actionMessage.text}
         </div>
       )}
@@ -279,7 +278,7 @@ const PendingApprovals: React.FC = () => {
                           <p className="text-sm font-medium text-gray-900">
                             {user.firstName} {user.lastName}
                           </p>
-                          <p className="text-sm text-gray-500">{user.displayName}</p>
+                          <p className="text-sm text-gray-500">{user.firstName}</p>
                         </div>
                       </div>
                     </td>
@@ -422,7 +421,7 @@ const PendingApprovals: React.FC = () => {
             </div>
             <div className="p-6 space-y-4">
               <p className="text-gray-600">
-                ผู้ใช้ <span className="font-semibold">{approvedUserInfo.displayName}</span> ได้รับการอนุมัติแล้ว
+                ผู้ใช้ <span className="font-semibold">{approvedUserInfo.name}</span> ได้รับการอนุมัติแล้ว
               </p>
 
               {approvedUserInfo.emailSent ? (

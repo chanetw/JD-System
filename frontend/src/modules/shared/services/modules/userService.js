@@ -95,7 +95,7 @@ export const userService = {
                     firstName: firstName,
                     lastName: lastName,
                     name: `${firstName} ${lastName}`.trim() || u.email,
-                    displayName: u.displayName || `${firstName} ${lastName}`.trim(),
+                    
                     email: u.email,
                     roles: userRoles, // Return complete role objects with scopes
                     role: u.userRoles?.[0]?.roleName || null,
@@ -214,7 +214,7 @@ export const userService = {
         if (!data) return null;
         return {
             id: data.id,
-            displayName: data.display_name,
+            
             role: data.role,
             email: data.email,
             avatar: data.avatar_url
@@ -227,7 +227,7 @@ export const userService = {
             email: userData.email,
             first_name: userData.firstName,
             last_name: userData.lastName,
-            display_name: userData.displayName || `${userData.firstName} ${userData.lastName}`,
+            display_name: `${userData.firstName} ${userData.lastName}`,
             role: userData.role,
             is_active: true
         };
@@ -241,7 +241,7 @@ export const userService = {
             email: userData.email,
             first_name: userData.firstName,
             last_name: userData.lastName,
-            display_name: userData.displayName,
+            
             role: userData.role
         };
         const { data, error } = await supabase.from('users').update(payload).eq('id', id).select().single();

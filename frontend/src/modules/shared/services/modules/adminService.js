@@ -614,12 +614,20 @@ export const adminService = {
         }
     },
 
-    getApprovalFlowByProject: async (projectIdentifier) => {
+    /**
+     * ดึง Approval Flow สำหรับ Project (พร้อม jobTypeId เพื่อดึง Flow เฉพาะ)
+     * @param {number} projectIdentifier - Project ID
+     * @param {number} [jobTypeId] - Job Type ID (optional, ถ้าไม่ส่งจะดึง Default Flow)
+     * @returns {Promise<Object|null>} - Flow object หรือ null
+     */
+    getApprovalFlowByProject: async (projectIdentifier, jobTypeId) => {
         let projectId = projectIdentifier;
-        // Basic check, assume projectId is passed
 
         try {
-            const response = await httpClient.get('/approval-flows', { params: { projectId } });
+            const params = { projectId };
+            if (jobTypeId) params.jobTypeId = jobTypeId;
+
+            const response = await httpClient.get('/approval-flows', { params });
             if (!response.data.success) return null;
 
             // Backend returns { projectId, levels: [...], includeTeamLead, teamLeadId }
@@ -961,7 +969,7 @@ export const adminService = {
         const payload = {
             firstName: userData.firstName,
             lastName: userData.lastName,
-            displayName: userData.displayName || `${userData.firstName || ''} ${userData.lastName || ''}`.trim(),
+            displayName: `${userData.firstName || ''} ${userData.lastName || ''}`.trim(),
             phone: userData.phone,
             title: userData.title,
             departmentId: userData.departmentId ? parseInt(userData.departmentId, 10) : null,
@@ -1003,7 +1011,7 @@ export const adminService = {
 
             console.log('[adminService] getUsers raw data sample:', usersRaw.slice(0, 2).map(u => ({
                 id: u.id,
-                name: u.displayName || u.firstName,
+                name: u.firstName,
                 department: u.department,
                 roleName: u.roleName,
                 userRoles: u.userRoles
@@ -1036,8 +1044,8 @@ export const adminService = {
 
                 return {
                     id: u.id,
-                    name: u.displayName || `${u.firstName} ${u.lastName}`.trim(),
-                    displayName: u.displayName || `${u.firstName} ${u.lastName}`.trim(),
+                    name: `${u.firstName} ${u.lastName}`.trim(),
+                    
                     firstName: u.firstName,
                     lastName: u.lastName,
                     email: u.email,

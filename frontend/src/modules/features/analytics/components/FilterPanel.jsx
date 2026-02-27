@@ -180,7 +180,7 @@ export default function FilterPanel({ filters, onFiltersChange, projects = [], u
                                 <option value="">ทั้งหมด</option>
                                 {users.map(user => (
                                     <option key={user.id} value={user.id}>
-                                        {user.displayName || user.firstName || user.email}
+                                        {user.firstName || user.email}
                                     </option>
                                 ))}
                             </select>

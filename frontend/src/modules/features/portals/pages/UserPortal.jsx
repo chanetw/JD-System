@@ -170,7 +170,7 @@ export default function UserPortal() {
                                     {user?.displayName?.[0] || user?.email?.[0] || 'U'}
                                 </div>
                                 <span className="text-sm text-slate-700 hidden sm:inline">
-                                    {user?.displayName || user?.email} ({user?.roleName || 'Requester'})
+                                    {user?.firstName || user?.email} ({user?.roleName || 'Requester'})
                                 </span>
                             </div>
                         </div>

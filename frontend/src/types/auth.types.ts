@@ -38,7 +38,7 @@ export interface IPermissions {
 export interface IRole {
   id: number;
   name: RoleName;
-  displayName: string;
+
   permissions: IPermissions;
   description?: string;
 }
@@ -62,9 +62,12 @@ export interface IUser {
   email: string;
   firstName: string;
   lastName: string;
-  fullName: string;
+  fullName?: string;
+  displayName?: string;
+  avatarUrl?: string;
   roleId: number;
   roleName: RoleName;
+  roles?: string[]; // ✅ NEW: Array of all user roles for multi-role support (e.g., ['Requester', 'Approver'])
   isActive: boolean;
   mustChangePassword?: boolean; // TRUE after admin generates password on approval
   lastLoginAt?: string;

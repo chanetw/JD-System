@@ -17,6 +17,7 @@ const LoginV2: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   // Get redirect destination
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/';
@@ -31,11 +32,13 @@ const LoginV2: React.FC = () => {
   // Clear error on mount
   useEffect(() => {
     clearError();
+    setLoginError(null);
   }, [clearError]);
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoginError(null);
 
     if (!email || !password) {
       return;
@@ -51,8 +54,9 @@ const LoginV2: React.FC = () => {
         navigate(from, { replace: true });
       }
     } catch (err) {
-      // Error is handled by store
-      console.error('Login failed:', err);
+      // Set local error state for guaranteed display
+      const msg = err instanceof Error ? err.message : 'เข้าสู่ระบบไม่สำเร็จ';
+      setLoginError(msg);
     }
   };
 
@@ -80,9 +84,9 @@ const LoginV2: React.FC = () => {
         {/* Login Form */}
         <form className="space-y-6" onSubmit={handleSubmit}>
           {/* Error Message */}
-          {error && (
+          {(loginError || error) && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-              {error}
+              {loginError || error}
             </div>
           )}
 

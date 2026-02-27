@@ -227,7 +227,7 @@ export const on = (eventName, callback) => {
   // ตรวจสอบว่า Socket มี Instance
   if (!socket) {
     console.warn('[socketService] Socket not initialized');
-    return () => {};
+    return () => { };
   }
 
   // ตั้งค่า Event Listener
@@ -236,7 +236,9 @@ export const on = (eventName, callback) => {
   // คืนค่า Unsubscribe function
   // (สำหรับลบการฟัง Event)
   return () => {
-    socket.off(eventName, callback);
+    if (socket) {
+      socket.off(eventName, callback);
+    }
   };
 };
 

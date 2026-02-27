@@ -88,9 +88,11 @@ export default function Sidebar() {
                     ศูนย์จัดการสื่อ (Media)
                 </SidebarLink>
 
-                <SidebarLink to="/user-portal" icon={UserIcon}>
-                    ข้อมูลผู้ใช้งาน (User)
-                </SidebarLink>
+                {canCreateJob && (
+                    <SidebarLink to="/user-portal" icon={UserIcon}>
+                        ข้อมูลผู้ใช้งาน (User)
+                    </SidebarLink>
+                )}
 
 
 

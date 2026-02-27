@@ -35,7 +35,7 @@ export interface IPendingUser {
   email: string;
   firstName: string;
   lastName: string;
-  displayName: string;
+
   departmentId: number | null;
   departmentName: string | null;
   status: string;
@@ -68,12 +68,26 @@ export const authServiceV2 = {
    * Login with email and password
    */
   async login(credentials: ILoginRequest): Promise<IApiResponse<ILoginResponse>> {
-    const response = await fetch(`${API_V2_AUTH}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(credentials),
-    });
-    return response.json();
+    try {
+      const response = await fetch(`${API_V2_AUTH}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials),
+      });
+
+      const data = await response.json();
+
+      // If response is not ok (4xx, 5xx), the data will contain error info
+      // but we still return it so the store can extract the error message
+      return data;
+    } catch (error) {
+      // Network error or JSON parse error
+      console.error('[authServiceV2] Login error:', error);
+      return {
+        success: false,
+        error: 'เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่อีกครั้ง',
+      };
+    }
   },
 
   /**

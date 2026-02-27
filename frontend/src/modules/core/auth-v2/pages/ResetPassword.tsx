@@ -105,7 +105,7 @@ const ResetPasswordV2: React.FC = () => {
   // No token provided
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-rose-600 via-rose-700 to-rose-900 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">
           <div className="text-center">
             <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100">
@@ -122,7 +122,7 @@ const ResetPasswordV2: React.FC = () => {
           <div className="bg-white p-8 rounded-xl shadow-lg">
             <Link
               to="/forgot-password-v2"
-              className="block w-full py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-center text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+              className="block w-full py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-center text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 transition-colors"
             >
               Request new reset link
             </Link>
@@ -135,7 +135,7 @@ const ResetPasswordV2: React.FC = () => {
   // Success state
   if (isSuccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-rose-600 via-rose-700 to-rose-900 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">
           <div className="text-center">
             <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100">
@@ -152,7 +152,7 @@ const ResetPasswordV2: React.FC = () => {
           <div className="bg-white p-8 rounded-xl shadow-lg">
             <Link
               to="/login-v2"
-              className="block w-full py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-center text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+              className="block w-full py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-center text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 transition-colors"
             >
               Sign in
             </Link>
@@ -163,11 +163,11 @@ const ResetPasswordV2: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-rose-600 via-rose-700 to-rose-900 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         {/* Header */}
         <div className="text-center">
-          <h1 className="text-4xl font-bold text-indigo-600">DJ System</h1>
+          <h1 className="text-4xl font-bold text-rose-600">DJ System</h1>
           <h2 className="mt-4 text-2xl font-semibold text-gray-900">Create new password</h2>
           <p className="mt-2 text-sm text-gray-600">
             Enter your new password below.
@@ -200,7 +200,7 @@ const ResetPasswordV2: React.FC = () => {
                     setNewPassword(e.target.value);
                     setValidationError(null);
                   }}
-                  className="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm pr-12"
+                  className="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-indigo-500 sm:text-sm pr-12"
                   placeholder="Enter new password"
                 />
                 <button
@@ -251,7 +251,7 @@ const ResetPasswordV2: React.FC = () => {
                   setConfirmPassword(e.target.value);
                   setValidationError(null);
                 }}
-                className="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                className="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-indigo-500 sm:text-sm"
                 placeholder="Confirm new password"
               />
             </div>
@@ -261,7 +261,7 @@ const ResetPasswordV2: React.FC = () => {
           <button
             type="submit"
             disabled={isLoading}
-            className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {isLoading ? (
               <span className="flex items-center">
@@ -280,7 +280,7 @@ const ResetPasswordV2: React.FC = () => {
           <div className="text-center text-sm">
             <Link
               to="/login-v2"
-              className="font-medium text-indigo-600 hover:text-indigo-500"
+              className="font-medium text-rose-600 hover:text-indigo-500"
             >
               Back to login
             </Link>

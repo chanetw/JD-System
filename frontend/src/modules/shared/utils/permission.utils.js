@@ -627,24 +627,24 @@ export const getAccessibleProjects = (user, allProjects = []) => {
 export const getJobRole = (user, job) => {
     if (!user || !job) return 'viewer';
 
-    // Admin มีสิทธิ์สูงสุด
+    // Priority 1: Admin มีสิทธิ์สูงสุด
     if (hasRole(user, ROLES.ADMIN) || hasRole(user, 'Admin') || hasRole(user, 'SuperAdmin')) {
         return 'admin';
     }
 
-    // ตรวจสอบว่าเป็น Approver ของงานนี้หรือไม่
-    if (hasRole(user, ROLES.APPROVER) || hasRole(user, 'Approver') || hasRole(user, 'TeamLead')) {
-        return 'approver';
-    }
-
-    // ตรวจสอบว่าเป็น Assignee ของงานนี้
+    // Priority 2: Assignee (ผู้รับมอบหมายจริง) - ตรวจสอบก่อน role อื่น
     if (job.assigneeId === user.id || job.assignee?.id === user.id) {
         return 'assignee';
     }
 
-    // ตรวจสอบว่าเป็น Requester ของงานนี้
+    // Priority 3: Requester (ผู้สร้างงาน) - ตรวจสอบก่อน role อื่น
     if (job.requesterId === user.id || job.requester?.id === user.id) {
         return 'requester';
+    }
+
+    // Priority 4: Approver (ผู้อนุมัติ) - ตรวจสอบทีหลัง
+    if (hasRole(user, ROLES.APPROVER) || hasRole(user, 'Approver') || hasRole(user, 'TeamLead')) {
+        return 'approver';
     }
 
     return 'viewer';
@@ -656,45 +656,45 @@ export const getJobRole = (user, job) => {
  */
 export const JOB_ROLE_THEMES = {
     admin: {
-        label: 'ผู้ดูแลระบบ',
-        badgeClass: 'bg-rose-100 text-rose-800',
+        label: 'System Admin',
+        badgeClass: 'bg-purple-100 text-purple-800',
         borderClass: 'border-gray-400',
-        accentBg: 'bg-rose-50',
-        accentText: 'text-rose-700',
-        headerBorder: 'border-l-rose-500',
-        dotColor: 'bg-rose-500'
+        accentBg: 'bg-purple-50',
+        accentText: 'text-purple-700',
+        headerBorder: 'border-l-purple-500',
+        dotColor: 'bg-purple-500'
     },
     approver: {
-        label: 'ผู้อนุมัติ',
+        label: 'Approver',
         badgeClass: 'bg-green-100 text-green-800',
-        borderClass: 'border-green-300',
+        borderClass: 'border-gray-400',
         accentBg: 'bg-green-50',
         accentText: 'text-green-700',
         headerBorder: 'border-l-green-500',
         dotColor: 'bg-green-500'
     },
     assignee: {
-        label: 'ผู้รับงาน',
+        label: 'Assignee',
         badgeClass: 'bg-orange-100 text-orange-800',
-        borderClass: 'border-orange-300',
+        borderClass: 'border-gray-400',
         accentBg: 'bg-orange-50',
         accentText: 'text-orange-700',
         headerBorder: 'border-l-orange-500',
         dotColor: 'bg-orange-500'
     },
     requester: {
-        label: 'ผู้ขอ',
+        label: 'Requester',
         badgeClass: 'bg-blue-100 text-blue-800',
-        borderClass: 'border-blue-300',
+        borderClass: 'border-gray-400',
         accentBg: 'bg-blue-50',
         accentText: 'text-blue-700',
-        headerBorder: 'border-l-blue-500',
+        headerBorder: 'border-l-rose-500',
         dotColor: 'bg-blue-500'
     },
     viewer: {
-        label: 'ผู้ดู',
+        label: 'Viewer',
         badgeClass: 'bg-gray-100 text-gray-800',
-        borderClass: 'border-gray-300',
+        borderClass: 'border-gray-400',
         accentBg: 'bg-gray-50',
         accentText: 'text-gray-700',
         headerBorder: 'border-l-gray-400',

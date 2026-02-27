@@ -48,8 +48,11 @@ export interface IUserResponse {
   firstName: string;
   lastName: string;
   fullName: string;
+  displayName?: string;
+  avatarUrl?: string;
   roleId: number;
   roleName: RoleName;
+  roles?: RoleName[]; // ✅ NEW: Array of all user roles for multi-role support
   isActive: boolean;
   lastLoginAt?: Date;
   createdAt: Date;

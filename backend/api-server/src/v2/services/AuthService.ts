@@ -229,8 +229,11 @@ export class AuthService {
       firstName: user.firstName,
       lastName: user.lastName,
       fullName: `${user.firstName} ${user.lastName}`.trim(),
+      displayName: user.displayName || undefined,
+      avatarUrl: user.avatarUrl || undefined,
       roleId: user.roleId || 0,
       roleName: (user.roleName as RoleName) || RoleName.ASSIGNEE,
+      roles: (user.roles as RoleName[]) || undefined, // ✅ NEW: Include all roles array for multi-role support
       isActive: user.isActive,
       lastLoginAt: user.lastLoginAt || undefined,
       createdAt: user.createdAt,

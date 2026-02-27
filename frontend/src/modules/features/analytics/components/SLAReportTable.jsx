@@ -148,7 +148,7 @@ export default function SLAReportTable({ data = [], isLoading, error, pageSize =
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="text-sm text-gray-900">
-                                            {job.assignee?.displayName || job.assignee?.firstName || '-'}
+                                            {job.assignee?.firstName || job.assignee?.firstName || '-'}
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">

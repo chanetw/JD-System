@@ -300,10 +300,10 @@ function JobRow({ job }) {
                 </Link>
             </td>
             <td className="px-4 py-3 text-sm text-gray-900">
-                {job.project?.name || '-'}
+                {job.project || '-'}
             </td>
             <td className="px-4 py-3 text-sm text-gray-600">
-                {job.jobType?.name || '-'}
+                {job.jobType || '-'}
             </td>
             <td className="px-4 py-3 text-sm text-gray-900 max-w-xs truncate">
                 {job.subject}
@@ -320,10 +320,10 @@ function JobRow({ job }) {
                 {getSLABadge()}
             </td>
             <td className="px-4 py-3 text-sm text-gray-600">
-                {job.assignee?.name || job.assigneeId ? 'Graphic' : '-'}
+                {job.assignee || (job.assigneeId ? 'Graphic' : '-')}
             </td>
             <td className="px-4 py-3 text-sm text-gray-500">
-                {job.updatedAt ? new Date(job.updatedAt).toLocaleString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '-'}
+                {job.updatedAt ? new Date(job.updatedAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) + ' ' + new Date(job.updatedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '-'}
             </td>
             <td className="px-4 py-3">
                 <Link

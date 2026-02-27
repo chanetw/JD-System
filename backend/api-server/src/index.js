@@ -53,6 +53,9 @@ import tenantSettingsRoutes from './routes/tenant-settings.js'; // ✓ NEW: Tena
 // V2 Auth System Routes (Production-ready with Sequelize + RBAC)
 import v2Routes from './v2/index.js';
 
+// Cron Services
+import rejectionAutoCloseCron from './services/rejectionAutoCloseCron.js';
+
 // ==========================================
 // ขั้นตอนที่ 1: ตั้งค่า Environment Variables
 // ==========================================
@@ -324,6 +327,14 @@ server.listen(PORT, () => {
   console.log(`║ 🔐 CORS Origins: ${ALLOWED_ORIGINS.join(', ')}`);
   console.log('╚════════════════════════════════════════════════════════════╝');
   console.log('');
+
+  // Start cron services
+  try {
+    rejectionAutoCloseCron.start();
+    console.log('✓ Rejection auto-close cron started');
+  } catch (cronErr) {
+    console.error('✗ Failed to start rejection auto-close cron:', cronErr);
+  }
 });
 
 // ==========================================
@@ -336,6 +347,14 @@ server.listen(PORT, () => {
  */
 process.on('SIGTERM', async () => {
   console.log('SIGTERM signal received: closing HTTP server');
+
+  // Stop cron services
+  try {
+    rejectionAutoCloseCron.stop();
+    console.log('✓ Rejection auto-close cron stopped');
+  } catch (cronErr) {
+    console.error('✗ Failed to stop rejection auto-close cron:', cronErr);
+  }
 
   // ปิด database connection
   await closeDatabaseConnection();
@@ -351,6 +370,14 @@ process.on('SIGTERM', async () => {
  */
 process.on('SIGINT', async () => {
   console.log('SIGINT signal received: closing HTTP server');
+
+  // Stop cron services
+  try {
+    rejectionAutoCloseCron.stop();
+    console.log('✓ Rejection auto-close cron stopped');
+  } catch (cronErr) {
+    console.error('✗ Failed to stop rejection auto-close cron:', cronErr);
+  }
 
   // ปิด database connection
   await closeDatabaseConnection();

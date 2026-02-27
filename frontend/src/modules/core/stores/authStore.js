@@ -267,7 +267,7 @@ export const useAuthStore = create(
                             isLoading: false,
                         });
 
-                        console.log(`[Auth] สลับเป็น ${result.user.displayName || result.user.email} (Role: ${role}) สำเร็จ`);
+                        console.log(`[Auth] สลับเป็น ${result.result.user.email} (Role: ${role}) สำเร็จ`);
                         return result.user;
                     }
 

@@ -200,7 +200,7 @@ export default function MyQueue() {
      * คลิกการ์ดเพื่อดูรายละเอียด
      */
     const handleViewDetail = (jobId) => {
-        navigate(`/job/${jobId}`);
+        navigate(`/jobs/${jobId}`);
     };
 
     /**

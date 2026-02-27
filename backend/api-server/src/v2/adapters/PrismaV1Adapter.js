@@ -25,27 +25,33 @@ class PrismaV1Adapter {
   static tov2User(prismaUser) {
     if (!prismaUser) return null;
 
-    const primaryRole = prismaUser.userRoles?.[0];
+    // Helper function to normalize role names
+    const normalizeRoleName = (rawRoleName) => {
+      if (!rawRoleName) return 'Assignee';
+      const normalized = rawRoleName.toLowerCase().trim();
 
-    // V1 Role Names: Admin, Requester, Approver, Assignee
-    console.log('[PrismaV1Adapter] User:', prismaUser.email, 'Roles:', prismaUser.userRoles);
+      // Normalize legacy/V2 role names to V1 standard
+      if (normalized === 'superadmin') return 'Admin';
+      if (normalized === 'orgadmin') return 'Requester';
+      if (normalized === 'teamlead') return 'Approver';
+      if (normalized === 'member') return 'Assignee';
+      if (normalized === 'user') return 'Assignee';
+      if (normalized === 'manager') return 'Approver';
 
-    // Get raw role name - V1 standard names
-    const rawRoleName = primaryRole?.roleName || 'Assignee';
-    const normalizedRole = rawRoleName.toLowerCase().trim();
+      return rawRoleName; // Keep original if no mapping found
+    };
 
-    let roleName = rawRoleName;
-
-    // Normalize legacy/V2 role names to V1 standard
-    if (normalizedRole === 'superadmin') roleName = 'Admin';
-    if (normalizedRole === 'orgadmin') roleName = 'Requester';
-    if (normalizedRole === 'teamlead') roleName = 'Approver';
-    if (normalizedRole === 'member') roleName = 'Assignee';
-    if (normalizedRole === 'user') roleName = 'Assignee';
-    if (normalizedRole === 'manager') roleName = 'Approver';
+    // ✅ NEW: Collect ALL roles from userRoles array
+    const allRoles = (prismaUser.userRoles || []).map(ur => normalizeRoleName(ur.roleName));
+    const primaryRole = allRoles[0] || 'Assignee';
 
     // Failsafe for specific admin user
-    if (prismaUser.id === 10000) roleName = 'Admin';
+    if (prismaUser.id === 10000 && !allRoles.includes('Admin')) {
+      allRoles.unshift('Admin');
+    }
+
+    // V1 Role Names: Admin, Requester, Approver, Assignee
+    console.log('[PrismaV1Adapter] User:', prismaUser.email, 'All Roles:', allRoles);
 
     return {
       id: prismaUser.id,
@@ -56,8 +62,9 @@ class PrismaV1Adapter {
       lastName: prismaUser.lastName,
       displayName: prismaUser.displayName,
       avatarUrl: prismaUser.avatarUrl,
-      roleName: roleName,
+      roleName: primaryRole,
       roleId: 0, // For V2 compatibility (no actual role FK)
+      roles: allRoles, // ✅ NEW: Return all roles as array for multi-role support
       isActive: prismaUser.isActive,
       // lastLoginAt: prismaUser.lastLoginAt, // TEMP: Field doesn't exist
       createdAt: prismaUser.createdAt,

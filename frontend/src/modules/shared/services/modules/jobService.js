@@ -351,7 +351,8 @@ export const jobService = {
                 priority: jobData.priority,
                 deadline: jobData.deadline || new Date().toISOString(),
                 brief: jobData.brief,
-                jobTypes: jobData.jobTypes // [{ jobTypeId, assigneeId }]
+                jobTypes: jobData.jobTypes, // [{ jobTypeId, assigneeId }]
+                items: jobData.items || [] // ส่งรายการชิ้นงานไปด้วย
             });
 
             if (!response.data.success) {
