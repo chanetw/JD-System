@@ -41,3 +41,20 @@ Thumbs.db
 
 # App temporary files
 *.pid
+
+# Test and debug scripts
+backend/api-server/test-*.js
+backend/api-server/check-*.js
+backend/api-server/fix-*.js
+backend/api-server/clear-cache.js
+backend/test_*.js
+frontend/test-*.js
+
+# Database migration archives
+database/migrations/archived/
+database/migrations/fixes/
+
+# Debug and session documentation
+docs/DEBUG_*.md
+docs/sessions/
+docs/reference/
