@@ -112,7 +112,7 @@ const RejectionApprovalCard = ({ rejectionRequest, onApprove, onDeny }) => {
           <p className="text-sm font-medium text-gray-700 mb-2">เหตุผล:</p>
           <div className="rounded-md bg-white p-3 border border-gray-200">
             <p className="text-sm text-gray-800 whitespace-pre-wrap">
-              {rejectionRequest.reason}
+              {rejectionRequest.reason || 'ไม่ระบุเหตุผล'}
             </p>
           </div>
         </div>

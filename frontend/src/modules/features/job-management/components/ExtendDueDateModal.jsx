@@ -10,6 +10,7 @@
 
 import React, { useState } from 'react';
 import { api } from '@shared/services/apiService';
+import httpClient from '@shared/services/httpClient';
 import { formatDate, addWorkDays } from '@shared/utils/slaCalculator';
 
 const ExtendDueDateModal = ({
@@ -51,7 +52,7 @@ const ExtendDueDateModal = ({
             setSubmitting(true);
             setError('');
 
-            const response = await api.post(`/jobs/${job.id}/extend`, {
+            const response = await httpClient.post(`/jobs/${job.id}/extend`, {
                 extensionDays: parseInt(extensionDays),
                 reason: reason.trim()
             });

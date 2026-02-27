@@ -70,16 +70,18 @@ router.get('/', async (req, res) => {
             ]
           };
         case 'approver': {
-          // ✅ Approver sees ALL jobs with any pending approval status
+          // ✅ Approver sees ALL jobs with any pending approval status AND rejected/returned jobs
           // Frontend JobActionPanel will determine if user can approve based on approval flow
-          // This query gets all pending jobs - both explicit (pending_approval/pending_level_N)
+          // This query gets all pending + rejected jobs - both explicit (pending_approval/pending_level_N)
           // JobActionPanel checks flowSnapshot to show approve buttons only when authorized
           const allJobs = await prisma.job.findMany({
             where: {
               tenantId,
               OR: [
                 { status: 'pending_approval' },
-                { status: { startsWith: 'pending_level_' } }
+                { status: { startsWith: 'pending_level_' } },
+                { status: 'rejected' },
+                { status: 'returned' }
               ],
               isParent: false  // Only child + single jobs (not parent jobs)
             },
@@ -802,6 +804,27 @@ router.get('/:id', async (req, res) => {
             subject: true,
             status: true
           }
+        },
+        // Include pending rejection request
+        rejectionRequests: {
+          where: { status: 'pending' },
+          select: {
+            id: true,
+            reason: true,
+            status: true,
+            autoCloseAt: true,
+            autoCloseEnabled: true,
+            createdAt: true,
+            requester: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                displayName: true
+              }
+            }
+          },
+          take: 1
         }
       }
     });
@@ -914,6 +937,14 @@ router.get('/:id', async (req, res) => {
         email: job.completedByUser.email,
         avatar: job.completedByUser.avatarUrl
       } : null,
+
+      // Rejection Details (Assignee Rejection Workflow)
+      rejectionComment: job.rejectionComment,
+      rejectionSource: job.rejectionSource,
+      rejectedBy: job.rejectedBy,
+      rejectionDeniedAt: job.rejectionDeniedAt,
+      rejectionDeniedBy: job.rejectionDeniedBy,
+
       // Comments for discussion thread
       comments: job.comments?.map(c => ({
         id: c.id,
@@ -925,6 +956,21 @@ router.get('/:id', async (req, res) => {
           avatar: c.user?.avatarUrl
         }
       })) || [],
+      
+      // NEW: Pending Rejection Request for Approver Action
+      rejectionRequest: job.rejectionRequests && job.rejectionRequests.length > 0 ? {
+        id: job.rejectionRequests[0].id,
+        reason: job.rejectionRequests[0].reason,
+        status: job.rejectionRequests[0].status,
+        autoCloseAt: job.rejectionRequests[0].autoCloseAt,
+        autoCloseEnabled: job.rejectionRequests[0].autoCloseEnabled,
+        createdAt: job.rejectionRequests[0].createdAt,
+        requester: job.rejectionRequests[0].requester ? {
+          id: job.rejectionRequests[0].requester.id,
+          name: job.rejectionRequests[0].requester.displayName || `${job.rejectionRequests[0].requester.firstName || ''} ${job.rejectionRequests[0].requester.lastName || ''}`.trim()
+        } : null
+      } : null,
+
       // Activities for history log (using ActivityLog model)
       activities: job.activityLogs?.map(a => ({
         id: a.id,
@@ -963,6 +1009,20 @@ router.get('/:id', async (req, res) => {
         defaultAssignee: approvalFlow.autoAssignUser || null
       } : null
     };
+
+    // 🔍 Debug: Log rejection details if status is assignee_rejected
+    if (job.status === 'assignee_rejected') {
+      console.log('[Jobs GET/:id] 🔍 Assignee Rejection Debug:', {
+        jobId: job.id,
+        djId: job.djId,
+        status: job.status,
+        rejectionComment: job.rejectionComment,
+        rejectionCommentLength: job.rejectionComment?.length,
+        rejectionSource: job.rejectionSource,
+        rejectedBy: job.rejectedBy,
+        transformed_rejectionComment: transformed.rejectionComment
+      });
+    }
 
     res.json({
       success: true,

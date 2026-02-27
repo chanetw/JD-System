@@ -92,9 +92,11 @@ export default function ApprovalsQueue() {
     /** การคัดกรองข้อมูลตามแท็บสถานะ (Tab Filtering) */
     const filteredJobs = jobs.filter(job => {
         // ✅ FIX: แสดงทุก level ของการอนุมัติ (pending_approval, pending_level_2, pending_level_3, ...)
+        // ✅ เพิ่ม assignee_rejected - งานที่รอการอนุมัติการปฏิเสธ
         if (activeTab === 'waiting') {
             return job.status === 'pending_approval' ||
-                   job.status?.startsWith('pending_level_');
+                   job.status?.startsWith('pending_level_') ||
+                   job.status === 'assignee_rejected';
         }
         if (activeTab === 'returned') return job.status === 'returned' || job.status === 'rejected';
         if (activeTab === 'history') return job.status === 'approved';
@@ -130,9 +132,13 @@ export default function ApprovalsQueue() {
     /** ดำเนินการปฏิเสธงานผ่าน API โดยระบุสาเหตุ (Reject/Return) */
     const handleConfirmReject = async () => {
         try {
-            const type = document.querySelector('input[name="rejectType"]:checked')?.value === 'reject' ? 'reject' : 'return';
-            await api.rejectJob(selectedJobId, rejectReason, type, user?.id || 1);
+            const comment = rejectResult.trim()
+                ? `${rejectReason} - ${rejectResult}`
+                : rejectReason;
+            await api.rejectJob(selectedJobId, user?.id || 1, comment);
             setShowRejectModal(false);
+            setRejectReason('incomplete');
+            setRejectComment('');
             loadData();
         } catch (error) {
             alert('ไม่สามารถปฏิเสธงานได้: ' + error.message);
@@ -205,7 +211,8 @@ export default function ApprovalsQueue() {
                                 <Th>หัวข้อ</Th>
                                 <Th>ผู้เปิดงาน</Th>
                                 <Th>วันที่สร้าง</Th>
-                                <Th>สถานะ SLA</Th>
+                                <Th>สถานะงาน</Th>
+                                <Th>SLA / Level</Th>
                                 <Th>ความสำคัญ</Th>
                                 <Th className="text-center">การจัดการ</Th>
                             </tr>
@@ -213,11 +220,11 @@ export default function ApprovalsQueue() {
                         <tbody className="divide-y divide-gray-400">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan="10" className="text-center py-8 text-gray-500">กำลังโหลดรายการงาน...</td>
+                                    <td colSpan="11" className="text-center py-8 text-gray-500">กำลังโหลดรายการงาน...</td>
                                 </tr>
                             ) : filteredJobs.length === 0 ? (
                                 <tr>
-                                    <td colSpan="10" className="text-center py-8 text-gray-500">
+                                    <td colSpan="11" className="text-center py-8 text-gray-500">
                                         ไม่พบรายการงานในหัวข้อนี้
                                     </td>
                                 </tr>
@@ -233,6 +240,7 @@ export default function ApprovalsQueue() {
                                         subject={job.subject}
                                         requester={job.requester}
                                         submitted={new Date(job.createdAt).toLocaleDateString('th-TH')}
+                                        status={job.status}
                                         sla={job.currentLevel ? `Level ${job.currentLevel}` : '-'}
                                         priority={<Badge status={job.priority?.toLowerCase() || 'normal'} />}
                                         urgent={job.priority === 'Urgent'}
@@ -437,7 +445,7 @@ function Th({ children, className = "text-left" }) {
  * @param {Function} props.onReject - จัดการการปฏิเสธ
  * @param {boolean} [props.showActions=true] - แสดงปุ่มจัดการงานหรือไม่
  */
-function QueueRow({ pkId, id, project, bud, type, subject, requester, submitted, sla, priority, urgent, onApprove, onReject, showActions = true }) {
+function QueueRow({ pkId, id, project, bud, type, subject, requester, submitted, status, sla, priority, urgent, onApprove, onReject, showActions = true }) {
     return (
         <tr className={`hover:bg-gray-50 ${urgent ? 'bg-red-50' : ''}`}>
             <td className="px-4 py-4">
@@ -461,6 +469,7 @@ function QueueRow({ pkId, id, project, bud, type, subject, requester, submitted,
                 </div>
             </td>
             <td className="px-4 py-4 text-sm text-gray-500">{submitted}</td>
+            <td className="px-4 py-4"><Badge status={status} /></td>
             <td className="px-4 py-4 text-sm font-medium text-gray-700">{sla}</td>
             <td className="px-4 py-4">{priority}</td>
             <td className="px-4 py-4">

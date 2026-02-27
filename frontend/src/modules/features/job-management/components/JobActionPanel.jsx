@@ -235,15 +235,30 @@ const JobActionPanel = ({
         );
     };
 
-    // 4. Assignee Rejection Confirmation (Approver)
+    // 4. Assignee Rejection Confirmation (Approver/Requester)
     const renderAssigneeRejectionConfirm = () => {
         if (job.status !== 'assignee_rejected') return null;
+
+        // ✅ Permission Check: Only show to Approver, Requester, or Admin
+        // NOT to the assignee who rejected the job
+        const isRequester = job.requesterId === currentUser?.id;
+        const canApproveRejection = isAdmin || isApprover || isRequester;
+
+        if (!canApproveRejection) return null;
+
+        console.log('[JobActionPanel] 🔍 Assignee Rejection:', {
+            status: job.status,
+            rejectionComment: job.rejectionComment,
+            rejectedAt: job.rejectedAt,
+            rejectedBy: job.rejectedBy,
+            canApprove: canApproveRejection
+        });
 
         return (
             <div className="bg-white rounded-xl border border-red-200 shadow-sm p-6 bg-red-50 mb-6">
                 <h2 className="font-semibold text-red-800 mb-2">ผู้รับงานปฏิเสธงาน</h2>
                 <p className="text-sm text-red-700 mb-4">
-                    เหตุผล: {job.rejectionComment || 'ไม่ระบุ'}
+                    <strong>เหตุผล:</strong> {job.rejectionComment || 'ไม่ระบุ'}
                 </p>
                 <div className="flex gap-3">
                     <button

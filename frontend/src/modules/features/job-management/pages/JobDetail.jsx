@@ -11,6 +11,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api } from '@shared/services/apiService';
+import httpClient from '@shared/services/httpClient';
 import Swal from 'sweetalert2';
 import { adminService } from '@shared/services/modules/adminService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
@@ -367,34 +368,59 @@ export default function JobDetail() {
 
     const handleConfirmAssigneeRejection = async () => {
         try {
-            await api.post(`/jobs/${job.id}/confirm-assignee-rejection`, {
+            await httpClient.post(`/jobs/${job.id}/confirm-assignee-rejection`, {
                 comment: confirmRejectionComment.trim() || undefined,
                 ccEmails: confirmRejectionCcEmails
             });
-            alert('ยืนยันการปฏิเสธงานเรียบร้อย อีเมลแจ้งเตือนถูกส่งแล้ว');
+            await Swal.fire({
+                icon: 'success',
+                title: 'ยืนยันการปฏิเสธงานเรียบร้อย',
+                text: 'อีเมลแจ้งเตือนถูกส่งแล้ว',
+                confirmButtonColor: '#e11d48'
+            });
             setShowConfirmRejectionModal(false);
             setConfirmRejectionComment('');
             setConfirmRejectionCcEmails([]);
             loadJob();
         } catch (err) {
-            alert('ยืนยันการปฏิเสธไม่สำเร็จ: ' + (err.response?.data?.message || err.message));
+            await Swal.fire({
+                icon: 'error',
+                title: 'ยืนยันการปฏิเสธไม่สำเร็จ',
+                text: err.response?.data?.message || err.message,
+                confirmButtonColor: '#e11d48'
+            });
         }
     };
 
     const handleDenyRejection = async () => {
         if (!denyRejectionReason.trim()) {
-            return alert('กรุณาระบุเหตุผลที่ไม่อนุมัติการปฏิเสธ');
+            return Swal.fire({
+                icon: 'warning',
+                title: 'กรุณาระบุเหตุผล',
+                text: 'กรุณาระบุเหตุผลที่ไม่อนุมัติการปฏิเสธ',
+                confirmButtonColor: '#e11d48'
+            });
         }
         try {
-            await api.post(`/jobs/${job.id}/deny-assignee-rejection`, {
+            await httpClient.post(`/jobs/${job.id}/deny-assignee-rejection`, {
                 reason: denyRejectionReason.trim()
             });
-            alert('ไม่อนุมัติคำขอปฏิเสธเรียบร้อย ผู้รับงานจะต้องดำเนินการต่อหรือขอ Extend');
+            await Swal.fire({
+                icon: 'info',
+                title: 'ไม่อนุมัติคำขอปฏิเสฝ',
+                text: 'ผู้รับงานจะต้องดำเนินการต่อหรือขอ Extend',
+                confirmButtonColor: '#e11d48'
+            });
             setShowDenyRejectionModal(false);
             setDenyRejectionReason('');
             loadJob();
         } catch (err) {
-            alert('เกิดข้อผิดพลาด: ' + (err.response?.data?.message || err.message));
+            await Swal.fire({
+                icon: 'error',
+                title: 'เกิดข้อผิดพลาด',
+                text: err.response?.data?.message || err.message,
+                confirmButtonColor: '#e11d48'
+            });
         }
     };
 
@@ -403,7 +429,7 @@ export default function JobDetail() {
     // ============================================
     const handleRequestRejection = async (reason) => {
         try {
-            const response = await api.post(`/jobs/${job.id}/request-rejection`, { reason });
+            const response = await httpClient.post(`/jobs/${job.id}/request-rejection`, { reason });
             await Swal.fire({
                 icon: 'success',
                 title: 'ส่งคำขอปฏิเสธเรียบร้อย',
@@ -418,7 +444,7 @@ export default function JobDetail() {
 
     const handleApproveRejectionRequest = async (requestId, comment) => {
         try {
-            await api.post(`/rejection-requests/${requestId}/approve`, { comment });
+            await httpClient.post(`/jobs/rejection-requests/${requestId}/approve`, { comment });
             await Swal.fire({
                 icon: 'success',
                 title: 'อนุมัติคำขอปฏิเสธเรียบร้อย',
@@ -433,7 +459,7 @@ export default function JobDetail() {
 
     const handleDenyRejectionRequest = async (requestId, reason) => {
         try {
-            await api.post(`/rejection-requests/${requestId}/deny`, { reason });
+            await httpClient.post(`/jobs/rejection-requests/${requestId}/deny`, { reason });
             await Swal.fire({
                 icon: 'info',
                 title: 'ไม่อนุมัติคำขอปฏิเสธ',
@@ -562,11 +588,67 @@ export default function JobDetail() {
                                     onManualAssign={handleManualAssign}
                                     onConfirmClose={handleConfirmClose}
                                     onRequestRevision={onRequestRevision}
-                                    onOpenAssigneeRejectModal={() => setShowAssigneeRejectModal(true)}
+                                    onOpenAssigneeRejectModal={() => setShowRejectionRequestModal(true)} // เปิด modal ตัวใหม่
                                     onConfirmAssigneeRejection={openConfirmRejectionModal}
                                     onDenyRejection={() => setShowDenyRejectionModal(true)}
                                     onOpenExtendModal={() => setShowExtendModal(true)}
                                 />
+
+                                {/* 🚨 Assignee Rejection Alert - Show to Approver/Requester */}
+                                {(job.status === 'assignee_rejected' || job.status === 'pending_rejection') && (
+                                    <div className="bg-gradient-to-r from-orange-50 to-amber-50 border-l-4 border-orange-500 rounded-lg p-5 shadow-sm mb-6">
+                                        <div className="flex items-start gap-4">
+                                            {/* Warning Icon */}
+                                            <div className="flex-shrink-0">
+                                                <svg className="w-7 h-7 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                                </svg>
+                                            </div>
+
+                                            {/* Content */}
+                                            <div className="flex-1">
+                                                <h3 className="text-lg font-bold text-orange-900 mb-3">
+                                                    รอการอนุมัติการปฏิเสธงาน
+                                                </h3>
+
+                                                {/* Rejection Details */}
+                                                <div className="bg-white/70 rounded-md p-4 border border-orange-200 space-y-2">
+                                                    {/* Assignee Request */}
+                                                    <p className="text-sm text-gray-900">
+                                                        <span className="font-semibold">ผู้รับงาน:</span>{' '}
+                                                        <span className="text-orange-800 font-medium">
+                                                            {job.assignee?.name || `${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}`.trim()}
+                                                        </span>
+                                                        {' '}ขอปฏิเสธงานนี้
+                                                    </p>
+
+                                                    {/* Reason - Always show with fallback */}
+                                                    <p className="text-sm text-gray-700">เนื่องจาก</p>
+                                                    <p className="text-sm text-gray-900 font-medium pl-4 border-l-2 border-orange-300">
+                                                        <span className="text-gray-700">เหตุผล:</span> {job.rejectionRequest?.reason || job.rejectionComment || 'ไม่ระบุเหตุผล'}
+                                                    </p>
+                                                </div>
+
+                                                {/* Action Hint - Only show to Approver/Requester/Admin */}
+                                                {(() => {
+                                                    const normalizedRoles = (user?.roles || []).map(r =>
+                                                        (typeof r === 'string' ? r : r?.name || '').toLowerCase()
+                                                    );
+                                                    const isAdmin = normalizedRoles.includes('admin');
+                                                    const isApprover = normalizedRoles.includes('approver');
+                                                    const isRequester = job.requesterId === user?.id;
+                                                    const canApprove = isAdmin || isApprover || isRequester;
+
+                                                    return canApprove && (
+                                                        <div className="mt-3 text-xs text-orange-700 bg-orange-100/50 rounded px-3 py-2 inline-block">
+                                                            💡 กรุณาใช้ปุ่ม "ยืนยันปฏิเสธงาน" หรือ "ไม่อนุมัติคำขอ" ด้านล่างเพื่อตัดสินใจ
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Delivered Work (Only visible if completed/closed) */}
                                 <JobDeliveryCard job={job} />

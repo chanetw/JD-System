@@ -33,7 +33,8 @@ const hasJobAccess = (job, user) => {
         job.requesterId === user.userId ||
         job.assigneeId === user.userId ||
         roles.includes('admin') ||
-        roles.includes('manager')
+        roles.includes('manager') ||
+        roles.includes('approver')
     );
 };
 
