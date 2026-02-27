@@ -289,8 +289,36 @@ export class ApprovalService extends BaseService {
       // อัปเดตสถานะงานเป็น rejected
       await this.prisma.job.update({
         where: { id: approval.jobId },
-        data: { status: 'rejected' }
+        data: {
+          status: 'rejected',
+          rejectionSource: 'approver'  // ✅ Direct rejection by approver (via email)
+        }
       });
+
+      // ✅ NEW: Cascade Reject Downstream Jobs (same as web rejection)
+      const chainService = require('./chainService.js').default || require('./chainService.js');
+      const cascadeResult = await chainService.cascadeRejectDownstream(
+        approval.jobId,
+        this.prisma,
+        comment
+      );
+
+      // Send notifications to affected assignees
+      if (cascadeResult.rejected > 0) {
+        for (const affected of cascadeResult.affected) {
+          if (affected.assigneeId) {
+            await this.notificationService.createNotification({
+              tenantId: approval.job.tenantId,
+              userId: affected.assigneeId,
+              type: 'cascade_rejected',
+              title: `❌ งาน ${affected.djId} ถูกยกเลิก`,
+              message: affected.reason,
+              link: `/jobs/${affected.jobId}`
+            });
+          }
+        }
+        console.log(`[ApprovalService] Email Rejection: Cascade rejected ${cascadeResult.rejected} downstream jobs`);
+      }
 
       // บันทึก activity log พร้อม IP
       await this.logApprovalActivity({
@@ -302,7 +330,8 @@ export class ApprovalService extends BaseService {
         metadata: {
           approvalId: approval.id,
           comment,
-          rejectedAt: new Date()
+          rejectedAt: new Date(),
+          cascaded: cascadeResult.rejected || 0  // ✅ Track cascade count
         }
       });
 
@@ -562,7 +591,7 @@ export class ApprovalService extends BaseService {
       // 1. Get Job & Current Status
       const job = await this.prisma.job.findUnique({
         where: { id: jobId },
-        select: { id: true, projectId: true, jobTypeId: true, status: true, requesterId: true, djId: true, subject: true, isParent: true }
+        select: { id: true, projectId: true, jobTypeId: true, status: true, requesterId: true, djId: true, subject: true, isParent: true, predecessorId: true, tenantId: true }
       });
 
       if (!job) throw new Error('Job not found');
@@ -609,7 +638,14 @@ export class ApprovalService extends BaseService {
         status: nextStatus
       };
 
-      if (isFinal) {
+      // ✅ FIX: Check for predecessor after final approval
+      // If job has predecessor, transition to pending_dependency instead of assigned
+      if (isFinal && job.predecessorId) {
+        // Job is fully approved but must wait for predecessor to complete
+        updateData.status = 'pending_dependency';
+        nextStatus = 'pending_dependency';
+        console.log(`[Approval] Job ${job.djId} approved but has predecessor → pending_dependency`);
+      } else if (isFinal) {
         updateData.startedAt = new Date();
       }
 
@@ -618,9 +654,9 @@ export class ApprovalService extends BaseService {
         data: updateData
       });
 
-      // V1 Extended: Auto-Assign Logic if Final Approval
+      // V1 Extended: Auto-Assign Logic if Final Approval (skip if has predecessor)
       let assignResult = null;
-      if (isFinal) {
+      if (isFinal && !job.predecessorId) {
         assignResult = await this.autoAssignJob(jobId, flow, job.requesterId);
         if (assignResult.success) {
           nextStatus = 'in_progress';
@@ -845,7 +881,8 @@ export class ApprovalService extends BaseService {
       await this.prisma.job.update({
         where: { id: jobId },
         data: {
-          status: 'rejected'
+          status: 'rejected',
+          rejectionSource: 'approver'  // ✅ Direct rejection by approver
         }
       });
 
@@ -968,7 +1005,8 @@ export class ApprovalService extends BaseService {
         where: { id: jobId },
         select: {
           id: true, djId: true, status: true, tenantId: true,
-          assigneeId: true, requesterId: true, subject: true
+          assigneeId: true, requesterId: true, subject: true,
+          flowSnapshot: true  // ✅ เพิ่ม flowSnapshot เพื่อหา Approver จาก flow
         }
       });
 
@@ -1042,16 +1080,42 @@ export class ApprovalService extends BaseService {
         }
       });
 
-      // แจ้งเตือน Approver คนสุดท้าย
-      if (lastApproval?.approverId && this.notificationService) {
+      // ✅ NEW: แจ้งเตือน Approver (จาก record → flow → requester)
+      if (this.notificationService) {
+        let notifyUserId = null;
+        let notifyRole = '';
+
+        // Step 1: ลองหาจาก approval record ก่อน
+        if (lastApproval?.approverId) {
+          notifyUserId = lastApproval.approverId;
+          notifyRole = 'Approver (from approval record)';
+        }
+        // Step 2: ถ้าไม่มี ลองหาจาก flowSnapshot (ใช้ Level สุดท้ายก่อนจ่ายงาน)
+        else if (job.flowSnapshot?.levels && job.flowSnapshot.levels.length > 0) {
+          const lastLevel = job.flowSnapshot.levels[job.flowSnapshot.levels.length - 1];
+          if (lastLevel.approvers && lastLevel.approvers.length > 0) {
+            // ใช้ Approver Level สุดท้ายก่อนหน้าที่จะจ่ายงานให้ผู้รับงาน
+            const lastApprover = lastLevel.approvers[0];
+            notifyUserId = lastApprover.id || lastApprover.userId;
+            notifyRole = `Approver Level ${lastLevel.level} (last before assignment: ${lastApprover.name})`;
+          }
+        }
+        // Step 3: ถ้ายังไม่มี fallback ไป Requester
+        if (!notifyUserId) {
+          notifyUserId = job.requesterId;
+          notifyRole = 'Requester (no approver in flow)';
+        }
+
         await this.notificationService.createNotification({
           tenantId: job.tenantId,
-          userId: lastApproval.approverId,
+          userId: notifyUserId,
           type: 'assignee_rejected',
           title: `ผู้รับงานปฏิเสธงาน ${job.djId}`,
           message: `ผู้รับงานปฏิเสธงาน "${job.subject}" เหตุผล: ${comment}`,
           link: `/jobs/${jobId}`
         }).catch(err => console.warn('[RejectByAssignee] Notification failed:', err.message));
+
+        console.log(`[RejectByAssignee] Notified ${notifyRole} (userId: ${notifyUserId}) for job ${job.djId}`);
       }
 
       return {
@@ -1677,30 +1741,45 @@ export class ApprovalService extends BaseService {
       // 1. ดึง approval flow
       const flow = await this.getApprovalFlow(projectId, jobTypeId);
       if (!flow || !flow.approverSteps || !Array.isArray(flow.approverSteps)) {
+        console.log(`[AutoApprove] No flow or approverSteps for project=${projectId}, jobType=${jobTypeId}. Flow:`, flow ? { id: flow.id, name: flow.name, hasSteps: !!flow.approverSteps } : null);
         return { autoApproved: false };
       }
+
+      console.log(`[AutoApprove] Flow found: id=${flow.id}, name="${flow.name}", steps=${flow.approverSteps.length}`);
 
       // 2. หา level 1 (pending_approval = level 1)
       const level1 = flow.approverSteps.find(s =>
         s.stepNumber === 1 || s.level === 1
       );
       if (!level1 || !level1.approvers || !Array.isArray(level1.approvers)) {
+        console.log(`[AutoApprove] No level 1 found. Steps:`, JSON.stringify(flow.approverSteps.map(s => ({ stepNumber: s.stepNumber, level: s.level }))));
         return { autoApproved: false };
       }
+
+      console.log(`[AutoApprove] Level 1 approvers:`, JSON.stringify(level1.approvers.map(a => ({ id: a.id, userId: a.userId, type: typeof (a.id || a.userId) }))));
 
       // 3. เช็ค: requester อยู่ใน level 1 approvers ไหม?
       const isApproverAtLevel1 = level1.approvers.some(a => {
         const approverId = a.id || a.userId;
-        return approverId === requesterId || approverId === String(requesterId);
+        // Compare with both number and string to handle type mismatches
+        return approverId == requesterId; // loose equality handles string/number
       });
 
       if (!isApproverAtLevel1) {
+        console.log(`[AutoApprove] Requester ${requesterId} (type: ${typeof requesterId}) NOT found in level 1 approvers`);
         return { autoApproved: false };
       }
 
       console.log(`[AutoApprove] Requester ${requesterId} is approver at Level 1 for job ${jobId}`);
 
       // 4. สร้าง approval record + mark as approved (เหมือน approveJobViaWeb)
+      console.log(`[AutoApprove] 🔍 Creating approval record:`, {
+        jobId,
+        approverId: requesterId,
+        approverIdType: typeof requesterId,
+        stepNumber: 1
+      });
+
       const approval = await this.prisma.approval.create({
         data: {
           jobId,
@@ -1713,6 +1792,8 @@ export class ApprovalService extends BaseService {
         }
       });
 
+      console.log(`[AutoApprove] ✅ Created approval record ID: ${approval.id}, approverId: ${approval.approverId}`);
+
       // 5. Advance job status (reuse logic from approveJobViaWeb)
       const totalLevels = this.getApprovalLevels(flow);
       let newStatus, isFinal;
@@ -1722,31 +1803,58 @@ export class ApprovalService extends BaseService {
         newStatus = 'pending_level_2';
         isFinal = false;
       } else {
-        // level เดียว → approved
+        // level เดียว → approved (แต่ถ้ามี assignee อยู่แล้วให้เป็น in_progress)
         newStatus = 'approved';
         isFinal = true;
+      }
+
+      // 5.1 ตรวจสอบ predecessorId และ assigneeId
+      if (isFinal) {
+        const currentJob = await this.prisma.job.findUnique({
+          where: { id: jobId },
+          select: { assigneeId: true, predecessorId: true, djId: true }
+        });
+
+        // ✅ FIX: Check predecessor first (higher priority than assignee)
+        if (currentJob?.predecessorId) {
+          // Has predecessor → must wait regardless of assignee
+          newStatus = 'pending_dependency';
+          console.log(`[AutoApprove] Job ${currentJob.djId || jobId} approved but has predecessor → pending_dependency`);
+        } else if (currentJob?.assigneeId) {
+          // No predecessor but has assignee → start immediately
+          newStatus = 'in_progress';
+          console.log(`[AutoApprove] Job ${currentJob.djId || jobId} has assignee → status set to in_progress`);
+        }
       }
 
       await this.prisma.job.update({
         where: { id: jobId },
         data: {
           status: newStatus,
-          ...(isFinal ? { startedAt: new Date() } : {})
+          ...(isFinal && newStatus !== 'pending_dependency' ? { startedAt: new Date() } : {})
         }
       });
 
-      // 6. Log activity (non-blocking)
+      // 6. Log activity พร้อม detail ครบถ้วน (non-blocking)
+      // บันทึก: Level ที่อนุมัติ, จำนวน Level ทั้งหมด, สถานะใหม่, และ Auto-approval indicator
       await this.prisma.activityLog.create({
         data: {
           jobId,
           userId: requesterId,
           action: 'job_auto_approved',
-          message: `Auto-approved Level 1: ผู้สร้างเป็นผู้อนุมัติ`,
-          detail: JSON.stringify({ level: 1, autoApproved: true, newStatus, totalLevels })
+          message: `Auto-approved Level 1/${totalLevels}: ผู้สร้างเป็นผู้อนุมัติ → ${newStatus}`,
+          detail: JSON.stringify({
+            autoApproved: true,
+            level: 1,
+            totalLevels,
+            newStatus,
+            approverId: requesterId,
+            isFinal
+          })
         }
       }).catch(err => console.warn('[AutoApprove] Activity log failed:', err.message));
 
-      console.log(`[AutoApprove] Job ${jobId} auto-approved → ${newStatus} (isFinal: ${isFinal})`);
+      console.log(`[AutoApprove] Job ${jobId} auto-approved → ${newStatus} (isFinal: ${isFinal}, totalLevels: ${totalLevels})`);
 
       return {
         autoApproved: true,
@@ -1859,6 +1967,24 @@ export class ApprovalService extends BaseService {
       // สร้าง map ของ jobTypeId -> assignment
       const assignmentMap = new Map();
       assignments.forEach(a => assignmentMap.set(a.jobTypeId, a));
+
+      // 1.5 🔄 SYNC: deactivate skip flows ของ job types ที่ไม่ได้อยู่ใน list นี้
+      // เพื่อให้ UI แสดงเฉพาะ job types ที่เลือกในรอบปัจจุบัน
+      if (jobTypeIds.length >= 0) {
+        await this.prisma.approvalFlow.updateMany({
+          where: {
+            projectId,
+            skipApproval: true,
+            jobTypeId: { not: null, notIn: jobTypeIds },
+            isActive: true
+          },
+          data: {
+            isActive: false,
+            updatedAt: new Date()
+          }
+        });
+        console.log(`[BulkFlow] Deactivated skip flows NOT in selection for project ${projectId}`);
+      }
 
       // ⚡ Performance: Batch fetch all existing flows at once (1 query instead of N)
       const existingFlows = await this.prisma.approvalFlow.findMany({
