@@ -43,6 +43,10 @@ export default function ApprovalsQueue() {
     const [rejectReason, setRejectReason] = useState('incomplete'); // สาเหตุของการปฏิเสธ
     const [rejectResult, setRejectComment] = useState('');           // ความคิดเห็นเพิ่มเติมเมื่อปฏิเสธ
 
+    // Pagination States
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 20;
+
     /** ข้อมูลผู้ใช้งานปัจจุบันจาก Central Store */
     const { user } = useAuthStoreV2();
 
@@ -99,9 +103,21 @@ export default function ApprovalsQueue() {
                    job.status === 'assignee_rejected';
         }
         if (activeTab === 'returned') return job.status === 'returned' || job.status === 'rejected';
-        if (activeTab === 'history') return job.status === 'approved';
+        if (activeTab === 'history') return job.status === 'approved' || job.status === 'pending_dependency'; // รวมถึงงานที่ approve แล้วแต่ยังรอ
         return false;
     });
+
+    // Pagination Logic
+    const totalPages = Math.ceil(filteredJobs.length / itemsPerPage);
+    const paginatedJobs = filteredJobs.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
+    // Reset page when tab changes
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [activeTab]);
 
     // === ฟังก์ชันจัดการเหตุการณ์ (Action Handlers) ===
 
@@ -148,11 +164,22 @@ export default function ApprovalsQueue() {
     return (
         <div className="space-y-6">
             {/* ============================================
-          ส่วนหัวของหน้าจอ (Page Header)
+          ส่วนหัวของหน้าจอ (Page Header) + Refresh Button
           ============================================ */}
-            <div>
-                <h1 className="text-2xl font-bold text-gray-900">คิวรออนุมัติ (Approvals Queue)</h1>
-                <p className="text-gray-500">รายการงาน DJ (Design Job) ที่รอให้คุณดำเนินการตรวจสอบ</p>
+            <div className="flex justify-between items-start">
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-900">คิวรออนุมัติ (Approvals Queue)</h1>
+                    <p className="text-gray-500">รายการงาน DJ (Design Job) ที่รอให้คุณดำเนินการตรวจสอบ</p>
+                </div>
+                <Button
+                    variant="secondary"
+                    onClick={loadData}
+                    disabled={isLoading}
+                    className="flex items-center gap-2"
+                >
+                    <ArrowPathIcon className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                    รีเฟรช
+                </Button>
             </div>
 
             {/* ============================================
@@ -184,15 +211,28 @@ export default function ApprovalsQueue() {
             </div>
 
             {/* ============================================
-          สรุปสถิติเบื้องต้น (Summary Stats)
+          สรุปสถิติเบื้องต้น (Summary Stats) - แสดงเสมอ
           ============================================ */}
-            {activeTab === 'waiting' && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <StatCard label="งานรออนุมัติ" value={filteredJobs.length} icon={<ClockIcon className="w-5 h-5 text-rose-600" />} color="rose" />
-                    <StatCard label="งานเร่งด่วน (Urgent)" value={filteredJobs.filter(j => j.priority === 'Urgent').length} icon={<ExclamationTriangleIcon className="w-5 h-5 text-red-600" />} color="red" />
-                    <StatCard label="งานทั้งหมดในระบบ" value={jobs.length} icon={<CheckBadgeIcon className="w-5 h-5 text-green-600" />} color="green" />
-                </div>
-            )}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <StatCard 
+                    label="งานรออนุมัติ" 
+                    value={jobs.filter(j => j.status === 'pending_approval' || j.status?.startsWith('pending_level_')).length} 
+                    icon={<ClockIcon className="w-5 h-5 text-amber-600" />} 
+                    color="amber" 
+                />
+                <StatCard 
+                    label="งานเร่งด่วน (Urgent)" 
+                    value={jobs.filter(j => j.priority === 'Urgent').length} 
+                    icon={<ExclamationTriangleIcon className="w-5 h-5 text-red-600" />} 
+                    color="red" 
+                />
+                <StatCard 
+                    label="งานตีกลับ" 
+                    value={jobs.filter(j => ['returned', 'rejected'].includes(j.status)).length} 
+                    icon={<ArrowPathIcon className="w-5 h-5 text-orange-600" />} 
+                    color="orange" 
+                />
+            </div>
 
             {/* ============================================
           ตารางรายการงาน (Queue Table)
@@ -222,14 +262,14 @@ export default function ApprovalsQueue() {
                                 <tr>
                                     <td colSpan="11" className="text-center py-8 text-gray-500">กำลังโหลดรายการงาน...</td>
                                 </tr>
-                            ) : filteredJobs.length === 0 ? (
+                            ) : paginatedJobs.length === 0 ? (
                                 <tr>
                                     <td colSpan="11" className="text-center py-8 text-gray-500">
                                         ไม่พบรายการงานในหัวข้อนี้
                                     </td>
                                 </tr>
                             ) : (
-                                filteredJobs.map(job => (
+                                paginatedJobs.map(job => (
                                     <QueueRow
                                         key={job.id}
                                         pkId={job.id}
@@ -241,18 +281,61 @@ export default function ApprovalsQueue() {
                                         requester={job.requester}
                                         submitted={new Date(job.createdAt).toLocaleDateString('th-TH')}
                                         status={job.status}
-                                        sla={job.currentLevel ? `Level ${job.currentLevel}` : '-'}
+                                        sla={
+                                            job.status?.startsWith('pending_level_') 
+                                                ? <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
+                                                    Level {job.status.split('_')[2]}
+                                                  </span>
+                                                : job.status === 'pending_approval'
+                                                    ? <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
+                                                        Level 1
+                                                      </span>
+                                                    : <span className="text-gray-500">-</span>
+                                        }
                                         priority={<Badge status={job.priority?.toLowerCase() || 'normal'} />}
                                         urgent={job.priority === 'Urgent'}
                                         onApprove={() => handleOpenApprove(job.id)}
                                         onReject={() => handleOpenReject(job.id)}
-                                        showActions={activeTab === 'waiting'}
+                                        showActions={activeTab === 'waiting' && job.status !== 'pending_dependency' && !job.predecessorId}
+                                        predecessorDjId={job.predecessorDjId}
+                                        predecessorSubject={job.predecessorSubject}
+                                        predecessorStatus={job.predecessorStatus}
                                     />
                                 ))
                             )}
                         </tbody>
                     </table>
                 </div>
+
+                {/* Pagination Controls */}
+                {!isLoading && filteredJobs.length > 0 && (
+                    <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-white">
+                        <div className="text-sm text-gray-500">
+                            แสดง {((currentPage - 1) * itemsPerPage) + 1} ถึง {Math.min(currentPage * itemsPerPage, filteredJobs.length)} จาก {filteredJobs.length} รายการ
+                        </div>
+                        <div className="flex gap-2">
+                            <Button
+                                variant="secondary"
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                                className="text-sm px-3 py-1"
+                            >
+                                ก่อนหน้า
+                            </Button>
+                            <span className="flex items-center px-4 text-sm font-medium text-gray-700">
+                                {currentPage} / {totalPages}
+                            </span>
+                            <Button
+                                variant="secondary"
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages}
+                                className="text-sm px-3 py-1"
+                            >
+                                ถัดไป
+                            </Button>
+                        </div>
+                    </div>
+                )}
             </Card>
 
             {/* ============================================
@@ -445,9 +528,9 @@ function Th({ children, className = "text-left" }) {
  * @param {Function} props.onReject - จัดการการปฏิเสธ
  * @param {boolean} [props.showActions=true] - แสดงปุ่มจัดการงานหรือไม่
  */
-function QueueRow({ pkId, id, project, bud, type, subject, requester, submitted, status, sla, priority, urgent, onApprove, onReject, showActions = true }) {
+function QueueRow({ pkId, id, project, bud, type, subject, requester, submitted, status, sla, priority, urgent, onApprove, onReject, showActions = true, predecessorDjId, predecessorSubject, predecessorStatus }) {
     return (
-        <tr className={`hover:bg-gray-50 ${urgent ? 'bg-red-50' : ''}`}>
+        <tr className={`hover:bg-gray-50 ${urgent ? 'bg-red-50' : ''} ${(status === 'pending_dependency' || predecessorDjId) ? 'bg-blue-50/30' : ''}`}>
             <td className="px-4 py-4">
                 <input type="checkbox" className="rounded border-gray-300 text-rose-600 focus:ring-rose-500" />
             </td>
@@ -459,7 +542,18 @@ function QueueRow({ pkId, id, project, bud, type, subject, requester, submitted,
                 <div className="text-xs text-gray-500">{bud}</div>
             </td>
             <td className="px-4 py-4 text-sm text-gray-900">{type}</td>
-            <td className="px-4 py-4 text-sm text-gray-900 max-w-xs truncate" title={subject}>{subject}</td>
+            <td className="px-4 py-4 text-sm text-gray-900 max-w-xs">
+                <div className="truncate" title={subject}>{subject}</div>
+                {predecessorDjId && (
+                    <div className="mt-1 flex items-center gap-1 text-xs text-blue-600">
+                        <span>🔗 งานก่อนหน้า:</span>
+                        <span className="font-medium">{predecessorDjId}</span>
+                        {predecessorSubject && (
+                            <span className="text-gray-500 truncate max-w-[120px]" title={predecessorSubject}>— {predecessorSubject}</span>
+                        )}
+                    </div>
+                )}
+            </td>
             <td className="px-4 py-4">
                 <div className="flex items-center gap-2">
                     <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-[10px] text-gray-500 font-bold uppercase">
@@ -477,6 +571,11 @@ function QueueRow({ pkId, id, project, bud, type, subject, requester, submitted,
                     <Link to={`/jobs/${pkId}`} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg" title="ดูรายละเอียด">
                         <EyeIcon className="w-4 h-4" />
                     </Link>
+                    {!showActions && predecessorDjId && (
+                        <span className="text-xs text-blue-500 text-center" title={`งานนี้จะถูกอนุมัติอัตโนมัติตามงานก่อนหน้า (${predecessorDjId})`}>
+                            🔗 cascade
+                        </span>
+                    )}
                     {showActions && (
                         <>
                             <button onClick={onApprove} className="p-2 text-green-500 hover:text-green-700 hover:bg-green-50 rounded-lg" title="อนุมัติ">

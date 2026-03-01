@@ -180,11 +180,22 @@ export default function DJList() {
         });
 
         // เพิ่มข้อมูล child count ให้กับ children jobs
+        // เรียง siblings ตาม createdAt เพื่อให้ index ตรงกับ sequential order จริง
+        const siblingsSortedMap = {};
+        result.forEach(job => {
+            if (job.parentJobId) {
+                if (!siblingsSortedMap[job.parentJobId]) siblingsSortedMap[job.parentJobId] = [];
+                siblingsSortedMap[job.parentJobId].push(job);
+            }
+        });
+        Object.keys(siblingsSortedMap).forEach(parentId => {
+            siblingsSortedMap[parentId].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        });
+
         result = result.map(job => {
             if (job.parentJobId) {
                 const totalSiblings = parentChildCount[job.parentJobId] || 1;
-                // หา index ของ job นี้ใน siblings
-                const siblings = result.filter(j => j.parentJobId === job.parentJobId);
+                const siblings = siblingsSortedMap[job.parentJobId] || [];
                 const childIndex = siblings.findIndex(s => s.id === job.id) + 1;
                 return {
                     ...job,

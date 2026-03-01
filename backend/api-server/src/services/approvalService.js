@@ -815,6 +815,84 @@ export class ApprovalService extends BaseService {
         }
       }
 
+      // ----------------------------------------
+      // Cascade Approval to Sequential Jobs (Successors)
+      // เมื่องานผ่าน level ปัจจุบัน → งานที่ต่อเนื่อง (predecessorId = jobId) ควรผ่าน level เดียวกันด้วย
+      // ตัวอย่าง: A อนุมัติ lv1 → B (successor ของ A) ก็อนุมัติ lv1 ไปด้วย
+      // ถ้ายังมี lv2 → B จะเป็น pending_level_2 รอ; ถ้า final → B เป็น pending_dependency
+      // ----------------------------------------
+      {
+        const successors = await this.prisma.job.findMany({
+          where: {
+            predecessorId: jobId,
+            status: { in: ['pending_approval', `pending_level_${currentLevel}`] }
+          },
+          select: { id: true, djId: true, status: true, projectId: true, jobTypeId: true, assigneeId: true }
+        });
+
+        if (successors.length > 0) {
+          console.log(`[CascadeSeq] Found ${successors.length} sequential successors to cascade approval`);
+
+          for (const successor of successors) {
+            try {
+              // ตรวจสอบ flow ของ successor (อาจต่างจาก job หลัก)
+              const successorFlow = await this.getApprovalFlow(successor.projectId, successor.jobTypeId);
+              const successorTotalLevels = this.getApprovalLevels(successorFlow);
+
+              let successorNextStatus;
+              if (successorTotalLevels > currentLevel) {
+                // ยังมี level ถัดไป → ไปรอ level ถัดไป
+                successorNextStatus = `pending_level_${currentLevel + 1}`;
+              } else {
+                // ผ่าน final level → รอ predecessor เสร็จ (pending_dependency)
+                successorNextStatus = 'pending_dependency';
+              }
+
+              // บันทึก approval record สำหรับ level ปัจจุบัน
+              await this.prisma.approval.create({
+                data: {
+                  jobId: successor.id,
+                  approverId,
+                  stepNumber: currentLevel,
+                  status: 'approved',
+                  approvedAt: new Date(),
+                  comment: `Cascade approved level ${currentLevel} จากงาน ${job.djId} (sequential job)`,
+                  tenantId: job.tenantId
+                }
+              });
+
+              // อัปเดตสถานะ successor
+              await this.prisma.job.update({
+                where: { id: successor.id },
+                data: { status: successorNextStatus }
+              });
+
+              // บันทึก activity log
+              await this.prisma.jobActivity.create({
+                data: {
+                  tenantId: job.tenantId,
+                  jobId: successor.id,
+                  userId: approverId,
+                  activityType: 'job_approved_cascade_sequential',
+                  description: `อนุมัติอัตโนมัติ Level ${currentLevel} ตามงานก่อนหน้า (${job.djId}) → ${successorNextStatus}`,
+                  metadata: {
+                    predecessorJobId: jobId,
+                    predecessorDjId: job.djId,
+                    level: currentLevel,
+                    totalLevels: successorTotalLevels,
+                    newStatus: successorNextStatus
+                  }
+                }
+              });
+
+              console.log(`[CascadeSeq] ✅ Successor ${successor.djId} → ${successorNextStatus} (level ${currentLevel}/${successorTotalLevels})`);
+            } catch (err) {
+              console.error(`[CascadeSeq] Failed to cascade for successor ${successor.djId}:`, err.message);
+            }
+          }
+        }
+      }
+
       // 4. Log Activity
       await this.logApprovalActivity({
         jobId,

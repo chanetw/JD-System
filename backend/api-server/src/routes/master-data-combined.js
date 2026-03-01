@@ -194,22 +194,36 @@ router.get('/', async (req, res) => {
             departments: []
         };
 
+        const addProjectIfNotExists = (project) => {
+            if (project && !availableScopes.projects.find(p => p.id === project.id)) {
+                availableScopes.projects.push(project);
+            }
+        };
+
         scopeAssignments.forEach(scope => {
             if (scope.scopeLevel === 'project' && scope.scopeId) {
+                // Project scope → เพิ่ม project ตรงๆ
                 const project = projects.find(p => p.id === scope.scopeId);
-                if (project && !availableScopes.projects.find(p => p.id === project.id)) {
-                    availableScopes.projects.push(project);
-                }
+                addProjectIfNotExists(project);
             } else if (scope.scopeLevel === 'bud' && scope.scopeId) {
+                // BUD scope → เพิ่ม BUD และ projects ทั้งหมดที่อยู่ใน BUD นั้น
                 const bud = buds.find(b => b.id === scope.scopeId);
                 if (bud && !availableScopes.buds.find(b => b.id === bud.id)) {
                     availableScopes.buds.push(bud);
                 }
+                const budProjects = projects.filter(p => p.budId === scope.scopeId);
+                budProjects.forEach(addProjectIfNotExists);
             } else if (scope.scopeLevel === 'department' && scope.scopeId) {
+                // Department scope → เพิ่ม department และ projects ที่อยู่ใน department นั้น
                 const dept = departments.find(d => d.id === scope.scopeId);
                 if (dept && !availableScopes.departments.find(d => d.id === dept.id)) {
                     availableScopes.departments.push(dept);
                 }
+                const deptProjects = projects.filter(p => p.departmentId === scope.scopeId);
+                deptProjects.forEach(addProjectIfNotExists);
+            } else if (scope.scopeLevel === 'tenant') {
+                // Tenant scope → เพิ่ม projects ทั้งหมดใน tenant
+                projects.forEach(addProjectIfNotExists);
             }
         });
 

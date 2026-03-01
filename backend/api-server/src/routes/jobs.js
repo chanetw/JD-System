@@ -73,15 +73,26 @@ router.get('/', async (req, res) => {
           // ✅ Approver sees ALL jobs with any pending approval status AND rejected/returned jobs
           // Frontend JobActionPanel will determine if user can approve based on approval flow
           // This query gets all pending + rejected jobs - both explicit (pending_approval/pending_level_N)
-          // JobActionPanel checks flowSnapshot to show approve buttons only when authorized
+          // + pending_dependency: sequential jobs waiting for predecessor (Approver should know about them)
+          // + approved: for history tab (We get jobs where this user has approved)
           const allJobs = await prisma.job.findMany({
             where: {
               tenantId,
               OR: [
                 { status: 'pending_approval' },
                 { status: { startsWith: 'pending_level_' } },
+                { status: 'pending_dependency' },  // ✅ Sequential jobs waiting for predecessor
                 { status: 'rejected' },
-                { status: 'returned' }
+                { status: 'returned' },
+                // Include jobs this user has already approved (for history)
+                {
+                  approvals: {
+                    some: {
+                      approverId: userId,
+                      status: 'approved'
+                    }
+                  }
+                }
               ],
               isParent: false  // Only child + single jobs (not parent jobs)
             },
@@ -203,7 +214,12 @@ router.get('/', async (req, res) => {
           },
           // Parent-Child relationship fields
           isParent: true,
-          parentJobId: true
+          parentJobId: true,
+          // Sequential dependency fields
+          predecessorId: true,
+          predecessor: {
+            select: { id: true, djId: true, subject: true, status: true }
+          }
         },
         orderBy: { dueDate: 'asc' },
         skip,
@@ -239,7 +255,12 @@ router.get('/', async (req, res) => {
       // Parent-Child relationship metadata
       isParent: j.isParent || false,
       parentJobId: j.parentJobId || null,
-      completedAt: j.completedAt
+      completedAt: j.completedAt,
+      // Sequential dependency metadata
+      predecessorId: j.predecessorId || null,
+      predecessorDjId: j.predecessor?.djId || null,
+      predecessorSubject: j.predecessor?.subject || null,
+      predecessorStatus: j.predecessor?.status || null
     }));
 
     res.json({
