@@ -96,17 +96,103 @@ router.get('/', async (req, res) => {
               ],
               isParent: false  // Only child + single jobs (not parent jobs)
             },
-            select: { id: true }
+            select: { 
+              id: true, 
+              status: true, 
+              projectId: true, 
+              jobTypeId: true,
+              priority: true
+            }
           });
 
-          const jobIds = allJobs.map(j => j.id);
+          const validJobIds = [];
+          
+          if (allJobs.length === 0) return null;
 
-          if (jobIds.length === 0) {
+          // ⚡ Performance Fix: Batch query for history approvals
+          const approvedJobs = await prisma.approval.findMany({
+            where: {
+              jobId: { in: allJobs.map(j => j.id) },
+              approverId: userId,
+              status: 'approved'
+            },
+            select: { jobId: true }
+          });
+          const approvedJobIds = new Set(approvedJobs.map(a => a.jobId));
+
+          // ⚡ Performance Fix: Batch query for approval flows
+          // We need unique projectId + jobTypeId combinations
+          const flowKeys = new Set();
+          allJobs.forEach(j => {
+            if (j.status.startsWith('pending_')) {
+              flowKeys.add(`${j.projectId}_${j.jobTypeId || 'null'}`);
+            }
+          });
+
+          const flowMap = new Map();
+          for (const key of flowKeys) {
+            const [projIdStr, jobTypeIdStr] = key.split('_');
+            const pId = parseInt(projIdStr, 10);
+            const jtId = jobTypeIdStr !== 'null' ? parseInt(jobTypeIdStr, 10) : null;
+            const flow = await approvalService.getApprovalFlow(pId, jtId);
+            flowMap.set(key, flow);
+          }
+
+          // For 'approver' role, we need to check if the user is actually an approver for the CURRENT step of each job
+          // or if they have already approved it (for history tab).
+          for (const job of allJobs) {
+            // If they already approved it, always include it (for history)
+            if (approvedJobIds.has(job.id)) {
+              validJobIds.push(job.id);
+              continue;
+            }
+
+            // If job is rejected/returned/pending_dependency, skip current level check (they might need to see it)
+            if (['rejected', 'returned', 'pending_dependency'].includes(job.status)) {
+               validJobIds.push(job.id);
+               continue;
+            }
+
+            // Determine current level
+            let currentLevel = 0;
+            if (job.status === 'pending_approval') currentLevel = 1;
+            else if (job.status.startsWith('pending_level_')) {
+              currentLevel = parseInt(job.status.split('_')[2], 10);
+            }
+
+            if (currentLevel > 0) {
+              // Get flow from pre-fetched map
+              const flowKey = `${job.projectId}_${job.jobTypeId || 'null'}`;
+              const approvalFlow = flowMap.get(flowKey);
+              let isApproverForCurrentLevel = false;
+
+              if (approvalFlow && approvalFlow.approverSteps && Array.isArray(approvalFlow.approverSteps)) {
+                const currentLevelConfig = approvalFlow.approverSteps.find(s => s.stepNumber === currentLevel || s.level === currentLevel);
+                
+                if (currentLevelConfig && currentLevelConfig.approvers && Array.isArray(currentLevelConfig.approvers)) {
+                  // Check if user is in the approvers list for the current level
+                  isApproverForCurrentLevel = currentLevelConfig.approvers.some(a => {
+                    const approverId = a.id || a.userId;
+                    return String(approverId) === String(userId);
+                  });
+                }
+              }
+
+              if (isApproverForCurrentLevel) {
+                validJobIds.push(job.id);
+              }
+            } else {
+              // Fallback for other statuses not handled above
+              validJobIds.push(job.id);
+            }
+          }
+
+          if (validJobIds.length === 0) {
             return null;  // Signal no jobs found
           }
 
           return {
-            id: { in: jobIds }
+            id: { in: validJobIds }
           };
         }
         case 'manager':
@@ -374,7 +460,7 @@ router.post('/', async (req, res) => {
     // หา Flow ที่ใช้กับ Project+JobType นี้
     // Priority: Specific (Project+JobType) > Default (Project+NULL)
     // ============================================
-    const flow = await approvalService.getApprovalFlow(projectId, jobTypeId);
+    const flow = await approvalService.getApprovalFlow(projectId, jobTypeId, priority);
 
     // ============================================
     // Step 3: Check Skip Approval
@@ -571,7 +657,8 @@ router.post('/', async (req, res) => {
         requesterId: userId,
         projectId: parseInt(projectId),
         jobTypeId: parseInt(jobTypeId),
-        tenantId
+        tenantId,
+        priority: priority
       });
 
       if (autoApproveResult.autoApproved) {
@@ -2019,8 +2106,8 @@ router.post('/parent-child', async (req, res) => {
       for (const childConfig of jobTypes) {
         const jid = parseInt(childConfig.jobTypeId);
 
-        // Get flow config
-        const childFlow = await approvalService.getApprovalFlow(parseInt(projectId), jid);
+        // Get flow config (Pass priority to get correct flow for urgent jobs)
+        const childFlow = await approvalService.getApprovalFlow(parseInt(projectId), jid, priority);
         const levels = approvalService.getApprovalLevels(childFlow);
         const needsApproval = levels > 0;
 
@@ -2356,7 +2443,8 @@ router.post('/parent-child', async (req, res) => {
             requesterId: userId,
             projectId: parseInt(projectId),
             jobTypeId: child.jobTypeId,
-            tenantId
+            tenantId,
+            priority: priority
           });
 
           if (autoResult.autoApproved) {
@@ -2411,7 +2499,8 @@ router.post('/parent-child', async (req, res) => {
           requesterId: userId,
           projectId: parseInt(projectId),
           jobTypeId: jobTypeIdForFlow, // ✅ ใช้ child ที่ต้อง approve หรือ default flow
-          tenantId
+          tenantId,
+          priority: priority
         });
 
         if (parentAutoResult.autoApproved) {

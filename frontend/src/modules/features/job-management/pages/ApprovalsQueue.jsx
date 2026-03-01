@@ -28,7 +28,9 @@ import {
     InboxIcon,
     CheckBadgeIcon,
     ExclamationTriangleIcon,
-    ArrowPathIcon
+    ArrowPathIcon,
+    ChevronDownIcon,
+    ChevronRightIcon
 } from '@heroicons/react/24/outline';
 
 /**
@@ -42,6 +44,7 @@ export default function ApprovalsQueue() {
     const [selectedJobId, setSelectedJobId] = useState(null);      // DJ-ID ที่กำลังดำเนินการ
     const [rejectReason, setRejectReason] = useState('incomplete'); // สาเหตุของการปฏิเสธ
     const [rejectResult, setRejectComment] = useState('');           // ความคิดเห็นเพิ่มเติมเมื่อปฏิเสธ
+    const [expandedRows, setExpandedRows] = useState(new Set());     // เก็บ ID ของแถวที่กางอยู่
 
     // Pagination States
     const [currentPage, setCurrentPage] = useState(1);
@@ -58,6 +61,43 @@ export default function ApprovalsQueue() {
     useEffect(() => {
         loadData();
     }, [user]);
+
+    /** จัดกลุ่มงานตาม predecessorId เพื่อแสดงเป็น accordion */
+    const groupJobsByPredecessor = (jobs) => {
+        const grouped = [];
+        const jobMap = new Map();
+        
+        // สร้าง map ของงานทั้งหมด
+        jobs.forEach(job => jobMap.set(job.id, job));
+        
+        // หางานที่ไม่มี predecessorId (งานหลัก)
+        const mainJobs = jobs.filter(job => !job.predecessorId);
+        
+        mainJobs.forEach(mainJob => {
+            // หางานต่อเนื่องทั้งหมดของงานหลักนี้
+            const sequentialJobs = jobs.filter(job => job.predecessorId === mainJob.id);
+            
+            grouped.push({
+                ...mainJob,
+                children: sequentialJobs
+            });
+        });
+        
+        return grouped;
+    };
+
+    /** สลับสถานะการกาง/ยุบแถว */
+    const toggleRowExpansion = (jobId) => {
+        setExpandedRows(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(jobId)) {
+                newSet.delete(jobId);
+            } else {
+                newSet.add(jobId);
+            }
+            return newSet;
+        });
+    };
 
     /** ดึงข้อมูลงานจาก API พร้อม Multi-Role Support */
     const loadData = async () => {
@@ -107,12 +147,37 @@ export default function ApprovalsQueue() {
         return false;
     });
 
+    /** การจัดเรียงข้อมูล (Custom Sorting) */
+    const sortedFilteredJobs = [...filteredJobs].sort((a, b) => {
+        // 1. งานเร่งด่วน (Urgent) ขึ้นบนสุด
+        const aIsUrgent = a.priority?.toLowerCase() === 'urgent';
+        const bIsUrgent = b.priority?.toLowerCase() === 'urgent';
+        
+        if (aIsUrgent && !bIsUrgent) return -1;
+        if (!aIsUrgent && bIsUrgent) return 1;
+
+        // 2. งานที่สร้างมาแล้วเกิน 1 วัน (Overdue > 1 day)
+        const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+        const now = new Date();
+        const aIsOverdue = (now - new Date(a.createdAt)) > ONE_DAY_MS;
+        const bIsOverdue = (now - new Date(b.createdAt)) > ONE_DAY_MS;
+        
+        if (aIsOverdue && !bIsOverdue) return -1;
+        if (!aIsOverdue && bIsOverdue) return 1;
+
+        // 3. เรียงตามวันที่สร้าง (เก่าสุดขึ้นก่อน = First In, First Out)
+        return new Date(a.createdAt) - new Date(b.createdAt);
+    });
+
     // Pagination Logic
-    const totalPages = Math.ceil(filteredJobs.length / itemsPerPage);
-    const paginatedJobs = filteredJobs.slice(
+    const totalPages = Math.ceil(sortedFilteredJobs.length / itemsPerPage);
+    const paginatedJobs = sortedFilteredJobs.slice(
         (currentPage - 1) * itemsPerPage,
         currentPage * itemsPerPage
     );
+
+    // จัดกลุ่มงานสำหรับแสดงผล
+    const groupedJobs = groupJobsByPredecessor(paginatedJobs);
 
     // Reset page when tab changes
     useEffect(() => {
@@ -242,35 +307,29 @@ export default function ApprovalsQueue() {
                     <table className="w-full">
                         <thead className="bg-gray-50 border-b border-gray-400">
                             <tr>
-                                <th className="px-4 py-3 text-left w-10">
-                                    <input type="checkbox" className="rounded border-gray-300 text-rose-600 focus:ring-rose-500" />
-                                </th>
-                                <Th>เลขที่ DJ</Th>
+                                <Th>เลขที่</Th>
                                 <Th>โครงการ / BUD</Th>
-                                <Th>ประเภทงาน</Th>
-                                <Th>หัวข้อ</Th>
+                                <Th>ประเภท</Th>
                                 <Th>ผู้เปิดงาน</Th>
+                                <Th>สถานะ</Th>
                                 <Th>วันที่สร้าง</Th>
-                                <Th>สถานะงาน</Th>
-                                <Th>SLA / Level</Th>
-                                <Th>ความสำคัญ</Th>
                                 <Th className="text-center">การจัดการ</Th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-400">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan="11" className="text-center py-8 text-gray-500">กำลังโหลดรายการงาน...</td>
+                                    <td colSpan="7" className="text-center py-8 text-gray-500">กำลังโหลดรายการงาน...</td>
                                 </tr>
                             ) : paginatedJobs.length === 0 ? (
                                 <tr>
-                                    <td colSpan="11" className="text-center py-8 text-gray-500">
+                                    <td colSpan="7" className="text-center py-8 text-gray-500">
                                         ไม่พบรายการงานในหัวข้อนี้
                                     </td>
                                 </tr>
                             ) : (
-                                paginatedJobs.map(job => (
-                                    <QueueRow
+                                groupedJobs.map(job => (
+                                    <AccordionRow
                                         key={job.id}
                                         pkId={job.id}
                                         id={job.djId || `DJ-${job.id}`}
@@ -300,6 +359,9 @@ export default function ApprovalsQueue() {
                                         predecessorDjId={job.predecessorDjId}
                                         predecessorSubject={job.predecessorSubject}
                                         predecessorStatus={job.predecessorStatus}
+                                        children={job.children}
+                                        isExpanded={expandedRows.has(job.id)}
+                                        onToggleExpand={() => toggleRowExpansion(job.id)}
                                     />
                                 ))
                             )}
@@ -512,7 +574,7 @@ function Th({ children, className = "text-left" }) {
 }
 
 /**
- * QueueRow Helper Component (ตารางแถวข้อมูลงาน)
+ * AccordionRow Helper Component (แถวหลักที่สามารถกาง/ยุบได้)
  * @param {object} props
  * @param {string} props.id - เลขที่ DJ
  * @param {string} props.project - ชื่อโครงการ
@@ -520,75 +582,115 @@ function Th({ children, className = "text-left" }) {
  * @param {string} props.type - ประเภทงานออกแบบ
  * @param {string} props.subject - หัวข้องาน
  * @param {string} props.requester - ชื่อผู้เปิดงาน
- * @param {string} props.submitted - วันที่ส่งงาน
- * @param {string} props.sla - สถานะระดับการอนุมัติหรือ SLA
- * @param {React.ReactNode} props.priority - Badge แสดงความสำคัญ
- * @param {boolean} props.urgent - สถานะงานเร่งด่วนเพื่อไฮไลต์แถว
+ * @param {string} props.submitted - วันที่สร้าง
+ * @param {string} props.status - สถานะงาน
+ * @param {React.ReactNode} props.sla - เลเวลการอนุมัติ
+ * @param {boolean} props.urgent - สถานะงานเร่งด่วน
  * @param {Function} props.onApprove - จัดการการอนุมัติ
  * @param {Function} props.onReject - จัดการการปฏิเสธ
  * @param {boolean} [props.showActions=true] - แสดงปุ่มจัดการงานหรือไม่
+ * @param {Array} props.children - งานต่อเนื่องที่จะแสดงเมื่อกาง
+ * @param {boolean} props.isExpanded - สถานะการกาง/ยุบ
+ * @param {Function} props.onToggleExpand - ฟังก์ชันสลับสถานะ
  */
-function QueueRow({ pkId, id, project, bud, type, subject, requester, submitted, status, sla, priority, urgent, onApprove, onReject, showActions = true, predecessorDjId, predecessorSubject, predecessorStatus }) {
+function AccordionRow({ pkId, id, project, bud, type, subject, requester, submitted, status, sla, urgent, onApprove, onReject, showActions = true, predecessorDjId, predecessorSubject, predecessorStatus, children = [], isExpanded, onToggleExpand }) {
+    const hasChildren = children && children.length > 0;
+    
+    // Determine row background based on urgent status
+    const bgClass = urgent ? 'bg-red-50/80 hover:bg-red-100/80' : 'hover:bg-gray-50';
+    const borderClass = predecessorDjId ? 'border-l-4 border-amber-400' : '';
+
     return (
-        <tr className={`hover:bg-gray-50 ${urgent ? 'bg-red-50' : ''} ${(status === 'pending_dependency' || predecessorDjId) ? 'bg-blue-50/30' : ''}`}>
-            <td className="px-4 py-4">
-                <input type="checkbox" className="rounded border-gray-300 text-rose-600 focus:ring-rose-500" />
-            </td>
-            <td className="px-4 py-4">
-                <Link to={`/jobs/${pkId}`} className="text-rose-600 font-medium hover:underline">{id}</Link>
-            </td>
-            <td className="px-4 py-4">
-                <div className="text-sm font-medium text-gray-900">{project}</div>
-                <div className="text-xs text-gray-500">{bud}</div>
-            </td>
-            <td className="px-4 py-4 text-sm text-gray-900">{type}</td>
-            <td className="px-4 py-4 text-sm text-gray-900 max-w-xs">
-                <div className="truncate" title={subject}>{subject}</div>
-                {predecessorDjId && (
-                    <div className="mt-1 flex items-center gap-1 text-xs text-blue-600">
-                        <span>🔗 งานก่อนหน้า:</span>
-                        <span className="font-medium">{predecessorDjId}</span>
-                        {predecessorSubject && (
-                            <span className="text-gray-500 truncate max-w-[120px]" title={predecessorSubject}>— {predecessorSubject}</span>
+        <>
+            {/* แถวหลัก */}
+            <tr className={`${bgClass} ${borderClass}`}>
+                <td className="px-4 py-4">
+                    <div className="flex items-center gap-2">
+                        {hasChildren && (
+                            <button
+                                onClick={onToggleExpand}
+                                className="p-1 hover:bg-gray-200 rounded transition-colors"
+                                title={isExpanded ? "ยุบ" : "กาง"}
+                            >
+                                {isExpanded ? (
+                                    <ChevronDownIcon className="w-4 h-4 text-gray-600" />
+                                ) : (
+                                    <ChevronRightIcon className="w-4 h-4 text-gray-600" />
+                                )}
+                            </button>
+                        )}
+                        <Link to={`/jobs/${pkId}`} className="text-rose-600 font-medium hover:underline">{id}</Link>
+                        {urgent && <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800">ด่วน</span>}
+                        {predecessorDjId && <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700" title="มีงานต่อเนื่อง">📎</span>}
+                    </div>
+                </td>
+                <td className="px-4 py-4">
+                    <div className="text-sm font-medium text-gray-900">{project}</div>
+                    <div className="text-xs text-gray-500">{bud}</div>
+                </td>
+                <td className="px-4 py-4 text-sm text-gray-900">{type}</td>
+                <td className="px-4 py-4">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-[10px] text-gray-500 font-bold uppercase">
+                            {requester?.[0] || 'U'}
+                        </div>
+                        <span className="text-sm text-gray-900">{requester}</span>
+                    </div>
+                </td>
+                <td className="px-4 py-4">
+                    <div className="flex flex-col gap-1 items-start">
+                        <Badge status={status} />
+                        {sla && status !== 'approved' && status !== 'rejected' && status !== 'returned' && (
+                            <div className="mt-1">{sla}</div>
                         )}
                     </div>
-                )}
-            </td>
-            <td className="px-4 py-4">
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-[10px] text-gray-500 font-bold uppercase">
-                        {requester?.[0] || 'U'}
+                </td>
+                <td className="px-4 py-4 text-sm text-gray-500">{submitted}</td>
+                <td className="px-4 py-4">
+                    <div className="flex items-center justify-center gap-2">
+                        <Link to={`/jobs/${pkId}`} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg" title="ดูรายละเอียด">
+                            <EyeIcon className="w-4 h-4" />
+                        </Link>
+                        {showActions && (
+                            <>
+                                <button onClick={onApprove} className="p-2 text-green-500 hover:text-green-700 hover:bg-green-50 rounded-lg" title="อนุมัติ">
+                                    <CheckIcon className="w-4 h-4" />
+                                </button>
+                                <button onClick={onReject} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="ตีกลับ / ปฏิเสธ">
+                                    <XMarkIcon className="w-4 h-4" />
+                                </button>
+                            </>
+                        )}
                     </div>
-                    <span className="text-sm text-gray-900">{requester}</span>
-                </div>
-            </td>
-            <td className="px-4 py-4 text-sm text-gray-500">{submitted}</td>
-            <td className="px-4 py-4"><Badge status={status} /></td>
-            <td className="px-4 py-4 text-sm font-medium text-gray-700">{sla}</td>
-            <td className="px-4 py-4">{priority}</td>
-            <td className="px-4 py-4">
-                <div className="flex items-center justify-center gap-2">
-                    <Link to={`/jobs/${pkId}`} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg" title="ดูรายละเอียด">
-                        <EyeIcon className="w-4 h-4" />
-                    </Link>
-                    {!showActions && predecessorDjId && (
-                        <span className="text-xs text-blue-500 text-center" title={`งานนี้จะถูกอนุมัติอัตโนมัติตามงานก่อนหน้า (${predecessorDjId})`}>
-                            🔗 cascade
-                        </span>
-                    )}
-                    {showActions && (
-                        <>
-                            <button onClick={onApprove} className="p-2 text-green-500 hover:text-green-700 hover:bg-green-50 rounded-lg" title="อนุมัติ">
-                                <CheckIcon className="w-4 h-4" />
-                            </button>
-                            <button onClick={onReject} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="ตีกลับ / ปฏิเสธ">
-                                <XMarkIcon className="w-4 h-4" />
-                            </button>
-                        </>
-                    )}
-                </div>
-            </td>
-        </tr>
+                </td>
+            </tr>
+            
+            {/* งานต่อเนื่องที่กางลงมา */}
+            {isExpanded && hasChildren && children.map((childJob, index) => (
+                <tr key={childJob.id} className="bg-gray-50/50 hover:bg-gray-100/50">
+                    <td colSpan="7" className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 text-sm">
+                                <span className="text-amber-600">↳</span>
+                                <Link to={`/jobs/${childJob.id}`} className="font-medium text-amber-700 hover:underline">
+                                    {childJob.djId || `DJ-${childJob.id}`}
+                                </Link>
+                                <span className="text-gray-600">— {childJob.subject}</span>
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">
+                                    (จะถูกอนุมัติ Level {childJob.status?.startsWith('pending_level_') ? childJob.status.split('_')[2] : '1'} อัตโนมัติตาม {id})
+                                </span>
+                            </div>
+                            <div className="ml-auto flex items-center gap-2">
+                                <Link to={`/jobs/${childJob.id}`} className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded" title="ดูรายละเอียด">
+                                    <EyeIcon className="w-4 h-4" />
+                                </Link>
+                                <Badge status={childJob.status} />
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            ))}
+        </>
     );
 }
 

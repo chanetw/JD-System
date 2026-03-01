@@ -246,9 +246,16 @@ export default function MyQueue() {
             return matchesSearch && matchesProject;
         })
         .sort((a, b) => {
+            // เสมอให้งานด่วนขึ้นก่อน ยกเว้นงานที่เสร็จแล้ว
+            const aIsActiveUrgent = a.priority?.toLowerCase() === 'urgent' && activeTab !== 'done';
+            const bIsActiveUrgent = b.priority?.toLowerCase() === 'urgent' && activeTab !== 'done';
+            
+            if (aIsActiveUrgent && !bIsActiveUrgent) return -1;
+            if (!aIsActiveUrgent && bIsActiveUrgent) return 1;
+
             if (sortBy === 'priority') {
-                const priorityWeight = { 'Urgent': 3, 'High': 2, 'Normal': 1, 'Low': 0 };
-                return (priorityWeight[b.priority] || 0) - (priorityWeight[a.priority] || 0);
+                const priorityWeight = { 'urgent': 3, 'high': 2, 'normal': 1, 'low': 0 };
+                return (priorityWeight[b.priority?.toLowerCase()] || 0) - (priorityWeight[a.priority?.toLowerCase()] || 0);
             }
             if (sortBy === 'deadline') {
                 return new Date(a.deadline) - new Date(b.deadline);
@@ -366,7 +373,7 @@ export default function MyQueue() {
                                     bg-white rounded-lg shadow-sm border border-gray-400 p-5 
                                     hover:shadow-md transition-shadow cursor-pointer relative
                                     ${getHealthBorderColor(job.healthStatus)}
-                                    ${job.priority === 'Urgent' ? 'bg-red-50/30' : ''}
+                                    ${(job.priority?.toLowerCase() === 'urgent' && activeTab !== 'done') ? 'bg-red-50/30' : ''}
                                 `}
                             >
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -378,7 +385,7 @@ export default function MyQueue() {
                                             <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
                                                 {job.jobTypeName}
                                             </span>
-                                            {job.priority === 'Urgent' && (
+                                            {(job.priority?.toLowerCase() === 'urgent' && activeTab !== 'done') && (
                                                 <span className="text-xs font-bold px-2 py-0.5 rounded bg-red-100 text-red-700 animate-pulse">
                                                     🔥 Urgent
                                                 </span>

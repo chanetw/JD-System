@@ -58,3 +58,6 @@ database/migrations/fixes/
 docs/DEBUG_*.md
 docs/sessions/
 docs/reference/
+
+# Agent devlog exception (allow direct editing)
+!.agent/logs/devlog.md

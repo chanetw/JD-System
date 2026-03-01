@@ -591,7 +591,7 @@ export class ApprovalService extends BaseService {
       // 1. Get Job & Current Status
       const job = await this.prisma.job.findUnique({
         where: { id: jobId },
-        select: { id: true, projectId: true, jobTypeId: true, status: true, requesterId: true, djId: true, subject: true, isParent: true, predecessorId: true, tenantId: true }
+        select: { id: true, projectId: true, jobTypeId: true, status: true, requesterId: true, djId: true, subject: true, isParent: true, predecessorId: true, tenantId: true, priority: true }
       });
 
       if (!job) throw new Error('Job not found');
@@ -608,7 +608,7 @@ export class ApprovalService extends BaseService {
       }
 
       // 2. Get Flow using V1 Extended
-      const flow = await this.getApprovalFlow(job.projectId, job.jobTypeId);
+      const flow = await this.getApprovalFlow(job.projectId, job.jobTypeId, job.priority);
 
       let nextStatus = 'approved';
       let isFinal = true;
@@ -1720,15 +1720,19 @@ export class ApprovalService extends BaseService {
    * @param {number} jobTypeId - JobType ID (nullable)
    * @returns {Promise<Object|null>} - ApprovalFlow object
    */
-  async getApprovalFlow(projectId, jobTypeId) {
+  async getApprovalFlow(projectId, jobTypeId, priority = 'normal') {
     try {
       // ⚡ Performance: Check cache first (1 hour TTL)
-      const cacheKey = `approval_flow:${projectId}:${jobTypeId || 'default'}`;
+      // Append priority to cache key to separate urgent/normal flows
+      const isUrgent = priority.toLowerCase() === 'urgent';
+      const cacheKey = `approval_flow:${projectId}:${jobTypeId || 'default'}:${isUrgent ? 'urgent' : 'normal'}`;
       const cached = cacheService.get(cacheKey);
       if (cached) return cached;
 
+      let flow = null;
+
       // 1. หา flow เฉพาะ JobType ก่อน
-      let flow = await this.prisma.approvalFlow.findFirst({
+      let specificFlow = await this.prisma.approvalFlow.findFirst({
         where: {
           projectId: parseInt(projectId),
           jobTypeId: jobTypeId ? parseInt(jobTypeId) : null,
@@ -1744,8 +1748,17 @@ export class ApprovalService extends BaseService {
         }
       });
 
-      // 2. ถ้าไม่เจอ และมี jobTypeId → หา Default (jobTypeId = NULL)
-      if (!flow && jobTypeId) {
+      // ถ้าเป็นงาน Urgent และ Specific Flow ตั้งค่าให้ข้าม (Skip Approval)
+      // ให้ถือว่าไม่มี Flow เฉพาะ (เพื่อไปดึง Default Flow ของโครงการมาใช้แทน)
+      if (isUrgent && specificFlow && specificFlow.skipApproval) {
+        console.log(`[ApprovalService] Urgent job type ${jobTypeId} skips approval, falling back to default project flow`);
+        flow = null; // Force fallback
+      } else {
+        flow = specificFlow;
+      }
+
+      // 2. ถ้าไม่เจอ (หรือโดน Urgent override) ให้หา Default (jobTypeId = NULL)
+      if (!flow) {
         flow = await this.prisma.approvalFlow.findFirst({
           where: {
             projectId: parseInt(projectId),
@@ -1812,12 +1825,13 @@ export class ApprovalService extends BaseService {
    * @param {number} params.projectId - Project ID
    * @param {number} params.jobTypeId - JobType ID
    * @param {number} params.tenantId - Tenant ID
+   * @param {string} params.priority - Job priority ('normal', 'urgent')
    * @returns {Promise<Object>} - { autoApproved, newStatus, isFinal, approvalId }
    */
-  async autoApproveIfRequesterIsApprover({ jobId, requesterId, projectId, jobTypeId, tenantId }) {
+  async autoApproveIfRequesterIsApprover({ jobId, requesterId, projectId, jobTypeId, tenantId, priority = 'normal' }) {
     try {
       // 1. ดึง approval flow
-      const flow = await this.getApprovalFlow(projectId, jobTypeId);
+      const flow = await this.getApprovalFlow(projectId, jobTypeId, priority);
       if (!flow || !flow.approverSteps || !Array.isArray(flow.approverSteps)) {
         console.log(`[AutoApprove] No flow or approverSteps for project=${projectId}, jobType=${jobTypeId}. Flow:`, flow ? { id: flow.id, name: flow.name, hasSteps: !!flow.approverSteps } : null);
         return { autoApproved: false };

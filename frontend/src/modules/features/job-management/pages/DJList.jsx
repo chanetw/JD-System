@@ -54,6 +54,9 @@ export default function DJList() {
     const [currentPage, setCurrentPage] = useState(1); // หน้าปัจจุบันที่แสดงผล
     const itemsPerPage = 10;                         // จำนวนรายการต่อหนึ่งหน้า
 
+    // === สถานะ Accordion ===
+    const [expandedRows, setExpandedRows] = useState(new Set()); // เก็บ ID ของแถวที่กางอยู่
+
     // ============================================
     // Data Loading
     // ============================================
@@ -147,6 +150,14 @@ export default function DJList() {
 
         // 3. จัดเรียงข้อมูล (Sort)
         result.sort((a, b) => {
+            // 3.1 งาน Urgent ที่ยังไม่เสร็จให้อยู่บนสุด
+            const aIsActiveUrgent = a.priority?.toLowerCase() === 'urgent' && !['completed', 'rejected', 'cancelled'].includes(a.status?.toLowerCase());
+            const bIsActiveUrgent = b.priority?.toLowerCase() === 'urgent' && !['completed', 'rejected', 'cancelled'].includes(b.status?.toLowerCase());
+            
+            if (aIsActiveUrgent && !bIsActiveUrgent) return -1;
+            if (!aIsActiveUrgent && bIsActiveUrgent) return 1;
+
+            // 3.2 จัดเรียงตามเงื่อนไขปกติ
             if (sortBy === 'createdDate') {
                 return new Date(b.createdAt) - new Date(a.createdAt);
             }
@@ -158,55 +169,105 @@ export default function DJList() {
             return 0;
         });
 
-        // 4. 🔥 NEW: ซ่อน Parent Job ที่มี Child เดียว (Option B)
-        // เพื่อลดความซับซ้อนของ UI สำหรับงานเดี่ยว
+        // 4. จัดกลุ่มงานตาม Parent-Child Relationship และซ่อน Parent ที่มี Child เดียว
         const parentChildCount = {};
+        const childrenMap = {}; // เพื่อการคำนวณสถานะ
+
+        // นับจำนวน Child และเก็บความสัมพันธ์
         result.forEach(job => {
             if (job.parentJobId) {
                 parentChildCount[job.parentJobId] = (parentChildCount[job.parentJobId] || 0) + 1;
+                if (!childrenMap[job.parentJobId]) childrenMap[job.parentJobId] = [];
+                childrenMap[job.parentJobId].push(job);
             }
         });
 
-        // กรอง Parent ออกถ้ามี Child เพียงตัวเดียว
+        // คำนวณสถานะและกรองงาน
         result = result.filter(job => {
             if (job.isParent) {
                 const childCount = parentChildCount[job.id] || 0;
+                
+                // ซ่อน Parent ที่มี Child เดียว (ให้แสดง Child เดี่ยวๆ ไปเลย)
                 if (childCount === 1) {
                     console.log(`[DJList] Hidden parent ${job.djId} (has only 1 child)`);
-                    return false; // ซ่อน Parent ที่มี Child เดียว
+                    return false;
+                }
+
+                // คำนวณสถานะใหม่สำหรับ Parent ที่มี Child > 1
+                if (childCount > 1) {
+                    const children = childrenMap[job.id] || [];
+                    job.calculatedApprovalStatus = calculateParentApprovalStatus(children);
+                    job.calculatedJobStatus = calculateParentJobStatus(children);
+                    job.children = children; // เก็บ children ไว้แสดงใน Accordion
+                }
+            } else if (job.parentJobId) {
+                // ซ่อน Child jobs จากรายการหลัก (จะไปแสดงใต้ Parent แทน)
+                // *ยกเว้น* กรณีที่ Parent ถูกซ่อน (เพราะมี Child เดียว) ให้แสดง Child นี้ในรายการหลัก
+                const siblingCount = parentChildCount[job.parentJobId] || 0;
+                if (siblingCount > 1) {
+                    return false; // ซ่อนไปแสดงใน Accordion
                 }
             }
             return true;
         });
 
-        // เพิ่มข้อมูล child count ให้กับ children jobs
-        // เรียง siblings ตาม createdAt เพื่อให้ index ตรงกับ sequential order จริง
-        const siblingsSortedMap = {};
-        result.forEach(job => {
-            if (job.parentJobId) {
-                if (!siblingsSortedMap[job.parentJobId]) siblingsSortedMap[job.parentJobId] = [];
-                siblingsSortedMap[job.parentJobId].push(job);
-            }
-        });
-        Object.keys(siblingsSortedMap).forEach(parentId => {
-            siblingsSortedMap[parentId].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-        });
-
-        result = result.map(job => {
-            if (job.parentJobId) {
-                const totalSiblings = parentChildCount[job.parentJobId] || 1;
-                const siblings = siblingsSortedMap[job.parentJobId] || [];
-                const childIndex = siblings.findIndex(s => s.id === job.id) + 1;
-                return {
-                    ...job,
-                    childInfo: { index: childIndex, total: totalSiblings }
-                };
-            }
-            return job;
-        });
-
         setFilteredJobs(result);
         setCurrentPage(1); // เมื่อเริ่มคัดกรองใหม่ ให้กลับไปที่หน้า 1 เสมอ
+    };
+
+    // ============================================
+    // Status Calculation Logic
+    // ============================================
+    
+    /** คำนวณ Approval Status ของงานแม่จากงานลูกโดยตรง */
+    const calculateParentApprovalStatus = (children) => {
+        if (!children || children.length === 0) return null;
+        
+        // 1. ถ้ามีลูกที่ถูกปฏิเสธ
+        if (children.some(j => j.status === 'rejected' || j.status === 'returned')) {
+            return 'rejected';
+        }
+        
+        // 2. ถ้ามีลูกที่ยังรออนุมัติ
+        if (children.some(j => j.status?.includes('pending') && j.status !== 'pending_dependency')) {
+            return 'pending_approval';
+        }
+        
+        // 3. ลูกทั้งหมดได้รับการอนุมัติแล้ว
+        return 'approved';
+    };
+
+    /** คำนวณ Job Status ของงานแม่จากงานลูกโดยตรง */
+    const calculateParentJobStatus = (children) => {
+        if (!children || children.length === 0) return null;
+        
+        // 1. ถ้ามีลูกที่กำลังทำ
+        if (children.some(j => j.status === 'in_progress')) {
+            return 'in_progress';
+        }
+        
+        // 2. ถ้าลูกทั้งหมด "สิ้นสุด" แล้ว (เสร็จ/ถูกปฏิเสธ/อนุมัติผ่านแล้วแต่ไม่มีใครทำ)
+        const terminalStatuses = ['completed', 'rejected', 'returned', 'approved', 'closed'];
+        const allFinished = children.every(j => terminalStatuses.includes(j.status));
+        if (allFinished) {
+            return 'completed';
+        }
+        
+        // 3. ลูกทั้งหมดรอคิว (ยังไม่เริ่ม)
+        return 'pending_dependency';
+    };
+
+    /** สลับสถานะการกาง/ยุบแถว Accordion */
+    const toggleRowExpansion = (jobId) => {
+        setExpandedRows(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(jobId)) {
+                newSet.delete(jobId);
+            } else {
+                newSet.add(jobId);
+            }
+            return newSet;
+        });
     };
 
     // ============================================
@@ -408,33 +469,118 @@ export default function DJList() {
                                     <Th>โครงการ</Th>
                                     <Th>ประเภทงาน</Th>
                                     <Th>หัวข้อ</Th>
-                                    <Th>สถานะ</Th>
+                                    <Th>สถานะอนุมัติ</Th>
+                                    <Th>สถานะงาน</Th>
                                     <Th>วันที่สร้าง</Th>
                                     <Th>กำหนดส่ง</Th>
                                     <Th>สถานะ SLA</Th>
-                                    <Th>วันที่ส่งงาน</Th>
-                                    <Th>การจัดการ</Th>
+                                    <Th>ผู้ออกแบบ</Th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-400">
                                 {currentJobs.map((job) => (
-                                    <JobRow
-                                        key={job.id}
-                                        id={job.djId || `DJ-${job.id}`}
-                                        pkId={job.id}
-                                        project={job.project}
-                                        type={job.jobType}
-                                        subject={job.subject}
-                                        status={job.status}
-                                        submitDate={job.createdAt ? formatDateToThai(new Date(job.createdAt)) : '-'}
-                                        deadline={job.deadline ? formatDateToThai(new Date(job.deadline)) : '-'}
-                                        sla={calculateSLA(job)}
-                                        assignee={job.completedAt ? formatDateToThai(new Date(job.completedAt)) : '-'}
-                                        isParent={job.isParent}
-                                        parentJobId={job.parentJobId}
-                                        childInfo={job.childInfo}
-                                        rowClass={job.status === 'scheduled' ? 'bg-violet-50/30' : 'hover:bg-gray-50'}
-                                    />
+                                    <React.Fragment key={job.id}>
+                                        <JobRow
+                                            id={job.djId || `DJ-${job.id}`}
+                                            pkId={job.id}
+                                            priority={job.priority}
+                                            project={job.project}
+                                            type={job.jobType}
+                                            subject={job.subject}
+                                            status={job.status}
+                                            calculatedApprovalStatus={job.calculatedApprovalStatus}
+                                            calculatedJobStatus={job.calculatedJobStatus}
+                                            submitDate={job.createdAt ? formatDateToThai(new Date(job.createdAt)) : '-'}
+                                            deadline={job.deadline ? formatDateToThai(new Date(job.deadline)) : '-'}
+                                            sla={calculateSLA(job)}
+                                            assignee={job.assignee || '-'}
+                                            isParent={job.isParent}
+                                            hasChildren={job.children && job.children.length > 0}
+                                            isExpanded={expandedRows.has(job.id)}
+                                            onToggleExpand={() => toggleRowExpansion(job.id)}
+                                            rowClass={
+                                                job.status === 'scheduled' ? 'bg-violet-50/30 hover:bg-violet-50' :
+                                                (job.priority?.toLowerCase() === 'urgent' && !['completed', 'rejected', 'cancelled'].includes(job.status?.toLowerCase())) ? 'bg-red-50/50 hover:bg-red-100/50' : 
+                                                'hover:bg-gray-50'
+                                            }
+                                        />
+                                        {/* Child Jobs (Accordion) */}
+                                        {job.children && job.children.length > 0 && expandedRows.has(job.id) && (
+                                            (() => {
+                                                // 1. Build a map of job dependencies
+                                                const childrenMap = new Map();
+                                                job.children.forEach(c => childrenMap.set(c.id, c));
+                                                
+                                                // 2. Find chains by tracing from jobs with no successors (leaves) backwards
+                                                // First, find all jobs that are a predecessor to someone
+                                                const predecessorIds = new Set(job.children.map(c => c.predecessorId).filter(Boolean));
+                                                
+                                                // Leaves are jobs that are NOT predecessors to any other job
+                                                const leaves = job.children.filter(c => !predecessorIds.has(c.id));
+                                                
+                                                // Build chains from leaves to roots
+                                                const jobChains = new Map(); // jobId -> { index, total }
+                                                
+                                                leaves.forEach(leaf => {
+                                                    const chain = [];
+                                                    let current = leaf;
+                                                    
+                                                    // Trace backwards
+                                                    while (current) {
+                                                        chain.unshift(current.id); // Add to front so root is at index 0
+                                                        if (current.predecessorId && childrenMap.has(current.predecessorId)) {
+                                                            current = childrenMap.get(current.predecessorId);
+                                                        } else {
+                                                            current = null;
+                                                        }
+                                                    }
+                                                    
+                                                    // Only assign sequence numbers if chain length > 1
+                                                    // (Standalone jobs like EDM will have chain length 1, so they won't get x/y numbering)
+                                                    if (chain.length > 1) {
+                                                        chain.forEach((jobId, idx) => {
+                                                            // Avoid overwriting if a job belongs to multiple chains (though rare in linear chains)
+                                                            // Keep the longest chain total if multiple exist
+                                                            if (!jobChains.has(jobId) || jobChains.get(jobId).total < chain.length) {
+                                                                jobChains.set(jobId, { index: idx + 1, total: chain.length });
+                                                            }
+                                                        });
+                                                    }
+                                                });
+
+                                                return job.children.map((child, index) => {
+                                                    // Get pre-calculated chain info for this specific job
+                                                    // If it's a standalone job (chain length 1), this will be undefined
+                                                    const chainInfo = jobChains.get(child.id);
+
+                                                    return (
+                                                        <JobRow
+                                                            key={child.id}
+                                                            id={child.djId || `DJ-${child.id}`}
+                                                            pkId={child.id}
+                                                            priority={child.priority}
+                                                            project={child.project || job.project}
+                                                            type={child.jobType}
+                                                            subject={child.subject}
+                                                            status={child.status}
+                                                            submitDate={child.createdAt ? formatDateToThai(new Date(child.createdAt)) : '-'}
+                                                            deadline={child.deadline ? formatDateToThai(new Date(child.deadline)) : '-'}
+                                                            sla={calculateSLA(child)}
+                                                            assignee={child.assignee || '-'}
+                                                            isParent={false}
+                                                            isChild={true}
+                                                            childInfo={chainInfo} // Pass undefined for standalone jobs
+                                                            rowClass={
+                                                                (child.priority?.toLowerCase() === 'urgent' && !['completed', 'rejected', 'cancelled'].includes(child.status?.toLowerCase())) 
+                                                                ? 'bg-red-50/80 hover:bg-red-100/80' 
+                                                                : 'bg-gray-50/80 hover:bg-gray-100'
+                                                            }
+                                                        />
+                                                    );
+                                                });
+                                            })()
+                                        )}
+                                    </React.Fragment>
                                 ))}
                             </tbody>
                         </table>
@@ -534,43 +680,86 @@ function Th({ children }) {
 /**
  * JobRow Component: แสดงแถวข้อมูลงาน DJ ในตาราง
  */
-function JobRow({ id, pkId, project, type, subject, status, submitDate, deadline, sla, assignee, isParent, parentJobId, childInfo, rowClass = 'hover:bg-gray-50' }) {
-    // แยก ID จริงสำหรับการ Link (กรณีแสดงผลเป็น DJ-XXXX แต่ ID จริงคือเลข)
-    // const actualId = id.toString().replace('DJ-', ''); 
-    // ^ OLD logic: unreliable if id format changes. Now using pkId directly.
-    console.log(`[JobRow] Rendering row for ${id}. pkId: ${pkId}, Link to: /jobs/${pkId}`);
+function JobRow({ 
+    id, pkId, project, type, subject, status, priority,
+    calculatedApprovalStatus, calculatedJobStatus,
+    submitDate, deadline, sla, assignee, 
+    isParent, hasChildren, isExpanded, onToggleExpand,
+    isChild, childInfo, rowClass = 'hover:bg-gray-50' 
+}) {
+    // กำหนดสถานะที่จะแสดง
+    let displayApprovalStatus = status;
+    let displayJobStatus = status;
+    
+    if (isParent && hasChildren) {
+        displayApprovalStatus = calculatedApprovalStatus || status;
+        displayJobStatus = calculatedJobStatus || status;
+    } else if (isChild) {
+        // สำหรับงานลูกแยกสถานะอนุมัติและสถานะงานให้ชัดเจน
+        if (status?.includes('pending') && status !== 'pending_dependency') {
+            displayApprovalStatus = status;
+            displayJobStatus = 'pending_dependency'; // รอเริ่มงาน
+        } else if (status === 'pending_dependency') {
+            displayApprovalStatus = 'approved'; // ผ่านแล้วแต่รอคิว
+            displayJobStatus = 'pending_dependency';
+        } else {
+            // in_progress, completed, rejected ฯลฯ
+            displayApprovalStatus = status === 'rejected' ? 'rejected' : 'approved';
+            displayJobStatus = status;
+        }
+    }
 
     return (
         <tr className={rowClass}>
             <td className="px-4 py-3">
-                <div className="flex flex-col">
-                    <Link to={`/jobs/${pkId}`} className="text-rose-600 font-medium hover:underline">
-                        {id}
-                    </Link>
-                    {isParent && <span className="text-[10px] text-blue-600 bg-blue-50 px-1 rounded inline-block w-fit mt-1">Parent Job</span>}
-                    {/* 🔥 NEW: แสดง Child Info Badge แทน "Child Job" */}
-                    {parentJobId && childInfo && (
-                        <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded inline-block w-fit mt-1">
-                            งานย่อย {childInfo.index}/{childInfo.total}
-                        </span>
+                <div className={`flex items-center ${isChild ? 'pl-6 border-l-2 border-gray-300' : ''}`}>
+                    {isParent && hasChildren && (
+                        <button 
+                            onClick={onToggleExpand}
+                            className="mr-2 text-gray-500 hover:text-gray-700 focus:outline-none transition-transform duration-200"
+                            style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
+                        >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                        </button>
                     )}
-                    {parentJobId && !childInfo && <span className="text-[10px] text-gray-500 bg-gray-100 px-1 rounded inline-block w-fit mt-1">Child Job</span>}
+                    <div className="flex flex-col">
+                        <div className="flex items-center">
+                            <Link to={`/jobs/${pkId}`} className="text-rose-600 font-medium hover:underline">
+                                {id}
+                            </Link>
+                            {priority?.toLowerCase() === 'urgent' && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800 ml-2">
+                                    ด่วน
+                                </span>
+                            )}
+                        </div>
+                        {isParent && hasChildren && <span className="text-[10px] text-blue-600 bg-blue-50 px-1 rounded inline-block w-fit mt-1">Parent Job</span>}
+                        {isChild && (
+                            <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded inline-block w-fit mt-1">
+                                {childInfo ? `งานย่อย ${childInfo.index}/${childInfo.total}` : 'งานย่อย'}
+                            </span>
+                        )}
+                    </div>
                 </div>
             </td>
             <td className="px-4 py-3 text-sm">{project}</td>
             <td className="px-4 py-3 text-sm">{type}</td>
-            <td className="px-4 py-3 text-sm max-w-xs truncate" title={subject}>{subject}</td>
-            <td className="px-4 py-3"><Badge status={status} /></td>
+            <td className="px-4 py-3 text-sm max-w-[200px] truncate" title={subject}>{subject}</td>
+            <td className="px-4 py-3">
+                {/* Approval Status */}
+                <Badge status={displayApprovalStatus} isApprovalStatus={true} />
+            </td>
+            <td className="px-4 py-3">
+                {/* Job Status */}
+                <Badge status={displayJobStatus} />
+            </td>
             <td className="px-4 py-3 text-sm text-gray-500">{submitDate}</td>
             <td className="px-4 py-3 text-sm font-medium text-gray-700">{deadline}</td>
             <td className="px-4 py-3 text-center">{sla}</td>
             <td className="px-4 py-3 text-sm">
                 <span>{assignee}</span>
-            </td>
-            <td className="px-4 py-3 text-center">
-                <Link to={`/jobs/${pkId}`} className="text-sm text-rose-600 font-medium hover:text-rose-700">
-                    ดูรายละเอียด
-                </Link>
             </td>
         </tr>
     );
