@@ -41,6 +41,8 @@ router.get('/', async (req, res) => {
     const prisma = getDatabase();
     const userId = req.user.userId;
     const tenantId = req.user.tenantId;
+    
+    console.log(`[Jobs API] User ${userId} requesting jobs with roles: ${role}`);
 
     let where = { tenantId };
 
@@ -49,6 +51,7 @@ router.get('/', async (req, res) => {
 
     // Helper: build where condition for a single role
     const buildRoleCondition = async (singleRole) => {
+      console.log(`[Jobs API] Building condition for role: ${singleRole}`);
       switch (singleRole) {
         case 'requester':
           // ✅ Requester sees ALL jobs they created (parent, child, and single jobs)
@@ -124,7 +127,8 @@ router.get('/', async (req, res) => {
           // We need unique projectId + jobTypeId combinations
           const flowKeys = new Set();
           allJobs.forEach(j => {
-            if (j.status.startsWith('pending_')) {
+            // Include jobs that need flow evaluation (pending statuses)
+            if (j.status.startsWith('pending_') || j.status === 'pending_dependency') {
               flowKeys.add(`${j.projectId}_${j.jobTypeId || 'null'}`);
             }
           });
@@ -134,12 +138,22 @@ router.get('/', async (req, res) => {
             const [projIdStr, jobTypeIdStr] = key.split('_');
             const pId = parseInt(projIdStr, 10);
             const jtId = jobTypeIdStr !== 'null' ? parseInt(jobTypeIdStr, 10) : null;
-            const flow = await approvalService.getApprovalFlow(pId, jtId);
+            
+            // Find job to get priority for urgent flow fallback
+            const sampleJob = allJobs.find(j => j.projectId === pId && j.jobTypeId === jtId);
+            const priority = sampleJob ? sampleJob.priority : 'normal';
+            
+            console.log(`[Approver Queue] Flow key: ${key}, Priority: ${priority}, SampleJob ID: ${sampleJob?.id}`);
+            
+            const flow = await approvalService.getApprovalFlow(pId, jtId, priority);
             flowMap.set(key, flow);
           }
 
           // For 'approver' role, we need to check if the user is actually an approver for the CURRENT step of each job
           // or if they have already approved it (for history tab).
+          console.log(`[Approver Queue] Total jobs found: ${allJobs.length}`);
+          console.log(`[Approver Queue] Jobs with priority urgent:`, allJobs.filter(j => j.priority?.toLowerCase() === 'urgent').map(j => ({ id: j.id, priority: j.priority, status: j.status })));
+          
           for (const job of allJobs) {
             // If they already approved it, always include it (for history)
             if (approvedJobIds.has(job.id)) {
@@ -179,7 +193,10 @@ router.get('/', async (req, res) => {
               }
 
               if (isApproverForCurrentLevel) {
+                console.log(`[Approver Queue] User ${userId} is approver for job ${job.id} (Priority: ${job.priority}, Status: ${job.status})`);
                 validJobIds.push(job.id);
+              } else {
+                console.log(`[Approver Queue] User ${userId} NOT approver for job ${job.id} (Priority: ${job.priority}, Status: ${job.status})`);
               }
             } else {
               // Fallback for other statuses not handled above

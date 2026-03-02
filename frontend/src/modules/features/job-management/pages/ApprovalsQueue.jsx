@@ -147,6 +147,12 @@ export default function ApprovalsQueue() {
         return false;
     });
 
+    // จำนวนงานเร่งด่วนที่ยังไม่เสร็จสิ้น
+    const urgentCount = jobs.filter(j => 
+        j.priority?.toLowerCase() === 'urgent' && 
+        !['completed', 'rejected', 'cancelled'].includes(j.status?.toLowerCase())
+    ).length;
+
     /** การจัดเรียงข้อมูล (Custom Sorting) */
     const sortedFilteredJobs = [...filteredJobs].sort((a, b) => {
         // 1. งานเร่งด่วน (Urgent) ขึ้นบนสุด
@@ -287,7 +293,7 @@ export default function ApprovalsQueue() {
                 />
                 <StatCard 
                     label="งานเร่งด่วน (Urgent)" 
-                    value={jobs.filter(j => j.priority === 'Urgent').length} 
+                    value={urgentCount} 
                     icon={<ExclamationTriangleIcon className="w-5 h-5 text-red-600" />} 
                     color="red" 
                 />
@@ -307,6 +313,7 @@ export default function ApprovalsQueue() {
                     <table className="w-full">
                         <thead className="bg-gray-50 border-b border-gray-400">
                             <tr>
+                                <Th>ลำดับ</Th>
                                 <Th>เลขที่</Th>
                                 <Th>โครงการ / BUD</Th>
                                 <Th>ประเภท</Th>
@@ -319,18 +326,19 @@ export default function ApprovalsQueue() {
                         <tbody className="divide-y divide-gray-400">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan="7" className="text-center py-8 text-gray-500">กำลังโหลดรายการงาน...</td>
+                                    <td colSpan="8" className="text-center py-8 text-gray-500">กำลังโหลดรายการงาน...</td>
                                 </tr>
                             ) : paginatedJobs.length === 0 ? (
                                 <tr>
-                                    <td colSpan="7" className="text-center py-8 text-gray-500">
+                                    <td colSpan="8" className="text-center py-8 text-gray-500">
                                         ไม่พบรายการงานในหัวข้อนี้
                                     </td>
                                 </tr>
                             ) : (
-                                groupedJobs.map(job => (
+                                groupedJobs.map((job, index) => (
                                     <AccordionRow
                                         key={job.id}
+                                        sequence={(currentPage - 1) * itemsPerPage + index + 1}
                                         pkId={job.id}
                                         id={job.djId || `DJ-${job.id}`}
                                         project={job.project}
@@ -352,7 +360,7 @@ export default function ApprovalsQueue() {
                                                     : <span className="text-gray-500">-</span>
                                         }
                                         priority={<Badge status={job.priority?.toLowerCase() || 'normal'} />}
-                                        urgent={job.priority === 'Urgent'}
+                                        urgent={job.priority?.toLowerCase() === 'urgent'}
                                         onApprove={() => handleOpenApprove(job.id)}
                                         onReject={() => handleOpenReject(job.id)}
                                         showActions={activeTab === 'waiting' && job.status !== 'pending_dependency' && !job.predecessorId}
@@ -403,107 +411,107 @@ export default function ApprovalsQueue() {
             {/* ============================================
           Approve Modal - Popup ยืนยันการ Approve
           ============================================ */}
-            {showApproveModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden">
-                        <div className="p-6 border-b border-gray-400 flex justify-between items-center">
-                            <h3 className="text-lg font-semibold text-gray-900">ยืนยันการอนุมัติ</h3>
-                            <button onClick={() => setShowApproveModal(false)} className="text-gray-400 hover:text-gray-600">
-                                <XMarkIcon className="w-6 h-6" />
-                            </button>
-                        </div>
+        {showApproveModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden">
+                    <div className="p-6 border-b border-gray-400 flex justify-between items-center">
+                        <h3 className="text-lg font-semibold text-gray-900">ยืนยันการอนุมัติ</h3>
+                        <button onClick={() => setShowApproveModal(false)} className="text-gray-400 hover:text-gray-600">
+                            <XMarkIcon className="w-6 h-6" />
+                        </button>
+                    </div>
 
-                        <div className="p-6 space-y-4">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                                    <CheckBadgeIcon className="w-6 h-6 text-green-600" />
-                                </div>
-                                <div>
-                                    <p className="text-sm text-gray-600">คุณต้องการอนุมัติงานนี้หรือไม่?</p>
-                                    <p className="text-lg font-semibold text-gray-900">DJ Reference: {selectedJobId}</p>
-                                </div>
+                    <div className="p-6 space-y-4">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                                <CheckBadgeIcon className="w-6 h-6 text-green-600" />
                             </div>
-
-                            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                                <p className="text-sm text-green-700">
-                                    <strong>หมายเหตุ:</strong> เมื่ออนุมัติแล้ว งานจะถูกส่งไปยังขั้นตอนถัดไปหรือส่งให้ผู้ดำเนินการ
-                                </p>
+                            <div>
+                                <p className="text-sm text-gray-600">คุณต้องการอนุมัติงานนี้หรือไม่?</p>
+                                <p className="text-lg font-semibold text-gray-900">DJ Reference: {selectedJobId}</p>
                             </div>
                         </div>
 
-                        <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3">
-                            <Button variant="secondary" onClick={() => setShowApproveModal(false)}>ยกเลิก</Button>
-                            <Button variant="success" onClick={handleConfirmApprove}>
-                                <CheckIcon className="w-4 h-4 mr-2" />
-                                อนุมัติ
-                            </Button>
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                            <p className="text-sm text-green-700">
+                                <strong>หมายเหตุ:</strong> เมื่ออนุมัติแล้ว งานจะถูกส่งไปยังขั้นตอนถัดไปหรือส่งให้ผู้ดำเนินการ
+                            </p>
                         </div>
                     </div>
-                </div>
-            )}
 
-            {/* ============================================
-           Reject Modal - หน้าต่างการแจ้งปฏิเสธงาน (Reject/Return)
-           ============================================ */}
-            {showRejectModal && (
-                <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl shadow-xl max-w-lg w-full overflow-hidden">
-                        <div className="p-6 border-b border-gray-400 flex justify-between items-center">
-                            <h3 className="text-lg font-semibold text-gray-900">ปฏิเสธหรือตีกลับงาน (Reject / Return)</h3>
-                            <button onClick={() => setShowRejectModal(false)} className="text-gray-400 hover:text-gray-600">
-                                <XMarkIcon className="w-6 h-6" />
-                            </button>
-                        </div>
-
-                        <div className="p-6 space-y-4">
-                            <p className="text-sm text-gray-600">อ้างอิง DJ-ID: <span className="font-medium text-gray-900">{selectedJobId}</span></p>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">ประเภทการดำเนินการ (Action Type)</label>
-                                <div className="flex gap-4">
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" name="rejectType" value="return" defaultChecked className="text-rose-600 focus:ring-rose-500" />
-                                        <span className="text-sm text-gray-700">ตีกลับเพื่อแก้ไข (Return for Revision)</span>
-                                    </label>
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" name="rejectType" value="reject" className="text-rose-600 focus:ring-rose-500" />
-                                        <span className="text-sm text-gray-700">ปฏิเสธงาน (Reject)</span>
-                                    </label>
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">สาเหตุการปฏิเสธ <span className="text-red-500">*</span></label>
-                                <select
-                                    value={rejectReason}
-                                    onChange={(e) => setRejectReason(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
-                                >
-                                    <option value="incomplete">Brief ไม่ครบถ้วน</option>
-                                    <option value="unclear">ข้อมูลไม่ชัดเจน</option>
-                                    <option value="other">อื่นๆ</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">ความคิดเห็นเพิ่มเติม</label>
-                                <textarea
-                                    rows="4"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
-                                    placeholder="ระบุรายละเอียดเพื่อให้ผู้เปิดงานแก้ไข..."
-                                    value={rejectResult}
-                                    onChange={(e) => setRejectComment(e.target.value)}
-                                ></textarea>
-                            </div>
-                        </div>
-
-                        <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3">
-                            <Button variant="secondary" onClick={() => setShowRejectModal(false)}>ยกเลิก</Button>
-                            <Button variant="primary" onClick={handleConfirmReject}>ยืนยันการดำเนินการ</Button>
-                        </div>
+                    <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3">
+                        <Button variant="secondary" onClick={() => setShowApproveModal(false)}>ยกเลิก</Button>
+                        <Button variant="success" onClick={handleConfirmApprove}>
+                            <CheckIcon className="w-4 h-4 mr-2" />
+                            อนุมัติ
+                        </Button>
                     </div>
                 </div>
-            )}
+            </div>
+        )}
+
+        {/* ============================================
+       Reject Modal - หน้าต่างการแจ้งปฏิเสธงาน (Reject/Return)
+       ============================================ */}
+        {showRejectModal && (
+            <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-xl shadow-xl max-w-lg w-full overflow-hidden">
+                    <div className="p-6 border-b border-gray-400 flex justify-between items-center">
+                        <h3 className="text-lg font-semibold text-gray-900">ปฏิเสธหรือตีกลับงาน (Reject / Return)</h3>
+                        <button onClick={() => setShowRejectModal(false)} className="text-gray-400 hover:text-gray-600">
+                            <XMarkIcon className="w-6 h-6" />
+                        </button>
+                    </div>
+
+                    <div className="p-6 space-y-4">
+                        <p className="text-sm text-gray-600">อ้างอิง DJ-ID: <span className="font-medium text-gray-900">{selectedJobId}</span></p>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">ประเภทการดำเนินการ (Action Type)</label>
+                            <div className="flex gap-4">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" name="rejectType" value="return" defaultChecked className="text-rose-600 focus:ring-rose-500" />
+                                    <span className="text-sm text-gray-700">ตีกลับเพื่อแก้ไข (Return for Revision)</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" name="rejectType" value="reject" className="text-rose-600 focus:ring-rose-500" />
+                                    <span className="text-sm text-gray-700">ปฏิเสธงาน (Reject)</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">สาเหตุการปฏิเสธ <span className="text-red-500">*</span></label>
+                            <select
+                                value={rejectReason}
+                                onChange={(e) => setRejectReason(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+                            >
+                                <option value="incomplete">Brief ไม่ครบถ้วน</option>
+                                <option value="unclear">ข้อมูลไม่ชัดเจน</option>
+                                <option value="other">อื่นๆ</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">ความคิดเห็นเพิ่มเติม</label>
+                            <textarea
+                                rows="4"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+                                placeholder="ระบุรายละเอียดเพื่อให้ผู้เปิดงานแก้ไข..."
+                                value={rejectResult}
+                                onChange={(e) => setRejectComment(e.target.value)}
+                            ></textarea>
+                        </div>
+                    </div>
+
+                    <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3">
+                        <Button variant="secondary" onClick={() => setShowRejectModal(false)}>ยกเลิก</Button>
+                        <Button variant="primary" onClick={handleConfirmReject}>ยืนยันการดำเนินการ</Button>
+                    </div>
+                </div>
+            </div>
+        )}
 
         </div>
     );
@@ -593,7 +601,7 @@ function Th({ children, className = "text-left" }) {
  * @param {boolean} props.isExpanded - สถานะการกาง/ยุบ
  * @param {Function} props.onToggleExpand - ฟังก์ชันสลับสถานะ
  */
-function AccordionRow({ pkId, id, project, bud, type, subject, requester, submitted, status, sla, urgent, onApprove, onReject, showActions = true, predecessorDjId, predecessorSubject, predecessorStatus, children = [], isExpanded, onToggleExpand }) {
+function AccordionRow({ sequence, pkId, id, project, bud, type, subject, requester, submitted, status, sla, urgent, onApprove, onReject, showActions = true, predecessorDjId, predecessorSubject, predecessorStatus, children = [], isExpanded, onToggleExpand }) {
     const hasChildren = children && children.length > 0;
     
     // Determine row background based on urgent status
@@ -604,6 +612,9 @@ function AccordionRow({ pkId, id, project, bud, type, subject, requester, submit
         <>
             {/* แถวหลัก */}
             <tr className={`${bgClass} ${borderClass}`}>
+                <td className="px-4 py-4 text-center text-sm font-medium text-gray-500">
+                    {sequence}
+                </td>
                 <td className="px-4 py-4">
                     <div className="flex items-center gap-2">
                         {hasChildren && (
@@ -628,7 +639,16 @@ function AccordionRow({ pkId, id, project, bud, type, subject, requester, submit
                     <div className="text-sm font-medium text-gray-900">{project}</div>
                     <div className="text-xs text-gray-500">{bud}</div>
                 </td>
-                <td className="px-4 py-4 text-sm text-gray-900">{type}</td>
+                <td className="px-4 py-4">
+                    <div className="flex flex-col">
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100 w-fit mb-1">
+                            {type}
+                        </span>
+                        <div className="text-sm text-gray-900 max-w-[200px] truncate" title={subject}>
+                            {subject}
+                        </div>
+                    </div>
+                </td>
                 <td className="px-4 py-4">
                     <div className="flex items-center gap-2">
                         <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-[10px] text-gray-500 font-bold uppercase">

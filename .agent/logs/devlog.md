@@ -1933,3 +1933,12 @@ Implement ฟีเจอร์ "Sequential Jobs" ให้งานหนึ่
 - **frontend/src/modules/features/assignee/pages/MyQueue.jsx**: 
   - Updated sorting logic in `filteredJobs` to force jobs with `priority === 'urgent'` to the top of the list, unless the current tab is "done".
   - Modified the conditions for adding the light red background (`bg-red-50/30`) and the "🔥 Urgent" badge to ensure they use case-insensitive checks (`toLowerCase()`) and only display when the job is not in the "done" tab (`activeTab !== 'done'`).
+
+## Mar 2, 2026 - Add Sequence Column and Fix Urgent Stats in ApprovalsQueue
+
+- **frontend/src/modules/features/job-management/pages/ApprovalsQueue.jsx**: 
+  - Added a new sequence number column ("ลำดับ") to the beginning of the queue table for easier row counting and reference.
+  - Calculated sequence numbers correctly considering pagination: `(currentPage - 1) * itemsPerPage + index + 1`.
+  - Updated `AccordionRow` to accept and render the new `sequence` prop.
+  - Added urgent job statistics calculation (`urgentCount`) filtering by `priority === 'urgent'` and ignoring completed/rejected/cancelled statuses.
+  - Added a new `StatCard` to the dashboard area displaying the number of urgent jobs with a red theme.
