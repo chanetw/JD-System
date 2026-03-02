@@ -1942,3 +1942,10 @@ Implement ฟีเจอร์ "Sequential Jobs" ให้งานหนึ่
   - Updated `AccordionRow` to accept and render the new `sequence` prop.
   - Added urgent job statistics calculation (`urgentCount`) filtering by `priority === 'urgent'` and ignoring completed/rejected/cancelled statuses.
   - Added a new `StatCard` to the dashboard area displaying the number of urgent jobs with a red theme.
+
+## Mar 2, 2026 - Enhance Urgent Job UI in Job Detail Page
+
+- **frontend/src/modules/features/job-management/pages/JobDetail.jsx**:
+  - Added a highly visible, pulsating "🔥 งานเร่งด่วน (Urgent)" badge next to the DJ ID in the header section.
+  - The badge is conditionally rendered when `job.priority` is 'urgent' (case-insensitive).
+  - Used appropriate styling (`bg-red-100`, `text-red-800`, `animate-pulse`) to draw immediate attention to the urgent nature of the job.
