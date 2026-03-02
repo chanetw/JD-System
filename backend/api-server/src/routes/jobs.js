@@ -117,9 +117,24 @@ router.get('/', async (req, res) => {
             where: {
               jobId: { in: allJobs.map(j => j.id) },
               approverId: userId,
-              status: 'approved'
+              status: { in: ['approved', 'rejected', 'returned'] } // รวมงานที่เคย reject/return ด้วย
             },
-            select: { jobId: true }
+            select: { 
+              jobId: true,
+              approvedAt: true,
+              comment: true,
+              status: true
+            },
+            orderBy: {
+              approvedAt: 'desc' // กรณีที่มีหลาย approval (เช่น return แล้ว approve ใหม่) เอาล่าสุด
+            }
+          });
+          
+          const approvedJobMap = new Map();
+          approvedJobs.forEach(a => {
+            if (!approvedJobMap.has(a.jobId)) {
+              approvedJobMap.set(a.jobId, a);
+            }
           });
           const approvedJobIds = new Set(approvedJobs.map(a => a.jobId));
 
@@ -315,6 +330,12 @@ router.get('/', async (req, res) => {
           assignee: {
             select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true }
           },
+          approvals: { // Fetch approvals for history data
+            where: { approverId: userId, status: { in: ['approved', 'rejected', 'returned'] } },
+            select: { approverId: true, status: true, approvedAt: true, createdAt: true, comment: true },
+            orderBy: { createdAt: 'desc' },
+            take: 1
+          },
           // Parent-Child relationship fields
           isParent: true,
           parentJobId: true,
@@ -331,40 +352,59 @@ router.get('/', async (req, res) => {
       prisma.job.count({ where })
     ]);
 
-    // Transform to frontend format
-    const transformed = jobs.map(j => ({
-      id: j.id,
-      djId: j.djId,
-      subject: j.subject,
-      status: j.status,
-      priority: j.priority,
-      jobType: j.jobType?.name,
-      jobTypeId: j.jobTypeId,
-      jobTypeIcon: j.jobType?.icon,
-      jobTypeColor: j.jobType?.colorTheme,
-      slaWorkingDays: j.jobType?.slaWorkingDays,
-      project: j.project?.name,
-      projectId: j.projectId,
-      projectCode: j.project?.code,
-      deadline: j.dueDate,
-      createdAt: j.createdAt,
-      updatedAt: j.completedAt || j.activityLogs?.[0]?.createdAt || j.createdAt,
-      requesterId: j.requesterId,
-      requester: j.requester?.displayName || `${j.requester?.firstName} ${j.requester?.lastName}`.trim(),
-      requesterAvatar: j.requester?.avatarUrl,
-      assigneeId: j.assigneeId,
-      assignee: j.assignee?.displayName || (j.assignee ? `${j.assignee?.firstName} ${j.assignee?.lastName}`.trim() : null),
-      assigneeAvatar: j.assignee?.avatarUrl,
-      // Parent-Child relationship metadata
-      isParent: j.isParent || false,
-      parentJobId: j.parentJobId || null,
-      completedAt: j.completedAt,
-      // Sequential dependency metadata
-      predecessorId: j.predecessorId || null,
-      predecessorDjId: j.predecessor?.djId || null,
-      predecessorSubject: j.predecessor?.subject || null,
-      predecessorStatus: j.predecessor?.status || null
-    }));
+    const transformed = jobs.map(j => {
+      // Find history data if user has acted on this job
+      let historyData = null;
+      if (req.user?.userId) {
+        // We'd need the approvedJobMap here, but it's only available inside the role condition builder.
+        // Instead, we can fetch history for all returned jobs for the current user, or just use a separate query.
+        // For simplicity and performance, if the job has approvals, we find the one for the user.
+        const userApproval = j.approvals?.find(a => a.approverId === req.user.userId && ['approved', 'rejected', 'returned'].includes(a.status));
+        if (userApproval) {
+          historyData = {
+            actionDate: userApproval.approvedAt || userApproval.createdAt,
+            comment: userApproval.comment,
+            action: userApproval.status
+          };
+        }
+      }
+
+      return {
+        id: j.id,
+        djId: j.djId,
+        subject: j.subject,
+        status: j.status,
+        priority: j.priority,
+        jobType: j.jobType?.name,
+        jobTypeId: j.jobTypeId,
+        jobTypeIcon: j.jobType?.icon,
+        jobTypeColor: j.jobType?.colorTheme,
+        slaWorkingDays: j.jobType?.slaWorkingDays,
+        project: j.project?.name,
+        projectId: j.projectId,
+        projectCode: j.project?.code,
+        deadline: j.dueDate,
+        createdAt: j.createdAt,
+        updatedAt: j.completedAt || j.activityLogs?.[0]?.createdAt || j.createdAt,
+        requesterId: j.requesterId,
+        requester: j.requester?.displayName || `${j.requester?.firstName} ${j.requester?.lastName}`.trim(),
+        requesterAvatar: j.requester?.avatarUrl,
+        assigneeId: j.assigneeId,
+        assignee: j.assignee?.displayName || (j.assignee ? `${j.assignee?.firstName} ${j.assignee?.lastName}`.trim() : null),
+        assigneeAvatar: j.assignee?.avatarUrl,
+        // Parent-Child relationship metadata
+        isParent: j.isParent || false,
+        parentJobId: j.parentJobId || null,
+        completedAt: j.completedAt,
+        // Sequential dependency metadata
+        predecessorId: j.predecessorId || null,
+        predecessorDjId: j.predecessor?.djId || null,
+        predecessorSubject: j.predecessor?.subject || null,
+        predecessorStatus: j.predecessor?.status || null,
+        lastActivityAt: j.activityLogs?.[0]?.createdAt || j.createdAt,
+        historyData: historyData // ส่งข้อมูลประวัติแนบไปด้วย
+      }
+    });
 
     res.json({
       success: true,

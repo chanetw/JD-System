@@ -319,7 +319,14 @@ export default function ApprovalsQueue() {
                                 <Th>ประเภท</Th>
                                 <Th>ผู้เปิดงาน</Th>
                                 <Th>สถานะ</Th>
-                                <Th>วันที่สร้าง</Th>
+                                {activeTab === 'history' ? (
+                                    <>
+                                        <Th>วันที่ดำเนินการ</Th>
+                                        <Th>ความคิดเห็น</Th>
+                                    </>
+                                ) : (
+                                    <Th>วันที่สร้าง</Th>
+                                )}
                                 <Th className="text-center">การจัดการ</Th>
                             </tr>
                         </thead>
@@ -347,6 +354,8 @@ export default function ApprovalsQueue() {
                                         subject={job.subject}
                                         requester={job.requester}
                                         submitted={new Date(job.createdAt).toLocaleDateString('th-TH')}
+                                        historyData={job.historyData}
+                                        activeTab={activeTab}
                                         status={job.status}
                                         sla={
                                             job.status?.startsWith('pending_level_') 
@@ -594,6 +603,8 @@ function Th({ children, className = "text-left" }) {
  * @param {string} props.status - สถานะงาน
  * @param {React.ReactNode} props.sla - เลเวลการอนุมัติ
  * @param {boolean} props.urgent - สถานะงานเร่งด่วน
+ * @param {object} props.historyData - ข้อมูลประวัติการดำเนินการ (เฉพาะแท็บประวัติ)
+ * @param {string} props.activeTab - แท็บที่เลือกอยู่ปัจจุบัน
  * @param {Function} props.onApprove - จัดการการอนุมัติ
  * @param {Function} props.onReject - จัดการการปฏิเสธ
  * @param {boolean} [props.showActions=true] - แสดงปุ่มจัดการงานหรือไม่
@@ -601,7 +612,7 @@ function Th({ children, className = "text-left" }) {
  * @param {boolean} props.isExpanded - สถานะการกาง/ยุบ
  * @param {Function} props.onToggleExpand - ฟังก์ชันสลับสถานะ
  */
-function AccordionRow({ sequence, pkId, id, project, bud, type, subject, requester, submitted, status, sla, urgent, onApprove, onReject, showActions = true, predecessorDjId, predecessorSubject, predecessorStatus, children = [], isExpanded, onToggleExpand }) {
+function AccordionRow({ sequence, pkId, id, project, bud, type, subject, requester, submitted, status, sla, urgent, historyData, activeTab, onApprove, onReject, showActions = true, predecessorDjId, predecessorSubject, predecessorStatus, children = [], isExpanded, onToggleExpand }) {
     const hasChildren = children && children.length > 0;
     
     // Determine row background based on urgent status
@@ -660,12 +671,38 @@ function AccordionRow({ sequence, pkId, id, project, bud, type, subject, request
                 <td className="px-4 py-4">
                     <div className="flex flex-col gap-1 items-start">
                         <Badge status={status} />
-                        {sla && status !== 'approved' && status !== 'rejected' && status !== 'returned' && (
-                            <div className="mt-1">{sla}</div>
+                        {sla && activeTab === 'waiting' && (
+                            <div className="mt-1">
+                                {sla}
+                            </div>
                         )}
                     </div>
                 </td>
-                <td className="px-4 py-4 text-sm text-gray-500">{submitted}</td>
+                {activeTab === 'history' ? (
+                    <>
+                        <td className="px-4 py-4">
+                            <div className="text-sm text-gray-900">
+                                {historyData?.actionDate ? new Date(historyData.actionDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                                {historyData?.action === 'approved' ? 'อนุมัติ' : historyData?.action === 'rejected' ? 'ปฏิเสธ' : historyData?.action === 'returned' ? 'ตีกลับ' : '-'}
+                            </div>
+                        </td>
+                        <td className="px-4 py-4">
+                            <div className="text-sm text-gray-600 max-w-[150px] truncate" title={historyData?.comment || '-'}>
+                                {historyData?.comment || '-'}
+                            </div>
+                        </td>
+                    </>
+                ) : (
+                    <td className="px-4 py-4">
+                        <div className="text-sm text-gray-900">{submitted}</div>
+                        <div className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                            <ClockIcon className="w-3 h-3" />
+                            {urgent ? 'ด่วน' : 'ปกติ'}
+                        </div>
+                    </td>
+                )}
                 <td className="px-4 py-4">
                     <div className="flex items-center justify-center gap-2">
                         <Link to={`/jobs/${pkId}`} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg" title="ดูรายละเอียด">

@@ -1949,3 +1949,12 @@ Implement ฟีเจอร์ "Sequential Jobs" ให้งานหนึ่
   - Added a highly visible, pulsating "🔥 งานเร่งด่วน (Urgent)" badge next to the DJ ID in the header section.
   - The badge is conditionally rendered when `job.priority` is 'urgent' (case-insensitive).
   - Used appropriate styling (`bg-red-100`, `text-red-800`, `animate-pulse`) to draw immediate attention to the urgent nature of the job.
+
+## Mar 2, 2026 - Show Approval Date and Comments in History Tab
+
+- **backend/api-server/src/routes/jobs.js**:
+  - Updated `GET /api/jobs` to fetch user's approval history for jobs they have acted upon.
+  - Included the user's latest approval data (`approvedAt`, `comment`, `status`) in the returned job data under `historyData` field.
+- **frontend/src/modules/features/job-management/pages/ApprovalsQueue.jsx**:
+  - Modified the queue table headers to conditionally show "วันที่ดำเนินการ" (Action Date) and "ความคิดเห็น" (Comment) when the 'history' tab is active, replacing "วันที่สร้าง" (Creation Date).
+  - Updated `AccordionRow` to display `historyData.actionDate` and `historyData.comment` under the new columns when in the history tab.
