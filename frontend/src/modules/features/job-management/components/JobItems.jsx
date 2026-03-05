@@ -26,9 +26,11 @@ export default function JobItems({ job }) {
     }
 
     // Only show for parent jobs
-    if (!job.isParent) {
-        return null;
-    }
+    // REMOVED: In V2, we want to show jobItems for child jobs as well so Assignees know what they are working on
+    // if (!job.isParent) {
+    //     return null;
+    // }
+
 
     const items = job.items;
     const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 1), 0);

@@ -132,7 +132,7 @@ export default function AdminApprovalFlow() {
             const [projectsResult, flowsResult, usersResult, jobTypesResult] = await Promise.allSettled([
                 api.getProjects(),
                 adminService.getAllApprovalFlows(),
-                api.getUsers(),
+                api.getUsers(1, 1000), // ✅ Fix: ดึง User ทั้งหมด (1000 คน) แทน default (20 คน)
                 api.getJobTypes()
             ]);
 

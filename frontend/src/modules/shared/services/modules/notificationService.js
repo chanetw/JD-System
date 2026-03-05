@@ -1,5 +1,6 @@
 
 import { supabase } from '../supabaseClient';
+import httpClient from '../httpClient';
 
 export const notificationService = {
     // --- Notification Settings ---
@@ -83,72 +84,56 @@ export const notificationService = {
     // --- Notification Actions (Fetch & Update) ---
 
     /**
-     * ดึงรายการแจ้งเตือนของผู้ใช้จาก Database
+     * ดึงรายการแจ้งเตือนของผู้ใช้จาก Backend API
      * 
-     * @param {number} userId - ID ของผู้ใช้ที่ต้องการดึง Notification
+     * @param {number} userId - ID ของผู้ใช้ (ไม่ได้ใช้แล้ว เพราะ Backend ใช้ JWT token)
      * @returns {Promise<Array>} รายการ Notification (เรียงจากใหม่สุด, จำกัด 50 รายการ)
-     * 
-     * ข้อมูลที่ส่งกลับ (สำหรับแต่ละ item):
-     * - id: รหัส Notification
-     * - userId: รหัสผู้ใช้
-     * - type: ประเภทเหตุการณ์ (เช่น job_created, job_approved)
-     * - title: หัวข้อแจ้งเตือน
-     * - message: เนื้อหาแจ้งเตือน
-     * - jobId: รหัสงานที่เกี่ยวข้อง
-     * - link: ลิงก์ไปหน้ารายละเอียด
-     * - isRead: สถานะอ่านแล้ว/ยังไม่อ่าน
-     * - createdAt: วันที่สร้าง
      */
     getNotifications: async (userId) => {
-        const { data, error } = await supabase
-            .from('notifications')
-            .select('*')
-            .eq('user_id', userId)
-            .order('created_at', { ascending: false })
-            .limit(50);
+        try {
+            const response = await httpClient.get('/notifications', {
+                params: { limit: 50 }
+            });
 
-        if (error) {
-            console.error('Error fetching notifications:', error);
-            // Fallback: Return empty array instead of throwing to prevent UI crash
+            if (response.data?.success) {
+                // แปลง Prisma camelCase fields ให้ตรงกับที่ Frontend ใช้
+                return (response.data.data || []).map(n => ({
+                    id: n.id,
+                    userId: n.userId,
+                    type: n.type,
+                    title: n.title,
+                    message: n.message,
+                    link: n.link,
+                    isRead: n.isRead,
+                    createdAt: n.createdAt
+                }));
+            }
+
+            return [];
+        } catch (error) {
+            console.error('[notificationService] getNotifications error:', error);
             return [];
         }
-
-        // แปลง Database fields (snake_case) เป็น camelCase สำหรับ Frontend
-        return (data || []).map(n => ({
-            id: n.id,
-            userId: n.user_id,
-            type: n.type,
-            title: n.title,
-            message: n.message,
-            jobId: n.job_id,
-            link: n.link,
-            isRead: n.is_read,
-            metadata: n.metadata,
-            createdAt: n.created_at
-        }));
     },
 
     markNotificationAsRead: async (notificationId) => {
-        const { data, error } = await supabase
-            .from('notifications')
-            .update({ is_read: true })
-            .eq('id', notificationId)
-            .select();
-
-        if (error) throw error;
-        return data;
+        try {
+            const response = await httpClient.patch(`/notifications/${notificationId}/read`);
+            return response.data;
+        } catch (error) {
+            console.error('[notificationService] markNotificationAsRead error:', error);
+            throw error;
+        }
     },
 
     markAllNotificationsAsRead: async (userId) => {
-        const { data, error } = await supabase
-            .from('notifications')
-            .update({ is_read: true })
-            .eq('user_id', userId)
-            .eq('is_read', false)
-            .select();
-
-        if (error) throw error;
-        return data;
+        try {
+            const response = await httpClient.patch('/notifications/read-all');
+            return response.data;
+        } catch (error) {
+            console.error('[notificationService] markAllNotificationsAsRead error:', error);
+            throw error;
+        }
     },
 
     // --- Sending Notifications ---

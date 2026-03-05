@@ -10,6 +10,7 @@
  */
 
 import { chainConfig } from '../config/chainConfig.js';
+import { addBusinessDays, format } from 'date-fns';
 
 class ChainService {
   /**
@@ -111,6 +112,49 @@ class ChainService {
   }
 
   /**
+   * Find all active jobs assigned to an assignee (no date range filter)
+   * Used for urgent job rescheduling - extends ALL jobs of the assignee
+   *
+   * @param {number} assigneeId - Assignee user ID
+   * @param {Object} prisma - Prisma client
+   * @returns {Promise<Array>} Array of all active jobs
+   */
+  async findAllAssigneeJobs(assigneeId, prisma) {
+    if (!chainConfig.enableUrgentReschedule) {
+      return [];
+    }
+
+    // หางานทั้งหมดของ assignee ที่ยังไม่เสร็จ (ไม่จำกัดช่วง due date)
+    const jobs = await prisma.job.findMany({
+      where: {
+        assigneeId,
+        status: {
+          in: [
+            'approved', 'assigned',      // งานที่รอทำ
+            'in_progress',               // งานที่กำลังทำ
+            'correction', 'rework',      // งานที่ต้องแก้ไข
+            'returned',                  // งานที่ถูกส่งกลับ
+            'pending_dependency'         // งานที่รอ dependency
+          ]
+        }
+      },
+      select: {
+        id: true,
+        djId: true,
+        subject: true,
+        status: true,
+        dueDate: true,
+        parentJobId: true,
+        isParent: true,
+        requesterId: true,
+        tenantId: true
+      }
+    });
+
+    return jobs;
+  }
+
+  /**
    * Find all jobs competing for same assignee within date range
    * Used for urgent job rescheduling
    *
@@ -118,6 +162,7 @@ class ChainService {
    * @param {Date} urgentDueDate - Urgent job's due date
    * @param {Object} prisma - Prisma client
    * @returns {Promise<Array>} Array of competing jobs
+   * @deprecated Use findAllAssigneeJobs() instead for new urgent reschedule logic
    */
   async findCompetingJobs(assigneeId, urgentDueDate, prisma) {
     if (!chainConfig.enableUrgentReschedule) {
@@ -207,9 +252,10 @@ class ChainService {
 
   /**
    * Reschedule jobs due to urgent job approval
-   * Shifts all competing pending jobs by URGENT_SHIFT_DAYS
+   * Extends ALL active jobs of the assignee by URGENT_SHIFT_DAYS (working days)
+   * Also extends child jobs and sends notifications to requesters
    *
-   * @param {Object} urgentJob - Urgent job object {assigneeId, dueDate}
+   * @param {Object} urgentJob - Urgent job object {id, djId, assigneeId, dueDate, tenantId}
    * @param {Object} prisma - Prisma client
    * @returns {Promise<Object>} {rescheduled: number, affected: Array}
    */
@@ -218,64 +264,167 @@ class ChainService {
       return { rescheduled: 0, affected: [] };
     }
 
-    const competing = await this.findCompetingJobs(
-      urgentJob.assigneeId,
-      urgentJob.dueDate,
-      prisma
-    );
+    console.log(`[ChainService] 🚨 Reschedule for urgent job ${urgentJob.djId} (assignee: ${urgentJob.assigneeId})`);
 
+    // หางานทั้งหมดของ assignee (ใช้ฟังก์ชันใหม่)
+    const jobs = await this.findAllAssigneeJobs(urgentJob.assigneeId, prisma);
+    
     const shiftDays = chainConfig.urgentShiftDays;
     const affected = [];
+    const processedJobIds = new Set(); // ป้องกัน extend ซ้ำ
 
-    for (const job of competing) {
-      if (job.status === 'in_progress' || job.status === 'completed') {
-        // Skip in-progress and completed jobs
+    for (const job of jobs) {
+      // ข้ามงาน urgent ที่เป็นตัวกระตุ้น
+      if (job.id === urgentJob.id) {
+        console.log(`[ChainService] ⏭️  Skip urgent job itself: ${job.djId}`);
+        continue;
+      }
+      
+      // ข้ามถ้า extend ไปแล้ว
+      if (processedJobIds.has(job.id)) {
+        console.log(`[ChainService] ⏭️  Skip already processed: ${job.djId}`);
         continue;
       }
 
-      // Shift the job
-      const newDueDate = new Date(job.dueDate);
-      newDueDate.setDate(newDueDate.getDate() + shiftDays);
+      // ข้ามงานที่ไม่มี dueDate
+      if (!job.dueDate) {
+        console.log(`[ChainService] ⏭️  Skip job without dueDate: ${job.djId}`);
+        continue;
+      }
 
+      // Extend งานนี้ (ใช้ working days)
+      const oldDueDate = new Date(job.dueDate);
+      const newDueDate = addBusinessDays(oldDueDate, shiftDays);
+      
       await prisma.job.update({
         where: { id: job.id },
-        data: { dueDate: newDueDate }
+        data: { 
+          dueDate: newDueDate,
+          updatedAt: new Date()
+        }
       });
+
+      console.log(`[ChainService] ✅ Extended ${job.djId}: ${format(oldDueDate, 'yyyy-MM-dd')} → ${format(newDueDate, 'yyyy-MM-dd')}`);
 
       affected.push({
         jobId: job.id,
         djId: job.djId,
         subject: job.subject,
-        oldDueDate: job.dueDate,
-        newDueDate,
-        status: job.status
+        oldDueDate: oldDueDate,
+        newDueDate: newDueDate,
+        status: job.status,
+        requesterId: job.requesterId,
+        tenantId: job.tenantId,
+        isParent: job.isParent
       });
+      
+      processedJobIds.add(job.id);
 
-      // If this job has children, shift them too (cascade)
-      const children = await prisma.job.findMany({
-        where: { parentJobId: job.id }
-      });
-
-      for (const child of children) {
-        const childNewDueDate = new Date(child.dueDate);
-        childNewDueDate.setDate(childNewDueDate.getDate() + shiftDays);
-
-        await prisma.job.update({
-          where: { id: child.id },
-          data: { dueDate: childNewDueDate }
+      // ถ้างานนี้เป็น parent → extend child jobs ทั้งหมด
+      if (job.isParent) {
+        const children = await prisma.job.findMany({
+          where: { 
+            parentJobId: job.id,
+            status: { notIn: ['completed', 'closed', 'rejected'] }
+          },
+          select: {
+            id: true, djId: true, subject: true, 
+            dueDate: true, status: true,
+            requesterId: true, tenantId: true
+          }
         });
 
-        affected.push({
-          jobId: child.id,
-          djId: child.djId,
-          subject: child.subject,
-          oldDueDate: child.dueDate,
-          newDueDate: childNewDueDate,
-          status: child.status,
-          cascaded: true
-        });
+        console.log(`[ChainService] 👨‍👩‍👧‍👦 Parent job ${job.djId} has ${children.length} child jobs`);
+
+        for (const child of children) {
+          if (processedJobIds.has(child.id)) {
+            console.log(`[ChainService] ⏭️  Skip already processed child: ${child.djId}`);
+            continue;
+          }
+
+          if (!child.dueDate) {
+            console.log(`[ChainService] ⏭️  Skip child without dueDate: ${child.djId}`);
+            continue;
+          }
+          
+          const childOldDueDate = new Date(child.dueDate);
+          const childNewDueDate = addBusinessDays(childOldDueDate, shiftDays);
+          
+          await prisma.job.update({
+            where: { id: child.id },
+            data: { 
+              dueDate: childNewDueDate,
+              updatedAt: new Date()
+            }
+          });
+
+          console.log(`[ChainService] ✅ Extended child ${child.djId}: ${format(childOldDueDate, 'yyyy-MM-dd')} → ${format(childNewDueDate, 'yyyy-MM-dd')}`);
+
+          affected.push({
+            jobId: child.id,
+            djId: child.djId,
+            subject: child.subject,
+            oldDueDate: childOldDueDate,
+            newDueDate: childNewDueDate,
+            status: child.status,
+            requesterId: child.requesterId,
+            tenantId: child.tenantId,
+            cascaded: true,
+            parentJobId: job.id
+          });
+          
+          processedJobIds.add(child.id);
+        }
       }
     }
+
+    // บันทึก Activity Log และส่ง Notification สำหรับทุกงานที่ถูก extend
+    for (const affectedJob of affected) {
+      try {
+        // 1. บันทึก Activity Log
+        await prisma.activityLog.create({
+          data: {
+            tenantId: affectedJob.tenantId,
+            jobId: affectedJob.jobId,
+            userId: urgentJob.assigneeId,
+            action: 'job_auto_extended_urgent',
+            description: `ระบบ Extend งานอัตโนมัติ ${shiftDays} วันทำการ เนื่องจากมีงานด่วน ${urgentJob.djId}`,
+            metadata: JSON.stringify({
+              urgentJobId: urgentJob.id,
+              urgentJobDjId: urgentJob.djId,
+              extensionDays: shiftDays,
+              oldDueDate: format(affectedJob.oldDueDate, 'yyyy-MM-dd'),
+              newDueDate: format(affectedJob.newDueDate, 'yyyy-MM-dd'),
+              cascaded: affectedJob.cascaded || false,
+              parentJobId: affectedJob.parentJobId || null
+            })
+          }
+        }).catch(err => console.warn(`[ChainService] Failed to create activity log for ${affectedJob.djId}:`, err.message));
+
+        // 2. แจ้งเตือน Requester (ไม่แจ้ง assignee)
+        if (affectedJob.requesterId) {
+          const message = affectedJob.cascaded 
+            ? `งาน ${affectedJob.djId} (งานพ่วง) ถูกขยายกำหนดส่งอัตโนมัติ ${shiftDays} วันทำการ เนื่องจากมีงานด่วน ${urgentJob.djId}\n\nDue Date เดิม: ${format(affectedJob.oldDueDate, 'dd/MM/yyyy')}\nDue Date ใหม่: ${format(affectedJob.newDueDate, 'dd/MM/yyyy')}`
+            : `งาน ${affectedJob.djId} ถูกขยายกำหนดส่งอัตโนมัติ ${shiftDays} วันทำการ เนื่องจากมีงานด่วน ${urgentJob.djId}\n\nDue Date เดิม: ${format(affectedJob.oldDueDate, 'dd/MM/yyyy')}\nDue Date ใหม่: ${format(affectedJob.newDueDate, 'dd/MM/yyyy')}`;
+
+          await prisma.notification.create({
+            data: {
+              tenantId: affectedJob.tenantId,
+              userId: affectedJob.requesterId,
+              type: 'job_auto_extended',
+              title: `งาน ${affectedJob.djId} ถูกขยายกำหนดส่ง`,
+              message: message,
+              link: `/jobs/${affectedJob.jobId}`,
+              isRead: false
+            }
+          }).catch(err => console.warn(`[ChainService] Failed to create notification for ${affectedJob.djId}:`, err.message));
+        }
+      } catch (err) {
+        console.error(`[ChainService] Error processing affected job ${affectedJob.djId}:`, err);
+      }
+    }
+
+    console.log(`[ChainService] ✅ Rescheduled ${affected.length} jobs for urgent job ${urgentJob.djId}`);
 
     return {
       rescheduled: affected.length,

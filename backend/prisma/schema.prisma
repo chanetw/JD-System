@@ -302,6 +302,17 @@ model Job {
   lastExtendedAt   DateTime? @map("last_extended_at") @db.Timestamptz
   extensionReason  String?   @map("extension_reason") @db.Text
 
+  // Draft Submission (Submit Draft for Review)
+  draftFiles       Json?     @default("[]") @map("draft_files")
+  draftSubmittedAt DateTime? @map("draft_submitted_at") @db.Timestamptz
+  draftCount       Int       @default(0) @map("draft_count")
+
+  // Rebrief (Request Additional Info from Requester)
+  rebriefReason    String?   @map("rebrief_reason") @db.Text
+  rebriefCount     Int       @default(0) @map("rebrief_count")
+  rebriefAt        DateTime? @map("rebrief_at") @db.Timestamptz
+  rebriefResponse  String?   @map("rebrief_response") @db.Text
+
   // Job Chain / Dependency
   predecessorId Int?      @map("predecessor_id")
   nextJobId     Int?      @map("next_job_id")

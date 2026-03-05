@@ -1,7 +1,8 @@
 /**
  * @file MyQueue.jsx
  * @description Dashboard สำหรับ Assignee (Graphic/Editor) เพื่อดูงานที่ต้องทำ
- * รองรับการแบ่ง Tab (To Do, In Progress, Waiting, Done) และแสดง SLA Health Color
+ * รองรับการแบ่ง Tab (กำลังทำ, เสร็จแล้ว, ปฏิเสธ, ปฏิทิน) และแสดง SLA Health Color
+ * พร้อม Timeline View แบบ Gantt Chart
  */
 
 import React, { useState, useEffect } from 'react';
@@ -21,19 +22,50 @@ import {
     ExclamationTriangleIcon,
     DocumentMagnifyingGlassIcon,
     FunnelIcon,
-    ArrowsUpDownIcon
+    ArrowsUpDownIcon,
+    XCircleIcon,
+    CalendarDaysIcon
 } from '@heroicons/react/24/outline';
 import { FormInput, FormSelect } from '@shared/components/FormInput';
+import TimelineView from '../components/TimelineView';
 
 /**
  * แถบเมนูสถานะงาน (Tabs Configuration)
+ * ปรับโครงสร้างใหม่: กำลังทำ | เสร็จแล้ว | ปฏิเสธ | ปฏิทิน
  */
 const TABS = [
-    { id: 'todo', label: 'งานมาใหม่ (To Do)', icon: ClipboardDocumentListIcon, color: 'text-blue-600' },
-    { id: 'in_progress', label: 'กำลังทำ (In Progress)', icon: PlayCircleIcon, color: 'text-amber-600' },
-    { id: 'waiting', label: 'รอตรวจ/แก้ (Waiting)', icon: ClockIcon, color: 'text-purple-600' },
-    { id: 'done', label: 'เสร็จแล้ว (Done)', icon: CheckCircleIcon, color: 'text-green-600' },
+    { id: 'in_progress', label: 'กำลังทำ', icon: PlayCircleIcon, color: 'text-amber-600' },
+    { id: 'completed', label: 'เสร็จแล้ว', icon: CheckCircleIcon, color: 'text-green-600' },
+    { id: 'rejected', label: 'ปฏิเสธ', icon: XCircleIcon, color: 'text-red-600' },
+    { id: 'timeline', label: 'ปฏิทิน', icon: CalendarDaysIcon, color: 'text-blue-600' },
 ];
+
+const TAB_DESCRIPTIONS = {
+    in_progress: {
+        icon: '▶️',
+        title: 'กำลังทำ',
+        desc: 'งานที่อยู่ระหว่างดำเนินการ รวมงานที่ได้รับมอบหมาย กำลังทำ และรอตรวจ/แก้ไข (งานที่ approved แล้วหรือข้าม flow มาถึงผู้รับงานแล้ว)',
+        statuses: '(approved, assigned, in_progress, correction, rework, returned, pending_dependency)',
+    },
+    completed: {
+        icon: '✅',
+        title: 'เสร็จแล้ว',
+        desc: 'งานที่ส่งมอบเรียบร้อยแล้ว',
+        statuses: '(completed, closed)',
+    },
+    rejected: {
+        icon: '❌',
+        title: 'ปฏิเสธ',
+        desc: 'งานที่ปฏิเสธรับหรือถูกปฏิเสธ',
+        statuses: '(rejected, rejected_by_assignee)',
+    },
+    timeline: {
+        icon: '📅',
+        title: 'ปฏิทิน',
+        desc: 'มุมมองภาพรวมของกำหนดเวลางานทั้งหมดในรูปแบบ Timeline',
+        statuses: '(all jobs)',
+    },
+};
 
 export default function MyQueue() {
     const navigate = useNavigate();
@@ -46,10 +78,11 @@ export default function MyQueue() {
     const { markAsRead } = useNotifications();
 
     // State
-    const [activeTab, setActiveTab] = useState('todo');
+    const [activeTab, setActiveTab] = useState('in_progress');
     const [jobs, setJobs] = useState([]);
     const [loading, setLoading] = useState(false);
     const [stats, setStats] = useState({ total: 0, critical: 0 });
+    const [tabCounts, setTabCounts] = useState({ in_progress: 0, completed: 0, rejected: 0, timeline: 0 });
 
     // Filter & Sort State
     const [searchTerm, setSearchTerm] = useState('');
@@ -64,9 +97,16 @@ export default function MyQueue() {
      */
     useEffect(() => {
         if (user?.id) {
+            console.log(`[MyQueue] 🔄 Tab changed to: ${activeTab}`);
             fetchJobs();
         }
     }, [user?.id, activeTab]);
+
+    useEffect(() => {
+        if (user?.id) {
+            fetchAllTabCounts();
+        }
+    }, [user?.id]);
 
     /**
      * =====================================
@@ -144,18 +184,41 @@ export default function MyQueue() {
     const fetchJobs = async () => {
         setLoading(true);
         try {
-            // เรียก API getAssigneeJobs (ที่เพิ่มไปใหม่)
-            const data = await api.getAssigneeJobs(user.id, activeTab);
+            // Timeline tab ต้องใช้ 'all' เพื่อดึงงานทั้งหมด
+            const filterStatus = activeTab === 'timeline' ? 'all' : activeTab;
+            console.log(`[MyQueue] 📥 Fetching jobs for tab: ${activeTab} (filter: ${filterStatus})`);
+            
+            const data = await api.getAssigneeJobs(user.id, filterStatus);
+            console.log(`[MyQueue] ✅ Fetched ${data?.length || 0} jobs for ${activeTab} tab`);
             setJobs(data || []);
 
-            // Calculate simple stats based on current view
-            const criticalCount = data.filter(j => j.healthStatus === 'critical').length;
-            setStats({ total: data.length, critical: criticalCount });
+            const criticalCount = (data || []).filter(j => j.healthStatus === 'critical').length;
+            const urgentCount = (data || []).filter(j => j.priority?.toLowerCase() === 'urgent').length;
+            setStats({ total: (data || []).length, critical: criticalCount, urgent: urgentCount });
         } catch (error) {
-            console.error('Failed to fetch My Queue:', error);
+            console.error('[MyQueue] ❌ Failed to fetch My Queue:', error);
             setJobs([]);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchAllTabCounts = async () => {
+        try {
+            const [inProgress, completed, rejected, all] = await Promise.all([
+                api.getAssigneeJobs(user.id, 'in_progress'),
+                api.getAssigneeJobs(user.id, 'completed'),
+                api.getAssigneeJobs(user.id, 'rejected'),
+                api.getAssigneeJobs(user.id, 'all'), // For timeline
+            ]);
+            setTabCounts({
+                in_progress: inProgress.length,
+                completed: completed.length,
+                rejected: rejected.length,
+                timeline: all.length,
+            });
+        } catch (err) {
+            console.error('[MyQueue] fetchAllTabCounts error:', err);
         }
     };
 
@@ -219,52 +282,138 @@ export default function MyQueue() {
      */
     const renderSLAText = (job) => {
         if (activeTab === 'done') return <span className="text-gray-500">เสร็จสิ้น</span>;
+        if (job.hoursRemaining === null) return <span className="text-gray-400">ไม่มี deadline</span>;
 
         const style = job.healthStatus === 'critical' ? 'text-red-600 font-bold'
             : job.healthStatus === 'warning' ? 'text-yellow-600 font-medium'
                 : 'text-green-600';
 
-        let text = `${job.hoursRemaining} ชม.`;
-        if (job.hoursRemaining < 0) text = `เลยกำหนด ${Math.abs(job.hoursRemaining)} ชม.`;
+        let text;
+        if (job.hoursRemaining < 0) {
+            text = `เลยกำหนด ${Math.abs(job.hoursRemaining).toFixed(1)} ชม.`;
+        } else if (job.hoursRemaining < 24) {
+            text = `เหลือ ${job.hoursRemaining.toFixed(1)} ชม.`;
+        } else {
+            const daysLeft = Math.floor(job.hoursRemaining / 24);
+            const hrsLeft = Math.round(job.hoursRemaining % 24);
+            text = `เหลือ ${daysLeft} วัน ${hrsLeft} ชม.`;
+        }
 
         return <span className={style}>{text}</span>;
     };
 
     /**
-     * Filter & Sort Logic
+     * Helper: แสดง SLA Progress Bar
      */
+    const renderSLABar = (job) => {
+        if (activeTab === 'done' || job.slaProgress === null) return null;
+        const pct = job.slaProgress;
+        const barColor = job.healthStatus === 'critical' ? 'bg-red-500'
+            : job.healthStatus === 'warning' ? 'bg-yellow-400'
+                : 'bg-green-500';
+        return (
+            <div className="w-full mt-2">
+                <div className="flex justify-between text-xs text-gray-400 mb-0.5">
+                    <span>SLA</span>
+                    <span>{pct}%</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-1.5">
+                    <div className={`h-1.5 rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                </div>
+            </div>
+        );
+    };
+
+    /**
+     * Helper: แสดงวันที่รับงาน และ ควรเริ่มงานภายใน
+     */
+    const renderDateInfo = (job) => {
+        const acceptedStr = job.acceptanceDate
+            ? new Date(job.acceptanceDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
+            : null;
+        const shouldStartStr = job.shouldStartBy
+            ? new Date(job.shouldStartBy).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+            : null;
+        const isPastShouldStart = job.shouldStartBy && new Date() > new Date(job.shouldStartBy) && activeTab !== 'done';
+
+        return (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mt-1">
+                {acceptedStr && (
+                    <span title="วันที่รับงาน">
+                        📥 รับงาน: {acceptedStr}
+                    </span>
+                )}
+                {shouldStartStr && (
+                    <span className={isPastShouldStart ? 'text-orange-600 font-semibold' : ''} title="ควรเริ่มงานภายในวันที่นี้เพื่อให้ทันส่งตาม SLA">
+                        {isPastShouldStart ? '⚡' : '🎯'} ควรเริ่มภายใน: {shouldStartStr}
+                    </span>
+                )}
+            </div>
+        );
+    };
+
+    /**
+     * Filter & Sort Logic (SLA-Aware)
+     * ลำดับ: urgent → overdue → shouldStart passed → critical → warning → normal
+     */
+    const getSortWeight = (job) => {
+        if (activeTab === 'done') return 0;
+        const isUrgent = job.priority?.toLowerCase() === 'urgent';
+        const isOverdue = job.hoursRemaining !== null && job.hoursRemaining < 0;
+        const isPastShouldStart = job.shouldStartBy && new Date() > new Date(job.shouldStartBy);
+        if (isUrgent && isOverdue) return 7;
+        if (isUrgent) return 6;
+        if (isOverdue) return 5;
+        if (isPastShouldStart) return 4;
+        if (job.healthStatus === 'critical') return 3;
+        if (job.healthStatus === 'warning') return 2;
+        return 1;
+    };
+
     const filteredJobs = jobs
         .filter(job => {
-            // Text Search
             const searchLower = searchTerm.toLowerCase();
-            const matchesSearch = job.subject.toLowerCase().includes(searchLower) ||
-                job.djId.toLowerCase().includes(searchLower);
-
-            // Project Filter
+            const matchesSearch = (job.subject || '').toLowerCase().includes(searchLower) ||
+                (job.djId || '').toLowerCase().includes(searchLower);
             const matchesProject = filterProject === 'all' || job.projectName === filterProject;
-
             return matchesSearch && matchesProject;
         })
         .sort((a, b) => {
-            // เสมอให้งานด่วนขึ้นก่อน ยกเว้นงานที่เสร็จแล้ว
-            const aIsActiveUrgent = a.priority?.toLowerCase() === 'urgent' && activeTab !== 'done';
-            const bIsActiveUrgent = b.priority?.toLowerCase() === 'urgent' && activeTab !== 'done';
-            
-            if (aIsActiveUrgent && !bIsActiveUrgent) return -1;
-            if (!aIsActiveUrgent && bIsActiveUrgent) return 1;
+            const weightDiff = getSortWeight(b) - getSortWeight(a);
+            if (weightDiff !== 0) return weightDiff;
 
             if (sortBy === 'priority') {
                 const priorityWeight = { 'urgent': 3, 'high': 2, 'normal': 1, 'low': 0 };
                 return (priorityWeight[b.priority?.toLowerCase()] || 0) - (priorityWeight[a.priority?.toLowerCase()] || 0);
             }
             if (sortBy === 'deadline') {
+                if (!a.deadline) return 1;
+                if (!b.deadline) return -1;
                 return new Date(a.deadline) - new Date(b.deadline);
             }
             if (sortBy === 'newest') {
-                return b.id - a.id; // Assuming ID correlates with creation time or use createdAt
+                return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
             }
             return 0;
         });
+
+    // แบ่งกลุ่มงาน: urgent, risk (overdue + shouldStart passed), normal
+    const urgentJobs = filteredJobs.filter(j => j.priority?.toLowerCase() === 'urgent' && activeTab !== 'done');
+    const riskJobs = filteredJobs.filter(j => {
+        if (j.priority?.toLowerCase() === 'urgent') return false;
+        if (activeTab === 'done') return false;
+        return (j.hoursRemaining !== null && j.hoursRemaining < 0) ||
+            (j.shouldStartBy && new Date() > new Date(j.shouldStartBy)) ||
+            j.healthStatus === 'critical';
+    });
+    const normalJobs = filteredJobs.filter(j => {
+        if (j.priority?.toLowerCase() === 'urgent' && activeTab !== 'done') return false;
+        const isRisk = (j.hoursRemaining !== null && j.hoursRemaining < 0) ||
+            (j.shouldStartBy && new Date() > new Date(j.shouldStartBy)) ||
+            j.healthStatus === 'critical';
+        if (isRisk && activeTab !== 'done') return false;
+        return true;
+    });
 
     return (
         <div className="space-y-6">
@@ -278,7 +427,7 @@ export default function MyQueue() {
                 <div className="flex gap-4">
                     <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-400">
                         <span className="text-sm text-gray-500 block">งานทั้งหมด</span>
-                        <span className="text-xl font-bold text-indigo-600">{jobs.length}</span>
+                        <span className="text-xl font-bold text-rose-600">{jobs.length}</span>
                     </div>
                     {stats.critical > 0 && (
                         <div className="bg-red-50 px-4 py-2 rounded-lg shadow-sm border border-red-100">
@@ -291,164 +440,153 @@ export default function MyQueue() {
                 </div>
             </div>
 
-            {/* Toolbar: Search & Filter */}
-            <div className="bg-white p-4 rounded-xl border border-gray-400 shadow-sm space-y-3 md:space-y-0 md:flex md:items-center md:gap-4">
-                <div className="flex-1 relative">
-                    <DocumentMagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                        type="text"
-                        placeholder="ค้นหา DJ ID, ชื่องาน..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border border-gray-400 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                    />
-                </div>
-                <div className="flex gap-2">
-                    <div className="w-40">
-                        <select
-                            value={filterProject}
-                            onChange={(e) => setFilterProject(e.target.value)}
-                            className="w-full pl-3 pr-8 py-2 border border-gray-400 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 appearance-none bg-white"
-                        >
-                            <option value="all">ทุกโปรเจกต์</option>
-                            {projects.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
+            {/* Toolbar: Search & Filter (ซ่อนเมื่ออยู่ใน Timeline tab) */}
+            {activeTab !== 'timeline' && (
+                <div className="bg-white p-4 rounded-xl border border-gray-400 shadow-sm space-y-3 md:space-y-0 md:flex md:items-center md:gap-4">
+                    <div className="flex-1 relative">
+                        <DocumentMagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="ค้นหา DJ ID, ชื่องาน..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border border-gray-400 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                        />
                     </div>
-                    <div className="w-40">
-                        <select
-                            value={sortBy}
-                            onChange={(e) => setSortBy(e.target.value)}
-                            className="w-full pl-3 pr-8 py-2 border border-gray-400 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 appearance-none bg-white"
-                        >
-                            <option value="deadline">📅 เรียงตามกำหนดส่ง</option>
-                            <option value="priority">🔥 เรียงตามความด่วน</option>
-                            <option value="newest">✨ เรียงตามงานใหม่</option>
-                        </select>
+                    <div className="flex gap-2">
+                        <div className="w-40">
+                            <select
+                                value={filterProject}
+                                onChange={(e) => setFilterProject(e.target.value)}
+                                className="w-full pl-3 pr-8 py-2 border border-gray-400 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 appearance-none bg-white"
+                            >
+                                <option value="all">ทุกโปรเจกต์</option>
+                                {projects.map(p => <option key={p} value={p}>{p}</option>)}
+                            </select>
+                        </div>
+                        <div className="w-40">
+                            <select
+                                value={sortBy}
+                                onChange={(e) => setSortBy(e.target.value)}
+                                className="w-full pl-3 pr-8 py-2 border border-gray-400 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 appearance-none bg-white"
+                            >
+                                <option value="deadline">📅 เรียงตามกำหนดส่ง</option>
+                                <option value="priority">🔥 เรียงตามความด่วน</option>
+                                <option value="newest">✨ เรียงตามงานใหม่</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
 
             {/* Tabs Navigation */}
             <div className="border-b border-gray-400">
-                <nav className="-mb-px flex space-x-8">
+                <nav className="-mb-px flex space-x-1 overflow-x-auto">
                     {TABS.map((tab) => {
                         const Icon = tab.icon;
                         const isActive = activeTab === tab.id;
+                        const count = tabCounts[tab.id] || 0;
                         return (
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
                                 className={`
-                                    flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors
+                                    flex items-center gap-2 py-4 px-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap
                                     ${isActive
-                                        ? `border-indigo-500 text-indigo-600`
+                                        ? `border-rose-500 text-rose-600`
                                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
                                 `}
                             >
-                                <Icon className={`w-5 h-5 ${isActive ? 'text-indigo-500' : 'text-gray-400'}`} />
+                                <Icon className={`w-5 h-5 ${isActive ? 'text-rose-500' : 'text-gray-400'}`} />
                                 {tab.label}
+                                {count > 0 && (
+                                    <span className={`inline-flex items-center justify-center w-5 h-5 text-xs rounded-full font-bold
+                                        ${isActive ? 'bg-rose-100 text-rose-700' : 'bg-gray-100 text-gray-600'}`}>
+                                        {count}
+                                    </span>
+                                )}
                             </button>
                         );
                     })}
                 </nav>
             </div>
 
-            {/* Job List */}
-            <div className="space-y-4">
-                {loading ? (
-                    <div className="text-center py-10 text-gray-500">กำลังโหลดข้อมูล...</div>
-                ) : filteredJobs.length === 0 ? (
-                    <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-400">
-                        <ClipboardDocumentListIcon className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                        <h3 className="text-lg font-medium text-gray-900">ไม่มีงานที่ตรงกับเงื่อนไข</h3>
-                        <p className="text-gray-500">ลองปรับเปลี่ยนตัวกรองหรือคำค้นหา</p>
+            {/* Tab Description Banner */}
+            {TAB_DESCRIPTIONS[activeTab] && (
+                <div className="flex items-start gap-3 bg-rose-50 border border-rose-100 rounded-xl px-4 py-3 text-sm">
+                    <span className="text-rose-400 text-base leading-snug mt-0.5">{TAB_DESCRIPTIONS[activeTab].icon}</span>
+                    <div>
+                        <span className="font-semibold text-rose-700">{TAB_DESCRIPTIONS[activeTab].title}: </span>
+                        <span className="text-rose-600">{TAB_DESCRIPTIONS[activeTab].desc}</span>
+                        <span className="ml-2 text-xs text-rose-400">{TAB_DESCRIPTIONS[activeTab].statuses}</span>
                     </div>
-                ) : (
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1">
-                        {filteredJobs.map((job) => (
-                            <div
-                                key={job.id}
-                                onClick={() => handleViewDetail(job.id)}
-                                className={`
-                                    bg-white rounded-lg shadow-sm border border-gray-400 p-5 
-                                    hover:shadow-md transition-shadow cursor-pointer relative
-                                    ${getHealthBorderColor(job.healthStatus)}
-                                    ${(job.priority?.toLowerCase() === 'urgent' && activeTab !== 'done') ? 'bg-red-50/30' : ''}
-                                `}
-                            >
-                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                    <div className="space-y-1 flex-1">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">
-                                                {job.djId}
-                                            </span>
-                                            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
-                                                {job.jobTypeName}
-                                            </span>
-                                            {(job.priority?.toLowerCase() === 'urgent' && activeTab !== 'done') && (
-                                                <span className="text-xs font-bold px-2 py-0.5 rounded bg-red-100 text-red-700 animate-pulse">
-                                                    🔥 Urgent
-                                                </span>
-                                            )}
-                                        </div>
-                                        <h3 className="text-lg font-bold text-gray-900 group-hover:text-indigo-600">
-                                            {job.subject}
-                                        </h3>
-                                        <div className="flex items-center gap-4 text-sm text-gray-500">
-                                            <span className="flex items-center gap-1">
-                                                <FolderIcon className="w-4 h-4" /> {job.projectName}
-                                            </span>
-                                            <span className="flex items-center gap-1" title={new Date(job.deadline).toLocaleString('th-TH')}>
-                                                <ClockIcon className="w-4 h-4" />
-                                                เหลือเวลา: {renderSLAText(job)}
-                                            </span>
-                                        </div>
+                </div>
+            )}
+
+            {/* Content Area */}
+            {activeTab === 'timeline' ? (
+                /* Timeline View */
+                (() => {
+                    console.log(`[MyQueue] 📅 Rendering Timeline View with ${jobs.length} jobs`);
+                    return <TimelineView jobs={jobs} onJobClick={handleViewDetail} />;
+                })()
+            ) : (
+                /* Job List View */
+                <div className="space-y-4">
+                    {loading ? (
+                        <div className="text-center py-10 text-gray-500">กำลังโหลดข้อมูล...</div>
+                    ) : filteredJobs.length === 0 ? (
+                        <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-400">
+                            <ClipboardDocumentListIcon className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                            <h3 className="text-lg font-medium text-gray-900">ไม่มีงานในหมวดนี้</h3>
+                            <p className="text-gray-500">ลองปรับเปลี่ยนตัวกรองหรือคำค้นหา</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-6">
+                            {/* Section: งานด่วน */}
+                            {urgentJobs.length > 0 && (
+                                <div>
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <ExclamationTriangleIcon className="w-4 h-4 text-red-600" />
+                                        <h3 className="text-sm font-bold text-red-700 uppercase tracking-wide">งานด่วน ({urgentJobs.length})</h3>
                                     </div>
-
-                                    {/* Action Section */}
-                                    <div className="flex items-center justify-between md:flex-col md:items-end gap-3 min-w-[140px]">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs text-gray-500">ผู้สั่งงาน</span>
-                                            <img
-                                                src={job.requesterAvatar || `https://ui-avatars.com/api/?name=${job.requesterName}&background=random`}
-                                                alt={job.requesterName}
-                                                className="w-6 h-6 rounded-full"
-                                                title={job.requesterName}
-                                            />
-                                        </div>
-
-                                        {/* Dynamic Action Button */}
-                                        {activeTab === 'todo' && (
-                                            <Button
-                                                size="sm"
-                                                onClick={(e) => handleStartJob(job.id, e)}
-                                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
-                                            >
-                                                <PlayCircleIcon className="w-4 h-4" /> เริ่มงาน
-                                            </Button>
-                                        )}
-                                        {activeTab === 'in_progress' && (
-                                            <Button
-                                                size="sm"
-                                                variant="secondary"
-                                                onClick={(e) => handleFinishJob(job.id, e)}
-                                                className="w-full text-amber-600 border-amber-200 hover:bg-amber-50"
-                                            >
-                                                <CheckCircleIcon className="w-4 h-4" /> ส่งงาน
-                                            </Button>
-                                        )}
-                                        {activeTab === 'waiting' && (
-                                            <span className="text-xs text-purple-600 bg-purple-50 px-3 py-1.5 rounded-full border border-purple-100">
-                                                ⏳ รอตรวจ
-                                            </span>
-                                        )}
+                                    <div className="grid gap-3">
+                                        {urgentJobs.map((job) => <JobCard key={job.id} job={job} activeTab={activeTab} onView={handleViewDetail} onStart={handleStartJob} onFinish={handleFinishJob} renderSLAText={renderSLAText} renderSLABar={renderSLABar} renderDateInfo={renderDateInfo} getHealthBorderColor={getHealthBorderColor} />)}
                                     </div>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
+                            )}
+
+                            {/* Section: ใกล้เลย SLA / เกินกำหนด */}
+                            {riskJobs.length > 0 && (
+                                <div>
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <ClockIcon className="w-4 h-4 text-orange-500" />
+                                        <h3 className="text-sm font-bold text-orange-600 uppercase tracking-wide">ต้องดำเนินการ / ใกล้เลย SLA ({riskJobs.length})</h3>
+                                    </div>
+                                    <div className="grid gap-3">
+                                        {riskJobs.map((job) => <JobCard key={job.id} job={job} activeTab={activeTab} onView={handleViewDetail} onStart={handleStartJob} onFinish={handleFinishJob} renderSLAText={renderSLAText} renderSLABar={renderSLABar} renderDateInfo={renderDateInfo} getHealthBorderColor={getHealthBorderColor} />)}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Section: งานปกติ */}
+                            {normalJobs.length > 0 && (
+                                <div>
+                                    {(urgentJobs.length > 0 || riskJobs.length > 0) && (
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <ClipboardDocumentListIcon className="w-4 h-4 text-gray-500" />
+                                            <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide">งานปกติ ({normalJobs.length})</h3>
+                                        </div>
+                                    )}
+                                    <div className="grid gap-3">
+                                        {normalJobs.map((job) => <JobCard key={job.id} job={job} activeTab={activeTab} onView={handleViewDetail} onStart={handleStartJob} onFinish={handleFinishJob} renderSLAText={renderSLAText} renderSLABar={renderSLABar} renderDateInfo={renderDateInfo} getHealthBorderColor={getHealthBorderColor} />)}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
@@ -458,5 +596,111 @@ function FolderIcon(props) {
         <svg {...props} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
         </svg>
+    );
+}
+
+function JobCard({ job, activeTab, onView, onStart, onFinish, renderSLAText, renderSLABar, renderDateInfo, getHealthBorderColor }) {
+    const isUrgent = job.priority?.toLowerCase() === 'urgent' && activeTab !== 'done';
+    const isPredecessorPending = job.predecessorDjId && job.predecessorStatus &&
+        !['completed', 'approved'].includes(job.predecessorStatus);
+
+    return (
+        <div
+            onClick={() => onView(job.id)}
+            className={`
+                bg-white rounded-lg shadow-sm border border-gray-200 p-4
+                hover:shadow-md transition-shadow cursor-pointer relative
+                ${getHealthBorderColor(job.healthStatus)}
+                ${isUrgent ? 'bg-red-50/40' : ''}
+            `}
+        >
+            <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                    {/* DJ ID + Type + Badges */}
+                    <div className="flex items-center flex-wrap gap-2 mb-1">
+                        <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">
+                            {job.djId}
+                        </span>
+                        {job.jobTypeName && (
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                {job.jobTypeName}
+                            </span>
+                        )}
+                        {isUrgent && (
+                            <span className="text-xs font-bold px-2 py-0.5 rounded bg-red-100 text-red-700 animate-pulse">
+                                🔥 Urgent
+                            </span>
+                        )}
+                        {isPredecessorPending && (
+                            <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-500 border border-gray-200" title={`รอ ${job.predecessorDjId}`}>
+                                ⛓ รอ {job.predecessorDjId}
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Subject */}
+                    <h3 className="text-base font-bold text-gray-900 truncate">{job.subject}</h3>
+
+                    {/* Project + SLA time */}
+                    <div className="flex items-center flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500 mt-1">
+                        {job.projectName && (
+                            <span className="flex items-center gap-1">
+                                <FolderIcon className="w-3.5 h-3.5" /> {job.projectName}
+                            </span>
+                        )}
+                        <span className="flex items-center gap-1">
+                            <ClockIcon className="w-3.5 h-3.5" />
+                            {renderSLAText(job)}
+                        </span>
+                        {job.deadline && activeTab !== 'done' && (
+                            <span className="text-xs text-gray-400" title="กำหนดส่ง">
+                                📅 {new Date(job.deadline).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Date info: accepted + shouldStartBy */}
+                    {renderDateInfo(job)}
+
+                    {/* SLA Progress Bar */}
+                    {renderSLABar(job)}
+                </div>
+
+                {/* Action Section */}
+                <div className="flex items-center md:flex-col md:items-end gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5">
+                        <img
+                            src={job.requesterAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(job.requesterName || 'U')}&background=random&size=32`}
+                            alt={job.requesterName}
+                            className="w-6 h-6 rounded-full border border-gray-200"
+                            title={`ผู้สั่งงาน: ${job.requesterName}`}
+                        />
+                        <span className="text-xs text-gray-400 hidden md:block">{job.requesterName}</span>
+                    </div>
+
+                    {activeTab === 'todo' && (
+                        <button
+                            onClick={(e) => onStart(job.id, e)}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium rounded-lg shadow-sm transition-colors"
+                        >
+                            <PlayCircleIcon className="w-3.5 h-3.5" /> เริ่มงาน
+                        </button>
+                    )}
+                    {activeTab === 'in_progress' && (
+                        <button
+                            onClick={(e) => onFinish(job.id, e)}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium rounded-lg shadow-sm transition-colors"
+                        >
+                            <CheckCircleIcon className="w-3.5 h-3.5" /> ส่งงาน
+                        </button>
+                    )}
+                    {activeTab === 'waiting' && (
+                        <span className="text-xs text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full border border-purple-100">
+                            ⏳ รอตรวจ
+                        </span>
+                    )}
+                </div>
+            </div>
+        </div>
     );
 }

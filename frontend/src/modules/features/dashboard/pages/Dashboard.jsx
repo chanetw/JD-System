@@ -64,7 +64,9 @@ export default function Dashboard() {
 
                 // โหลดรายการงานตาม Role
                 const jobsData = await api.getJobsByRole(user);
-                setJobs(jobsData);
+
+                // รองรับทั้งแบบ Array ธรรมดา และแบบ Object { data, stats } จาก API ใหม่
+                setJobs(Array.isArray(jobsData) ? jobsData : (jobsData?.data || []));
             } catch (error) {
                 console.error('Error loading dashboard:', error);
             } finally {

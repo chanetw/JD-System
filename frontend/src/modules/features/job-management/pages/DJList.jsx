@@ -74,10 +74,17 @@ export default function DJList() {
             // 🔥 Security: Fetch jobs based on Role (Least Privilege)
             // Always use getJobsByRole to pass correct role parameter to backend
             // getJobs() without role defaults to 'requester' on backend, which is incorrect for admin
-            const [jobsData, masterDataResult] = await Promise.all([
+            const [jobsResponse, masterDataResult] = await Promise.all([
                 api.getJobsByRole(user),
                 api.getMasterData()
             ]);
+
+            // ✅ JobService.getJobsByRole ส่งกลับมาได้สองรูปแบบตามว่า Backend มี stats หรือไม่:
+            // 1. Array โดยตรง (กรณีไม่มี stats)
+            // 2. Object { data: [...], stats: {...} } (กรณีมี stats)
+            // ต้อง Unwrap ก่อนใช้งาน
+            const jobsData = Array.isArray(jobsResponse) ? jobsResponse : (jobsResponse?.data || []);
+
             console.log(`[DJList] Loaded ${jobsData.length} jobs. First job:`, jobsData[0]);
 
             // === Scope-based Filtering (ใหม่) ===
@@ -85,7 +92,7 @@ export default function DJList() {
             let scopeFilteredJobs = jobsData;
             if (user?.id && user?.tenantId) {
                 const scopes = await getUserScopes(user.id);
-                const hasTenantScope = scopes.some(s => s.scope_level === 'Tenant');
+                const hasTenantScope = scopes.some(s => s.scope_level?.toLowerCase() === 'tenant');
 
                 if (!hasTenantScope && scopes.length > 0) {
                     // ถ้ามี scope แต่ไม่ใช่ Tenant level ให้ filter ตาม project
@@ -153,7 +160,7 @@ export default function DJList() {
             // 3.1 งาน Urgent ที่ยังไม่เสร็จให้อยู่บนสุด
             const aIsActiveUrgent = a.priority?.toLowerCase() === 'urgent' && !['completed', 'rejected', 'cancelled'].includes(a.status?.toLowerCase());
             const bIsActiveUrgent = b.priority?.toLowerCase() === 'urgent' && !['completed', 'rejected', 'cancelled'].includes(b.status?.toLowerCase());
-            
+
             if (aIsActiveUrgent && !bIsActiveUrgent) return -1;
             if (!aIsActiveUrgent && bIsActiveUrgent) return 1;
 
@@ -186,7 +193,7 @@ export default function DJList() {
         result = result.filter(job => {
             if (job.isParent) {
                 const childCount = parentChildCount[job.id] || 0;
-                
+
                 // ซ่อน Parent ที่มี Child เดียว (ให้แสดง Child เดี่ยวๆ ไปเลย)
                 if (childCount === 1) {
                     console.log(`[DJList] Hidden parent ${job.djId} (has only 1 child)`);
@@ -218,21 +225,21 @@ export default function DJList() {
     // ============================================
     // Status Calculation Logic
     // ============================================
-    
+
     /** คำนวณ Approval Status ของงานแม่จากงานลูกโดยตรง */
     const calculateParentApprovalStatus = (children) => {
         if (!children || children.length === 0) return null;
-        
+
         // 1. ถ้ามีลูกที่ถูกปฏิเสธ
         if (children.some(j => j.status === 'rejected' || j.status === 'returned')) {
             return 'rejected';
         }
-        
+
         // 2. ถ้ามีลูกที่ยังรออนุมัติ
         if (children.some(j => j.status?.includes('pending') && j.status !== 'pending_dependency')) {
             return 'pending_approval';
         }
-        
+
         // 3. ลูกทั้งหมดได้รับการอนุมัติแล้ว
         return 'approved';
     };
@@ -240,19 +247,19 @@ export default function DJList() {
     /** คำนวณ Job Status ของงานแม่จากงานลูกโดยตรง */
     const calculateParentJobStatus = (children) => {
         if (!children || children.length === 0) return null;
-        
+
         // 1. ถ้ามีลูกที่กำลังทำ
         if (children.some(j => j.status === 'in_progress')) {
             return 'in_progress';
         }
-        
+
         // 2. ถ้าลูกทั้งหมด "สิ้นสุด" แล้ว (เสร็จ/ถูกปฏิเสธ/อนุมัติผ่านแล้วแต่ไม่มีใครทำ)
         const terminalStatuses = ['completed', 'rejected', 'returned', 'approved', 'closed'];
         const allFinished = children.every(j => terminalStatuses.includes(j.status));
         if (allFinished) {
             return 'completed';
         }
-        
+
         // 3. ลูกทั้งหมดรอคิว (ยังไม่เริ่ม)
         return 'pending_dependency';
     };
@@ -500,8 +507,8 @@ export default function DJList() {
                                             onToggleExpand={() => toggleRowExpansion(job.id)}
                                             rowClass={
                                                 job.status === 'scheduled' ? 'bg-violet-50/30 hover:bg-violet-50' :
-                                                (job.priority?.toLowerCase() === 'urgent' && !['completed', 'rejected', 'cancelled'].includes(job.status?.toLowerCase())) ? 'bg-red-50/50 hover:bg-red-100/50' : 
-                                                'hover:bg-gray-50'
+                                                    (job.priority?.toLowerCase() === 'urgent' && !['completed', 'rejected', 'cancelled'].includes(job.status?.toLowerCase())) ? 'bg-red-50/50 hover:bg-red-100/50' :
+                                                        'hover:bg-gray-50'
                                             }
                                         />
                                         {/* Child Jobs (Accordion) */}
@@ -510,21 +517,21 @@ export default function DJList() {
                                                 // 1. Build a map of job dependencies
                                                 const childrenMap = new Map();
                                                 job.children.forEach(c => childrenMap.set(c.id, c));
-                                                
+
                                                 // 2. Find chains by tracing from jobs with no successors (leaves) backwards
                                                 // First, find all jobs that are a predecessor to someone
                                                 const predecessorIds = new Set(job.children.map(c => c.predecessorId).filter(Boolean));
-                                                
+
                                                 // Leaves are jobs that are NOT predecessors to any other job
                                                 const leaves = job.children.filter(c => !predecessorIds.has(c.id));
-                                                
+
                                                 // Build chains from leaves to roots
                                                 const jobChains = new Map(); // jobId -> { index, total }
-                                                
+
                                                 leaves.forEach(leaf => {
                                                     const chain = [];
                                                     let current = leaf;
-                                                    
+
                                                     // Trace backwards
                                                     while (current) {
                                                         chain.unshift(current.id); // Add to front so root is at index 0
@@ -534,7 +541,7 @@ export default function DJList() {
                                                             current = null;
                                                         }
                                                     }
-                                                    
+
                                                     // Only assign sequence numbers if chain length > 1
                                                     // (Standalone jobs like EDM will have chain length 1, so they won't get x/y numbering)
                                                     if (chain.length > 1) {
@@ -571,9 +578,9 @@ export default function DJList() {
                                                             isChild={true}
                                                             childInfo={chainInfo} // Pass undefined for standalone jobs
                                                             rowClass={
-                                                                (child.priority?.toLowerCase() === 'urgent' && !['completed', 'rejected', 'cancelled'].includes(child.status?.toLowerCase())) 
-                                                                ? 'bg-red-50/80 hover:bg-red-100/80' 
-                                                                : 'bg-gray-50/80 hover:bg-gray-100'
+                                                                (child.priority?.toLowerCase() === 'urgent' && !['completed', 'rejected', 'cancelled'].includes(child.status?.toLowerCase()))
+                                                                    ? 'bg-red-50/80 hover:bg-red-100/80'
+                                                                    : 'bg-gray-50/80 hover:bg-gray-100'
                                                             }
                                                         />
                                                     );
@@ -680,17 +687,17 @@ function Th({ children }) {
 /**
  * JobRow Component: แสดงแถวข้อมูลงาน DJ ในตาราง
  */
-function JobRow({ 
+function JobRow({
     id, pkId, project, type, subject, status, priority,
     calculatedApprovalStatus, calculatedJobStatus,
-    submitDate, deadline, sla, assignee, 
+    submitDate, deadline, sla, assignee,
     isParent, hasChildren, isExpanded, onToggleExpand,
-    isChild, childInfo, rowClass = 'hover:bg-gray-50' 
+    isChild, childInfo, rowClass = 'hover:bg-gray-50'
 }) {
-    // กำหนดสถานะที่จะแสดง
+    // กำหนดสถานะที่จะแสดง — แยก "สถานะอนุมัติ" กับ "สถานะงาน"
     let displayApprovalStatus = status;
     let displayJobStatus = status;
-    
+
     if (isParent && hasChildren) {
         displayApprovalStatus = calculatedApprovalStatus || status;
         displayJobStatus = calculatedJobStatus || status;
@@ -703,10 +710,24 @@ function JobRow({
             displayApprovalStatus = 'approved'; // ผ่านแล้วแต่รอคิว
             displayJobStatus = 'pending_dependency';
         } else {
-            // in_progress, completed, rejected ฯลฯ
             displayApprovalStatus = status === 'rejected' ? 'rejected' : 'approved';
             displayJobStatus = status;
         }
+    } else {
+        // งานปกติ (ไม่ใช่ parent/child) — แยกตามตาราง Mapping
+        // สถานะอนุมัติ: pending → รออนุมัติ, approved/assigned/in_progress/completed → อนุมัติแล้ว, rejected → ไม่อนุมัติ
+        // สถานะงาน: approved → ยังไม่มอบหมาย, assigned → ได้รับมอบหมาย, in_progress → กำลังทำ, completed → เสร็จแล้ว
+        if (status?.includes('pending') && status !== 'pending_dependency' && status !== 'pending_rejection') {
+            displayApprovalStatus = status; // pending_approval, pending_level_2, etc.
+            displayJobStatus = status;      // Badge จะแสดง "-" ผ่าน workTexts
+        } else if (['approved', 'assigned', 'in_progress', 'completed', 'rejected_by_assignee'].includes(status)) {
+            displayApprovalStatus = 'approved';
+            displayJobStatus = status;
+        } else if (status === 'rejected') {
+            displayApprovalStatus = 'rejected';
+            displayJobStatus = status;      // Badge จะแสดง "-" ผ่าน workTexts
+        }
+        // อื่นๆ (draft, scheduled, cancelled ฯลฯ) ใช้ status ตรงๆ
     }
 
     return (
@@ -714,7 +735,7 @@ function JobRow({
             <td className="px-4 py-3">
                 <div className={`flex items-center ${isChild ? 'pl-6 border-l-2 border-gray-300' : ''}`}>
                     {isParent && hasChildren && (
-                        <button 
+                        <button
                             onClick={onToggleExpand}
                             className="mr-2 text-gray-500 hover:text-gray-700 focus:outline-none transition-transform duration-200"
                             style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}

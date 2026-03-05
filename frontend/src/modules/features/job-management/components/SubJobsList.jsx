@@ -21,10 +21,26 @@ const SubJobsList = ({ jobs }) => {
                         <Link to={`/jobs/${job.id}`} className="block hover:bg-gray-50">
                             <div className="px-4 py-4 sm:px-6">
                                 <div className="flex items-center justify-between">
-                                    <p className="text-sm font-medium text-indigo-600 truncate">
-                                        {job.djId} {job.subject}
-                                    </p>
-                                    <div className="ml-2 flex-shrink-0 flex">
+                                    <div className="flex flex-col">
+                                        <p className="text-sm font-medium text-indigo-600 truncate">
+                                            {job.djId} {job.subject}
+                                        </p>
+
+                                        {/* 📦 Show Sub-items as Badges */}
+                                        {job.items && job.items.length > 0 && (
+                                            <div className="flex flex-wrap gap-2 mt-1.5">
+                                                {job.items.map((item, idx) => (
+                                                    <span
+                                                        key={item.id || idx}
+                                                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 text-rose-700 border border-rose-100"
+                                                    >
+                                                        📦 {item.name} {(item.quantity !== null && item.quantity !== undefined) ? `(${item.quantity} ชิ้น)` : ''}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="ml-2 flex-shrink-0 flex items-start">
                                         <Badge status={job.status} />
                                     </div>
                                 </div>

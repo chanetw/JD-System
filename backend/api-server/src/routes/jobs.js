@@ -41,10 +41,12 @@ router.get('/', async (req, res) => {
     const prisma = getDatabase();
     const userId = req.user.userId;
     const tenantId = req.user.tenantId;
-    
+
     console.log(`[Jobs API] User ${userId} requesting jobs with roles: ${role}`);
 
     let where = { tenantId };
+    // Track jobs where user is the CURRENT level approver (for Approvals Queue filter)
+    const currentApproverJobIds = new Set();
 
     // Multi-role support: role can be comma-separated (e.g. "requester,approver")
     const roles = role.split(',').map(r => r.trim().toLowerCase()).filter(Boolean);
@@ -55,8 +57,7 @@ router.get('/', async (req, res) => {
       switch (singleRole) {
         case 'requester':
           // ✅ Requester sees ALL jobs they created (parent, child, and single jobs)
-          // This provides full transparency - if they create a parent with 3 children,
-          // they should see all 4 jobs (1 parent + 3 children)
+          // This provides full transparency
           return {
             requesterId: userId
           };
@@ -85,31 +86,31 @@ router.get('/', async (req, res) => {
                 { status: 'pending_approval' },
                 { status: { startsWith: 'pending_level_' } },
                 { status: 'pending_dependency' },  // ✅ Sequential jobs waiting for predecessor
+                { status: 'pending_rejection' },   // ✅ Request to cancel job
                 { status: 'rejected' },
                 { status: 'returned' },
                 // Include jobs this user has already approved (for history)
                 {
                   approvals: {
                     some: {
-                      approverId: userId,
-                      status: 'approved'
+                      approverId: userId
                     }
                   }
                 }
               ],
               isParent: false  // Only child + single jobs (not parent jobs)
             },
-            select: { 
-              id: true, 
-              status: true, 
-              projectId: true, 
+            select: {
+              id: true,
+              status: true,
+              projectId: true,
               jobTypeId: true,
               priority: true
             }
           });
 
           const validJobIds = [];
-          
+
           if (allJobs.length === 0) return null;
 
           // ⚡ Performance Fix: Batch query for history approvals
@@ -117,9 +118,9 @@ router.get('/', async (req, res) => {
             where: {
               jobId: { in: allJobs.map(j => j.id) },
               approverId: userId,
-              status: { in: ['approved', 'rejected', 'returned'] } // รวมงานที่เคย reject/return ด้วย
+              status: { in: ['approved', 'rejected', 'returned'] } // รวมงานที่เคย reject/return/approve ด้วย
             },
-            select: { 
+            select: {
               jobId: true,
               approvedAt: true,
               comment: true,
@@ -129,7 +130,7 @@ router.get('/', async (req, res) => {
               approvedAt: 'desc' // กรณีที่มีหลาย approval (เช่น return แล้ว approve ใหม่) เอาล่าสุด
             }
           });
-          
+
           const approvedJobMap = new Map();
           approvedJobs.forEach(a => {
             if (!approvedJobMap.has(a.jobId)) {
@@ -153,13 +154,13 @@ router.get('/', async (req, res) => {
             const [projIdStr, jobTypeIdStr] = key.split('_');
             const pId = parseInt(projIdStr, 10);
             const jtId = jobTypeIdStr !== 'null' ? parseInt(jobTypeIdStr, 10) : null;
-            
+
             // Find job to get priority for urgent flow fallback
             const sampleJob = allJobs.find(j => j.projectId === pId && j.jobTypeId === jtId);
             const priority = sampleJob ? sampleJob.priority : 'normal';
-            
+
             console.log(`[Approver Queue] Flow key: ${key}, Priority: ${priority}, SampleJob ID: ${sampleJob?.id}`);
-            
+
             const flow = await approvalService.getApprovalFlow(pId, jtId, priority);
             flowMap.set(key, flow);
           }
@@ -168,18 +169,20 @@ router.get('/', async (req, res) => {
           // or if they have already approved it (for history tab).
           console.log(`[Approver Queue] Total jobs found: ${allJobs.length}`);
           console.log(`[Approver Queue] Jobs with priority urgent:`, allJobs.filter(j => j.priority?.toLowerCase() === 'urgent').map(j => ({ id: j.id, priority: j.priority, status: j.status })));
-          
+
           for (const job of allJobs) {
             // If they already approved it, always include it (for history)
             if (approvedJobIds.has(job.id)) {
               validJobIds.push(job.id);
+              currentApproverJobIds.add(job.id); // history = they were the approver
               continue;
             }
 
             // If job is rejected/returned/pending_dependency, skip current level check (they might need to see it)
-            if (['rejected', 'returned', 'pending_dependency'].includes(job.status)) {
-               validJobIds.push(job.id);
-               continue;
+            if (['rejected', 'returned', 'pending_dependency', 'pending_rejection'].includes(job.status)) {
+              validJobIds.push(job.id);
+              currentApproverJobIds.add(job.id); // rejected/returned = active participant
+              continue;
             }
 
             // Determine current level
@@ -188,27 +191,48 @@ router.get('/', async (req, res) => {
             else if (job.status.startsWith('pending_level_')) {
               currentLevel = parseInt(job.status.split('_')[2], 10);
             }
+            // ✅ สำหรับ pending_rejection จะใช้ fallback ระดับสูงสุด/ล่าสุด หรือให้ currentLevel=0 (เพราะข้าม check level ด้านล่างไปดึงผ่าน fallback)
+            // แต่เนื่องจากเราต้องการให้ Approver เห็นงาน pending_rejection ในหน้าคิว เราจึงจำเป็นต้องเซ็ต currentApprover ด้วยวิธีอื่น หรือให้ผ่านเงื่อนไข level
+
+            if (job.status === 'pending_rejection') {
+              validJobIds.push(job.id);
+              currentApproverJobIds.add(job.id); // For rejection request, we let the frontend/API decide who actually approves it or we just broadcast to approvers
+              continue;
+            }
 
             if (currentLevel > 0) {
               // Get flow from pre-fetched map
               const flowKey = `${job.projectId}_${job.jobTypeId || 'null'}`;
               const approvalFlow = flowMap.get(flowKey);
               let isApproverForCurrentLevel = false;
+              let isApproverInAnyLevel = false;
 
               if (approvalFlow && approvalFlow.approverSteps && Array.isArray(approvalFlow.approverSteps)) {
+                // Check current level (for Approvals Queue priority)
                 const currentLevelConfig = approvalFlow.approverSteps.find(s => s.stepNumber === currentLevel || s.level === currentLevel);
-                
+
                 if (currentLevelConfig && currentLevelConfig.approvers && Array.isArray(currentLevelConfig.approvers)) {
-                  // Check if user is in the approvers list for the current level
                   isApproverForCurrentLevel = currentLevelConfig.approvers.some(a => {
                     const approverId = a.id || a.userId;
                     return String(approverId) === String(userId);
                   });
                 }
+
+                // ✅ Also check if user is approver in ANY level of this flow
+                // This allows them to see jobs in DJ List even if not yet at their level
+                isApproverInAnyLevel = approvalFlow.approverSteps.some(step =>
+                  step.approvers && Array.isArray(step.approvers) &&
+                  step.approvers.some(a => String(a.id || a.userId) === String(userId))
+                );
               }
 
               if (isApproverForCurrentLevel) {
-                console.log(`[Approver Queue] User ${userId} is approver for job ${job.id} (Priority: ${job.priority}, Status: ${job.status})`);
+                console.log(`[Approver Queue] User ${userId} is approver for CURRENT level of job ${job.id} (Level: ${currentLevel}, Priority: ${job.priority})`);
+                validJobIds.push(job.id);
+                currentApproverJobIds.add(job.id);
+              } else if (isApproverInAnyLevel) {
+                // User is a future approver — include for DJ List visibility (read-only until their level)
+                console.log(`[Approver Queue] User ${userId} is future approver for job ${job.id} (Current level: ${currentLevel}, Priority: ${job.priority})`);
                 validJobIds.push(job.id);
               } else {
                 console.log(`[Approver Queue] User ${userId} NOT approver for job ${job.id} (Priority: ${job.priority}, Status: ${job.status})`);
@@ -221,6 +245,33 @@ router.get('/', async (req, res) => {
 
           if (validJobIds.length === 0) {
             return null;  // Signal no jobs found
+          }
+
+          // ✅ Also include parent jobs of child jobs in validJobIds
+          // Frontend DJList needs parent jobs to render parent-child accordion correctly
+          const childJobsWithParent = await prisma.job.findMany({
+            where: {
+              id: { in: validJobIds },
+              parentJobId: { not: null }
+            },
+            select: { id: true, parentJobId: true }
+          });
+          const allParentJobIds = [...new Set(
+            childJobsWithParent.map(j => j.parentJobId).filter(Boolean)
+          )].filter(pid => !validJobIds.includes(pid));
+
+          if (allParentJobIds.length > 0) {
+            console.log(`[Approver Queue] Adding ${allParentJobIds.length} parent jobs for accordion display`);
+            validJobIds.push(...allParentJobIds);
+            // Only mark parent as currentApprover if at least one child is a current approver job
+            allParentJobIds.forEach(pid => {
+              const hasCurrentApproverChild = childJobsWithParent.some(
+                c => c.parentJobId === pid && currentApproverJobIds.has(c.id)
+              );
+              if (hasCurrentApproverChild) {
+                currentApproverJobIds.add(pid);
+              }
+            });
           }
 
           return {
@@ -242,8 +293,45 @@ router.get('/', async (req, res) => {
             }]
           };
         case 'superadmin':
-        case 'admin':
+        case 'admin': {
+          // ✅ Admin/Superadmin = Superuser mode: see all jobs and can approve all pending jobs
+          // Mark all pending jobs as isCurrentApprover=true for admin
+          const allJobs = await prisma.job.findMany({
+            where: {
+              tenantId,
+              OR: [
+                { status: 'pending_approval' },
+                { status: { startsWith: 'pending_level_' } },
+                { status: 'pending_dependency' },
+                { status: 'pending_rejection' },
+                { status: 'rejected' },
+                { status: 'returned' },
+                { status: 'approved' },
+                // Include jobs this user has already approved (for history)
+                {
+                  approvals: {
+                    some: {
+                      approverId: userId
+                    }
+                  }
+                }
+              ]
+            },
+            select: { id: true, status: true }
+          });
+
+          // Admin can approve all pending jobs
+          allJobs.forEach(job => {
+            if (job.status === 'pending_approval' ||
+              job.status?.startsWith('pending_level_') ||
+              job.status === 'assignee_rejected' ||
+              job.status === 'pending_rejection') {
+              currentApproverJobIds.add(job.id);
+            }
+          });
+
           return {}; // no additional filter = see all
+        }
         default:
           return { requesterId: userId }; // fallback to requester
       }
@@ -286,11 +374,18 @@ router.get('/', async (req, res) => {
       if (status === 'todo') {
         where.status = { in: ['assigned'] };
       } else if (status === 'in_progress') {
-        where.status = 'in_progress';
+        // รวม: approved, assigned, in_progress, correction, rework, returned, pending_dependency
+        where.status = { in: ['approved', 'assigned', 'in_progress', 'correction', 'rework', 'returned', 'pending_dependency'] };
+      } else if (status === 'completed') {
+        where.status = { in: ['completed', 'closed'] };
+      } else if (status === 'rejected') {
+        where.status = { in: ['rejected', 'rejected_by_assignee'] };
       } else if (status === 'waiting') {
         where.status = { in: ['correction', 'pending_approval'] };
       } else if (status === 'done') {
         where.status = { in: ['completed', 'closed'] };
+      } else if (status === 'all') {
+        // No status filter - return all jobs
       } else {
         where.status = status;
       }
@@ -402,7 +497,24 @@ router.get('/', async (req, res) => {
         predecessorSubject: j.predecessor?.subject || null,
         predecessorStatus: j.predecessor?.status || null,
         lastActivityAt: j.activityLogs?.[0]?.createdAt || j.createdAt,
-        historyData: historyData // ส่งข้อมูลประวัติแนบไปด้วย
+        historyData: historyData, // ส่งข้อมูลประวัติแนบไปด้วย
+        // ✅ Flag: user is the approver for the CURRENT level of this job (for Approvals Queue)
+        // false = user is a future-level approver (can see in DJ List but cannot approve yet)
+        isCurrentApprover: currentApproverJobIds.has(j.id)
+      }
+    });
+
+    // We also need to add 'historyData' logic for returned jobs from the loaded 'historyData' where possible:
+    // This is just mapping, historyData already set correctly above inside the map function.
+
+    // ✅ Count urgent jobs (all, not just paginated)
+    // Exclude parent jobs - they are containers, not actionable items
+    const urgentCount = await prisma.job.count({
+      where: {
+        ...where,
+        isParent: false,
+        priority: 'urgent',
+        status: { in: ['pending_approval', 'pending_rejection'] } // นับเฉพาะงานรออนุมัติที่เป็น urgent
       }
     });
 
@@ -414,6 +526,9 @@ router.get('/', async (req, res) => {
         limit: parseInt(limit),
         total,
         totalPages: Math.ceil(total / parseInt(limit))
+      },
+      stats: {
+        urgentCount
       }
     });
 
@@ -955,7 +1070,8 @@ router.get('/:id', async (req, res) => {
             status: true,
             jobType: { select: { id: true, name: true } },
             assignee: { select: { id: true, firstName: true, lastName: true, displayName: true } },
-            dueDate: true
+            dueDate: true,
+            jobItems: { select: { id: true, name: true, quantity: true, status: true } } // ✅ NEW: ดึง items ของงานย่อยมาด้วย
           },
           where: { isParent: false },  // ⚡ Performance: Only non-parent children
           orderBy: { createdAt: 'asc' },
@@ -1081,7 +1197,8 @@ router.get('/:id', async (req, res) => {
         status: child.status,
         jobType: child.jobType?.name,
         assignee: child.assignee ? (child.assignee.displayName || `${child.assignee.firstName || ''} ${child.assignee.lastName || ''}`.trim()) : null,
-        deadline: child.dueDate
+        deadline: child.dueDate,
+        items: child.jobItems || [] // ✅ NEW: Pass items for UI
       })) || [],
       // Parent job for child
       parentJob: job.parentJob ? {
@@ -1121,7 +1238,7 @@ router.get('/:id', async (req, res) => {
           avatar: c.user?.avatarUrl
         }
       })) || [],
-      
+
       // NEW: Pending Rejection Request for Approver Action
       rejectionRequest: job.rejectionRequests && job.rejectionRequests.length > 0 ? {
         id: job.rejectionRequests[0].id,
@@ -1224,7 +1341,7 @@ router.post('/:id/approve', async (req, res) => {
       ipAddress
     });
 
-    // ✅ NEW: Handle Urgent Job Rescheduling (Part D)
+    // ✅ NEW: Handle Urgent Job Rescheduling - Trigger เมื่ออนุมัติครบทุก level
     if (result.success) {
       try {
         const prisma = getDatabase();
@@ -1234,24 +1351,50 @@ router.post('/:id/approve', async (req, res) => {
         const job = await prisma.job.findUnique({
           where: { id: jobId },
           select: {
+            id: true,
+            djId: true,
             priority: true,
             assigneeId: true,
-            dueDate: true
+            dueDate: true,
+            status: true,
+            tenantId: true
           }
         });
 
-        // If urgent job, reschedule competing jobs
+        // If urgent job, check if final approval and reschedule
         if (job && job.priority === 'urgent' && job.assigneeId && job.dueDate) {
-          const rescheduleResult = await chainService.rescheduleForUrgent(job, prisma);
+          // ตรวจสอบว่าผ่านการอนุมัติครบหรือไม่
+          const approvalRecords = await prisma.approval.findMany({
+            where: { jobId: job.id },
+            orderBy: { level: 'asc' }
+          });
 
-          if (rescheduleResult.rescheduled > 0) {
-            console.log(
-              `[Jobs] Urgent Job Rescheduled: ${rescheduleResult.rescheduled} competing jobs shifted +${rescheduleResult.shiftDays} days`,
-              { affected: rescheduleResult.affected.map(a => a.djId) }
-            );
+          // ถ้ามี approval records และ level สุดท้ายอนุมัติแล้ว
+          const isFinalApproved = approvalRecords.length > 0 && 
+            approvalRecords.every(a => a.status === 'approved');
 
-            // Append reschedule info to result
-            result.rescheduled = rescheduleResult;
+          // หรือถ้าเป็นงานที่ skip approval (status = 'assigned' หรือ 'approved' โดยตรง)
+          const isSkipApproval = ['assigned', 'approved'].includes(job.status) && 
+            approvalRecords.length === 0;
+
+          if (isFinalApproved || isSkipApproval) {
+            console.log(`[Jobs] 🚨 Urgent job ${job.djId} passed final approval - triggering reschedule`);
+            
+            const rescheduleResult = await chainService.rescheduleForUrgent(job, prisma);
+
+            if (rescheduleResult.rescheduled > 0) {
+              console.log(
+                `[Jobs] ✅ Urgent Job Rescheduled: ${rescheduleResult.rescheduled} jobs extended +${rescheduleResult.shiftDays} working days`,
+                { affected: rescheduleResult.affected.map(a => a.djId) }
+              );
+
+              // Append reschedule info to result
+              result.rescheduled = rescheduleResult;
+            } else {
+              console.log(`[Jobs] ℹ️  No jobs to reschedule for urgent job ${job.djId}`);
+            }
+          } else {
+            console.log(`[Jobs] ⏸️  Urgent job ${job.djId} not yet final approved - skip reschedule`);
           }
         }
       } catch (rescheduleError) {
@@ -1505,7 +1648,15 @@ router.post('/:id/request-rejection', async (req, res) => {
         assigneeId: true,
         projectId: true,
         jobTypeId: true,
-        requesterId: true
+        requesterId: true,
+        priority: true,
+        flowSnapshot: true,
+        approvals: {
+          where: { status: 'approved' },
+          select: { id: true, approverId: true, stepNumber: true },
+          orderBy: { stepNumber: 'desc' },
+          take: 1
+        }
       }
     });
 
@@ -1553,36 +1704,62 @@ router.post('/:id/request-rejection', async (req, res) => {
       });
     }
 
-    // Get approval flow to determine approvers
+    // หาผู้อนุมัติสำหรับ rejection request:
+    // ใช้คนที่อนุมัติงานล่าสุด (stepNumber สูงสุด) ก่อน endprocess/assign
     let approverIds = [];
     let approverLevel = null;
-    let approvalLogic = 'ANY'; // Default: any approver can approve
+    let approvalLogic = 'ANY';
 
-    try {
-      const approvalFlow = await approvalService.getApprovalFlow(job.projectId, job.jobTypeId);
-
-      if (approvalFlow && approvalFlow.approverSteps && approvalFlow.approverSteps.length > 0) {
-        // Use first level approvers for rejection approval
-        const level1 = approvalFlow.approverSteps.find(s => s.stepNumber === 1);
-        if (level1 && level1.approvers) {
-          approverLevel = 1;
-          approverIds = level1.approvers.map(a => a.id || a.userId).filter(Boolean);
-          approvalLogic = level1.allMustApprove ? 'ALL' : 'ANY';
-        }
-      }
-    } catch (flowErr) {
-      console.warn('[Jobs] Could not get approval flow for rejection request:', flowErr);
+    // Step 1: ลองหาจาก Approval record จริง (คนที่อนุมัติงานล่าสุด)
+    if (job.approvals && job.approvals.length > 0) {
+      const lastApproval = job.approvals[0]; // ถูก order by stepNumber desc แล้ว
+      approverIds = [lastApproval.approverId];
+      approverLevel = lastApproval.stepNumber;
+      console.log(`[Jobs] Rejection approver from approval record: userId=${lastApproval.approverId}, step=${lastApproval.stepNumber}`);
     }
 
-    // If no approvers found from flow, use requester as fallback
+    // Step 2: ถ้าไม่มี Approval record → หาจาก flowSnapshot (Level สูงสุดก่อน endprocess)
+    if (approverIds.length === 0 && job.flowSnapshot?.levels && job.flowSnapshot.levels.length > 0) {
+      try {
+        const sortedLevels = [...job.flowSnapshot.levels].sort((a, b) => (b.level || b.stepNumber || 0) - (a.level || a.stepNumber || 0));
+        const lastLevel = sortedLevels[0];
+        if (lastLevel.approvers && lastLevel.approvers.length > 0) {
+          approverIds = lastLevel.approvers.map(a => a.id || a.userId).filter(Boolean);
+          approverLevel = lastLevel.level || lastLevel.stepNumber || null;
+          console.log(`[Jobs] Rejection approver from flowSnapshot level ${approverLevel}: ${approverIds}`);
+        }
+      } catch (snapErr) {
+        console.warn('[Jobs] Could not parse flowSnapshot for rejection request:', snapErr);
+      }
+    }
+
+    // Step 3: ถ้ายังไม่มี → ดึงจาก Approval Flow template (Level สูงสุด)
+    if (approverIds.length === 0) {
+      try {
+        const approvalFlow = await approvalService.getApprovalFlow(job.projectId, job.jobTypeId, job.priority);
+        if (approvalFlow && approvalFlow.approverSteps && approvalFlow.approverSteps.length > 0) {
+          const sortedSteps = [...approvalFlow.approverSteps].sort((a, b) => (b.stepNumber || 0) - (a.stepNumber || 0));
+          const lastStep = sortedSteps[0];
+          if (lastStep.approvers && Array.isArray(lastStep.approvers)) {
+            approverIds = lastStep.approvers.map(a => a.id || a.userId).filter(Boolean);
+            approverLevel = lastStep.stepNumber || null;
+            console.log(`[Jobs] Rejection approver from flow template step ${approverLevel}: ${approverIds}`);
+          }
+        }
+      } catch (flowErr) {
+        console.warn('[Jobs] Could not get approval flow for rejection request:', flowErr);
+      }
+    }
+
+    // Fallback: ถ้าไม่มีอะไรเลย → ใช้ requesterId
     if (approverIds.length === 0) {
       approverIds = [job.requesterId];
       approvalLogic = 'ANY';
+      console.warn(`[Jobs] Rejection approver fallback to requesterId=${job.requesterId}`);
     }
 
-    // Calculate auto-close time (24 hours from now)
-    const autoCloseAt = new Date();
-    autoCloseAt.setHours(autoCloseAt.getHours() + 24);
+    // Calculate auto-close time: 1 วันทำงาน (ข้ามเสาร์-อาทิตย์ และวันหยุดนักขัตฤกษ์)
+    const autoCloseAt = await calculateNextWorkingDay(new Date(), tenantId);
 
     // Create rejection request
     const rejectionRequest = await prisma.rejectionRequest.create({
@@ -1697,7 +1874,22 @@ router.post('/rejection-requests/:id/approve', async (req, res) => {
     }
 
     // Check if user is in approver list
-    if (!rejectionRequest.approverIds.includes(userId)) {
+    let approvers = rejectionRequest.approverIds;
+    if (typeof approvers === 'string') {
+      try {
+        approvers = JSON.parse(approvers);
+      } catch (e) {
+        approvers = [];
+      }
+    }
+    if (!Array.isArray(approvers)) {
+      approvers = [];
+    }
+
+    // แปลง userId และ approver id ให้เป็น string เพื่อเทียบอย่างปลอดภัย
+    const isApprover = approvers.some(id => String(id) === String(userId));
+
+    if (!isApprover) {
       return res.status(403).json({
         success: false,
         error: 'NOT_APPROVER',
@@ -1907,7 +2099,22 @@ router.post('/rejection-requests/:id/deny', async (req, res) => {
     }
 
     // Check if user is in approver list
-    if (!rejectionRequest.approverIds.includes(userId)) {
+    let approvers = rejectionRequest.approverIds;
+    if (typeof approvers === 'string') {
+      try {
+        approvers = JSON.parse(approvers);
+      } catch (e) {
+        approvers = [];
+      }
+    }
+    if (!Array.isArray(approvers)) {
+      approvers = [];
+    }
+
+    // แปลง userId และ approver id ให้เป็น string เพื่อเทียบอย่างปลอดภัย
+    const isApprover = approvers.some(id => String(id) === String(userId));
+
+    if (!isApprover) {
       return res.status(403).json({
         success: false,
         error: 'NOT_APPROVER',
@@ -2681,6 +2888,57 @@ function calculateWorkingDays(startDate, workingDays) {
 }
 
 /**
+ * Helper: คำนวณ deadline auto-close = 1 วันทำงานถัดไป
+ * - ข้ามวันเสาร์ (6) และวันอาทิตย์ (0)
+ * - ข้ามวันหยุดนักขัตฤกษ์จาก holidays table (กรองตาม tenantId)
+ * - เริ่มนับจาก startDate โดยรักษาเวลาเดิมไว้
+ * @param {Date} startDate - วันเริ่มต้น
+ * @param {number} tenantId - tenantId สำหรับดึงวันหยุด
+ * @returns {Promise<Date>} - วันทำงานถัดไปที่เวลาเดียวกัน
+ */
+async function calculateNextWorkingDay(startDate, tenantId) {
+  const prisma = getDatabase();
+
+  // ดึงวันหยุดในช่วง 30 วันข้างหน้า (เพื่อประสิทธิภาพ)
+  const rangeStart = new Date(startDate);
+  const rangeEnd = new Date(startDate);
+  rangeEnd.setDate(rangeEnd.getDate() + 30);
+
+  let holidaySet = new Set();
+  try {
+    const holidays = await prisma.$queryRaw`
+      SELECT date FROM holidays
+      WHERE tenant_id = ${tenantId}
+        AND date >= ${rangeStart}
+        AND date <= ${rangeEnd}
+    `;
+    holidays.forEach(h => {
+      // เก็บเป็น YYYY-MM-DD string เพื่อเทียบง่าย
+      const d = new Date(h.date);
+      holidaySet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    });
+  } catch (err) {
+    console.warn('[calculateNextWorkingDay] Could not load holidays, using weekends only:', err.message);
+  }
+
+  const result = new Date(startDate);
+  let daysAdded = 0;
+
+  while (daysAdded < 1) {
+    result.setDate(result.getDate() + 1);
+    const dayOfWeek = result.getDay();
+    const dateStr = `${result.getFullYear()}-${String(result.getMonth() + 1).padStart(2, '0')}-${String(result.getDate()).padStart(2, '0')}`;
+
+    // ข้ามเสาร์ (6), อาทิตย์ (0) และวันหยุดนักขัตฤกษ์
+    if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidaySet.has(dateStr)) {
+      daysAdded++;
+    }
+  }
+
+  return result;
+}
+
+/**
  * POST /api/jobs/:id/reassign
  * เปลี่ยนผู้รับผิดชอบงาน
  */
@@ -2759,6 +3017,71 @@ router.post('/:id/reassign', async (req, res) => {
   } catch (error) {
     console.error('[Jobs] Reassign error:', error);
     res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการย้ายงาน' });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/start
+ * Start a job (Assignee action) - change status to in_progress
+ */
+router.post('/:id/start', async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    const userId = req.user.userId;
+    const { triggerType = 'manual' } = req.body;
+
+    const prisma = getDatabase();
+
+    // 1. Get current job to validate
+    const job = await prisma.job.findUnique({
+      where: { id: jobId }
+    });
+
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    // อนุญาตให้เริ่มงานได้ถ้าสถานะเป็น approved, assigned, หรือ pending_dependency 
+    // (เพราะถ้าเริ่มทำแล้ว จะกลายเป็น in_progress)
+    const canStartStatus = ['approved', 'assigned', 'pending_dependency', 'correction', 'rework', 'returned'];
+
+    if (!canStartStatus.includes(job.status)) {
+      return res.json({
+        success: false,
+        message: 'Job already started or not ready to start',
+        currentStatus: job.status
+      });
+    }
+
+    // 2. Update status and start time
+    const updatedJob = await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: 'in_progress',
+        startedAt: job.startedAt || new Date(), // เก็บเวลาเริ่มงานครั้งแรกเท่านั้น
+      }
+    });
+
+    // 3. Log Activity
+    await prisma.activityLog.create({
+      data: {
+        jobId,
+        userId,
+        action: 'job_started',
+        message: `เริ่มดำเนินการงาน (${triggerType})`,
+      }
+    });
+
+    res.json({
+      success: true,
+      data: updatedJob
+    });
+  } catch (error) {
+    console.error('[Jobs] Start job error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'ไม่สามารถเริ่มงานได้: ' + error.message
+    });
   }
 });
 
@@ -2960,6 +3283,569 @@ router.get('/:id/sla-info', async (req, res) => {
     }
 
     res.status(500).json({ success: false, message: 'Failed to get SLA info' });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/submit-draft
+ * Submit draft for review (Assignee sends draft to Requester + Approvers for feedback)
+ * 
+ * Body: {
+ *   link?: string,
+ *   note?: string
+ * }
+ */
+router.post('/:id/submit-draft', async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
+    const { link, note } = req.body;
+    const prisma = getDatabase();
+
+    // Get job with relations
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      include: {
+        requester: { select: { id: true, email: true, firstName: true, lastName: true } },
+        assignee: { select: { id: true, email: true, firstName: true, lastName: true } }
+      }
+    });
+
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    // Check permission: only assignee can submit draft
+    if (job.assigneeId !== userId) {
+      return res.status(403).json({ success: false, message: 'Only assignee can submit draft' });
+    }
+
+    // Check status
+    const allowedStatuses = ['assigned', 'in_progress', 'correction', 'rework', 'returned', 'draft_review'];
+    if (!allowedStatuses.includes(job.status)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Cannot submit draft in status: ${job.status}` 
+      });
+    }
+
+    // Prepare draft files
+    const draftFiles = link ? [{ name: 'Draft Link', url: link, submittedAt: new Date() }] : [];
+
+    // Update job
+    const updatedJob = await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: 'draft_review',
+        draftFiles: draftFiles,
+        draftSubmittedAt: new Date(),
+        draftCount: { increment: 1 }
+      }
+    });
+
+    // Log activity
+    await prisma.jobActivity.create({
+      data: {
+        tenantId,
+        jobId,
+        userId,
+        action: 'draft_submitted',
+        message: `ส่ง Draft ครั้งที่ ${updatedJob.draftCount}${note ? ': ' + note : ''}`,
+        detail: { link, note, draftCount: updatedJob.draftCount }
+      }
+    });
+
+    // Get approvers from flowSnapshot
+    const approverIds = [];
+    if (job.flowSnapshot && job.flowSnapshot.levels) {
+      job.flowSnapshot.levels.forEach(level => {
+        if (level.approvers) {
+          level.approvers.forEach(approver => {
+            const approverId = approver.userId || approver.id;
+            if (approverId && !approverIds.includes(approverId)) {
+              approverIds.push(approverId);
+            }
+          });
+        }
+      });
+    }
+
+    // Notify Requester
+    if (job.requesterId) {
+      await notificationService.createNotification({
+        tenantId,
+        userId: job.requesterId,
+        type: 'draft_submitted',
+        title: `📝 Draft งาน ${job.djId} ส่งมาแล้ว`,
+        message: `${job.assignee?.firstName || 'ผู้รับงาน'} ส่ง draft งาน "${job.subject}" มาให้ตรวจสอบ${note ? ': ' + note : ''}`,
+        link: `/jobs/${jobId}`
+      }).catch(err => console.warn('[SubmitDraft] Notification to requester failed:', err));
+    }
+
+    // Notify Approvers
+    for (const approverId of approverIds) {
+      if (approverId !== job.requesterId) { // Don't duplicate if requester is also approver
+        await notificationService.createNotification({
+          tenantId,
+          userId: approverId,
+          type: 'draft_submitted',
+          title: `📝 Draft งาน ${job.djId} ส่งมาแล้ว`,
+          message: `${job.assignee?.firstName || 'ผู้รับงาน'} ส่ง draft งาน "${job.subject}" มาให้ตรวจสอบ`,
+          link: `/jobs/${jobId}`
+        }).catch(err => console.warn('[SubmitDraft] Notification to approver failed:', err));
+      }
+    }
+
+    // Send Email to Requester + Approvers
+    try {
+      const EmailService = require('../services/emailService');
+      const emailService = new EmailService();
+      
+      const recipients = [];
+      if (job.requester?.email) recipients.push(job.requester.email);
+      
+      // Get approver emails
+      if (approverIds.length > 0) {
+        const approvers = await prisma.user.findMany({
+          where: { id: { in: approverIds } },
+          select: { email: true }
+        });
+        approvers.forEach(a => {
+          if (a.email && !recipients.includes(a.email)) {
+            recipients.push(a.email);
+          }
+        });
+      }
+
+      for (const email of recipients) {
+        await emailService.sendEmail(
+          email,
+          `📝 Draft งาน ${job.djId} ส่งมาแล้ว`,
+          `
+            <h2>Draft งานส่งมาแล้ว</h2>
+            <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
+            <p><strong>ผู้ส่ง:</strong> ${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}</p>
+            ${note ? `<p><strong>หมายเหตุ:</strong> ${note}</p>` : ''}
+            ${link ? `<p><strong>ลิงก์ Draft:</strong> <a href="${link}">${link}</a></p>` : ''}
+            <p>กรุณาตรวจสอบและให้ feedback ในระบบ</p>
+            <p><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/jobs/${jobId}">ดูรายละเอียดงาน</a></p>
+          `
+        ).catch(err => console.warn('[SubmitDraft] Email failed:', err));
+      }
+    } catch (emailErr) {
+      console.error('[SubmitDraft] Email error:', emailErr);
+    }
+
+    res.json({
+      success: true,
+      message: 'Draft submitted successfully',
+      data: {
+        jobId: updatedJob.id,
+        djId: updatedJob.djId,
+        status: updatedJob.status,
+        draftCount: updatedJob.draftCount
+      }
+    });
+  } catch (error) {
+    console.error('[Jobs] Submit draft error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'SUBMIT_DRAFT_FAILED',
+      message: 'ไม่สามารถส่ง draft ได้'
+    });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/rebrief
+ * Request rebrief from Requester (Assignee requests more info)
+ * 
+ * Body: {
+ *   reason: string (required)
+ * }
+ */
+router.post('/:id/rebrief', async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
+    const { reason } = req.body;
+    const prisma = getDatabase();
+
+    if (!reason || reason.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rebrief reason is required'
+      });
+    }
+
+    // Get job
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      include: {
+        requester: { select: { id: true, email: true, firstName: true, lastName: true } },
+        assignee: { select: { id: true, firstName: true, lastName: true } }
+      }
+    });
+
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    // Check permission
+    if (job.assigneeId !== userId) {
+      return res.status(403).json({ success: false, message: 'Only assignee can request rebrief' });
+    }
+
+    // Check status
+    const allowedStatuses = ['assigned', 'in_progress', 'correction', 'rework', 'returned', 'rebrief_submitted'];
+    if (!allowedStatuses.includes(job.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot request rebrief in status: ${job.status}`
+      });
+    }
+
+    // Update job
+    const updatedJob = await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: 'pending_rebrief',
+        rebriefReason: reason.trim(),
+        rebriefAt: new Date(),
+        rebriefCount: { increment: 1 }
+      }
+    });
+
+    // Log activity
+    await prisma.jobActivity.create({
+      data: {
+        tenantId,
+        jobId,
+        userId,
+        action: 'rebrief_requested',
+        message: `ขอ Rebrief ครั้งที่ ${updatedJob.rebriefCount}: ${reason.trim()}`,
+        detail: { reason: reason.trim(), rebriefCount: updatedJob.rebriefCount }
+      }
+    });
+
+    // Notify Requester
+    if (job.requesterId) {
+      await notificationService.createNotification({
+        tenantId,
+        userId: job.requesterId,
+        type: 'rebrief_requested',
+        title: `🔄 ขอข้อมูลเพิ่มเติม: ${job.djId}`,
+        message: `${job.assignee?.firstName || 'ผู้รับงาน'} ขอข้อมูลเพิ่มเติมสำหรับงาน "${job.subject}": ${reason.trim()}`,
+        link: `/jobs/${jobId}`
+      }).catch(err => console.warn('[Rebrief] Notification failed:', err));
+    }
+
+    // Send Email to Requester
+    if (job.requester?.email) {
+      try {
+        const EmailService = require('../services/emailService');
+        const emailService = new EmailService();
+        
+        await emailService.sendEmail(
+          job.requester.email,
+          `🔄 ขอข้อมูลเพิ่มเติม: ${job.djId}`,
+          `
+            <h2>ขอข้อมูลเพิ่มเติมสำหรับงาน</h2>
+            <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
+            <p><strong>ผู้ขอ:</strong> ${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}</p>
+            <p><strong>เหตุผล:</strong> ${reason.trim()}</p>
+            <p>กรุณาเพิ่มข้อมูลหรือแก้ไข brief ในระบบ</p>
+            <p><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/jobs/${jobId}">ดูรายละเอียดงาน</a></p>
+          `
+        ).catch(err => console.warn('[Rebrief] Email failed:', err));
+      } catch (emailErr) {
+        console.error('[Rebrief] Email error:', emailErr);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Rebrief requested successfully',
+      data: {
+        jobId: updatedJob.id,
+        djId: updatedJob.djId,
+        status: updatedJob.status,
+        rebriefCount: updatedJob.rebriefCount
+      }
+    });
+  } catch (error) {
+    console.error('[Jobs] Rebrief error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'REBRIEF_FAILED',
+      message: 'ไม่สามารถขอ rebrief ได้'
+    });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/submit-rebrief
+ * Requester submits additional info after rebrief request
+ * 
+ * Body: {
+ *   rebriefResponse: string (required),
+ *   description?: string,
+ *   briefLink?: string
+ * }
+ */
+router.post('/:id/submit-rebrief', async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
+    const { rebriefResponse, description, briefLink } = req.body;
+    const prisma = getDatabase();
+
+    if (!rebriefResponse || rebriefResponse.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rebrief response is required'
+      });
+    }
+
+    // Get job
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      include: {
+        requester: { select: { id: true, firstName: true, lastName: true } },
+        assignee: { select: { id: true, email: true, firstName: true, lastName: true } }
+      }
+    });
+
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    // Check permission
+    if (job.requesterId !== userId) {
+      return res.status(403).json({ success: false, message: 'Only requester can submit rebrief response' });
+    }
+
+    // Check status
+    if (job.status !== 'pending_rebrief') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot submit rebrief in status: ${job.status}`
+      });
+    }
+
+    // Prepare update data
+    const updateData = {
+      status: 'rebrief_submitted',
+      rebriefResponse: rebriefResponse.trim()
+    };
+
+    if (description) updateData.description = description.trim();
+    if (briefLink) updateData.briefLink = briefLink.trim();
+
+    // Update job
+    const updatedJob = await prisma.job.update({
+      where: { id: jobId },
+      data: updateData
+    });
+
+    // Log activity
+    await prisma.jobActivity.create({
+      data: {
+        tenantId,
+        jobId,
+        userId,
+        action: 'rebrief_submitted',
+        message: `ส่งข้อมูลเพิ่มเติม: ${rebriefResponse.trim()}`,
+        detail: { rebriefResponse: rebriefResponse.trim(), description, briefLink }
+      }
+    });
+
+    // Notify Assignee
+    if (job.assigneeId) {
+      await notificationService.createNotification({
+        tenantId,
+        userId: job.assigneeId,
+        type: 'rebrief_submitted',
+        title: `✅ ข้อมูลเพิ่มเติมส่งมาแล้ว: ${job.djId}`,
+        message: `${job.requester?.firstName || 'ผู้สั่งงาน'} ส่งข้อมูลเพิ่มเติมสำหรับงาน "${job.subject}" มาแล้ว`,
+        link: `/jobs/${jobId}`
+      }).catch(err => console.warn('[SubmitRebrief] Notification failed:', err));
+    }
+
+    // Send Email to Assignee
+    if (job.assignee?.email) {
+      try {
+        const EmailService = require('../services/emailService');
+        const emailService = new EmailService();
+        
+        await emailService.sendEmail(
+          job.assignee.email,
+          `✅ ข้อมูลเพิ่มเติมส่งมาแล้ว: ${job.djId}`,
+          `
+            <h2>ข้อมูลเพิ่มเติมส่งมาแล้ว</h2>
+            <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
+            <p><strong>ผู้ส่ง:</strong> ${job.requester?.firstName || ''} ${job.requester?.lastName || ''}</p>
+            <p><strong>คำตอบ:</strong> ${rebriefResponse.trim()}</p>
+            ${briefLink ? `<p><strong>Brief Link:</strong> <a href="${briefLink}">${briefLink}</a></p>` : ''}
+            <p>กรุณาตรวจสอบและตัดสินใจว่าจะรับงานหรือขอ rebrief อีกครั้ง</p>
+            <p><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/jobs/${jobId}">ดูรายละเอียดงาน</a></p>
+          `
+        ).catch(err => console.warn('[SubmitRebrief] Email failed:', err));
+      } catch (emailErr) {
+        console.error('[SubmitRebrief] Email error:', emailErr);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Rebrief response submitted successfully',
+      data: {
+        jobId: updatedJob.id,
+        djId: updatedJob.djId,
+        status: updatedJob.status
+      }
+    });
+  } catch (error) {
+    console.error('[Jobs] Submit rebrief error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'SUBMIT_REBRIEF_FAILED',
+      message: 'ไม่สามารถส่งข้อมูลเพิ่มเติมได้'
+    });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/accept-rebrief
+ * Assignee accepts job after rebrief (recalculate SLA)
+ * 
+ * Body: {}
+ */
+router.post('/:id/accept-rebrief', async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
+    const prisma = getDatabase();
+
+    // Get job
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      include: {
+        requester: { select: { id: true, email: true, firstName: true, lastName: true } },
+        assignee: { select: { id: true, firstName: true, lastName: true } }
+      }
+    });
+
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    // Check permission
+    if (job.assigneeId !== userId) {
+      return res.status(403).json({ success: false, message: 'Only assignee can accept rebrief' });
+    }
+
+    // Check status
+    if (job.status !== 'rebrief_submitted') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot accept rebrief in status: ${job.status}`
+      });
+    }
+
+    // Calculate new due date using SLA days
+    const now = new Date();
+    const slaDays = job.slaDays || 3; // Default 3 days if not set
+    
+    // Import date-fns for business day calculation
+    const { addBusinessDays } = await import('date-fns');
+    const newDueDate = addBusinessDays(now, slaDays);
+
+    // Update job
+    const updatedJob = await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: 'in_progress',
+        acceptanceDate: now,
+        dueDate: newDueDate,
+        startedAt: now
+      }
+    });
+
+    // Log activity
+    await prisma.jobActivity.create({
+      data: {
+        tenantId,
+        jobId,
+        userId,
+        action: 'rebrief_accepted',
+        message: `รับงานหลัง Rebrief - คำนวณ SLA ใหม่: ${slaDays} วัน`,
+        detail: {
+          acceptanceDate: now,
+          dueDate: newDueDate,
+          slaDays
+        }
+      }
+    });
+
+    // Notify Requester
+    if (job.requesterId) {
+      await notificationService.createNotification({
+        tenantId,
+        userId: job.requesterId,
+        type: 'rebrief_accepted',
+        title: `✅ งาน ${job.djId} รับแล้ว`,
+        message: `${job.assignee?.firstName || 'ผู้รับงาน'} รับงาน "${job.subject}" แล้ว กำหนดส่งใหม่: ${newDueDate.toLocaleDateString('th-TH')}`,
+        link: `/jobs/${jobId}`
+      }).catch(err => console.warn('[AcceptRebrief] Notification failed:', err));
+    }
+
+    // Send Email to Requester
+    if (job.requester?.email) {
+      try {
+        const EmailService = require('../services/emailService');
+        const emailService = new EmailService();
+        
+        await emailService.sendEmail(
+          job.requester.email,
+          `✅ งาน ${job.djId} รับแล้ว`,
+          `
+            <h2>งานได้รับการยอมรับแล้ว</h2>
+            <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
+            <p><strong>ผู้รับงาน:</strong> ${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}</p>
+            <p><strong>วันที่รับงาน:</strong> ${now.toLocaleDateString('th-TH')}</p>
+            <p><strong>กำหนดส่งใหม่:</strong> ${newDueDate.toLocaleDateString('th-TH')} (${slaDays} วันทำการ)</p>
+            <p><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/jobs/${jobId}">ดูรายละเอียดงาน</a></p>
+          `
+        ).catch(err => console.warn('[AcceptRebrief] Email failed:', err));
+      } catch (emailErr) {
+        console.error('[AcceptRebrief] Email error:', emailErr);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Job accepted after rebrief',
+      data: {
+        jobId: updatedJob.id,
+        djId: updatedJob.djId,
+        status: updatedJob.status,
+        acceptanceDate: updatedJob.acceptanceDate,
+        dueDate: updatedJob.dueDate,
+        slaDays
+      }
+    });
+  } catch (error) {
+    console.error('[Jobs] Accept rebrief error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'ACCEPT_REBRIEF_FAILED',
+      message: 'ไม่สามารถรับงานได้'
+    });
   }
 });
 

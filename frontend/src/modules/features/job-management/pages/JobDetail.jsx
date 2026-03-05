@@ -81,6 +81,19 @@ export default function JobDetail() {
     const [newCcEmail, setNewCcEmail] = useState('');
     const [showExtendModal, setShowExtendModal] = useState(false); // เพิ่ม Extend Modal state
     const [showRejectionRequestModal, setShowRejectionRequestModal] = useState(false); // NEW: Rejection Request Modal
+    
+    // Draft Submit States
+    const [showDraftModal, setShowDraftModal] = useState(false);
+    const [draftLink, setDraftLink] = useState('');
+    const [draftNote, setDraftNote] = useState('');
+    
+    // Rebrief States
+    const [showRebriefModal, setShowRebriefModal] = useState(false);
+    const [rebriefReason, setRebriefReason] = useState('');
+    const [showSubmitRebriefModal, setShowSubmitRebriefModal] = useState(false);
+    const [rebriefResponse, setRebriefResponse] = useState('');
+    const [rebriefBriefLink, setRebriefBriefLink] = useState('');
+    const [rebriefDescription, setRebriefDescription] = useState('');
 
     // Alert State
     const [alertState, setAlertState] = useState({ isOpen: false, title: '', message: '', type: 'success' });
@@ -200,7 +213,7 @@ export default function JobDetail() {
 
     // Auto-Start Logic (View Event)
     useEffect(() => {
-        if (job && user && job.status === 'assigned') {
+        if (job && user && (job.status === 'assigned' || job.status === 'approved')) {
             const isAssignee = String(job.assigneeId) === String(user.id);
             if (isAssignee) {
                 api.startJob(job.id, 'view').then(updated => {
@@ -509,6 +522,133 @@ export default function JobDetail() {
         alert('API Request Revision กำลังพัฒนา (Pending Implementation)');
     };
 
+    // ============================================
+    // Draft Submit & Rebrief Handlers
+    // ============================================
+    const handleSubmitDraft = async () => {
+        try {
+            await httpClient.post(`/jobs/${job.id}/submit-draft`, {
+                link: draftLink.trim() || undefined,
+                note: draftNote.trim() || undefined
+            });
+            await Swal.fire({
+                icon: 'success',
+                title: 'ส่ง Draft สำเร็จ',
+                text: 'ระบบได้แจ้งเตือนไปยัง Requester และ Approver แล้ว',
+                confirmButtonColor: '#e11d48'
+            });
+            setShowDraftModal(false);
+            setDraftLink('');
+            setDraftNote('');
+            loadJob();
+        } catch (err) {
+            Swal.fire({
+                icon: 'error',
+                title: 'ส่ง Draft ไม่สำเร็จ',
+                text: err.response?.data?.message || err.message,
+                confirmButtonColor: '#e11d48'
+            });
+        }
+    };
+
+    const handleRebrief = async () => {
+        if (!rebriefReason.trim()) {
+            return Swal.fire({
+                icon: 'warning',
+                title: 'กรุณาระบุเหตุผล',
+                confirmButtonColor: '#e11d48'
+            });
+        }
+        try {
+            await httpClient.post(`/jobs/${job.id}/rebrief`, {
+                reason: rebriefReason.trim()
+            });
+            await Swal.fire({
+                icon: 'success',
+                title: 'ขอ Rebrief สำเร็จ',
+                text: 'ระบบได้แจ้งเตือนไปยัง Requester แล้ว',
+                confirmButtonColor: '#e11d48'
+            });
+            setShowRebriefModal(false);
+            setRebriefReason('');
+            loadJob();
+        } catch (err) {
+            Swal.fire({
+                icon: 'error',
+                title: 'ขอ Rebrief ไม่สำเร็จ',
+                text: err.response?.data?.message || err.message,
+                confirmButtonColor: '#e11d48'
+            });
+        }
+    };
+
+    const handleSubmitRebrief = async () => {
+        if (!rebriefResponse.trim()) {
+            return Swal.fire({
+                icon: 'warning',
+                title: 'กรุณาระบุคำตอบ',
+                confirmButtonColor: '#e11d48'
+            });
+        }
+        try {
+            await httpClient.post(`/jobs/${job.id}/submit-rebrief`, {
+                rebriefResponse: rebriefResponse.trim(),
+                description: rebriefDescription.trim() || undefined,
+                briefLink: rebriefBriefLink.trim() || undefined
+            });
+            await Swal.fire({
+                icon: 'success',
+                title: 'ส่งข้อมูลเพิ่มเติมสำเร็จ',
+                text: 'ระบบได้แจ้งเตือนไปยัง Assignee แล้ว',
+                confirmButtonColor: '#e11d48'
+            });
+            setShowSubmitRebriefModal(false);
+            setRebriefResponse('');
+            setRebriefDescription('');
+            setRebriefBriefLink('');
+            loadJob();
+        } catch (err) {
+            Swal.fire({
+                icon: 'error',
+                title: 'ส่งข้อมูลไม่สำเร็จ',
+                text: err.response?.data?.message || err.message,
+                confirmButtonColor: '#e11d48'
+            });
+        }
+    };
+
+    const handleAcceptRebrief = async () => {
+        const result = await Swal.fire({
+            icon: 'question',
+            title: 'ยืนยันรับงาน?',
+            text: 'ระบบจะคำนวณ SLA และกำหนดส่งใหม่',
+            showCancelButton: true,
+            confirmButtonText: 'ยืนยัน',
+            cancelButtonText: 'ยกเลิก',
+            confirmButtonColor: '#22c55e'
+        });
+
+        if (!result.isConfirmed) return;
+
+        try {
+            const response = await httpClient.post(`/jobs/${job.id}/accept-rebrief`);
+            await Swal.fire({
+                icon: 'success',
+                title: 'รับงานสำเร็จ',
+                html: `กำหนดส่งใหม่: <strong>${new Date(response.data.data.dueDate).toLocaleDateString('th-TH')}</strong>`,
+                confirmButtonColor: '#e11d48'
+            });
+            loadJob();
+        } catch (err) {
+            Swal.fire({
+                icon: 'error',
+                title: 'รับงานไม่สำเร็จ',
+                text: err.response?.data?.message || err.message,
+                confirmButtonColor: '#e11d48'
+            });
+        }
+    };
+
 
     // ============================================
     // Render
@@ -597,63 +737,54 @@ export default function JobDetail() {
                                     onConfirmAssigneeRejection={openConfirmRejectionModal}
                                     onDenyRejection={() => setShowDenyRejectionModal(true)}
                                     onOpenExtendModal={() => setShowExtendModal(true)}
+                                    onOpenDraftModal={() => setShowDraftModal(true)}
+                                    onOpenRebriefModal={() => setShowRebriefModal(true)}
+                                    onAcceptRebrief={handleAcceptRebrief}
+                                    onOpenSubmitRebriefModal={() => setShowSubmitRebriefModal(true)}
                                 />
 
-                                {/* 🚨 Assignee Rejection Alert - Show to Approver/Requester */}
-                                {(job.status === 'assignee_rejected' || job.status === 'pending_rejection') && (
-                                    <div className="bg-gradient-to-r from-orange-50 to-amber-50 border-l-4 border-orange-500 rounded-lg p-5 shadow-sm mb-6">
-                                        <div className="flex items-start gap-4">
-                                            {/* Warning Icon */}
-                                            <div className="flex-shrink-0">
-                                                <svg className="w-7 h-7 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
-                                                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                                                </svg>
-                                            </div>
+                                {/* 🚨 Rejection Alert - แสดงตาม Role:
+                                     - Approver/Admin → ซ่อน alert นี้ ไปแสดง RejectionApprovalCard แทน
+                                     - Assignee/คนอื่น → แสดง alert นี้เพื่อแจ้งสถานะ (ไม่มีปุ่มอนุมัติ) */}
+                                {(job.status === 'assignee_rejected' || job.status === 'pending_rejection') && (() => {
+                                    const normalizedRoles = (user?.roles || []).map(r =>
+                                        (typeof r === 'string' ? r : r?.name || '').toLowerCase()
+                                    );
+                                    const isAdminRole = normalizedRoles.includes('admin');
+                                    const isApproverRole = normalizedRoles.includes('approver');
+                                    // Approver และ Admin เห็น RejectionApprovalCard แทน ไม่แสดง alert นี้
+                                    if (isApproverRole || isAdminRole) return null;
 
-                                            {/* Content */}
-                                            <div className="flex-1">
-                                                <h3 className="text-lg font-bold text-orange-900 mb-3">
-                                                    รอการอนุมัติการปฏิเสธงาน
-                                                </h3>
-
-                                                {/* Rejection Details */}
-                                                <div className="bg-white/70 rounded-md p-4 border border-orange-200 space-y-2">
-                                                    {/* Assignee Request */}
-                                                    <p className="text-sm text-gray-900">
-                                                        <span className="font-semibold">ผู้รับงาน:</span>{' '}
-                                                        <span className="text-orange-800 font-medium">
-                                                            {job.assignee?.name || `${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}`.trim()}
-                                                        </span>
-                                                        {' '}ขอปฏิเสธงานนี้
-                                                    </p>
-
-                                                    {/* Reason - Always show with fallback */}
-                                                    <p className="text-sm text-gray-700">เนื่องจาก</p>
-                                                    <p className="text-sm text-gray-900 font-medium pl-4 border-l-2 border-orange-300">
-                                                        <span className="text-gray-700">เหตุผล:</span> {job.rejectionRequest?.reason || job.rejectionComment || 'ไม่ระบุเหตุผล'}
-                                                    </p>
+                                    return (
+                                        <div className="bg-gradient-to-r from-orange-50 to-amber-50 border-l-4 border-orange-500 rounded-lg p-5 shadow-sm mb-6">
+                                            <div className="flex items-start gap-4">
+                                                <div className="flex-shrink-0">
+                                                    <svg className="w-7 h-7 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                                    </svg>
                                                 </div>
-
-                                                {/* Action Hint - Only show to Approver/Requester/Admin */}
-                                                {(() => {
-                                                    const normalizedRoles = (user?.roles || []).map(r =>
-                                                        (typeof r === 'string' ? r : r?.name || '').toLowerCase()
-                                                    );
-                                                    const isAdmin = normalizedRoles.includes('admin');
-                                                    const isApprover = normalizedRoles.includes('approver');
-                                                    const isRequester = job.requesterId === user?.id;
-                                                    const canApprove = isAdmin || isApprover || isRequester;
-
-                                                    return canApprove && (
-                                                        <div className="mt-3 text-xs text-orange-700 bg-orange-100/50 rounded px-3 py-2 inline-block">
-                                                            💡 กรุณาใช้ปุ่ม "ยืนยันปฏิเสธงาน" หรือ "ไม่อนุมัติคำขอ" ด้านล่างเพื่อตัดสินใจ
-                                                        </div>
-                                                    );
-                                                })()}
+                                                <div className="flex-1">
+                                                    <h3 className="text-lg font-bold text-orange-900 mb-3">
+                                                        รอการอนุมัติการปฏิเสธงาน
+                                                    </h3>
+                                                    <div className="bg-white/70 rounded-md p-4 border border-orange-200 space-y-2">
+                                                        <p className="text-sm text-gray-900">
+                                                            <span className="font-semibold">ผู้รับงาน:</span>{' '}
+                                                            <span className="text-orange-800 font-medium">
+                                                                {job.assignee?.name || `${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}`.trim()}
+                                                            </span>
+                                                            {' '}ขอปฏิเสธงานนี้
+                                                        </p>
+                                                        <p className="text-sm text-gray-700">เนื่องจาก</p>
+                                                        <p className="text-sm text-gray-900 font-medium pl-4 border-l-2 border-orange-300">
+                                                            <span className="text-gray-700">เหตุผล:</span> {job.rejectionRequest?.reason || job.rejectionComment || 'ไม่ระบุเหตุผล'}
+                                                        </p>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                )}
+                                    );
+                                })()}
 
                                 {/* Delivered Work (Only visible if completed/closed) */}
                                 <JobDeliveryCard job={job} />
@@ -678,14 +809,22 @@ export default function JobDetail() {
                                 {/* Parent Job Assignees (aggregated assignees from all children) */}
                                 <ParentJobAssignees job={job} />
 
-                                {/* Rejection Request Card (for Approvers to approve/deny rejection requests) */}
-                                {job.rejectionRequest && job.rejectionRequest.status === 'pending' && (
-                                    <RejectionApprovalCard
-                                        rejectionRequest={job.rejectionRequest}
-                                        onApprove={handleApproveRejectionRequest}
-                                        onDeny={handleDenyRejectionRequest}
-                                    />
-                                )}
+                                {/* Rejection Request Card - แสดงเฉพาะ Approver และ Admin เท่านั้น */}
+                                {job.rejectionRequest && job.rejectionRequest.status === 'pending' && (() => {
+                                    const normalizedRoles = (user?.roles || []).map(r =>
+                                        (typeof r === 'string' ? r : r?.name || '').toLowerCase()
+                                    );
+                                    const isAdminRole = normalizedRoles.includes('admin');
+                                    const isApproverRole = normalizedRoles.includes('approver');
+                                    if (!isApproverRole && !isAdminRole) return null;
+                                    return (
+                                        <RejectionApprovalCard
+                                            rejectionRequest={job.rejectionRequest}
+                                            onApprove={handleApproveRejectionRequest}
+                                            onDeny={handleDenyRejectionRequest}
+                                        />
+                                    );
+                                })()}
 
                                 {/* Comments Section (Embedded in Overview) */}
                                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col mt-6" style={{ maxHeight: '450px' }}>
@@ -1010,7 +1149,131 @@ export default function JobDetail() {
                 onSubmit={handleRequestRejection}
             />
 
-            {/* Other Modals (Reject, Reassign, etc.) remain unchanged */}
+            {/* Draft Submit Modal */}
+            {showDraftModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                        <h3 className="text-lg font-bold mb-4 text-blue-600">📝 ส่ง Draft ให้ตรวจ</h3>
+                        <p className="text-sm text-gray-600 mb-4">
+                            ส่ง draft ให้ Requester และ Approver ตรวจสอบก่อนส่งงานจริง
+                        </p>
+                        <label className="block mb-2 text-sm font-medium">ลิงก์ Draft (ไม่บังคับ)</label>
+                        <input
+                            type="text"
+                            className="w-full border rounded p-2 mb-4"
+                            value={draftLink}
+                            onChange={e => setDraftLink(e.target.value)}
+                            placeholder="https://..."
+                        />
+                        <label className="block mb-2 text-sm font-medium">หมายเหตุ (ไม่บังคับ)</label>
+                        <textarea
+                            className="w-full border rounded p-2 mb-4"
+                            rows={3}
+                            value={draftNote}
+                            onChange={e => setDraftNote(e.target.value)}
+                            placeholder="เช่น กรุณาตรวจสอบ concept และสี..."
+                        />
+                        <div className="flex gap-2 justify-end">
+                            <Button variant="ghost" onClick={() => {
+                                setShowDraftModal(false);
+                                setDraftLink('');
+                                setDraftNote('');
+                            }}>ยกเลิก</Button>
+                            <Button variant="primary" onClick={handleSubmitDraft}>ส่ง Draft</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Rebrief Modal */}
+            {showRebriefModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                        <h3 className="text-lg font-bold mb-4 text-orange-600">🔄 ขอข้อมูลเพิ่มเติม (Rebrief)</h3>
+                        <p className="text-sm text-gray-600 mb-4">
+                            ระบุเหตุผลที่ต้องการข้อมูลเพิ่มเติมจาก Requester
+                        </p>
+                        <label className="block mb-2 text-sm font-medium">
+                            เหตุผล <span className="text-red-500">*</span>
+                        </label>
+                        <textarea
+                            className="w-full border rounded p-2 mb-4"
+                            rows={4}
+                            value={rebriefReason}
+                            onChange={e => setRebriefReason(e.target.value)}
+                            placeholder="เช่น ข้อมูล brief ไม่ชัดเจน, ต้องการ reference เพิ่มเติม..."
+                        />
+                        <div className="flex gap-2 justify-end">
+                            <Button variant="ghost" onClick={() => {
+                                setShowRebriefModal(false);
+                                setRebriefReason('');
+                            }}>ยกเลิก</Button>
+                            <Button variant="primary" onClick={handleRebrief}>ส่งคำขอ</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Submit Rebrief Modal (Requester) */}
+            {showSubmitRebriefModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                        <h3 className="text-lg font-bold mb-4 text-orange-600">📤 ส่งข้อมูลเพิ่มเติม</h3>
+                        
+                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
+                            <p className="text-sm text-gray-700 mb-1">
+                                <strong>คำขอจาก Assignee:</strong>
+                            </p>
+                            <p className="text-sm text-gray-800">
+                                {job?.rebriefReason || 'ไม่ระบุ'}
+                            </p>
+                        </div>
+
+                        <label className="block mb-2 text-sm font-medium">
+                            คำตอบ/ข้อมูลเพิ่มเติม <span className="text-red-500">*</span>
+                        </label>
+                        <textarea
+                            className="w-full border rounded p-2 mb-4"
+                            rows={4}
+                            value={rebriefResponse}
+                            onChange={e => setRebriefResponse(e.target.value)}
+                            placeholder="อธิบายข้อมูลเพิ่มเติมที่ Assignee ต้องการ..."
+                        />
+
+                        <label className="block mb-2 text-sm font-medium">
+                            อัปเดต Description (ไม่บังคับ)
+                        </label>
+                        <textarea
+                            className="w-full border rounded p-2 mb-4"
+                            rows={3}
+                            value={rebriefDescription}
+                            onChange={e => setRebriefDescription(e.target.value)}
+                            placeholder="แก้ไขหรือเพิ่มรายละเอียดงาน..."
+                        />
+
+                        <label className="block mb-2 text-sm font-medium">
+                            อัปเดต Brief Link (ไม่บังคับ)
+                        </label>
+                        <input
+                            type="text"
+                            className="w-full border rounded p-2 mb-4"
+                            value={rebriefBriefLink}
+                            onChange={e => setRebriefBriefLink(e.target.value)}
+                            placeholder="https://..."
+                        />
+
+                        <div className="flex gap-2 justify-end">
+                            <Button variant="ghost" onClick={() => {
+                                setShowSubmitRebriefModal(false);
+                                setRebriefResponse('');
+                                setRebriefDescription('');
+                                setRebriefBriefLink('');
+                            }}>ยกเลิก</Button>
+                            <Button variant="primary" onClick={handleSubmitRebrief}>ส่งข้อมูล</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -464,11 +464,10 @@ export default function AdminJobTypeSLA() {
             </div>
 
             {/* ส่วนสรุปสถิติ (Stats Overview) */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <AdminStatCard label="ประเภทงานทั้งหมด" value={jobTypes.length} icon={<BriefcaseIcon className="w-5 h-5 text-rose-600" />} color="rose" />
                 <AdminStatCard label="เปิดการใช้งาน (Active)" value={activeCount} icon={<CheckCircleIcon className="w-5 h-5 text-green-600" />} color="green" />
                 <AdminStatCard label="SLA เฉลี่ย (วัน)" value={avgSLA} icon={<ClockIcon className="w-5 h-5 text-blue-600" />} color="blue" />
-                <AdminStatCard label="DJ ที่เกิดขึ้นเดือนนี้" value="156" icon={<DocumentDuplicateIcon className="w-5 h-5 text-purple-600" />} color="purple" />
             </div>
 
             {/* ตารางแสดงข้อมูล (Job Types Table) */}

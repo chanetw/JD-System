@@ -633,12 +633,12 @@ export const getJobRole = (user, job) => {
     }
 
     // Priority 2: Assignee (ผู้รับมอบหมายจริง) - ตรวจสอบก่อน role อื่น
-    if (job.assigneeId === user.id || job.assignee?.id === user.id) {
+    if (String(job.assigneeId) === String(user.id) || String(job.assignee?.id) === String(user.id)) {
         return 'assignee';
     }
 
     // Priority 3: Requester (ผู้สร้างงาน) - ตรวจสอบก่อน role อื่น
-    if (job.requesterId === user.id || job.requester?.id === user.id) {
+    if (String(job.requesterId) === String(user.id) || String(job.requester?.id) === String(user.id)) {
         return 'requester';
     }
 

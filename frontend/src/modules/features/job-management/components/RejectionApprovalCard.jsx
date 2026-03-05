@@ -79,7 +79,7 @@ const RejectionApprovalCard = ({ rejectionRequest, onApprove, onDeny }) => {
 
   return (
     <>
-      <div className="rounded-lg border-2 border-orange-200 bg-orange-50 p-6 shadow-sm">
+      <div className="rounded-lg border-2 border-orange-300 bg-orange-50 p-6 shadow-sm">
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center space-x-3">
@@ -149,11 +149,11 @@ const RejectionApprovalCard = ({ rejectionRequest, onApprove, onDeny }) => {
           </label>
           <textarea
             id="comment"
-            rows={2}
+            rows={3}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             disabled={isApproving || isDenying}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 sm:text-sm disabled:bg-gray-50"
+            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500 focus:ring-1 sm:text-sm bg-white disabled:bg-gray-50 px-2 py-1.5"
             placeholder="ระบุความเห็นเพิ่มเติม..."
           />
         </div>
@@ -186,7 +186,7 @@ const RejectionApprovalCard = ({ rejectionRequest, onApprove, onDeny }) => {
             type="button"
             onClick={() => setShowDenyModal(true)}
             disabled={isApproving || isDenying}
-            className="flex-1 inline-flex items-center justify-center rounded-md bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            className="flex-1 inline-flex items-center justify-center rounded-md bg-red-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-800 disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
             <XCircleIcon className="h-5 w-5 mr-2" />
             ไม่อนุมัติ (สั่งให้ทำงานต่อ)

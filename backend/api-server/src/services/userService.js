@@ -250,11 +250,12 @@ export class UserService extends BaseService {
           }));
 
           // Populate scopes back into roles for full compatibility
+          // ✅ แปลง scope_level เป็น lowercase เสมอ เพื่อให้ตรงกับ canApproveInProject ที่เช็ค 'bud' (lowercase)
           user.roles.forEach(role => {
             role.scopes = user.scope_assignments
               .filter(s => s.role_type === role.name)
               .map(s => ({
-                level: s.scope_level,
+                level: s.scope_level?.toLowerCase(),
                 scopeId: s.scope_id,
                 scopeName: s.scope_name
               }));

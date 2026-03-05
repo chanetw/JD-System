@@ -4,6 +4,470 @@
 
 ---
 
+## 📅 2025-01-09
+
+### 66. Feature: Draft Submit & Rebrief
+<details>
+<summary>🔍 <b>คลิกดูรายละเอียด</b> (Draft Submission & Rebrief Workflow)</summary>
+
+🔴 **Request:**
+- เพิ่มปุ่ม "ส่ง Draft แรก" เพื่อให้ Assignee ส่ง draft ให้ Requester และ Approver ตรวจสอบก่อนส่งงานจริง พร้อมแจ้งเตือนทั้งในระบบและ email (ลิงก์ไม่บังคับ)
+- เพิ่มปุ่ม "Rebrief" เพื่อให้ Assignee ขอข้อมูลเพิ่มเติมจาก Requester โดยไม่ต้องเปิดงานใหม่
+- Requester สามารถเพิ่มข้อมูลและส่งกลับ → Assignee เห็นปุ่ม 3 ปุ่ม: รับงาน, Rebrief ซ้ำ, ปฏิเสธ
+- เมื่อรับงานหลัง Rebrief ให้คำนวณ SLA และ dueDate ใหม่ พร้อมแจ้งเตือน Requester
+
+✅ **Action:**
+
+**Phase 1: Prisma Schema Migration**
+- เพิ่ม fields ใหม่ใน Job model:
+  - Draft: `draftFiles`, `draftSubmittedAt`, `draftCount`
+  - Rebrief: `rebriefReason`, `rebriefCount`, `rebriefAt`, `rebriefResponse`
+
+**Phase 2: Backend Routes (4 routes ใหม่)**
+- `POST /api/jobs/:id/submit-draft` - Assignee ส่ง draft พร้อม link และ note
+  - เปลี่ยน status เป็น `draft_review`
+  - แจ้งเตือน Requester + Approver ทุกคนใน flowSnapshot
+  - ส่ง email พร้อม link draft
+- `POST /api/jobs/:id/rebrief` - Assignee ขอ rebrief
+  - เปลี่ยน status เป็น `pending_rebrief`
+  - แจ้งเตือน Requester พร้อมเหตุผล
+- `POST /api/jobs/:id/submit-rebrief` - Requester ส่งข้อมูลเพิ่มเติม
+  - เปลี่ยน status เป็น `rebrief_submitted`
+  - อัปเดต description/briefLink ถ้ามี
+  - แจ้งเตือน Assignee
+- `POST /api/jobs/:id/accept-rebrief` - Assignee รับงานหลัง rebrief
+  - คำนวณ `acceptanceDate` = now, `dueDate` = now + slaDays (business days)
+  - เปลี่ยน status เป็น `in_progress`
+  - แจ้งเตือน Requester พร้อม dueDate ใหม่
+
+**Phase 3: Frontend JobActionPanel**
+- เพิ่มปุ่ม "ส่ง Draft ให้ตรวจ" และ "ขอ Rebrief" ใน renderAssigneeActions()
+- รองรับ status ใหม่: `draft_review`, `rebrief_submitted`
+- เพิ่ม renderRebriefPanel() สำหรับ Requester เมื่อ status = `pending_rebrief`
+- แสดงปุ่ม 3 ปุ่มเมื่อ status = `rebrief_submitted`: รับงาน, Rebrief อีก, ปฏิเสธ
+
+**Phase 4: Frontend JobDetail**
+- เพิ่ม states: `showDraftModal`, `draftLink`, `draftNote`, `showRebriefModal`, `rebriefReason`, `showSubmitRebriefModal`, `rebriefResponse`, `rebriefDescription`, `rebriefBriefLink`
+- เพิ่ม handlers: `handleSubmitDraft()`, `handleRebrief()`, `handleSubmitRebrief()`, `handleAcceptRebrief()`
+- เพิ่ม 3 modals: Draft Submit Modal, Rebrief Modal, Submit Rebrief Modal
+- เชื่อม callbacks ไปยัง JobActionPanel
+
+🔧 **Technical:**
+- ใช้ `date-fns` (`addBusinessDays`) เพื่อคำนวณ business days
+- Email notification ใช้ pattern เดียวกับ `confirmAssigneeRejection`
+- Activity log บันทึกทุก action: draft_submitted, rebrief_requested, rebrief_submitted, rebrief_accepted
+- รองรับการ rebrief ซ้ำได้หลายรอบจนกว่า Assignee จะรับงาน
+
+📁 **Files Modified:**
+- Backend: `schema.prisma`, `routes/jobs.js`
+- Frontend: `JobActionPanel.jsx`, `JobDetail.jsx`
+
+⚠️ **Note:**
+- ต้องรัน Prisma migration: `npx prisma migrate dev --name add_draft_and_rebrief_fields`
+- Status ใหม่: `draft_review`, `pending_rebrief`, `rebrief_submitted`
+- Draft flow ไม่เปลี่ยน dueDate (ยังคงนับ SLA เดิม)
+- Rebrief flow คำนวณ dueDate ใหม่เมื่อ accept
+
+</details>
+
+---
+
+## 📅 2026-03-05
+
+### 65. Feature: Auto-Extend SLA เมื่อมีงานด่วนผ่านการอนุมัติครบ
+<details>
+<summary>🔍 <b>คลิกดูรายละเอียด</b> (Urgent Job SLA Auto-Extension)</summary>
+
+🔴 **Request:**
+- พัฒนาฟีเจอร์ Auto-extend SLA ของงานทั้งหมดที่อยู่ในคิวของ Assignee (รวมงานพ่วง) เมื่อมีงานด่วนผ่านการอนุมัติครบทุก level
+- ขยาย due date ของงานอื่นๆ ออกไปอัตโนมัติ 2 วันทำการ
+- แจ้งเตือน requester ของทุกงานที่ถูก extend
+
+✅ **Action:**
+
+**Phase 1: เพิ่มฟังก์ชัน `findAllAssigneeJobs()` ใน chainService.js**
+- สร้างฟังก์ชันใหม่เพื่อหางานทั้งหมดของ assignee (ไม่จำกัดช่วง due date)
+- กรองงานที่มีสถานะ: `approved`, `assigned`, `in_progress`, `correction`, `rework`, `returned`, `pending_dependency`
+- ดึงข้อมูล `requesterId`, `tenantId` เพื่อใช้ส่ง notification
+
+**Phase 2: ปรับ `rescheduleForUrgent()` ให้ใช้ Working Days และ Extend งานพ่วง**
+- เพิ่ม import `date-fns` (`addBusinessDays`, `format`)
+- เปลี่ยนจากใช้ `findCompetingJobs()` เป็น `findAllAssigneeJobs()`
+- ใช้ `addBusinessDays()` แทน `setDate()` เพื่อนับเฉพาะวันทำงาน (ข้ามเสาร์-อาทิตย์)
+- Extend งานพ่วง (child jobs) ถ้า parent job ถูก extend
+- ใช้ `processedJobIds` Set เพื่อป้องกัน extend งานเดียวกันซ้ำ
+- บันทึก Activity Log สำหรับทุกงานที่ถูก extend
+- ส่ง Notification ให้ Requester (ไม่แจ้ง assignee)
+
+**Phase 3: ปรับ Trigger Point ใน jobs.js ให้เช็ค Final Approval**
+- เพิ่มการตรวจสอบว่างาน urgent ผ่านการอนุมัติครบหรือไม่
+- ดึง approval records และเช็คว่า level สุดท้ายอนุมัติแล้ว
+- รองรับงานที่ skip approval (status = 'assigned' หรือ 'approved' โดยตรง)
+- Trigger `rescheduleForUrgent()` เฉพาะเมื่อ final approval หรือ skip approval
+
+**Phase 4: Activity Log และ Notification** (รวมใน Phase 2)
+- บันทึก `activityLog` พร้อม metadata: urgentJobId, extensionDays, oldDueDate, newDueDate
+- สร้าง `notification` สำหรับ requester พร้อมข้อความแจ้งเตือนการ extend
+- แยกข้อความสำหรับงานพ่วง (cascaded) และงานปกติ
+
+🔧 **Technical:**
+- ติดตั้ง package: `npm install date-fns`
+- ใช้ `addBusinessDays()` จาก date-fns เพื่อนับวันทำงาน
+- ใช้ Prisma transaction safety เพื่อความสมบูรณ์ของข้อมูล
+- เพิ่ม logging ละเอียดเพื่อ debug และ audit trail
+
+📋 **ไฟล์ที่แก้ไข:**
+- `backend/api-server/src/services/chainService.js`
+  - เพิ่ม import date-fns
+  - เพิ่มฟังก์ชัน `findAllAssigneeJobs()`
+  - ปรับปรุง `rescheduleForUrgent()` ทั้งหมด
+- `backend/api-server/src/routes/jobs.js`
+  - ปรับ trigger point ใน `POST /:id/approve`
+  - เพิ่มการเช็ค final approval
+- `backend/api-server/package.json`
+  - เพิ่ม dependency: `date-fns`
+
+🎯 **ผลลัพธ์:**
+- งาน urgent ที่ผ่านการอนุมัติครบ → extend งานอื่นๆ ของ assignee คนเดียวกัน 2 วันทำงาน
+- งานพ่วง (child jobs) ถูก extend ตามไปด้วย
+- Requester ได้รับ notification แจ้งเตือนการ extend
+- Activity log บันทึกครบถ้วน
+- Backend server รันสำเร็จ ✅
+
+</details>
+
+## 📅 2026-03-02
+
+### 64. Bug Fix: Requester สร้างงานแล้วไม่ขึ้นในรายการงานของตัวเอง
+<details>
+<summary>🔍 <b>คลิกดูรายละเอียด</b> (Requester Job Visibility Fix)</summary>
+
+🔴 **Request:**
+- ตรวจสอบปัญหา Requester สร้างงานแล้วไม่ดึงขึ้นมาใน list DJ ของตัวเอง (เกิดจากการแก้ไขในข้อ 63)
+
+✅ **Action:**
+- **ไฟล์ 1:** `backend/api-server/src/routes/jobs.js` (GET `/jobs` - requester case)
+  - **การแก้ไข:** Revert เงื่อนไขการกรอง Requester กลับไปเป็น `requesterId: userId` ตามเดิม เพื่อให้ Requester เห็น **ทุกงานที่ตัวเองสร้าง** (Full Transparency)
+- **ไฟล์ 2:** `frontend/src/modules/features/job-request/pages/CreateJobPage.jsx`
+  - **การแก้ไข:** ย้าย Logic การกรอง BUD ไปทำที่หน้า Create Job แทน โดยเพิ่ม Fallback: ถ้า User ไม่มี Scope พิเศษ แต่มี `department.bud_id` ให้กรองเฉพาะโครงการใน BUD นั้นมาให้เลือก
+
+🔧 **Technical:**
+- `GET /jobs`: คืนค่า `{ requesterId: userId }` เพื่อไม่ให้ตัดงานเก่าที่อาจอยู่คนละ BUD ออก
+- `CreateJobPage.jsx`: เพิ่มเงื่อนไข `accessibleProjects = data.projects.filter(p => p.budId === user.department.bud_id)` หากไม่มี explicit scopes
+
+</details>
+
+### 63. Bug Fix: Requester ดูโครงการจาก BUD อื่นมาด้วย
+<details>
+<summary>🔍 <b>คลิกดูรายละเอียด</b> (Requester BUD Filtering)</summary>
+
+🔴 **Request:**
+- Requester ที่รับผิดชอบ BUD2 พอสร้างงาน ในหน้า Create Job ดูโครงการจาก BUD1 มาด้วย ต้องกรองให้เหลือเฉพาะโครงการใน BUD ที่ตัวเองรับผิดชอบ
+
+✅ **Action:**
+- **ไฟล์:** `backend/api-server/src/routes/jobs.js` (GET `/jobs` - requester case)
+- **การแก้ไข (2-level access):**
+  - **BUD-level (default):** ดูทุก project ใน BUD ที่ตัวเองรับผิดชอบ (จาก department.bud_id)
+  - **Project-level (override):** ดู project เฉพาะที่ได้รับมอบหมายแบบระบุ (จาก userProjectAssignment)
+  - ใช้ `Promise.all` ดึงข้อมูล user department และ project assignments แบบ parallel
+  - สร้าง `OR` condition ถ้ามีทั้ง BUD และ Project access
+  - เพิ่ม fallback สำหรับ user ที่ไม่มีสิทธิ์ (แสดงทั้งหมด)
+- **ผลลัพธ์:** Requester ดู project ได้ตามสิทธิ์ที่ได้รับมอบหมาย (BUD + Project level)
+
+🔧 **Technical:**
+- Query: `prisma.user.findUnique` (department) + `prisma.userProjectAssignment.findMany` (projects)
+- Filter: `project.budId` (BUD-level) หรือ `project.id { in: projectIds }` (Project-level)
+- Performance: Parallel queries ด้วย `Promise.all`
+- Logic: `OR` condition สำหรับ multi-level access
+
+</details>
+
+### 62. Fix: เปลี่ยน Rejection Approver เป็น "คนอนุมัติล่าสุด" และ Auto-close 1 วันทำงาน
+
+### 62. Fix: เปลี่ยน Rejection Approver เป็น "คนอนุมัติล่าสุด" และ Auto-close 1 วันทำงาน
+<details>
+<summary>🔍 <b>คลิกดูรายละเอียด</b> (Rejection Approver + Auto-close Fix)</summary>
+
+🔴 **Request:** 
+- เปลี่ยนผู้มีสิทธิ์อนุมัติ Rejection Request จาก "ทุกคนในทุก Level" เป็น "คนที่อนุมัติงานล่าสุด (Level สูงสุดก่อน endprocess)" เช่น ถ้า Flow มี Level 1 และ Level 2 → ต้องใช้ Level 2 เท่านั้น
+- เปลี่ยน auto-close deadline จาก "+24 ชั่วโมง" เป็น "1 วันทำงาน" โดยข้ามวันเสาร์-อาทิตย์และวันหยุดนักขัตฤกษ์จาก holidays table
+
+✅ **Action:**
+- **ไฟล์:** `backend/api-server/src/routes/jobs.js` (POST `/:id/request-rejection` + helper)
+- **การแก้ไข Approver Logic (3-step fallback):**
+  1. **Step 1 (หลัก):** ดึงจาก `Approval` record จริง — หา `approverId` ที่มี `stepNumber` สูงสุดและ `status = 'approved'`
+  2. **Step 2 (Fallback):** ถ้าไม่มี record → ดึงจาก `job.flowSnapshot.levels` (Level สูงสุด)
+  3. **Step 3 (Fallback):** ถ้าไม่มี flowSnapshot → ดึงจาก Approval Flow template (stepNumber สูงสุด)
+  4. **Final Fallback:** ถ้าไม่มีอะไรเลย → ใช้ `requesterId`
+- **การแก้ไข Auto-close:**
+  - เพิ่ม async helper `calculateNextWorkingDay(startDate, tenantId)`
+  - ดึงวันหยุดจาก `holidays` table กรองตาม `tenantId` ในช่วง 30 วันข้างหน้า
+  - วนหาวันถัดไปที่ไม่ใช่เสาร์/อาทิตย์ และไม่ใช่วันหยุดนักขัตฤกษ์
+  - รักษาเวลาเดิมไว้ (เช่น สร้าง 10:00 → auto-close 10:00 วันทำงานถัดไป)
+
+📋 **ไฟล์ที่แก้ไข:**
+- `backend/api-server/src/routes/jobs.js`
+
+</details>
+
+### 61. Fix: แก้ไขข้อผิดพลาดการอนุมัติคำขอปฏิเสธงาน (Rejection Request Approval)
+<details>
+<summary>🔍 <b>คลิกดูรายละเอียด</b> (Rejection Request Fix)</summary>
+
+🔴 **Request:** 
+- ตรวจสอบปัญหาการปฏิเสธงาน ผู้ใช้ที่มีสิทธิ์เป็น Approver ไม่สามารถกด อนุมัติ/ไม่อนุมัติ คำขอปฏิเสธงานได้ โดยระบบแจ้งว่า "คุณไม่ใช่ผู้อนุมัติสำหรับคำขอนี้" (Error 403 Forbidden)
+
+✅ **Action:**
+- **สาเหตุ:** 
+  1. การดึงรายชื่อผู้อนุมัติ (`approverIds`) ในขั้นตอนสร้างคำขอปฏิเสธงาน (`POST /api/jobs/:id/request-rejection`) ไม่ได้ส่งค่า `priority` เข้าไปในฟังก์ชัน `getApprovalFlow` ทำให้ไม่สามารถดึง Approval Flow สำหรับงานด่วน (Urgent) มาใช้ได้ถูกต้อง
+  2. การตรวจสอบสิทธิ์ใน API `POST /rejection-requests/:id/approve` และ `deny` ใช้คำสั่ง `approverIds.includes(userId)` โดยที่ในฐานข้อมูล (Prisma) คอลัมน์ `approverIds` อาจถูกจัดเก็บในรูปแบบ JSON Array String (`"[1,2,3]"`) ทำให้เช็คด้วย `.includes()` ตรงๆ ไม่ผ่าน
+- **แก้ไข:**
+  1. แก้ไขให้ส่ง `job.priority` ไปยัง `getApprovalFlow(job.projectId, job.jobTypeId, job.priority)` ตอนสร้างคำขอ
+  2. แก้ไข API `approve` และ `deny` ให้ดึง `approverIds` มา `JSON.parse` แปลงเป็น Array ก่อนตรวจสอบ และแปลง `id` กับ `userId` ให้เป็น `String` ทั้งคู่ก่อนนำมาเทียบกันเพื่อป้องกัน Type Mismatch
+
+📋 **ไฟล์ที่แก้ไข:**
+- `backend/api-server/src/routes/jobs.js`
+
+</details>
+
+### 60. Fix: แกัไขข้อผิดพลาด Auto-start (Job not found) และเปลี่ยนไปใช้ API
+<details>
+<summary>🔍 <b>คลิกดูรายละเอียด</b> (Auto-start Fix)</summary>
+
+🔴 **Request:** 
+- ตรวจสอบและแก้ไขข้อผิดพลาด "Auto-start error: Error: Job not found" เมื่อ Assignee กดดูรายละเอียดงาน
+
+✅ **Action:**
+- **สาเหตุ:** `startJob` ใน frontend (`jobService.js`) เรียกใช้ Supabase โดยตรง ซึ่งข้อมูลงานที่ทดสอบ (เช่น `TEST-`) อาจไม่อยู่ใน Supabase หรือมีปัญหา RLS ทำให้ไม่เจองาน
+- **แก้ไข:** 
+  1. สร้าง API ใหม่ใน Backend `POST /api/jobs/:id/start` เพื่อให้เปลี่ยนสถานะงานจาก `approved`, `assigned`, ฯลฯ เป็น `in_progress` และบันทึกเวลา `startedAt` อย่างถูกต้อง
+  2. เปลี่ยนฟังก์ชัน `startJob` ใน `jobService.js` ให้เรียกใช้ `httpClient.post('/jobs/:id/start')` แทน Supabase
+
+📋 **ไฟล์ที่แก้ไข:**
+- `backend/api-server/src/routes/jobs.js`
+- `frontend/src/modules/shared/services/modules/jobService.js`
+
+</details>
+
+### 59. Implement: ปรับ DJ List Status + ซ่อม In-App Notification + แก้ไขคิวงานของฉัน (My Queue)
+<details>
+<summary>🔍 <b>คลิกดูรายละเอียด</b> (DJ List Status Columns, In-App Notification Fix & My Queue Filter)</summary>
+
+🔴 **Request:** 
+- ปรับหน้า DJ List ให้แยก "สถานะอนุมัติ" กับ "สถานะงาน" เป็น 2 Column ชัดเจน
+- แก้ไข In-App Notification ที่ไม่แสดงผลเลยสำหรับทุก Role
+- แก้ไขหน้า "คิวงานของฉัน" (My Queue) ให้กรองงานตามสถานะงาน (Work Status) ไม่ใช่สถานะอนุมัติ
+
+✅ **Action:**
+
+**1. Badge Component (`shared/components/Badge.jsx`)**
+- เพิ่ม `isApprovalStatus` prop เพื่อแยก text/สี ระหว่างสถานะอนุมัติและสถานะงาน
+- สถานะอนุมัติ: แบบร่าง, รออนุมัติ, อนุมัติแล้ว, ไม่อนุมัติ, ยกเลิก
+- สถานะงาน: ยังไม่มอบหมาย, ได้รับมอบหมาย, กำลังดำเนินการ, เสร็จสมบูรณ์, ถูกปฏิเสธ
+- ปรับสี: ม่วง=กำลังทำ, ส้ม=ถูกปฏิเสธ(Assignee), แดง=ไม่อนุมัติ(Approver)
+
+**2. DJList JobRow (`job-management/pages/DJList.jsx`)**
+- เพิ่ม logic แยก displayApprovalStatus / displayJobStatus สำหรับงานปกติ (ไม่ใช่ parent/child)
+- งาน pending → สถานะอนุมัติ=pending, สถานะงาน="-"
+- งาน approved/assigned/in_progress/completed → สถานะอนุมัติ="อนุมัติแล้ว", สถานะงาน=ตามจริง
+- งาน rejected → สถานะอนุมัติ="ไม่อนุมัติ", สถานะงาน="-"
+
+**3. แก้ไข My Queue Filter (`backend/api-server/src/routes/jobs.js` & `MyQueue.jsx`)**
+- ปรับ logic การกรองของ role `assignee` ให้ตรงตาม Work Status:
+  - **todo** (งานมาใหม่): `approved`, `assigned`, `pending_dependency`
+  - **in_progress** (กำลังทำ): `in_progress`
+  - **waiting** (รอตรวจ/แก้): `correction`, `rework`, `returned`
+  - **done** (เสร็จแล้ว): `completed`, `closed`, `rejected_by_assignee`
+- ป้องกันไม่ให้ assignee เห็นงานที่ติด approval flow ในคิวงานของตัวเอง
+- อัปเดต `TAB_DESCRIPTIONS` ในหน้า UI ให้ตรงกับความเป็นจริง
+
+**4. Backend Notification API Route (ใหม่: `routes/notifications.js`)**
+- `GET /api/notifications` — ดึงรายการแจ้งเตือน + unreadCount
+- `PATCH /api/notifications/:id/read` — ทำเครื่องหมายว่าอ่านแล้ว
+- `PATCH /api/notifications/read-all` — อ่านทั้งหมด
+- ลงทะเบียนใน `index.js` โดยจัดให้อยู่ก่อนหน้าเส้นทางที่อาจเกิดการชนกัน
+
+**5. Frontend notificationService.js — เปลี่ยนจาก Supabase ตรงเป็น Backend API**
+- Root cause: `getNotifications()` เรียก Supabase ตรงๆ แต่ Backend เขียนผ่าน Prisma (คนละ auth/RLS)
+- Fix: เปลี่ยน `getNotifications`, `markNotificationAsRead`, `markAllNotificationsAsRead` ให้ใช้ `httpClient` (axios) เรียก Backend API แทน
+
+📋 **ไฟล์ที่แก้ไข:**
+- `frontend/src/modules/shared/components/Badge.jsx`
+- `frontend/src/modules/features/job-management/pages/DJList.jsx`
+- `frontend/src/modules/features/assignee/pages/MyQueue.jsx`
+- `backend/api-server/src/routes/jobs.js`
+- `backend/api-server/src/routes/notifications.js` (ใหม่)
+- `backend/api-server/src/index.js`
+- `frontend/src/modules/shared/services/modules/notificationService.js`
+
+</details>
+
+### 58. Plan: ปรับปรุงสถานะงาน + เพิ่ม Notification สำหรับงานที่ไม่มีผู้รับ
+<details>
+<summary>🔍 <b>คลิกดูรายละเอียด</b> (Job Status Display & Notification Enhancement)</summary>
+
+🔴 **Request:** 
+- ปรับสถานะงานให้ชัดเจน: แยก "ยังไม่มอบหมาย" vs "ได้รับมอบหมาย"
+- เพิ่ม Notification เมื่องานอนุมัติแล้วแต่ไม่มีผู้รับงาน (แจ้ง Admin)
+- ปิดใช้งาน `pending_close` (ส่งงาน = completed ทันที)
+
+✅ **Action:**
+- สร้างแผนปรับปรุงใน `.windsurf/plans/job-status-flow-updated-dd06ca.md`
+- อัปเดตเอกสาร audit ใหม่ที่ section 9.2, 9.3, 9.4:
+  - เพิ่มสถานะ Backlog สำหรับ items B, C, D, E, G, H
+  - ✅ ยืนยันปิดใช้งาน `pending_close`
+  - 📋 เพิ่มตารางสถานะงานที่ถูกต้อง (approved = "ยังไม่มอบหมาย")
+- แนวทาง Flow ใหม่:
+  ```
+  pending_approval → approved → (แจ้ง Admin) → assigned → in_progress → completed
+  ```
+
+📁 **Files Created/Updated:**
+- `.windsurf/plans/job-status-flow-updated-dd06ca.md` (แผนใหม่)
+- `.windsurf/plans/job-status-flow-audit.md` (อัปเดต section 9.2-9.4)
+
+🎯 **สถานะงานที่ถูกต้อง:**
+- `pending_approval` = "รออนุมัติ"
+- `approved` = "ยังไม่มอบหมาย" + 📢 แจ้ง Admin
+- `assigned` = "ได้รับมอบหมาย"
+- `in_progress` = "กำลังดำเนินการ"
+- `completed` = "เสร็จสมบูรณ์"
+- `rejected` = "ถูกปฏิเสธ"
+
+</details>
+
+---
+
+### 57. Doc: Job Status Flow Audit — เอกสารสรุป Flow ทั้งระบบ
+<details>
+<summary>🔍 <b>คลิกดูรายละเอียด</b> (Full System Job Status Flow Audit Document)</summary>
+
+🔴 **Request:** 
+- สร้างเอกสารสรุป Job Status Flow ทั้งระบบอย่างละเอียด
+- ครอบคลุมทุก Role (Requester, Approver, Assignee, Admin)
+- ทุกสถานะ ทุกความเป็นไปได้ รวม rejection, multi-level approval, chain jobs, parent-child
+
+✅ **Action:**
+- วิเคราะห์ source code ทั้ง backend (routes, services, schema) และ frontend (Sidebar, JobActionPanel, MyQueue, JobDetail)
+- สร้างเอกสาร `.windsurf/plans/job-status-flow-audit.md` ครอบคลุม:
+  - สถานะงานทั้งหมด 16 สถานะ + pending_level_N
+  - Sidebar เมนูตาม Role (ตาราง)
+  - MyQueue tabs mapping
+  - 12 Scenarios (A-L): Skip Approval, 1-Level, Multi-Level, Urgent, Assignee Work, Legacy Rejection, New Rejection Request, Chain Jobs, Parent-Child, Manual Assignment, Reassignment, Extend Deadline
+  - JobActionPanel ปุ่ม Action แยกตามสถานะและ Role
+  - Notification Flow
+  - Flow Diagram (ASCII)
+  - API Endpoints สรุป
+  - **10 จุดที่อาจต้องตรวจสอบ/ปรับปรุง** พร้อมข้อเสนอ 6 ข้อ
+
+📁 **Files Created:**
+- `.windsurf/plans/job-status-flow-audit.md`
+
+⚠️ **จุดสำคัญที่พบ:**
+- สถานะซ้ำซ้อน: `assignee_rejected` vs `rejected_by_assignee`
+- `rework`, `correction`, `returned` ไม่มี route ที่สร้างสถานะนี้
+- `pending_close` มี UI แต่ไม่มี Backend ที่ใช้งาน
+- `updateJobStatusAfterApproval` (email flow) overwrite เป็น `in_progress` ทุกครั้ง
+- `pending_level_N` ไม่อยู่ใน Prisma Enum
+
+</details>
+
+---
+
+### 56. Fix + UI: MyQueue Rose Theme + Tab Description + Action Fix (10:20)
+<details>
+<summary>🔍 <b>คลิกดูรายละเอียด</b> (Rose Theme, Tab Info, Assignee Action Fix)</summary>
+
+🔴 **Request:** 
+- ปรับสีเป็น rose ส่วนใหญ่
+- อธิบายแต่ละ Tab ว่าดึงข้อมูลอะไร
+- แก้ไข assignee ไม่เห็น action ใน JobDetail
+- คง flow ส่งงาน = completed ทันที (ไม่เปลี่ยน)
+
+✅ **Action:**
+
+**1. Backend: `backend/api-server/src/routes/jobs.js`**
+- แก้ waiting tab mapping: เปลี่ยน `pending_approval` → `rework`
+- `waiting` ตอนนี้ = `['correction', 'rework', 'returned', 'assignee_rejected']`
+
+**2. Frontend Utils: `frontend/src/modules/shared/utils/permission.utils.js`**
+- แก้ `getJobRole()` ให้ใช้ `String()` เปรียบ assigneeId และ requesterId
+- แก้ type mismatch string `"4"` vs number `4` → assignee เห็น action แล้ว
+
+**3. Frontend Component: `frontend/.../job-management/components/JobActionPanel.jsx`**
+- เพิ่ม `rework` ใน status check ทั้ง outer check และ inner render condition
+- assignee จะเห็นปุ่ม "ส่งงาน" / "ปฏิเสธงาน" ตอน status เป็น `rework` ด้วย
+
+**4. Frontend UI: `frontend/.../assignee/pages/MyQueue.jsx`**
+- เปลี่ยนสี `indigo` → `rose` ทุกจุด: Tab border, badge, focus ring, stats, ปุ่ม
+- เพิ่ม `TAB_DESCRIPTIONS` constant อธิบาย status ของแต่ละ Tab
+- เพิ่ม Description Banner ใต้ Tab navigation อธิบาย flow แต่ละ Tab
+
+**5. Backend: Assignee Job Listing**
+- เพิ่มการกรองสถานะ `pending_approval`, `pending_level_x`, `draft`, `submitted` ออกจากรายการงานของ Assignee ในกรณีที่ไม่ได้ระบุสถานะ (เช่น หน้า Dashboard) เพื่อไม่ให้ Assignee เห็นงานที่ยังไม่อนุมัติ
+
+**6. UI & Flow: Fix missing actions for `approved` status jobs**
+- เพิ่มสถานะ `approved` เข้าไปในการตรวจสอบสิทธิ์แสดงปุ่มต่างๆ ของ Assignee ในหน้า `JobActionPanel.jsx` (ให้ Assignee เห็นปุ่ม เริ่มงาน/ส่งงาน สำหรับงานด่วนที่ผ่านการอนุมัติแล้วแต่ยังไม่ได้ start)
+- แก้ไขให้ระบบ Auto-start ของ `JobDetail.jsx` รองรับงานที่มีสถานะ `approved` (เปลี่ยนเป็น `in_progress` เมื่อเปิดดู)
+- ย้ายการแสดงผลของงานสถานะ `approved` ใน `MyQueue.jsx` และ `jobs.js` จาก Tab "เสร็จแล้ว" (done) ไปยัง Tab "งานมาใหม่" (todo)
+
+📁 **Files Changed:**
+- `backend/api-server/src/routes/jobs.js`
+- `frontend/src/modules/shared/utils/permission.utils.js`
+- `frontend/src/modules/features/job-management/components/JobActionPanel.jsx`
+- `frontend/src/modules/features/assignee/pages/MyQueue.jsx`
+
+</details>
+
+---
+
+### 55. Fix + Improve: MyQueue (Assignee) - แก้ไขการแสดงผลและเพิ่ม SLA-Aware UI (10:00)
+<details>
+<summary>🔍 <b>คลิกดูรายละเอียด</b> (MyQueue Investigation & SLA-Aware Improvements)</summary>
+
+🔴 **Request:** 
+ตรวจสอบว่าทำไม MyQueue ไม่แสดงงาน, วิเคราะห์งานด่วน, ออกแบบ flow การจัดเรียงตาม SLA และ due date
+
+✅ **Action:**
+
+**1. Backend: `backend/api-server/src/routes/jobs.js`**
+- แก้ไข status mapping ของ `assignee` role:
+  - `todo` → `{ in: ['assigned', 'pending_dependency'] }` (เพิ่ม `pending_dependency` สำหรับงานที่รอ predecessor)
+  - `waiting` → `{ in: ['correction', 'pending_approval', 'returned', 'assignee_rejected'] }` (ครอบคลุมมากขึ้น)
+  - `done` → `{ in: ['completed', 'closed', 'approved'] }` (เพิ่ม `approved`)
+- เพิ่ม `acceptanceDate` และ `slaDays` ใน Prisma select
+- เพิ่ม `startedAt`, `acceptanceDate`, `slaWorkingDays` ใน transformed response
+- แก้ไข `historyData` ให้ใช้ `j.approvals?.[0]` แทน `.find()` (Prisma filtered already)
+
+**2. Frontend Service: `frontend/src/modules/shared/services/modules/jobService.js`**
+- ปรับปรุง `getAssigneeJobs()` ให้:
+  - ไม่ใช้ `new Date()` เป็น fallback ของ deadline (ป้องกัน `hoursRemaining = 0`)
+  - คำนวณ `shouldStartBy = deadline - slaWorkingDays * 8 ชม.`
+  - คำนวณ `slaProgress` (% เวลาที่ใช้จาก acceptanceDate ถึง deadline)
+  - ปรับ `healthStatus`: เพิ่มเงื่อนไข `shouldStartBy` ก่อน `warning`
+  - Return เพิ่ม: `slaWorkingDays`, `slaProgress`, `shouldStartBy`, `startedAt`, `acceptanceDate`, `createdAt`, `predecessorDjId`
+
+**3. Frontend UI: `frontend/src/modules/features/assignee/pages/MyQueue.jsx`**
+- เพิ่ม `tabCounts` state + `fetchAllTabCounts()` → แสดง badge จำนวนงานในแต่ละ Tab
+- ปรับปรุง `fetchJobs()` นับ urgent count
+- เพิ่ม `getSortWeight()` → SLA-Aware sorting: urgent+overdue > urgent > overdue > pastShouldStart > critical > warning > normal
+- แก้ไข sort logic ให้ใช้ `getSortWeight` ก่อนเงื่อนไขอื่น
+- แบ่งงานเป็น 3 กลุ่ม: `urgentJobs`, `riskJobs`, `normalJobs` พร้อม section headers
+- เพิ่ม helpers:
+  - `renderSLAText()`: แสดงเวลาเป็นวัน/ชั่วโมง, รองรับ null deadline
+  - `renderSLABar()`: SLA Progress Bar พร้อม color (red/yellow/green)
+  - `renderDateInfo()`: แสดงวันรับงาน และ "ควรเริ่มภายใน" พร้อมเตือนถ้าเลยแล้ว
+- สร้าง `JobCard` component แยกต่างหาก รองรับ: badges (Urgent, predecessor), SLA bar, date info, action buttons
+
+📁 **Files Changed:**
+- `backend/api-server/src/routes/jobs.js`
+- `frontend/src/modules/shared/services/modules/jobService.js`
+- `frontend/src/modules/features/assignee/pages/MyQueue.jsx`
+
+</details>
+
+---
+
 ## 📅 2026-03-01
 
 ### 52. Fix: ลำดับงาน Urgent ให้อยู่บนสุดเสมอและใส่พื้นหลังสีแดง (22:25)

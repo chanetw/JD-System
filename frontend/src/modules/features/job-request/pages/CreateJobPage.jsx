@@ -157,11 +157,18 @@ export default function CreateDJ() {
                     } else {
                         // Fallback: Use permission.utils.js to filter by user scopes
                         // Handles Tenant/BUD/Project level scope assignments
-                        const accessibleProjects = getAccessibleProjects(user, data.projects);
+                        let accessibleProjects = getAccessibleProjects(user, data.projects);
+                        
+                        // NEW: Fallback for users with NO scopes but with department/BUD (backward compatibility)
+                        if (accessibleProjects.length === 0 && user.department?.bud_id) {
+                            console.log(`[CreateJob] User has no explicit scopes, falling back to department BUD: ${user.department.bud_id}`);
+                            accessibleProjects = data.projects.filter(p => p.budId === user.department.bud_id);
+                        }
+
                         data.projects = accessibleProjects;
 
                         if (accessibleProjects.length === 0) {
-                            console.warn('[CreateJob] User has no assigned project scopes');
+                            console.warn('[CreateJob] User has no assigned project scopes and no department BUD');
                         }
                     }
                 }

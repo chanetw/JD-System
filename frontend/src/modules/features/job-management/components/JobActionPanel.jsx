@@ -16,7 +16,11 @@ const JobActionPanel = ({
     onOpenAssigneeRejectModal,
     onConfirmAssigneeRejection,
     onDenyRejection, // เพิ่ม callback สำหรับ Deny Rejection
-    onOpenExtendModal // เพิ่ม callback สำหรับ Extend Modal
+    onOpenExtendModal, // เพิ่ม callback สำหรับ Extend Modal
+    onOpenDraftModal, // ส่ง Draft ให้ตรวจ
+    onOpenRebriefModal, // ขอ Rebrief
+    onAcceptRebrief, // รับงานหลัง Rebrief
+    onOpenSubmitRebriefModal // Requester ส่งข้อมูลเพิ่ม
 }) => {
     const [selectedAssignee, setSelectedAssignee] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -45,11 +49,16 @@ const JobActionPanel = ({
     // 1. Approval Actions
     const renderApprovalActions = () => {
         const isPending = job.currentLevel > 0 && job.currentLevel < 999;
+        const isPendingStatus = job.status === 'pending_approval' || 
+                               job.status?.startsWith('pending_level_') ||
+                               job.status === 'assignee_rejected';
 
         console.log('[JobActionPanel] 🔍 Approval Check:', {
             jobStatus: job.status,
             currentLevel: job.currentLevel,
             isPending,
+            isPendingStatus,
+            isAdmin,
             hasFlowSnapshot: !!job.flowSnapshot,
             currentUserId: currentUser?.id,
             currentUserIdType: typeof currentUser?.id,
@@ -57,7 +66,13 @@ const JobActionPanel = ({
         });
 
         let canApprove = false;
-        if (isPending && job.flowSnapshot) {
+        
+        // ✅ Admin/Superadmin can approve ALL pending jobs (Superuser mode)
+        if (isAdmin && isPendingStatus) {
+            canApprove = true;
+            console.log('[JobActionPanel] ✅ Admin Superuser - can approve all pending jobs');
+        } else if (isPending && job.flowSnapshot) {
+            // Normal approver: check if in current level
             const currentLevelConfig = job.flowSnapshot.levels.find(l => l.level === job.currentLevel);
             console.log('[JobActionPanel] 🔍 Current Level Config:', {
                 level: job.currentLevel,
@@ -84,7 +99,6 @@ const JobActionPanel = ({
                 });
             }
         }
-        if (isAdmin && isPending) canApprove = true;
 
         if (!canApprove) {
             console.log('[JobActionPanel] ❌ Cannot approve - no buttons shown');
@@ -191,13 +205,17 @@ const JobActionPanel = ({
         // ✅ FIX: Check role first - only assignee or admin can see these buttons
         if (jobRole !== 'assignee' && jobRole !== 'admin') return null;
 
-        if (job.status !== 'assigned' && job.status !== 'in_progress') return null;
+        const normalStatuses = ['assigned', 'in_progress', 'rework', 'approved', 'correction', 'returned', 'draft_review'];
+        const rebriefSubmittedStatus = job.status === 'rebrief_submitted';
+
+        if (!normalStatuses.includes(job.status) && !rebriefSubmittedStatus) return null;
 
         return (
             <div className={`bg-white rounded-xl border ${theme?.borderClass || 'border-gray-400'} shadow-sm p-6 mb-6`}>
                 <h2 className="font-semibold text-gray-900 mb-4">การดำเนินการของผู้รับงาน</h2>
 
-                {(job.status === 'in_progress' || job.status === 'assigned') && (
+                {/* Normal Actions */}
+                {normalStatuses.includes(job.status) && (
                     <div className="space-y-3">
                         <div className="flex gap-3">
                             <button
@@ -215,6 +233,27 @@ const JobActionPanel = ({
                                 ปฏิเสธงาน
                             </button>
                         </div>
+
+                        {/* Draft & Rebrief Buttons */}
+                        <div className="flex gap-3">
+                            {onOpenDraftModal && (
+                                <button
+                                    onClick={onOpenDraftModal}
+                                    className="flex-1 py-2 px-4 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 flex items-center justify-center gap-2 transition-colors text-sm"
+                                >
+                                    📝 ส่ง Draft ให้ตรวจ
+                                </button>
+                            )}
+                            {onOpenRebriefModal && (
+                                <button
+                                    onClick={onOpenRebriefModal}
+                                    className="flex-1 py-2 px-4 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 flex items-center justify-center gap-2 transition-colors text-sm"
+                                >
+                                    🔄 ขอ Rebrief
+                                </button>
+                            )}
+                        </div>
+
                         {/* Extend Button - Only show after rejection denial */}
                         {onOpenExtendModal && job.rejectionDeniedAt && (
                             <div className="mt-3 p-3 bg-rose-50 border border-rose-200 rounded-lg">
@@ -229,6 +268,39 @@ const JobActionPanel = ({
                                 </button>
                             </div>
                         )}
+                    </div>
+                )}
+
+                {/* Rebrief Submitted - 3 Options */}
+                {rebriefSubmittedStatus && (
+                    <div className="space-y-3">
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+                            <p className="text-sm text-blue-800">
+                                ✅ ผู้สั่งงานส่งข้อมูลเพิ่มเติมมาแล้ว กรุณาตรวจสอบและตัดสินใจ
+                            </p>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                            <button
+                                onClick={onAcceptRebrief}
+                                className="py-3 px-3 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 flex items-center justify-center gap-1 transition-colors text-sm"
+                            >
+                                <CheckIcon className="w-4 h-4" />
+                                รับงาน
+                            </button>
+                            <button
+                                onClick={onOpenRebriefModal}
+                                className="py-3 px-3 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 flex items-center justify-center gap-1 transition-colors text-sm"
+                            >
+                                🔄 Rebrief อีก
+                            </button>
+                            <button
+                                onClick={onOpenAssigneeRejectModal}
+                                className="py-3 px-3 bg-red-500 text-white rounded-lg font-medium hover:bg-red-600 flex items-center justify-center gap-1 transition-colors text-sm"
+                            >
+                                <XMarkIcon className="w-4 h-4" />
+                                ปฏิเสธ
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>
@@ -280,7 +352,39 @@ const JobActionPanel = ({
         );
     };
 
-    // 5. Close/Revision Actions (Requester)
+    // 5. Rebrief Panel (Requester)
+    const renderRebriefPanel = () => {
+        if (job.status !== 'pending_rebrief') return null;
+
+        // Check if current user is requester
+        const isRequester = job.requesterId === currentUser?.id;
+        if (!isRequester && !isAdmin) return null;
+
+        return (
+            <div className="bg-white rounded-xl border border-orange-200 shadow-sm p-6 bg-orange-50 mb-6">
+                <h2 className="font-semibold text-orange-800 mb-2">🔄 ผู้รับงานขอข้อมูลเพิ่มเติม</h2>
+                <div className="bg-white border border-orange-200 rounded-lg p-3 mb-4">
+                    <p className="text-sm text-gray-700 mb-1">
+                        <strong>เหตุผล:</strong>
+                    </p>
+                    <p className="text-sm text-gray-800">
+                        {job.rebriefReason || 'ไม่ระบุ'}
+                    </p>
+                </div>
+                <p className="text-sm text-orange-700 mb-4">
+                    กรุณาเพิ่มข้อมูลหรือแก้ไข brief แล้วส่งกลับไปยังผู้รับงาน
+                </p>
+                <button
+                    onClick={onOpenSubmitRebriefModal}
+                    className="w-full py-3 px-4 bg-orange-600 text-white rounded-xl font-medium hover:bg-orange-700 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                >
+                    📤 ส่งข้อมูลเพิ่มเติม
+                </button>
+            </div>
+        );
+    };
+
+    // 6. Close/Revision Actions (Requester)
     const renderCloseActions = () => {
         if (job.status !== 'pending_close') return null;
 
@@ -317,6 +421,7 @@ const JobActionPanel = ({
             {renderReassignment()}
             {renderAssigneeActions()}
             {renderAssigneeRejectionConfirm()}
+            {renderRebriefPanel()}
             {renderCloseActions()}
         </>
     );

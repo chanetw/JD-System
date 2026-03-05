@@ -43,7 +43,7 @@ export const hasProjectScope = async (userId, projectId) => {
         const scopes = await getUserScopes(userId);
 
         // Check if user has Tenant-level scope (see all)
-        if (scopes.some(s => s.scope_level === 'Tenant')) {
+        if (scopes.some(s => s.scope_level?.toLowerCase() === 'tenant')) {
             return true;
         }
 
@@ -58,7 +58,7 @@ export const hasProjectScope = async (userId, projectId) => {
 
         // Check BUD-level scope
         if (scopes.some(s => 
-            s.scope_level === 'BUD' && 
+            s.scope_level?.toLowerCase() === 'bud' && 
             s.scope_id === project.bud_id
         )) {
             return true;
@@ -66,7 +66,7 @@ export const hasProjectScope = async (userId, projectId) => {
 
         // Check Project-level scope
         if (scopes.some(s => 
-            s.scope_level === 'Project' && 
+            s.scope_level?.toLowerCase() === 'project' && 
             s.scope_id === projectId
         )) {
             return true;
@@ -91,7 +91,7 @@ export const getAllowedProjectIds = async (userId, tenantId) => {
         const allowedProjectIds = new Set();
 
         // If user has Tenant-level scope, get all projects in tenant
-        if (scopes.some(s => s.scope_level === 'Tenant')) {
+        if (scopes.some(s => s.scope_level?.toLowerCase() === 'tenant')) {
             const { data: allProjects } = await supabase
                 .from('projects')
                 .select('id')
@@ -104,11 +104,11 @@ export const getAllowedProjectIds = async (userId, tenantId) => {
 
         // Add projects from Project-level scopes
         scopes
-            .filter(s => s.scope_level === 'Project')
+            .filter(s => s.scope_level?.toLowerCase() === 'project')
             .forEach(s => allowedProjectIds.add(s.scope_id));
 
         // Add projects from BUD-level scopes
-        const budScopes = scopes.filter(s => s.scope_level === 'BUD');
+        const budScopes = scopes.filter(s => s.scope_level?.toLowerCase() === 'bud');
         if (budScopes.length > 0) {
             const budIds = budScopes.map(s => s.scope_id);
             const { data: projects } = await supabase
@@ -139,7 +139,7 @@ export const filterJobsByScope = async (jobs, userId) => {
         const scopes = await getUserScopes(userId);
 
         // If user has Tenant-level scope, return all
-        if (scopes.some(s => s.scope_level === 'Tenant')) {
+        if (scopes.some(s => s.scope_level?.toLowerCase() === 'tenant')) {
             return jobs;
         }
 
@@ -148,11 +148,11 @@ export const filterJobsByScope = async (jobs, userId) => {
 
         // Add projects from Project-level scopes
         scopes
-            .filter(s => s.scope_level === 'Project')
+            .filter(s => s.scope_level?.toLowerCase() === 'project')
             .forEach(s => allowedProjectIds.add(s.scope_id));
 
         // Add projects from BUD-level scopes
-        const budScopes = scopes.filter(s => s.scope_level === 'BUD');
+        const budScopes = scopes.filter(s => s.scope_level?.toLowerCase() === 'bud');
         if (budScopes.length > 0) {
             const budIds = budScopes.map(s => s.scope_id);
             const { data: projects } = await supabase

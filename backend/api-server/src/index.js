@@ -47,6 +47,7 @@ import activitiesRoutes from './routes/activities.js'; // ✓ NEW: Job Activitie
 import analyticsRoutes from './routes/analytics.js'; // ✓ NEW: Analytics Tracking
 import masterDataCombinedRoutes from './routes/master-data-combined.js'; // ⚡ Performance: Combined master data endpoint
 import tenantSettingsRoutes from './routes/tenant-settings.js'; // ✓ NEW: Tenant Settings (CC emails, etc.)
+import notificationsRoutes from './routes/notifications.js'; // ✓ NEW: In-App Notifications API
 
 // V2 Flow Templates REMOVED - Using V1 Extended instead
 
@@ -285,10 +286,8 @@ app.use('/api/master-data-combined', masterDataCombinedRoutes); // ⚡ Performan
 app.use('/api/tenant-settings', tenantSettingsRoutes); // ✓ NEW: Tenant Settings API (routes: /api/tenant-settings, /api/tenant-settings/rejection-cc-emails)
 
 
-// Routes will be added here in the future
-// app.use('/api/notifications', notificationsRouter);
-// app.use('/api/jobs', jobsRouter);
-// etc.
+// ✓ Notifications API
+app.use('/api/notifications', notificationsRoutes);
 
 // ==========================================
 // ขั้นตอนที่ 8: Error Handling Middleware

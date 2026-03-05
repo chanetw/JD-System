@@ -88,8 +88,14 @@ export const jobService = {
             }
 
             const jobs = response.data.data || [];
-            console.log(`[jobService] getJobsByRole: Fetched ${jobs.length} jobs (Roles: ${roleParam})`);
-            return jobs;
+            const stats = response.data.stats || {};
+            console.log(`[jobService] getJobsByRole: Fetched ${jobs.length} jobs (Roles: ${roleParam}), Stats:`, stats);
+            
+            // Return both jobs and stats for components that need them
+            // For backward compatibility, return jobs array if no stats
+            return stats && Object.keys(stats).length > 0 
+                ? { data: jobs, stats } 
+                : jobs;
 
         } catch (error) {
             console.error('[jobService] getJobsByRole error:', error);
@@ -117,20 +123,46 @@ export const jobService = {
             const data = response.data.data || [];
             console.log(`[jobService] getAssigneeJobs: Fetched ${data.length} jobs (Filter: ${filterStatus})`);
 
-            // คำนวณ Health Status สำหรับแต่ละงาน
+            // คำนวณ Health Status และ SLA metadata สำหรับแต่ละงาน
             return data.map(job => {
                 const now = new Date();
-                const dueDate = new Date(job.deadline || job.dueDate || new Date());
-                const hoursRemaining = (dueDate - now) / (1000 * 60 * 60);
+                const isDone = filterStatus === 'done' || ['completed', 'closed', 'approved'].includes(job.status);
+
+                // Deadline: ใช้ dueDate จาก API, fallback เป็น null (ไม่ใช้ new Date() เพราะจะทำให้ hoursRemaining = 0)
+                const deadlineRaw = job.deadline || job.dueDate || null;
+                const dueDate = deadlineRaw ? new Date(deadlineRaw) : null;
+                const hoursRemaining = dueDate ? (dueDate - now) / (1000 * 60 * 60) : null;
+
+                // คำนวณ "ควรเริ่มงานภายในวันที่" จาก deadline - slaWorkingDays
+                const slaWorkingDays = job.slaWorkingDays || null;
+                let shouldStartBy = null;
+                if (dueDate && slaWorkingDays) {
+                    // Approximate: 1 working day ≈ 8 hours
+                    const slaHours = slaWorkingDays * 8;
+                    shouldStartBy = new Date(dueDate.getTime() - slaHours * 60 * 60 * 1000);
+                }
+
+                // SLA Progress: % เวลาที่ใช้ไปแล้วนับจาก acceptanceDate ถึง deadline
+                const acceptanceDateRaw = job.acceptanceDate || job.createdAt;
+                const acceptanceDate = acceptanceDateRaw ? new Date(acceptanceDateRaw) : null;
+                let slaProgress = null;
+                if (dueDate && acceptanceDate && !isDone) {
+                    const totalMs = dueDate - acceptanceDate;
+                    const usedMs = now - acceptanceDate;
+                    slaProgress = totalMs > 0 ? Math.min(100, Math.round((usedMs / totalMs) * 100)) : 100;
+                }
 
                 let healthStatus = 'normal';
-
-                if (filterStatus === 'done' || ['completed', 'closed'].includes(job.status)) {
-                    healthStatus = 'normal'; // งานเสร็จแล้วไม่ต้องสน SLA
+                if (isDone) {
+                    healthStatus = 'normal';
+                } else if (hoursRemaining === null) {
+                    healthStatus = 'normal'; // ไม่มี deadline ยังไม่ประเมิน
                 } else if (hoursRemaining < 0) {
                     healthStatus = 'critical'; // เลยกำหนด (Overdue)
                 } else if (hoursRemaining < 4) {
                     healthStatus = 'critical'; // เหลือเวลาน้อยกว่า 4 ชม.
+                } else if (shouldStartBy && now > shouldStartBy) {
+                    healthStatus = 'warning'; // ควรเริ่มงานแล้วตาม SLA
                 } else if (hoursRemaining <= 48) {
                     healthStatus = 'warning'; // เหลือเวลา 2 วัน
                 }
@@ -141,14 +173,23 @@ export const jobService = {
                     subject: job.subject,
                     status: job.status,
                     priority: job.priority,
-                    deadline: job.deadline || job.dueDate,
+                    deadline: deadlineRaw,
                     projectCode: job.projectCode,
                     projectName: job.project,
                     jobTypeName: job.jobType,
                     requesterName: job.requester,
                     requesterAvatar: job.requesterAvatar,
+                    assignee: job.assignee,
                     healthStatus: healthStatus,
-                    hoursRemaining: Math.round(hoursRemaining * 10) / 10
+                    hoursRemaining: hoursRemaining !== null ? Math.round(hoursRemaining * 10) / 10 : null,
+                    slaWorkingDays: slaWorkingDays,
+                    slaProgress: slaProgress,
+                    shouldStartBy: shouldStartBy ? shouldStartBy.toISOString() : null,
+                    startedAt: job.startedAt || null,
+                    acceptanceDate: acceptanceDateRaw || null,
+                    createdAt: job.createdAt || null,
+                    predecessorDjId: job.predecessorDjId || null,
+                    predecessorStatus: job.predecessorStatus || null
                 };
             });
 
@@ -679,38 +720,20 @@ export const jobService = {
         try {
             console.log(`[jobService] startJob: ${jobId}, trigger: ${triggerType}`);
 
-            // Real Supabase Implementation
-            // 1. Get current status to validate
-            const { data: job, error: fetchErr } = await supabase
-                .from('jobs')
-                .select('status')
-                .eq('id', jobId)
-                .single();
+            // Call Backend API instead of direct Supabase
+            const response = await httpClient.post(`/jobs/${jobId}/start`, { triggerType });
+            
+            if (!response.data.success) {
+                // If it returns success: false but with message (like "already started"), 
+                // we can return it gracefully without throwing an error if we want
+                // For now, let's just return the message
+                if (response.data.currentStatus) {
+                    return { message: response.data.message, currentStatus: response.data.currentStatus };
+                }
+                throw new Error(response.data.message || 'Failed to start job');
+            }
 
-            if (fetchErr || !job) throw new Error('Job not found');
-            if (job.status !== 'assigned') return { message: 'Job already started or not ready' };
-
-            // 2. Update status and log
-            const { data, error } = await supabase
-                .from('jobs')
-                .update({
-                    status: 'in_progress',
-                    started_at: new Date().toISOString()
-                })
-                .eq('id', jobId)
-                .select()
-                .single();
-
-            if (error) throw error;
-
-            // 3. Log Activity
-            await supabase.from('activity_logs').insert([{
-                job_id: jobId,
-                action: 'started',
-                message: `Job started (${triggerType})`
-            }]);
-
-            return data;
+            return response.data.data;
         } catch (err) {
             console.error('[jobService] startJob error:', err);
             throw err;
