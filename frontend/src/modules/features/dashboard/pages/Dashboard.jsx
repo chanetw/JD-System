@@ -8,7 +8,7 @@
  * - My Queue: กรองและแสดงรายการงานตาม Role
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import api from '@shared/services/apiService';
@@ -78,7 +78,10 @@ export default function Dashboard() {
     const [filter, setFilter] = useState('all');
     const [assigneeFilter, setAssigneeFilter] = useState('');  // string ชื่อ assignee ที่กรอง
     const [statusFilter, setStatusFilter] = useState('');      // status ที่ต้องการกรอง
-    const [showParent, setShowParent] = useState(false);       // เปิด/ปิดการแสดง Parent Jobs
+    const [showParent, setShowParent] = useState(false);       // เปิด/ปิดการแสดง Parent Jobs (Flat View)
+    const [viewMode, setViewMode] = useState('flat');          // 'flat' | 'parent' — View Mode Toggle
+    const [expandedRows, setExpandedRows] = useState(new Set()); // Parent IDs ที่กางอยู่ (Parent View)
+    const [sortMode, setSortMode] = useState('updatedAt');     // 'sla' | 'createdAt' | 'updatedAt'
 
     // Drill-down Panel state (KPI Cards)
     const [activePanel, setActivePanel] = useState(null); // 'newToday' | 'dueToday' | 'overdue' | null
@@ -237,20 +240,226 @@ export default function Dashboard() {
         return () => observer.disconnect();
     }, [queueSentinelRef, queueHasMore, queueLoading, queuePage, fetchQueueJobs]);
 
-    const filteredJobs = jobs.filter(job => {
-        // ซ่อน Parent Jobs สำหรับงานพึ่ง (default = ซ่อน)
-        if (!showParent && job.isParent) return false;
+    // ============================================
+    // Helper Functions for Parent View
+    // ============================================
+    
+    const toggleRowExpansion = useCallback((jobId) => {
+        setExpandedRows(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(jobId)) {
+                newSet.delete(jobId);
+            } else {
+                newSet.add(jobId);
+            }
+            return newSet;
+        });
+    }, []);
 
-        // กรองตาม status dropdown
-        if (statusFilter && job.status) {
-            if (job.status !== statusFilter) return false;
+    const calculateParentApprovalStatus = useCallback((children) => {
+        if (!children || children.length === 0) return null;
+        if (children.some(j => j.status === 'rejected' || j.status === 'returned')) {
+            return 'rejected';
         }
-        // กรองตาม assignee dropdown
-        if (assigneeFilter && job.assignee) {
-            if (job.assignee !== assigneeFilter) return false;
+        if (children.some(j => j.status?.includes('pending') && j.status !== 'pending_dependency')) {
+            return 'pending_approval';
         }
-        return true;
-    });
+        return 'approved';
+    }, []);
+
+    const calculateParentJobStatus = useCallback((children) => {
+        if (!children || children.length === 0) return null;
+        if (children.some(j => j.status === 'in_progress')) {
+            return 'in_progress';
+        }
+        const terminalStatuses = ['completed', 'rejected', 'returned', 'approved', 'closed'];
+        const allFinished = children.every(j => terminalStatuses.includes(j.status));
+        if (allFinished) {
+            return 'completed';
+        }
+        return 'pending_dependency';
+    }, []);
+
+    // Helper: คำนวณ derived deadline จาก child ที่ยัง active
+    const getParentDerivedDeadline = useCallback((children) => {
+        if (!children || children.length === 0) return null;
+        
+        // กรอง child ที่ยัง active (ไม่ใช่ terminal status)
+        const terminalStatuses = ['completed', 'closed', 'cancelled'];
+        const activeChildren = children.filter(c => !terminalStatuses.includes(c.status));
+        
+        if (activeChildren.length === 0) return null; // ปิดหมดแล้ว
+        
+        // หา deadline ที่ใกล้ที่สุดจาก active children
+        const deadlines = activeChildren
+            .map(c => c.deadline)
+            .filter(Boolean)
+            .map(d => new Date(d));
+        
+        if (deadlines.length === 0) return null;
+        
+        return new Date(Math.min(...deadlines));
+    }, []);
+
+    // Helper: คำนวณ derived SLA priority สำหรับ sort
+    const getParentSlaPriority = useCallback((children) => {
+        if (!children || children.length === 0) return 999999; // ไม่มี child = priority ต่ำสุด
+        
+        const terminalStatuses = ['completed', 'closed', 'cancelled'];
+        const activeChildren = children.filter(c => !terminalStatuses.includes(c.status));
+        
+        if (activeChildren.length === 0) return 999998; // ปิดหมดแล้ว = priority ต่ำรองลงมา
+        
+        const now = new Date();
+        let minDaysRemaining = 999999;
+        let hasOverdue = false;
+        
+        activeChildren.forEach(child => {
+            if (!child.deadline) return;
+            
+            const deadline = new Date(child.deadline);
+            const diffTime = deadline - now;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            if (diffDays < 0) {
+                hasOverdue = true;
+                minDaysRemaining = Math.min(minDaysRemaining, diffDays);
+            } else {
+                minDaysRemaining = Math.min(minDaysRemaining, diffDays);
+            }
+        });
+        
+        // overdue ให้ค่าติดลบ (จะได้ขึ้นก่อน)
+        // ยิ่งติดลบมาก ยิ่ง overdue นาน ยิ่งต้องขึ้นก่อน
+        return minDaysRemaining;
+    }, []);
+
+    // Helper: สร้าง SLA badge text สำหรับ Parent
+    const getParentSlaText = useCallback((children) => {
+        if (!children || children.length === 0) return '-';
+        
+        const terminalStatuses = ['completed', 'closed', 'cancelled'];
+        const activeChildren = children.filter(c => !terminalStatuses.includes(c.status));
+        
+        if (activeChildren.length === 0) return 'Completed';
+        
+        const now = new Date();
+        let minDaysRemaining = 999999;
+        let hasOverdue = false;
+        let overdueDays = 0;
+        
+        activeChildren.forEach(child => {
+            if (!child.deadline) return;
+            
+            const deadline = new Date(child.deadline);
+            const diffTime = deadline - now;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            if (diffDays < 0) {
+                hasOverdue = true;
+                if (Math.abs(diffDays) > overdueDays) {
+                    overdueDays = Math.abs(diffDays);
+                }
+            } else {
+                minDaysRemaining = Math.min(minDaysRemaining, diffDays);
+            }
+        });
+        
+        if (hasOverdue) {
+            return `Overdue +${overdueDays}d`;
+        }
+        
+        if (minDaysRemaining === 0) return 'Due today';
+        if (minDaysRemaining === 1) return 'Due tomorrow';
+        if (minDaysRemaining < 999999) return `${minDaysRemaining} days`;
+        
+        return '-';
+    }, []);
+
+    // ============================================
+    // Filter Logic with View Mode Support
+    // ============================================
+
+    const filteredJobs = useMemo(() => {
+        let result = [...jobs];
+
+        // 1. Apply status/assignee filters (ทุก mode)
+        if (statusFilter && result.length > 0) {
+            result = result.filter(j => j.status === statusFilter);
+        }
+        if (assigneeFilter && result.length > 0) {
+            result = result.filter(j => j.assignee === assigneeFilter);
+        }
+
+        // 2. Apply View Mode Logic
+        if (viewMode === 'flat') {
+            // === FLAT VIEW (เดิม — เก็บไว้) ===
+            if (!showParent) {
+                result = result.filter(job => !job.isParent);
+            }
+            // ถ้า showParent = true ก็แสดงทุกงานแบบ flat
+
+        } else if (viewMode === 'parent') {
+            // === PARENT VIEW (ใหม่ — เพิ่มเข้ามา) ===
+            const parentChildCount = {};
+            const childrenMap = {};
+
+            result.forEach(job => {
+                if (job.parentJobId) {
+                    parentChildCount[job.parentJobId] = (parentChildCount[job.parentJobId] || 0) + 1;
+                    if (!childrenMap[job.parentJobId]) childrenMap[job.parentJobId] = [];
+                    childrenMap[job.parentJobId].push(job);
+                }
+            });
+
+            result = result.filter(job => {
+                if (job.isParent) {
+                    const childCount = parentChildCount[job.id] || 0;
+                    if (childCount === 1) return false; // ซ่อน Parent ที่มี Child เดียว
+                    if (childCount > 1) {
+                        job.calculatedApprovalStatus = calculateParentApprovalStatus(childrenMap[job.id]);
+                        job.calculatedJobStatus = calculateParentJobStatus(childrenMap[job.id]);
+                        job.children = childrenMap[job.id];
+                        // เพิ่ม derived values สำหรับ Parent
+                        job.derivedDeadline = getParentDerivedDeadline(childrenMap[job.id]);
+                        job.derivedSlaPriority = getParentSlaPriority(childrenMap[job.id]);
+                        job.derivedSlaText = getParentSlaText(childrenMap[job.id]);
+                    }
+                } else if (job.parentJobId) {
+                    const siblingCount = parentChildCount[job.parentJobId] || 0;
+                    if (siblingCount > 1) return false; // ซ่อน Child (แสดงใต้ Parent)
+                }
+                return true;
+            });
+        }
+
+        // 3. Apply Sort Logic
+        if (sortMode === 'sla') {
+            result.sort((a, b) => {
+                const aPriority = a.isParent && a.derivedSlaPriority !== undefined 
+                    ? a.derivedSlaPriority 
+                    : (a.deadline ? Math.ceil((new Date(a.deadline) - new Date()) / (1000 * 60 * 60 * 24)) : 999999);
+                const bPriority = b.isParent && b.derivedSlaPriority !== undefined 
+                    ? b.derivedSlaPriority 
+                    : (b.deadline ? Math.ceil((new Date(b.deadline) - new Date()) / (1000 * 60 * 60 * 24)) : 999999);
+                return aPriority - bPriority;
+            });
+        } else if (sortMode === 'createdAt') {
+            result.sort((a, b) => {
+                const aDate = new Date(a.createdAt || 0);
+                const bDate = new Date(b.createdAt || 0);
+                return bDate - aDate; // desc
+            });
+        } else if (sortMode === 'updatedAt') {
+            result.sort((a, b) => {
+                const aDate = new Date(a.updatedAt || 0);
+                const bDate = new Date(b.updatedAt || 0);
+                return bDate - aDate; // desc
+            });
+        }
+
+        return result;
+    }, [jobs, statusFilter, assigneeFilter, showParent, viewMode, sortMode, calculateParentApprovalStatus, calculateParentJobStatus, getParentDerivedDeadline, getParentSlaPriority, getParentSlaText]);
 
     // รวบรวม assignee ที่มีในรายการงาน (unique)
     const assigneeOptions = [...new Set(jobs.map(j => j.assignee).filter(Boolean))].sort();
@@ -449,17 +658,42 @@ export default function Dashboard() {
                             )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                            {/* Toggle แสดง Parent Jobs */}
-                            <button
-                                onClick={() => setShowParent(v => !v)}
-                                className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${showParent
-                                        ? 'border-rose-400 bg-rose-50 text-rose-700 font-medium'
-                                        : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                            {/* View Mode Toggle */}
+                            <div className="flex items-center gap-1 border border-gray-300 rounded-lg p-0.5 bg-gray-50">
+                                <button
+                                    onClick={() => setViewMode('flat')}
+                                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                                        viewMode === 'flat'
+                                            ? 'bg-white text-gray-900 font-medium shadow-sm'
+                                            : 'text-gray-600 hover:text-gray-900'
                                     }`}
-                            >
-                                {showParent ? '▣ ซ่อน Parent Jobs' : '□ แสดง Parent Jobs'}
-                            </button>
+                                >
+                                    📋 Flat View
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('parent')}
+                                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                                        viewMode === 'parent'
+                                            ? 'bg-white text-gray-900 font-medium shadow-sm'
+                                            : 'text-gray-600 hover:text-gray-900'
+                                    }`}
+                                >
+                                    🗂️ Parent View
+                                </button>
+                            </div>
 
+
+                            {/* Sort Dropdown */}
+                            <select
+                                value={sortMode}
+                                onChange={e => setSortMode(e.target.value)}
+                                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
+                            >
+                                <option value="updatedAt">เรียงตาม: อัปเดตล่าสุด</option>
+                                <option value="createdAt">เรียงตาม: งานสร้างล่าสุด</option>
+                                <option value="sla">เรียงตาม: SLA น้อยไปมาก</option>
+                            </select>
+                            
                             {/* Status Dropdown Filter */}
                             {statusOptions.length > 0 && (
                                 <select
@@ -514,9 +748,65 @@ export default function Dashboard() {
                                     </td>
                                 </tr>
                             ) : (
-                                filteredJobs.map(job => (
-                                    <JobRow key={job.id} job={job} />
-                                ))
+                                filteredJobs.map(job => {
+                                    // === FLAT VIEW: แสดงแบบธรรมดา (เดิม) ===
+                                    if (viewMode === 'flat') {
+                                        return <JobRow key={job.id} job={job} />;
+                                    }
+                                    
+                                    // === PARENT VIEW: แสดงแบบ Accordion (ใหม่) ===
+                                    return (
+                                        <React.Fragment key={job.id}>
+                                            <JobRow 
+                                                job={job}
+                                                isParent={job.isParent}
+                                                hasChildren={job.children && job.children.length > 0}
+                                                isExpanded={expandedRows.has(job.id)}
+                                                onToggleExpand={() => toggleRowExpansion(job.id)}
+                                            />
+                                            
+                                            {/* Child Jobs Accordion — แสดงเฉพาะ Parent View */}
+                                            {job.children && job.children.length > 0 && expandedRows.has(job.id) && (
+                                                (() => {
+                                                    // Chain detection logic (copy from DJList)
+                                                    const childrenMap = new Map();
+                                                    job.children.forEach(c => childrenMap.set(c.id, c));
+                                                    
+                                                    const predecessorIds = new Set(job.children.map(c => c.predecessorId).filter(Boolean));
+                                                    const leaves = job.children.filter(c => !predecessorIds.has(c.id));
+                                                    const jobChains = new Map();
+                                                    
+                                                    leaves.forEach(leaf => {
+                                                        const chain = [];
+                                                        let current = leaf;
+                                                        while (current) {
+                                                            chain.unshift(current.id);
+                                                            current = current.predecessorId && childrenMap.has(current.predecessorId)
+                                                                ? childrenMap.get(current.predecessorId)
+                                                                : null;
+                                                        }
+                                                        if (chain.length > 1) {
+                                                            chain.forEach((jobId, idx) => {
+                                                                if (!jobChains.has(jobId) || jobChains.get(jobId).total < chain.length) {
+                                                                    jobChains.set(jobId, { index: idx + 1, total: chain.length });
+                                                                }
+                                                            });
+                                                        }
+                                                    });
+                                                    
+                                                    return job.children.map(child => (
+                                                        <JobRow
+                                                            key={child.id}
+                                                            job={child}
+                                                            isChild={true}
+                                                            childInfo={jobChains.get(child.id)}
+                                                        />
+                                                    ));
+                                                })()
+                                            )}
+                                        </React.Fragment>
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>
@@ -710,8 +1000,22 @@ function PanelJobRow({ job }) {
  * @component JobRow
  * @description แถวแสดงข้อมูลงานใน My Queue
  * @param {Object} job - ข้อมูลงาน
+ * @param {boolean} isParent - งาน Parent หรือไม่
+ * @param {boolean} hasChildren - มี Child Jobs หรือไม่
+ * @param {boolean} isExpanded - กางอยู่หรือไม่
+ * @param {Function} onToggleExpand - ฟังก์ชันสลับกาง/ยุบ
+ * @param {boolean} isChild - เป็น Child Job หรือไม่
+ * @param {Object} childInfo - { index, total } สำหรับ sequence number
  */
-function JobRow({ job }) {
+function JobRow({ 
+    job,
+    isParent = false,
+    hasChildren = false,
+    isExpanded = false,
+    onToggleExpand = null,
+    isChild = false,
+    childInfo = null
+}) {
     const statusColors = {
         draft: 'bg-gray-100 text-gray-700',
         scheduled: 'bg-violet-100 text-violet-700',
@@ -726,6 +1030,38 @@ function JobRow({ job }) {
     };
 
     const getSLABadge = () => {
+        // ถ้าเป็น Parent ให้ใช้ derived SLA
+        if (isParent && hasChildren && job.derivedSlaText) {
+            const text = job.derivedSlaText;
+            if (text.includes('Overdue')) {
+                return (
+                    <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700 font-medium">
+                        {text}
+                    </span>
+                );
+            }
+            if (text === 'Completed') {
+                return (
+                    <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700 font-medium">
+                        {text}
+                    </span>
+                );
+            }
+            if (text === 'Due today') {
+                return (
+                    <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700 font-medium">
+                        {text}
+                    </span>
+                );
+            }
+            return (
+                <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-700">
+                    {text}
+                </span>
+            );
+        }
+        
+        // งานปกติ
         if (job.isOverdue) {
             return (
                 <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700 font-medium">
@@ -743,13 +1079,43 @@ function JobRow({ job }) {
     const fmtDate = (d) => d
         ? new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
         : '-';
+    
+    // ถ้าเป็น Parent ให้ใช้ derived deadline
+    const displayDeadline = (isParent && hasChildren && job.derivedDeadline) 
+        ? fmtDate(job.derivedDeadline) 
+        : fmtDate(job.deadline);
 
     return (
-        <tr className={`hover:bg-gray-50 ${job.status === 'scheduled' ? 'bg-violet-50' : ''}`}>
+        <tr className={`hover:bg-gray-50 ${job.status === 'scheduled' ? 'bg-violet-50' : ''} ${isChild ? 'bg-gray-50/80' : ''}`}>
             <td className="px-4 py-3">
-                <Link to={`/jobs/${job.id}`} className="text-rose-600 font-medium hover:underline">
-                    {job.djId}
-                </Link>
+                <div className={`flex items-center ${isChild ? 'pl-6 border-l-2 border-gray-300' : ''}`}>
+                    {isParent && hasChildren && (
+                        <button
+                            onClick={onToggleExpand}
+                            className="mr-2 text-gray-500 hover:text-gray-700 focus:outline-none transition-transform duration-200"
+                            style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
+                        >
+                            <ChevronRightIcon />
+                        </button>
+                    )}
+                    <div className="flex flex-col">
+                        <div className="flex items-center gap-2">
+                            <Link to={`/jobs/${job.id}`} className="text-rose-600 font-medium hover:underline">
+                                {job.djId}
+                            </Link>
+                        </div>
+                        {isParent && hasChildren && (
+                            <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded inline-block w-fit mt-1">
+                                Parent Job
+                            </span>
+                        )}
+                        {isChild && (
+                            <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded inline-block w-fit mt-1">
+                                {childInfo ? `งานย่อย ${childInfo.index}/${childInfo.total}` : 'งานย่อย'}
+                            </span>
+                        )}
+                    </div>
+                </div>
             </td>
             <td className="px-4 py-3 text-sm text-gray-900">{job.project || '-'}</td>
             <td className="px-4 py-3 text-sm text-gray-600">{job.jobType || '-'}</td>
@@ -759,7 +1125,7 @@ function JobRow({ job }) {
                     {job.status?.replace(/_/g, ' ')}
                 </span>
             </td>
-            <td className="px-4 py-3 text-sm text-gray-600">{fmtDate(job.deadline)}</td>
+            <td className="px-4 py-3 text-sm text-gray-600">{displayDeadline}</td>
             <td className="px-4 py-3">{getSLABadge()}</td>
             <td className="px-4 py-3 text-sm text-gray-600">{job.assignee || '-'}</td>
             <td className="px-4 py-3 text-sm text-gray-500">
@@ -851,6 +1217,14 @@ function LoadingIcon() {
         <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        </svg>
+    );
+}
+
+function ChevronRightIcon({ className = 'w-4 h-4' }) {
+    return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
     );
 }
