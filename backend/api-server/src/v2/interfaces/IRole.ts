@@ -8,6 +8,7 @@ export enum RoleName {
   REQUESTER = 'Requester',
   APPROVER = 'Approver',
   ASSIGNEE = 'Assignee',
+  VIEWER = 'Viewer',
 }
 
 // Permission structure for each resource
@@ -91,6 +92,13 @@ export const DEFAULT_PERMISSIONS: Record<RoleName, IPermissions> = {
     organizations: { create: false, read: true, update: false, delete: false },
     jobs: { create: false, read: true, update: true, delete: false, approve: false },
     reports: { view: false, export: false },
+    settings: { manage: false },
+  },
+  [RoleName.VIEWER]: {
+    users: { create: false, read: true, update: false, delete: false },
+    organizations: { create: false, read: true, update: false, delete: false },
+    jobs: { create: false, read: true, update: false, delete: false, approve: false },
+    reports: { view: true, export: true },
     settings: { manage: false },
   },
 };

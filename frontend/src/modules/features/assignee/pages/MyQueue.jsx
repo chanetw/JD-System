@@ -205,17 +205,13 @@ export default function MyQueue() {
 
     const fetchAllTabCounts = async () => {
         try {
-            const [inProgress, completed, rejected, all] = await Promise.all([
-                api.getAssigneeJobs(user.id, 'in_progress'),
-                api.getAssigneeJobs(user.id, 'completed'),
-                api.getAssigneeJobs(user.id, 'rejected'),
-                api.getAssigneeJobs(user.id, 'all'), // For timeline
-            ]);
+            // ⚡ Performance: ใช้ getJobCounts (1 API call) แทน 4 API calls
+            const counts = await api.getJobCounts();
             setTabCounts({
-                in_progress: inProgress.length,
-                completed: completed.length,
-                rejected: rejected.length,
-                timeline: all.length,
+                in_progress: counts.in_progress || 0,
+                completed: counts.completed || 0,
+                rejected: counts.rejected || 0,
+                timeline: counts.all || 0,
             });
         } catch (err) {
             console.error('[MyQueue] fetchAllTabCounts error:', err);

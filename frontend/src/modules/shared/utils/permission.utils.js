@@ -31,7 +31,8 @@ export const ROLES = {
     ADMIN: 'Admin',
     REQUESTER: 'Requester',
     APPROVER: 'Approver',
-    ASSIGNEE: 'Assignee'
+    ASSIGNEE: 'Assignee',
+    VIEWER: 'Viewer'
 };
 
 export const SCOPE_LEVELS = {
@@ -40,17 +41,19 @@ export const SCOPE_LEVELS = {
     PROJECT: 'project'
 };
 
-// Thai labels for roles (V1 naming: Admin, Requester, Approver, Assignee)
+// Thai labels for roles (V1 naming: Admin, Requester, Approver, Assignee, Viewer)
 export const ROLE_LABELS = {
     admin: 'ผู้ดูแลระบบ',
     requester: 'ผู้เปิดงาน',
     approver: 'ผู้อนุมัติ',
     assignee: 'ผู้รับงาน',
+    viewer: 'ผู้ดูรายงาน',
     // V1 role names (PascalCase - from DB)
     Admin: 'ผู้ดูแลระบบสูงสุด',
     Requester: 'ผู้เปิดงาน',
     Approver: 'ผู้อนุมัติ',
     Assignee: 'ผู้รับงาน',
+    Viewer: 'ผู้ดูรายงาน',
     // Legacy V2 mapping (backward compatibility)
     SuperAdmin: 'ผู้ดูแลระบบสูงสุด',
     OrgAdmin: 'ผู้เปิดงาน',
@@ -63,7 +66,9 @@ export const ROLE_DESCRIPTIONS = {
     admin: 'จัดการระบบทั้งหมด',
     requester: 'สร้างและติดตามงาน',
     approver: 'อนุมัติงานที่ส่งมา',
-    assignee: 'รับและดำเนินการงาน'
+    assignee: 'รับและดำเนินการงาน',
+    viewer: 'ดู Dashboard ภาพรวม และรายงาน',
+    Viewer: 'ดู Dashboard ภาพรวม และรายงาน'
 };
 
 // Role display mapping (V1 primary, V2 backward compatible)
@@ -78,6 +83,8 @@ export const ROLE_V1_DISPLAY = {
     requester: 'Requester',
     approver: 'Approver',
     assignee: 'Assignee',
+    viewer: 'Viewer',
+    Viewer: 'Viewer',
     // V2 role names (backward compatibility)
     SuperAdmin: 'System Admin',
     OrgAdmin: 'Requester',
@@ -99,6 +106,8 @@ export const ROLE_V2_BADGE_COLORS = {
     requester: 'bg-blue-100 text-blue-800',
     approver: 'bg-green-100 text-green-800',
     assignee: 'bg-orange-100 text-orange-800',
+    viewer: 'bg-cyan-100 text-cyan-800',
+    Viewer: 'bg-cyan-100 text-cyan-800',
     // V2 role names (backward compatibility)
     SuperAdmin: 'bg-purple-100 text-purple-800',
     OrgAdmin: 'bg-blue-100 text-blue-800',
@@ -539,6 +548,14 @@ export const isApprover = (user) => hasRole(user, ROLES.APPROVER);
  * @returns {boolean} true ถ้าเป็น assignee
  */
 export const isAssignee = (user) => hasRole(user, ROLES.ASSIGNEE);
+
+/**
+ * ตรวจสอบว่า user เป็น viewer หรือไม่
+ * 
+ * @param {Object} user - User object
+ * @returns {boolean} true ถ้าเป็น viewer
+ */
+export const isViewer = (user) => hasRole(user, ROLES.VIEWER);
 
 // ============================================
 // Scope Summary for UI

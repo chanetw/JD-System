@@ -42,7 +42,6 @@ router.get('/', async (req, res) => {
     const userId = req.user.userId;
     const tenantId = req.user.tenantId;
 
-    console.log(`[Jobs API] User ${userId} requesting jobs with roles: ${role}`);
 
     let where = { tenantId };
     // Track jobs where user is the CURRENT level approver (for Approvals Queue filter)
@@ -53,7 +52,6 @@ router.get('/', async (req, res) => {
 
     // Helper: build where condition for a single role
     const buildRoleCondition = async (singleRole) => {
-      console.log(`[Jobs API] Building condition for role: ${singleRole}`);
       switch (singleRole) {
         case 'requester':
           // ✅ Requester sees ALL jobs they created (parent, child, and single jobs)
@@ -159,7 +157,6 @@ router.get('/', async (req, res) => {
             const sampleJob = allJobs.find(j => j.projectId === pId && j.jobTypeId === jtId);
             const priority = sampleJob ? sampleJob.priority : 'normal';
 
-            console.log(`[Approver Queue] Flow key: ${key}, Priority: ${priority}, SampleJob ID: ${sampleJob?.id}`);
 
             const flow = await approvalService.getApprovalFlow(pId, jtId, priority);
             flowMap.set(key, flow);
@@ -167,8 +164,6 @@ router.get('/', async (req, res) => {
 
           // For 'approver' role, we need to check if the user is actually an approver for the CURRENT step of each job
           // or if they have already approved it (for history tab).
-          console.log(`[Approver Queue] Total jobs found: ${allJobs.length}`);
-          console.log(`[Approver Queue] Jobs with priority urgent:`, allJobs.filter(j => j.priority?.toLowerCase() === 'urgent').map(j => ({ id: j.id, priority: j.priority, status: j.status })));
 
           for (const job of allJobs) {
             // If they already approved it, always include it (for history)
@@ -227,15 +222,10 @@ router.get('/', async (req, res) => {
               }
 
               if (isApproverForCurrentLevel) {
-                console.log(`[Approver Queue] User ${userId} is approver for CURRENT level of job ${job.id} (Level: ${currentLevel}, Priority: ${job.priority})`);
                 validJobIds.push(job.id);
                 currentApproverJobIds.add(job.id);
               } else if (isApproverInAnyLevel) {
-                // User is a future approver — include for DJ List visibility (read-only until their level)
-                console.log(`[Approver Queue] User ${userId} is future approver for job ${job.id} (Current level: ${currentLevel}, Priority: ${job.priority})`);
                 validJobIds.push(job.id);
-              } else {
-                console.log(`[Approver Queue] User ${userId} NOT approver for job ${job.id} (Priority: ${job.priority}, Status: ${job.status})`);
               }
             } else {
               // Fallback for other statuses not handled above
@@ -543,6 +533,272 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * GET /api/jobs/counts
+ * ดึงจำนวนงานแบ่งตาม status group สำหรับ Assignee (1 query แทน 4)
+ *
+ * @returns {Object} { in_progress, completed, rejected, all, todo, waiting }
+ */
+router.get('/counts', async (req, res) => {
+  try {
+    const prisma = getDatabase();
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
+
+    const statusGroups = {
+      in_progress: ['approved', 'assigned', 'in_progress', 'correction', 'rework', 'returned', 'pending_dependency'],
+      completed: ['completed', 'closed'],
+      rejected: ['rejected', 'rejected_by_assignee', 'assignee_rejected'],
+      todo: ['assigned'],
+      waiting: ['correction', 'pending_approval']
+    };
+
+    // ดึง counts ทั้งหมดใน 1 query
+    const countResults = await prisma.job.groupBy({
+      by: ['status'],
+      where: {
+        tenantId,
+        assigneeId: userId,
+        OR: [
+          { isParent: false, parentJobId: { not: null } },
+          { isParent: false, parentJobId: null }
+        ]
+      },
+      _count: { id: true }
+    });
+
+    // แปลงผลลัพธ์เป็น map
+    const statusMap = {};
+    countResults.forEach(r => {
+      statusMap[r.status] = r._count.id;
+    });
+
+    // รวมตาม group
+    const sumGroup = (statuses) => statuses.reduce((sum, s) => sum + (statusMap[s] || 0), 0);
+
+    const counts = {
+      in_progress: sumGroup(statusGroups.in_progress),
+      completed: sumGroup(statusGroups.completed),
+      rejected: sumGroup(statusGroups.rejected),
+      todo: sumGroup(statusGroups.todo),
+      waiting: sumGroup(statusGroups.waiting),
+      all: Object.values(statusMap).reduce((sum, c) => sum + c, 0)
+    };
+
+    res.json({ success: true, data: counts });
+  } catch (error) {
+    console.error('[Jobs] Get counts error:', error.message);
+    res.status(500).json({ success: false, error: 'GET_COUNTS_FAILED' });
+  }
+});
+
+/**
+ * GET /api/jobs/dashboard-stats
+ * ดึง stats สำหรับ Dashboard ด้วย aggregate COUNT (ไม่ดึงทุก row)
+ * แทน getDashboardStats ที่ดึงผ่าน Supabase ตรง
+ *
+ * @returns {Object} { newToday, dueToday, overdue, totalJobs, pending, myJobs }
+ */
+router.get('/dashboard-stats', async (req, res) => {
+  try {
+    const prisma = getDatabase();
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
+
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    // ดึงทุก count ด้วย Promise.all ใน parallel
+    const [
+      newToday,
+      dueToday,
+      overdue,
+      totalJobs,
+      pending,
+      myJobs
+    ] = await Promise.all([
+      // งานสร้างวันนี้ (ไม่นับ Parent Jobs)
+      prisma.job.count({
+        where: { tenantId, isParent: false, createdAt: { gte: todayStart, lte: todayEnd } }
+      }),
+      // งานถึงกำหนดวันนี้ (ไม่นับ Parent Jobs)
+      prisma.job.count({
+        where: {
+          tenantId,
+          isParent: false,
+          dueDate: { gte: todayStart, lte: todayEnd },
+          status: { notIn: ['completed', 'closed', 'cancelled'] }
+        }
+      }),
+      // งาน overdue (ไม่นับ Parent Jobs)
+      prisma.job.count({
+        where: {
+          tenantId,
+          isParent: false,
+          dueDate: { lt: todayStart },
+          status: { notIn: ['completed', 'closed', 'cancelled'] }
+        }
+      }),
+      // งานทั้งหมด (ไม่นับ Parent Jobs)
+      prisma.job.count({ where: { tenantId, isParent: false } }),
+      // งานรออนุมัติ (ไม่นับ Parent Jobs)
+      prisma.job.count({
+        where: {
+          tenantId,
+          isParent: false,
+          status: { in: ['pending_approval', 'pending_rejection'] }
+        }
+      }),
+      // งานของฉัน requester (ไม่นับ Parent Jobs)
+      prisma.job.count({
+        where: { tenantId, isParent: false, requesterId: userId }
+      })
+    ]);
+
+    res.json({
+      success: true,
+      data: { newToday, dueToday, overdue, totalJobs, pending, myJobs }
+    });
+  } catch (error) {
+    console.error('[Jobs] Get dashboard stats error:', error.message);
+    res.status(500).json({ success: false, error: 'GET_DASHBOARD_STATS_FAILED' });
+  }
+});
+
+/**
+ * GET /api/jobs/dashboard-jobs
+ * ดึงรายการงานสำหรับ KPI Card Drill-down พร้อม Pagination (Lazy Load)
+ *
+ * @query {string} type - ประเภท: 'newToday' | 'dueToday' | 'overdue'
+ * @query {number} page - หน้าที่ต้องการ (default: 1)
+ * @query {number} limit - จำนวนต่อหน้า (default: 20, max: 50)
+ *
+ * @returns {Object} { success, data: { jobs[], total, page, hasMore } }
+ */
+router.get('/dashboard-jobs', async (req, res) => {
+  try {
+    const prisma = getDatabase();
+    const tenantId = req.user.tenantId;
+
+    // ดึง query params และ validate
+    const type = req.query.type || 'newToday'; // newToday | dueToday | overdue
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    // คำนวณช่วงวันที่สำหรับ filter
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    // สร้าง where clause ตามประเภท (ไม่รวม Parent Jobs ให้ตัวเลขตรงกับ stats)
+    const EXCLUDED_STATUSES = ['completed', 'closed', 'cancelled'];
+    let where = { tenantId, isParent: false };
+    switch (type) {
+      case 'newToday':
+        // งานที่สร้างในวันนี้
+        where = { ...where, createdAt: { gte: todayStart, lte: todayEnd } };
+        break;
+      case 'dueToday':
+        // งานครบกำหนดวันนี้ และยังไม่เสร็จ
+        where = {
+          ...where,
+          dueDate: { gte: todayStart, lte: todayEnd },
+          status: { notIn: EXCLUDED_STATUSES }
+        };
+        break;
+      case 'overdue':
+        // งานเลยกำหนด และยังไม่เสร็จ
+        where = {
+          ...where,
+          dueDate: { lt: todayStart },
+          status: { notIn: EXCLUDED_STATUSES }
+        };
+        break;
+      default:
+        return res.status(400).json({ success: false, error: 'INVALID_TYPE', message: 'type ต้องเป็น newToday, dueToday หรือ overdue' });
+    }
+
+    // ดึงข้อมูลและนับ total พร้อมกัน
+    const [jobs, total] = await Promise.all([
+      prisma.job.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: type === 'overdue' ? { dueDate: 'asc' } : { createdAt: 'desc' },
+        select: {
+          id: true,
+          djId: true,
+          subject: true,
+          status: true,
+          priority: true,
+          dueDate: true,
+          createdAt: true,
+          project: { select: { id: true, name: true } },
+          jobType: { select: { id: true, name: true } },
+          assignee: { select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true } },
+          requester: { select: { id: true, firstName: true, lastName: true, displayName: true } }
+        }
+      }),
+      prisma.job.count({ where })
+    ]);
+
+    // คำนวณว่ายังมีข้อมูลเพิ่มหรือไม่
+    const hasMore = skip + jobs.length < total;
+
+    // แปลงข้อมูลสำหรับ frontend
+    const transformedJobs = jobs.map(job => {
+      const dueDateObj = job.dueDate ? new Date(job.dueDate) : null;
+      const isOverdue = dueDateObj && dueDateObj < todayStart &&
+        !EXCLUDED_STATUSES.includes(job.status);
+      const overdueDays = isOverdue
+        ? Math.floor((todayStart - dueDateObj) / (1000 * 60 * 60 * 24))
+        : 0;
+
+      return {
+        id: job.id,
+        djId: job.djId,
+        subject: job.subject,
+        status: job.status,
+        priority: job.priority,
+        deadline: job.dueDate,
+        createdAt: job.createdAt,
+        project: job.project?.name || null,
+        jobType: job.jobType?.name || null,
+        assignee: job.assignee
+          ? (job.assignee.displayName || `${job.assignee.firstName || ''} ${job.assignee.lastName || ''}`.trim())
+          : null,
+        assigneeAvatar: job.assignee?.avatarUrl || null,
+        requester: job.requester
+          ? `${job.requester.firstName || ''} ${job.requester.lastName || ''}`.trim()
+          : null,
+        isOverdue,
+        overdueDays
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        jobs: transformedJobs,
+        total,
+        page,
+        limit,
+        hasMore
+      }
+    });
+  } catch (error) {
+    console.error('[Jobs] Get dashboard jobs error:', error.message);
+    res.status(500).json({ success: false, error: 'GET_DASHBOARD_JOBS_FAILED' });
+  }
+});
+
+
+/**
  * POST /api/jobs
  * สร้างงานใหม่พร้อม Approval Flow V2 Logic
  * 
@@ -701,14 +957,38 @@ router.post('/', async (req, res) => {
     // คำนวณวันรับงานและ Due Date จาก SLA
     // ============================================
     const jobAcceptanceService = require('../services/jobAcceptanceService');
+    const workingHoursHelper = require('../utils/workingHoursHelper');
 
     let acceptanceDate = req.body.acceptanceDate ? new Date(req.body.acceptanceDate) : null;
     let calculatedDueDate = new Date(dueDate);
     let acceptanceMethod = 'auto';
+    let dueDateAdjustmentReasons = [];
+
+    // ============================================
+    // Step 4.6: Validate and Adjust Working Hours
+    // ตรวจสอบและปรับ dueDate ให้อยู่ในเวลาทำการ
+    // ============================================
+    const dueDateValidation = workingHoursHelper.validateAndAdjustDueDate(dueDate);
+
+    if (dueDateValidation.needsAdjustment) {
+      dueDateAdjustmentReasons = dueDateValidation.reasons;
+      console.log(`[Jobs] Due Date adjusted: ${workingHoursHelper.formatAdjustmentMessage(
+        dueDateValidation.originalDate,
+        dueDateValidation.adjustedDate,
+        dueDateValidation.reasons
+      )}`);
+    }
 
     // ถ้ามีการระบุ Acceptance Date มา
     if (acceptanceDate) {
       acceptanceMethod = 'manual';
+
+      // ปรับ acceptanceDate ให้อยู่ในเวลาทำการก่อน
+      const acceptanceDateValidation = workingHoursHelper.validateAndAdjustDueDate(acceptanceDate);
+      if (acceptanceDateValidation.needsAdjustment) {
+        acceptanceDate = acceptanceDateValidation.adjustedDate;
+        console.log(`[Jobs] Acceptance Date adjusted to working hours: ${acceptanceDate}`);
+      }
 
       // คำนวณ Due Date ใหม่จาก Acceptance Date + SLA
       if (jobType.slaWorkingDays) {
@@ -720,9 +1000,20 @@ router.post('/', async (req, res) => {
         console.log(`[Jobs] Calculated Due Date from Acceptance Date: ${calculatedDueDate}`);
       }
     } else {
-      // ถ้าไม่ระบุ Acceptance Date ให้ใช้วันที่สร้างงาน
-      acceptanceDate = now;
+      // ถ้าไม่ระบุ Acceptance Date ให้ใช้วันที่สร้างงาน (ปรับแล้ว)
+      acceptanceDate = dueDateValidation.adjustedDate;
       acceptanceMethod = 'auto';
+
+      // คำนวณ Due Date จาก SLA
+      if (jobType.slaWorkingDays) {
+        calculatedDueDate = jobAcceptanceService.calculateDueDate(
+          acceptanceDate,
+          jobType.slaWorkingDays
+        );
+      } else {
+        // ถ้าไม่มี SLA ให้ใช้ dueDate ที่ปรับแล้ว
+        calculatedDueDate = dueDateValidation.adjustedDate;
+      }
     }
 
     // ============================================
@@ -910,6 +1201,30 @@ router.post('/', async (req, res) => {
           }
         }
       });
+
+      // บันทึก activity log สำหรับการปรับ dueDate (ถ้ามี)
+      if (dueDateAdjustmentReasons.length > 0) {
+        const adjustmentMessage = workingHoursHelper.formatAdjustmentMessage(
+          dueDateValidation.originalDate,
+          dueDateValidation.adjustedDate,
+          dueDateAdjustmentReasons
+        );
+
+        await prisma.activityLog.create({
+          data: {
+            jobId: result.job.id,
+            userId,
+            action: 'due_date_adjusted',
+            message: adjustmentMessage,
+            detail: {
+              originalDueDate: dueDateValidation.originalDate,
+              adjustedDueDate: dueDateValidation.adjustedDate,
+              reasons: dueDateAdjustmentReasons,
+              validation: dueDateValidation.validation
+            }
+          }
+        });
+      }
     } catch (logError) {
       // ถ้า Log ไม่สำเร็จไม่ต้องหยุดการทำงาน
       console.warn('[Jobs] Activity log failed:', logError.message);
@@ -1370,16 +1685,16 @@ router.post('/:id/approve', async (req, res) => {
           });
 
           // ถ้ามี approval records และ level สุดท้ายอนุมัติแล้ว
-          const isFinalApproved = approvalRecords.length > 0 && 
+          const isFinalApproved = approvalRecords.length > 0 &&
             approvalRecords.every(a => a.status === 'approved');
 
           // หรือถ้าเป็นงานที่ skip approval (status = 'assigned' หรือ 'approved' โดยตรง)
-          const isSkipApproval = ['assigned', 'approved'].includes(job.status) && 
+          const isSkipApproval = ['assigned', 'approved'].includes(job.status) &&
             approvalRecords.length === 0;
 
           if (isFinalApproved || isSkipApproval) {
             console.log(`[Jobs] 🚨 Urgent job ${job.djId} passed final approval - triggering reschedule`);
-            
+
             const rescheduleResult = await chainService.rescheduleForUrgent(job, prisma);
 
             if (rescheduleResult.rescheduled > 0) {
@@ -2399,7 +2714,28 @@ router.post('/parent-child', async (req, res) => {
       }
 
       // ----------------------------------------
-      // 2.3: Create Parent Job (ใช้ parentDjId ที่สร้างไว้แล้วด้านบน)
+      // 2.3: Validate and Adjust Parent Deadline
+      // ----------------------------------------
+      const workingHoursHelper = require('../utils/workingHoursHelper');
+      let parentDueDate = deadline ? new Date(deadline) : null;
+      let parentDueDateAdjustmentReasons = [];
+
+      if (parentDueDate) {
+        const parentDueDateValidation = workingHoursHelper.validateAndAdjustDueDate(parentDueDate);
+
+        if (parentDueDateValidation.needsAdjustment) {
+          parentDueDate = parentDueDateValidation.adjustedDate;
+          parentDueDateAdjustmentReasons = parentDueDateValidation.reasons;
+          console.log(`[Parent-Child] Parent Due Date adjusted: ${workingHoursHelper.formatAdjustmentMessage(
+            parentDueDateValidation.originalDate,
+            parentDueDateValidation.adjustedDate,
+            parentDueDateValidation.reasons
+          )}`);
+        }
+      }
+
+      // ----------------------------------------
+      // 2.4: Create Parent Job (ใช้ parentDjId ที่สร้างไว้แล้วด้านบน)
       // ----------------------------------------
       const parentJob = await tx.job.create({
         data: {
@@ -2421,7 +2757,7 @@ router.post('/parent-child', async (req, res) => {
           assigneeId: null,
           isParent: true,
           parentJobId: null,
-          dueDate: deadline ? new Date(deadline) : null
+          dueDate: parentDueDate
         }
       });
 
@@ -2675,6 +3011,32 @@ router.post('/parent-child', async (req, res) => {
           }
         }
       });
+
+      // บันทึก activity log สำหรับการปรับ parent dueDate (ถ้ามี)
+      if (parentDueDateAdjustmentReasons.length > 0) {
+        const parentDueDateValidation = workingHoursHelper.validateAndAdjustDueDate(deadline);
+        const adjustmentMessage = workingHoursHelper.formatAdjustmentMessage(
+          parentDueDateValidation.originalDate,
+          parentDueDateValidation.adjustedDate,
+          parentDueDateAdjustmentReasons
+        );
+
+        await tx.activityLog.create({
+          data: {
+            jobId: parentJob.id,
+            userId,
+            action: 'due_date_adjusted',
+            message: adjustmentMessage,
+            detail: {
+              originalDueDate: parentDueDateValidation.originalDate,
+              adjustedDueDate: parentDueDateValidation.adjustedDate,
+              reasons: parentDueDateAdjustmentReasons,
+              jobType: 'parent',
+              childCount: childJobs.length
+            }
+          }
+        });
+      }
 
       return {
         parent: {
@@ -3324,9 +3686,9 @@ router.post('/:id/submit-draft', async (req, res) => {
     // Check status
     const allowedStatuses = ['assigned', 'in_progress', 'correction', 'rework', 'returned', 'draft_review'];
     if (!allowedStatuses.includes(job.status)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Cannot submit draft in status: ${job.status}` 
+      return res.status(400).json({
+        success: false,
+        message: `Cannot submit draft in status: ${job.status}`
       });
     }
 
@@ -3401,10 +3763,10 @@ router.post('/:id/submit-draft', async (req, res) => {
     try {
       const EmailService = require('../services/emailService');
       const emailService = new EmailService();
-      
+
       const recipients = [];
       if (job.requester?.email) recipients.push(job.requester.email);
-      
+
       // Get approver emails
       if (approverIds.length > 0) {
         const approvers = await prisma.user.findMany({
@@ -3547,7 +3909,7 @@ router.post('/:id/rebrief', async (req, res) => {
       try {
         const EmailService = require('../services/emailService');
         const emailService = new EmailService();
-        
+
         await emailService.sendEmail(
           job.requester.email,
           `🔄 ขอข้อมูลเพิ่มเติม: ${job.djId}`,
@@ -3680,7 +4042,7 @@ router.post('/:id/submit-rebrief', async (req, res) => {
       try {
         const EmailService = require('../services/emailService');
         const emailService = new EmailService();
-        
+
         await emailService.sendEmail(
           job.assignee.email,
           `✅ ข้อมูลเพิ่มเติมส่งมาแล้ว: ${job.djId}`,
@@ -3760,7 +4122,7 @@ router.post('/:id/accept-rebrief', async (req, res) => {
     // Calculate new due date using SLA days
     const now = new Date();
     const slaDays = job.slaDays || 3; // Default 3 days if not set
-    
+
     // Import date-fns for business day calculation
     const { addBusinessDays } = await import('date-fns');
     const newDueDate = addBusinessDays(now, slaDays);
@@ -3809,7 +4171,7 @@ router.post('/:id/accept-rebrief', async (req, res) => {
       try {
         const EmailService = require('../services/emailService');
         const emailService = new EmailService();
-        
+
         await emailService.sendEmail(
           job.requester.email,
           `✅ งาน ${job.djId} รับแล้ว`,

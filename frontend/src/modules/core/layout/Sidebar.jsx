@@ -11,7 +11,7 @@
 import { NavLink } from 'react-router-dom';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { FolderIcon, Cog6ToothIcon, UserGroupIcon, BuildingOfficeIcon } from '@heroicons/react/24/outline';
-import { isAdmin as checkIsAdmin, isApprover as checkIsApprover, hasAnyRole } from '@shared/utils/permission.utils';
+import { isAdmin as checkIsAdmin, isApprover as checkIsApprover, isViewer as checkIsViewer, hasAnyRole } from '@shared/utils/permission.utils';
 
 /**
  * @component Sidebar
@@ -23,9 +23,10 @@ export default function Sidebar() {
 
     /** ตรวจสอบสิทธิ์ (case-insensitive ผ่าน permission.utils) */
     const isAdmin = checkIsAdmin(user);
+    const isViewer = checkIsViewer(user);
     const isAssignee = hasAnyRole(user, ['Assignee', 'graphic', 'editor']);
     const canCreateJob = hasAnyRole(user, ['Admin', 'Requester', 'Approver']);
-    const canAccessAnalytics = isAdmin;
+    const canAccessAnalytics = isAdmin || isViewer;
     const isApprover = checkIsApprover(user) || isAdmin;
 
     return (
@@ -147,12 +148,16 @@ export default function Sidebar() {
                     <>
                         <div className="pt-6 pb-2 px-2">
                             <p className="text-xs font-bold text-rose-300 uppercase tracking-wider">
-                                Analytics
+                                รายงาน & ภาพรวม
                             </p>
                         </div>
 
                         <SidebarLink to="/analytics" icon={AnalyticsIcon}>
                             Dashboard ภาพรวม
+                        </SidebarLink>
+
+                        <SidebarLink to="/reports" icon={ReportIcon}>
+                            รายงานสรุป (Reports)
                         </SidebarLink>
                     </>
                 )}

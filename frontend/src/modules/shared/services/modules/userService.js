@@ -728,5 +728,23 @@ export const userService = {
             console.error('Impersonate error:', error);
             throw error;
         }
+    },
+
+    /**
+     * แก้ไขโปรไฟล์ตัวเอง (self-service)
+     * @param {{ firstName?: string, lastName?: string, displayName?: string, phone?: string }} profileData
+     * @returns {Promise<Object>}
+     */
+    updateMyProfile: async (profileData) => {
+        try {
+            const response = await httpClient.put('/users/me/profile', profileData);
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'อัปเดตโปรไฟล์ไม่สำเร็จ');
+            }
+            return response.data;
+        } catch (error) {
+            console.error('[userService] updateMyProfile error:', error);
+            throw error;
+        }
     }
 };

@@ -326,7 +326,6 @@ export class UserService extends BaseService {
         delete updateData.password;
       }
 
-      // Build clean update data (only valid Prisma fields)
       const prismaData = {};
       if (updateData.firstName !== undefined) prismaData.firstName = updateData.firstName;
       if (updateData.lastName !== undefined) prismaData.lastName = updateData.lastName;
@@ -352,6 +351,8 @@ export class UserService extends BaseService {
           firstName: true,
           lastName: true,
           displayName: true,
+          phone: true,
+          title: true,
           departmentId: true,
           isActive: true,
           updatedAt: true

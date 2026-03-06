@@ -87,18 +87,25 @@ export default function DJList() {
 
             console.log(`[DJList] Loaded ${jobsData.length} jobs. First job:`, jobsData[0]);
 
-            // === Scope-based Filtering (ใหม่) ===
-            // Skip scope filtering if tenantId is not available
+            // === Scope-based Filtering ===
+            // ⚡ Performance: ดึง scopes 1 ครั้ง แล้วใช้ซ้ำ (ไม่เรียก getUserScopes ซ้ำใน getAllowedProjectIds)
             let scopeFilteredJobs = jobsData;
             if (user?.id && user?.tenantId) {
                 const scopes = await getUserScopes(user.id);
                 const hasTenantScope = scopes.some(s => s.scope_level?.toLowerCase() === 'tenant');
 
                 if (!hasTenantScope && scopes.length > 0) {
-                    // ถ้ามี scope แต่ไม่ใช่ Tenant level ให้ filter ตาม project
-                    const allowedProjectIds = await getAllowedProjectIds(user.id, user.tenantId);
-                    scopeFilteredJobs = jobsData.filter(job => allowedProjectIds.has(job.projectId || job.project_id));
-                    console.log('📋 [DJList] Filtered by scope:', scopeFilteredJobs.length, 'jobs');
+                    // ใช้ scopes ที่ดึงมาแล้วเพื่อคำนวณ allowedProjectIds ตรงนี้ แทนการเรียก getAllowedProjectIds ที่จะดึงซ้ำ
+                    const allowedProjectIds = new Set();
+                    scopes.forEach(scope => {
+                        if (scope.scope_level?.toLowerCase() === 'project' && scope.project_id) {
+                            allowedProjectIds.add(scope.project_id);
+                        }
+                    });
+                    if (allowedProjectIds.size > 0) {
+                        scopeFilteredJobs = jobsData.filter(job => allowedProjectIds.has(job.projectId || job.project_id));
+                        console.log('📋 [DJList] Filtered by scope:', scopeFilteredJobs.length, 'jobs');
+                    }
                 }
             }
 

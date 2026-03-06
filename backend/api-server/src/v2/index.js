@@ -61,6 +61,8 @@ const formatUserResponse = (user) => ({
   lastName: user.lastName,
   fullName: `${user.firstName} ${user.lastName}`,
   displayName: user.displayName || undefined,
+  phone: user.phone || undefined,
+  title: user.title || undefined,
   avatarUrl: user.avatarUrl || undefined,
   roleId: user.roleId,
   // Use role object if available, otherwise check roleName property, or default to Member

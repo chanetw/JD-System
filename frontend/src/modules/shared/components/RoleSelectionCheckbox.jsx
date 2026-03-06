@@ -14,7 +14,8 @@ import {
     ShieldCheckIcon,
     DocumentTextIcon,
     CheckBadgeIcon,
-    WrenchScrewdriverIcon
+    WrenchScrewdriverIcon,
+    EyeIcon
 } from '@heroicons/react/24/outline';
 import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS } from '@shared/utils/permission.utils';
 
@@ -23,7 +24,8 @@ const ROLE_ICONS = {
     Admin: ShieldCheckIcon,
     Requester: DocumentTextIcon,
     Approver: CheckBadgeIcon,
-    Assignee: WrenchScrewdriverIcon
+    Assignee: WrenchScrewdriverIcon,
+    Viewer: EyeIcon
 };
 
 // Role colors mapping
@@ -55,6 +57,13 @@ const ROLE_COLORS = {
         text: 'text-orange-700',
         icon: 'text-orange-500',
         checked: 'bg-orange-100 border-orange-500'
+    },
+    Viewer: {
+        bg: 'bg-cyan-50',
+        border: 'border-cyan-200',
+        text: 'text-cyan-700',
+        icon: 'text-cyan-500',
+        checked: 'bg-cyan-100 border-cyan-500'
     }
 };
 
@@ -63,7 +72,8 @@ const DEFAULT_ROLES = [
     ROLES.ADMIN,
     ROLES.REQUESTER,
     ROLES.APPROVER,
-    ROLES.ASSIGNEE
+    ROLES.ASSIGNEE,
+    ROLES.VIEWER
 ];
 
 /**

@@ -14,6 +14,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { useNotificationStore } from '@core/stores/notificationStore';
 import api from '@shared/services/apiService';
+import ProfileEditModal from '@shared/components/ProfileEditModal';
+import { ROLE_LABELS, ROLE_V2_BADGE_COLORS } from '@shared/utils/permission.utils';
 
 /**
  * @component Header
@@ -28,6 +30,7 @@ export default function Header() {
     // === สถานะการแสดงผลเมนู Dropdown (UI States) ===
     const [showProfileMenu, setShowProfileMenu] = useState(false); // เมนูโปรไฟล์
     const [showNoti, setShowNoti] = useState(false);               // เมนูแจ้งเตือน
+    const [showEditProfile, setShowEditProfile] = useState(false); // modal แก้โปรไฟล์
 
     // โหลดข้อมูลแจ้งเตือนเมื่อคอมโพเน็นต์ถูกแสดง หรือเมื่อผู้ใช้เปลี่ยนไป
     useEffect(() => {
@@ -168,21 +171,49 @@ export default function Header() {
                     </button>
 
                     {showProfileMenu && (
-                        <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                            <div className="px-4 py-2 border-b border-gray-100">
-                                <p className="text-sm font-medium text-gray-900">{user?.displayName}</p>
-                                <p className="text-xs text-gray-500">{user?.email}</p>
+                        <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-lg border border-gray-200 py-1 z-20">
+                            <div className="px-4 py-3 border-b border-gray-100">
+                                <p className="text-sm font-semibold text-gray-900">{user?.displayName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim()}</p>
+                                <p className="text-xs text-gray-500 mt-0.5">{user?.email}</p>
+                                {/* Role Badges */}
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                    {(user?.roles || []).map(r => {
+                                        const roleName = typeof r === 'string' ? r : r.name;
+                                        return roleName ? (
+                                            <span
+                                                key={roleName}
+                                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${ROLE_V2_BADGE_COLORS[roleName] || 'bg-gray-100 text-gray-700'}`}
+                                            >
+                                                {ROLE_LABELS[roleName] || roleName}
+                                            </span>
+                                        ) : null;
+                                    })}
+                                </div>
                             </div>
                             <button
-                                onClick={handleLogout}
-                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                onClick={() => { setShowEditProfile(true); setShowProfileMenu(false); }}
+                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                             >
+                                <PencilIcon className="w-4 h-4 text-gray-400" />
+                                แก้ไขโปรไฟล์
+                            </button>
+                            <button
+                                onClick={handleLogout}
+                                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                            >
+                                <LogoutIcon className="w-4 h-4 text-red-400" />
                                 ออกจากระบบ
                             </button>
                         </div>
                     )}
                 </div>
             </div>
+
+            {/* Profile Edit Modal */}
+            <ProfileEditModal
+                isOpen={showEditProfile}
+                onClose={() => setShowEditProfile(false)}
+            />
 
             {/* Toast Popup */}
             {toast.show && (
@@ -240,6 +271,24 @@ function BellIcon({ className }) {
         <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        </svg>
+    );
+}
+
+function PencilIcon({ className }) {
+    return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+        </svg>
+    );
+}
+
+function LogoutIcon({ className }) {
+    return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
         </svg>
     );
 }

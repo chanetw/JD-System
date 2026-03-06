@@ -238,6 +238,56 @@ router.post('/', async (req, res) => {
 });
 
 /**
+ * PUT /api/users/me/profile
+ * แก้ไขโปรไฟล์ตัวเอง (self-service) — ไม่ต้องเป็น Admin
+ *
+ * @body {string} firstName - ชื่อจริง
+ * @body {string} lastName - นามสกุล
+ * @body {string} displayName - ชื่อแสดง (optional)
+ * @body {string} phone - เบอร์โทร (optional)
+ */
+router.put('/me/profile', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { firstName, lastName, displayName, phone } = req.body;
+
+    if (!firstName && !lastName && !displayName && !phone) {
+      return res.status(400).json({
+        success: false,
+        error: 'NO_DATA',
+        message: 'ไม่มีข้อมูลที่ต้องการอัปเดต'
+      });
+    }
+
+    const updateData = {};
+    if (firstName !== undefined) updateData.firstName = firstName.trim();
+    if (lastName !== undefined) updateData.lastName = lastName.trim();
+    if (displayName !== undefined) updateData.displayName = displayName.trim();
+    if (phone !== undefined) updateData.phone = phone.trim();
+
+    // Auto-generate displayName if not provided
+    if (!updateData.displayName && (updateData.firstName || updateData.lastName)) {
+      updateData.displayName = `${updateData.firstName || ''} ${updateData.lastName || ''}`.trim();
+    }
+
+    const result = await userService.updateUser(userId, updateData);
+
+    if (result.success) {
+      res.json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    console.error('[Users] Update profile error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'UPDATE_PROFILE_FAILED',
+      message: 'ไม่สามารถอัปเดตโปรไฟล์ได้'
+    });
+  }
+});
+
+/**
  * PUT /api/users/:id
  * อัปเดตข้อมูลผู้ใช้
  * 

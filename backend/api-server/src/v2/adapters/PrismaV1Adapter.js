@@ -61,6 +61,8 @@ class PrismaV1Adapter {
       firstName: prismaUser.firstName,
       lastName: prismaUser.lastName,
       displayName: prismaUser.displayName,
+      phone: prismaUser.phone,
+      title: prismaUser.title,
       avatarUrl: prismaUser.avatarUrl,
       roleName: primaryRole,
       roleId: 0, // For V2 compatibility (no actual role FK)

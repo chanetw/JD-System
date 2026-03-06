@@ -33,7 +33,6 @@ export const jobService = {
                 children: job.children || [] // If backend populates children
             }));
 
-            console.log(`[jobService] getJobs: Fetched ${normalizedJobs.length} jobs`);
             return normalizedJobs;
 
         } catch (error) {
@@ -76,7 +75,6 @@ export const jobService = {
             // Send comma-separated roles to backend
             const roleParam = allRoles.map(r => r.toLowerCase()).join(',') || 'requester';
 
-            console.log(`[getJobsByRole] Fetching for roles: ${roleParam}, UserID: ${user.id}`);
 
             const response = await httpClient.get('/jobs', {
                 params: { role: roleParam }
@@ -89,12 +87,11 @@ export const jobService = {
 
             const jobs = response.data.data || [];
             const stats = response.data.stats || {};
-            console.log(`[jobService] getJobsByRole: Fetched ${jobs.length} jobs (Roles: ${roleParam}), Stats:`, stats);
-            
+
             // Return both jobs and stats for components that need them
             // For backward compatibility, return jobs array if no stats
-            return stats && Object.keys(stats).length > 0 
-                ? { data: jobs, stats } 
+            return stats && Object.keys(stats).length > 0
+                ? { data: jobs, stats }
                 : jobs;
 
         } catch (error) {
@@ -121,7 +118,6 @@ export const jobService = {
             }
 
             const data = response.data.data || [];
-            console.log(`[jobService] getAssigneeJobs: Fetched ${data.length} jobs (Filter: ${filterStatus})`);
 
             // คำนวณ Health Status และ SLA metadata สำหรับแต่ละงาน
             return data.map(job => {
@@ -201,12 +197,30 @@ export const jobService = {
     },
 
     /**
+     * ⚡ Performance: ดึงจำนวนงานแบ่งตาม status group ใน 1 API call
+     * แทนการเรียก getAssigneeJobs 4 ครั้งเพื่อนับจำนวน
+     * @returns {Object} { in_progress, completed, rejected, all, todo, waiting }
+     */
+    getJobCounts: async () => {
+        try {
+            const response = await httpClient.get('/jobs/counts');
+            if (!response.data.success) {
+                console.warn('[jobService] getJobCounts failed:', response.data.message);
+                return { in_progress: 0, completed: 0, rejected: 0, all: 0, todo: 0, waiting: 0 };
+            }
+            return response.data.data;
+        } catch (error) {
+            console.error('[jobService] getJobCounts error:', error);
+            return { in_progress: 0, completed: 0, rejected: 0, all: 0, todo: 0, waiting: 0 };
+        }
+    },
+
+    /**
      * ดึงรายละเอียดงานเดี่ยวผ่าน Backend API (V2)
      * @param {number} id - รหัสงาน
      */
     getJobById: async (id) => {
         try {
-            console.log(`[jobService] getJobById: ${id}`);
             const response = await httpClient.get(`/jobs/${id}`);
 
             if (!response.data.success) {
@@ -245,10 +259,6 @@ export const jobService = {
                 finalFiles: data.finalFiles
             };
 
-            console.log('[jobService] getJobById mapped:', {
-                completedAt: mapped.completedAt,
-                finalFiles: mapped.finalFiles
-            });
 
             return mapped;
 
@@ -567,25 +577,45 @@ export const jobService = {
 
     // --- Dashboard Stats ---
 
+    // ⚡ Performance: ใช้ Backend API ที่ใช้ COUNT() แทน Supabase ที่ดึงทุก row
     getDashboardStats: async () => {
         try {
-            const { data: jobs, error } = await supabase
-                .from('jobs')
-                .select('id, status, due_date, created_at');
-
-            if (error) {
-                console.error('getDashboardStats error:', error.message);
-                return jobService.calculateStats([]);
+            const response = await httpClient.get('/jobs/dashboard-stats');
+            if (!response.data.success) {
+                console.warn('getDashboardStats API failed:', response.data.message);
+                return { newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, pending: 0, myJobs: 0 };
             }
-
-            // Map due_date to deadline for calculation compatibility
-            const mappedJobs = jobs.map(j => ({ ...j, deadline: j.due_date }));
-            return jobService.calculateStats(mappedJobs);
+            return response.data.data;
         } catch (err) {
             console.error('getDashboardStats error:', err);
-            return { newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, pending: 0 };
+            return { newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, pending: 0, myJobs: 0 };
         }
     },
+
+    /**
+     * ดึงรายการงานสำหรับ KPI Card Drill-down แบบ Lazy Load
+     * 
+     * @param {string} type - ประเภทงาน: 'newToday' | 'dueToday' | 'overdue'
+     * @param {number} page - หน้าที่ต้องการ (default: 1)
+     * @param {number} limit - จำนวนต่อหน้า (default: 20)
+     * @returns {{ jobs: Array, total: number, page: number, hasMore: boolean }}
+     */
+    getDashboardJobs: async (type, page = 1, limit = 20) => {
+        try {
+            const response = await httpClient.get('/jobs/dashboard-jobs', {
+                params: { type, page, limit }
+            });
+            if (!response.data.success) {
+                console.warn('getDashboardJobs API failed:', response.data.message);
+                return { jobs: [], total: 0, page: 1, hasMore: false };
+            }
+            return response.data.data;
+        } catch (err) {
+            console.error('getDashboardJobs error:', err);
+            return { jobs: [], total: 0, page: 1, hasMore: false };
+        }
+    },
+
 
     calculateStats: (jobs) => {
         const today = new Date();
@@ -722,7 +752,7 @@ export const jobService = {
 
             // Call Backend API instead of direct Supabase
             const response = await httpClient.post(`/jobs/${jobId}/start`, { triggerType });
-            
+
             if (!response.data.success) {
                 // If it returns success: false but with message (like "already started"), 
                 // we can return it gracefully without throwing an error if we want

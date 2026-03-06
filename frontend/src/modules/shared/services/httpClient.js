@@ -32,14 +32,6 @@ httpClient.interceptors.request.use(
     // Prioritize V2 token as it's the modern auth system
     const token = tokenV2 || tokenV1;
 
-    // 🔍 DEBUG: Log token source for troubleshooting
-    console.log('[httpClient] 🔐 Token Check:', {
-      hasV1Token: !!tokenV1,
-      hasV2Token: !!tokenV2,
-      usingToken: token ? `${token.substring(0, 20)}...` : 'NONE',
-      requestUrl: config.url
-    });
-
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

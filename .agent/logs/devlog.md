@@ -4,6 +4,133 @@
 
 ---
 
+## 📅 2026-03-06
+
+### 68. Feature: Viewer Role + User Profile Edit
+<details>
+<summary>🔍 <b>คลิกดูรายละเอียด</b> (Viewer Role & Profile Edit Modal)</summary>
+
+🔴 **Request:**
+- สร้าง Role ใหม่สำหรับดูรายงานโดยเฉพาะ (ผู้บริหาร/Manager ใช้เป็น multi-role ได้)
+- แก้ไข User Profile ที่ปุ่มขวาบน ไม่ใช่แค่ logout อย่างเดียว
+- ให้แก้ไขชื่อ นามสกุลได้ พร้อมแสดง badge ว่าเป็น role อะไร
+
+✅ **Action:**
+
+**1. เพิ่ม Role "Viewer" (ผู้ดูรายงาน) ทั่วระบบ**
+- `frontend/src/modules/shared/utils/permission.utils.js` — เพิ่ม ROLES.VIEWER, ROLE_LABELS, ROLE_DESCRIPTIONS, ROLE_V1_DISPLAY, ROLE_V2_BADGE_COLORS, isViewer() helper
+- `frontend/src/modules/shared/components/RoleSelectionCheckbox.jsx` — เพิ่ม Viewer ใน icons, colors, DEFAULT_ROLES
+- `backend/api-server/src/v2/interfaces/IRole.ts` — เพิ่ม VIEWER ใน RoleName enum + DEFAULT_PERMISSIONS (read-only + reports view/export)
+
+**2. Sidebar: เปิดเมนูรายงานสำหรับ Viewer**
+- `frontend/src/modules/core/layout/Sidebar.jsx` — เพิ่ม isViewer check, `canAccessAnalytics = isAdmin || isViewer`, แสดงเมนู Dashboard ภาพรวม + รายงานสรุป
+
+**3. Backend: สร้าง PUT /api/users/me/profile endpoint**
+- `backend/api-server/src/routes/users.js` — endpoint ใหม่สำหรับ self-service profile edit
+- รองรับ: firstName, lastName, displayName, phone
+- Auto-generate displayName ถ้าไม่ระบุ
+
+**4. Frontend: เพิ่ม updateMyProfile ใน userService**
+- `frontend/src/modules/shared/services/modules/userService.js` — เพิ่ม updateMyProfile function เรียก `/users/me/profile`
+
+**5. Frontend: แก้ Header Profile Dropdown**
+- `frontend/src/modules/core/layout/Header.jsx` — แก้ profile dropdown:
+  - แสดงชื่อ + email
+  - แสดง Role Badges (สีตาม role)
+  - ปุ่ม "แก้ไขโปรไฟล์" เปิด Modal
+  - ปุ่ม "ออกจากระบบ" พร้อมไอคอน
+  - เพิ่ม PencilIcon, LogoutIcon
+
+**6. Frontend: สร้าง ProfileEditModal component**
+- `frontend/src/modules/shared/components/ProfileEditModal.jsx` — Modal แก้ไขโปรไฟล์:
+  - แสดง Avatar + Email + Role Badges (read-only)
+  - ฟอร์ม: ชื่อ, นามสกุล, เบอร์โทร
+  - บันทึกผ่าน `api.updateMyProfile` → refresh user state
+  - Error/Success feedback
+
+**Viewer Permissions:**
+| Resource | Create | Read | Update | Delete | Approve | View | Export |
+|----------|--------|------|--------|--------|---------|------|--------|
+| Users | ❌ | ✅ | ❌ | ❌ | - | - | - |
+| Organizations | ❌ | ✅ | ❌ | ❌ | - | - | - |
+| Jobs | ❌ | ✅ | ❌ | ❌ | ❌ | - | - |
+| Reports | - | - | - | - | - | ✅ | ✅ |
+| Settings | - | - | - | - | - | ❌ | - |
+
+</details>
+
+---
+
+## 📅 2026-03-05
+
+### 67. Performance: Database Query & UI Loading Optimization
+<details>
+<summary>🔍 <b>คลิกดูรายละเอียด</b> (Query & Loading Speed Optimization)</summary>
+
+🔴 **Request:**
+- วางแผนและตรวจสอบว่าสามารถทำให้ query ข้อมูลจาก database ให้เร็วกว่านี้และแสดงผลให้เร็วกว่านี้ได้ไหม ทำไมข้อมูลน้อยยังดูโหลดนาน
+
+✅ **Action:**
+
+**การวิเคราะห์สาเหตุ (Root Cause Analysis):**
+- MyQueue เรียก API 5 ครั้งพร้อมกัน (4x getAssigneeJobs + 1x fetchJobs)
+- DJList เรียก Supabase ตรง 2-3 ครั้งเพื่อ scope filtering (getAllowedProjectIds เรียก getUserScopes ซ้ำ)
+- getDashboardStats ดึง jobs ทุก row จาก Supabase ตรงแค่เพื่อนับ
+- RLS context ต้องรัน 2 raw SQL ทุก request
+- Console.log มากเกินไปในทุก request (httpClient, RLS, Cache, Approver Queue)
+
+**Fix 1: Backend - สร้าง `/api/jobs/counts` endpoint**
+- ไฟล์: `backend/api-server/src/routes/jobs.js`
+- ใช้ `prisma.job.groupBy()` ดึง count ทุก status ใน 1 query
+- ลด 4 API calls → 1 call ใน MyQueue
+
+**Fix 2: Frontend - แก้ MyQueue fetchAllTabCounts**
+- ไฟล์: `frontend/src/modules/features/assignee/pages/MyQueue.jsx`
+- เปลี่ยนจาก 4x `getAssigneeJobs()` → `getJobCounts()` 1 call
+
+**Fix 3: Frontend - เพิ่ม `getJobCounts` ใน jobService**
+- ไฟล์: `frontend/src/modules/shared/services/modules/jobService.js`
+- เพิ่ม function `getJobCounts` เรียก `/api/jobs/counts`
+
+**Fix 4: Frontend - แก้ DJList scope filtering**
+- ไฟล์: `frontend/src/modules/features/job-management/pages/DJList.jsx`
+- ใช้ scopes ที่ดึงมาแล้วคำนวณ allowedProjectIds แทนการเรียก `getAllowedProjectIds` ที่ดึง Supabase ซ้ำ
+- ลด Supabase query ซ้ำ 1 ครั้ง
+
+**Fix 5: Backend - สร้าง `/api/jobs/dashboard-stats` endpoint**
+- ไฟล์: `backend/api-server/src/routes/jobs.js`
+- ใช้ `prisma.job.count()` แบบ parallel (Promise.all) 6 counts แทนดึงทุก row
+- Return: `{ newToday, dueToday, overdue, totalJobs, pending, myJobs }`
+
+**Fix 6: Frontend - แก้ getDashboardStats ใช้ Backend API**
+- ไฟล์: `frontend/src/modules/shared/services/modules/jobService.js`
+- เปลี่ยนจาก Supabase direct query → httpClient เรียก `/api/jobs/dashboard-stats`
+- ลดการดึงข้อมูลหลาย row → ใช้ COUNT() แทน
+
+**Fix 7: Backend - รวม RLS set_config เป็น 1 query**
+- ไฟล์: `backend/api-server/src/config/database.js`
+- รวม 2x `$executeRawUnsafe` เป็น 1 query ด้วย `SELECT set_config(...), set_config(...)`
+- ลด 1 DB round-trip ต่อ request
+
+**Fix 8: ลด verbose console.log**
+- ไฟล์: `backend/api-server/src/routes/auth.js` - ลบ log ใน RLS middleware ทุก request
+- ไฟล์: `backend/api-server/src/services/cacheService.js` - ลบ log HIT/SET/DELETE ทุก operation
+- ไฟล์: `backend/api-server/src/routes/jobs.js` - ลบ log approver queue ทุก job
+- ไฟล์: `frontend/src/modules/shared/services/httpClient.js` - ลบ debug token log ทุก request
+- ไฟล์: `frontend/src/modules/shared/services/modules/jobService.js` - ลบ log ทุก API call
+
+**ประมาณการ Impact:**
+
+| หน้า | ก่อนแก้ | หลังแก้ |
+|------|---------|--------|
+| MyQueue | 5 API calls ~1500ms | 2 API calls ~400ms |
+| DJList | 2 API + 2 Supabase ~1200ms | 2 API + 1 Supabase ~600ms |
+| Dashboard | 1 API + 1 Supabase (full scan) ~800ms | 1 API (COUNT) ~300ms |
+
+</details>
+
+---
+
 ## 📅 2025-01-09
 
 ### 66. Feature: Draft Submit & Rebrief
@@ -73,6 +200,82 @@
 ---
 
 ## 📅 2026-03-05
+
+### 67. Feature: Working Hours Validation & Auto-Adjustment
+<details>
+<summary>🔍 <b>คลิกดูรายละเอียด</b> (Overtime Job Creation Prevention)</summary>
+
+🔴 **Request:**
+- ปรับปรุงการสั่งงานนอกเวลาทำการ - ตรวจสอบและปรับ dueDate ที่ตกอยู่นอกเวลาทำการ
+- รองรับการสั่งงานที่ติดวันหยุดสุดสัปดาห์ (เสาร์-อาทิตย์)
+- รองรับการสั่งงานนอกช่วงเวลา 8:00-18:00
+- รองรับงานพ่วง (Parent-Child Jobs) ที่มี SLA หลายวัน
+- บันทึก activity log เมื่อมีการปรับ dueDate
+
+✅ **Action:**
+
+**Phase 1: Helper Functions**
+- สร้าง `workingHoursHelper.js` ใน `backend/api-server/src/utils/`
+- `validateWorkingHours(dateTime)` - ตรวจสอบว่าอยู่ในช่วง 8:00-18:00
+- `validateBusinessDay(date)` - ตรวจสอบว่าไม่ใช่เสาร์/อาทิตย์
+- `adjustToWorkingHours(dateTime)` - ปรับวันที่/เวลาให้อยู่ในเวลาทำการ
+- `validateAndAdjustDueDate(dueDate)` - ตรวจสอบและปรับ dueDate พร้อมสร้าง reasons
+- `formatAdjustmentMessage()` - Format ข้อความสำหรับ activity log
+
+**Phase 2: Job Creation (POST /api/jobs)**
+- เพิ่ม validation ก่อนสร้างงาน - ตรวจสอบ dueDate และ acceptanceDate
+- Auto-adjust dueDate ถ้าตกนอกเวลาทำการ:
+  - วันเสาร์ → จันทร์ 9:00
+  - วันอาทิตย์ → จันทร์ 9:00
+  - < 8:00 → 9:00 ของวันเดียวกัน
+  - ≥ 18:00 → 9:00 ของวันถัดไป
+- คำนวณ SLA จาก acceptanceDate ที่ปรับแล้ว (ใช้ business days)
+- บันทึก activity log เมื่อมีการปรับ dueDate
+
+**Phase 3: Parent-Child Jobs (POST /api/jobs/parent-child)**
+- ปรับ parent dueDate ให้อยู่ในเวลาทำการ
+- Child jobs คำนวณ SLA ตาม business days (ข้ามวันหยุดอัตโนมัติ)
+- บันทึก activity log สำหรับ parent job ที่มีการปรับ dueDate
+
+🔧 **Technical:**
+- ใช้ `date-fns` สำหรับคำนวณ business days (มีอยู่แล้ว)
+- Validation ทำงานก่อน SLA calculation
+- Activity log action: `due_date_adjusted`
+- รองรับการปรับซ้อน (เช่น ศุกร์ 18:01 → เสาร์ 9:00 → จันทร์ 9:00)
+
+📁 **Files Created/Modified:**
+- Created: `backend/api-server/src/utils/workingHoursHelper.js`
+- Modified: `backend/api-server/src/routes/jobs.js` (POST /api/jobs, POST /api/jobs/parent-child)
+
+📊 **ตัวอย่างการทำงาน:**
+
+**Case 1: สั่งงานวันศุกร์ 18:01 (SLA 4 วัน)**
+- Input: `dueDate: "2025-01-10T18:01:00"` (ศุกร์ 18:01)
+- Validation: นอกเวลาทำการ (18:01 ≥ 18:00)
+- Auto-Adjust: `"2025-01-13T09:00:00"` (จันทร์ 9:00)
+- SLA Calculation: จันทร์ 13/01 + 4 business days = ศุกร์ 17/01
+- Final DueDate: `"2025-01-17T09:00:00"`
+- Log: "Due Date ถูกปรับ: 10/01/2025 18:01 → 17/01/2025 09:00 (หลังเวลาทำการ + SLA 4 วัน)"
+
+**Case 2: งานพ่วงสั่งวันอาทิตย์ (3 child jobs)**
+- Input: Parent `dueDate: "2025-01-12T14:00:00"` (อาทิตย์ 14:00)
+- Auto-Adjust: `"2025-01-13T09:00:00"` (จันทร์ 9:00)
+- Child 1 (SLA 2): จันทร์ 13/01 → พุธ 15/01
+- Child 2 (SLA 3): พุธ 15/01 → จันทร์ 20/01 (ข้ามเสาร์-อาทิตย์)
+- Child 3 (SLA 1): จันทร์ 20/01 → อังคาร 21/01
+- Parent Final DueDate: อังคาร 21/01 (ตาม child สุดท้าย)
+
+⚠️ **Note:**
+- ไม่กระทบ Draft/Rebrief features (ทำงานปกติ)
+- ไม่มี template support (ไม่ต้องการ)
+- ไม่มี bulk creation (ไม่ต้องการ)
+- ไม่มี conflict detection (ไม่ต้องการ)
+- SLA business days calculation ทำงานถูกต้องอยู่แล้ว
+- TODO: เพิ่มการตรวจสอบวันหยุดราชการ/วันหยุดบริษัท (ในอนาคต)
+
+</details>
+
+---
 
 ### 65. Feature: Auto-Extend SLA เมื่อมีงานด่วนผ่านการอนุมัติครบ
 <details>

@@ -52,11 +52,9 @@ class CacheService {
         const now = Math.floor(Date.now() / 1000);
         if (now > cached.expiresAt) {
             this.cache.delete(key);
-            console.log(`[Cache] ⏰ EXPIRED: ${key}`);
             return null;
         }
 
-        console.log(`[Cache] ✅ HIT: ${key}`);
         return cached.value;
     }
 
@@ -75,7 +73,6 @@ class CacheService {
             expiresAt: now + finalTTL
         });
 
-        console.log(`[Cache] 💾 SET: ${key} (TTL: ${finalTTL}s)`);
     }
 
     /**
@@ -84,11 +81,7 @@ class CacheService {
      * @returns {boolean} - True if key was deleted
      */
     delete(key) {
-        const deleted = this.cache.delete(key);
-        if (deleted) {
-            console.log(`[Cache] 🗑️  DELETE: ${key}`);
-        }
-        return deleted;
+        return this.cache.delete(key);
     }
 
     /**

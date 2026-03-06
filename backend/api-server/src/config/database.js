@@ -43,47 +43,32 @@ export function createDatabaseConnection() {
  */
 export async function setRLSContext(prisma, tenantId, userId = null) {
   try {
-    // Set tenant ID if provided
-    if (tenantId) {
-      const validTenantId = parseInt(tenantId, 10);
-      if (isNaN(validTenantId) || validTenantId <= 0) {
-        console.warn('[RLS] Invalid tenant ID:', tenantId);
-        return; // Don't continue if tenant ID is invalid
-      }
-      try {
-        await prisma.$executeRawUnsafe(`SELECT set_config('app.tenant_id', '${validTenantId}', false)`);
-        console.log('[RLS] ✅ Set tenant_id:', validTenantId);
-      } catch (err) {
-        console.error('[RLS] ❌ Failed to set tenant_id:', validTenantId, err.message);
-        throw err;
-      }
+    const validTenantId = tenantId ? parseInt(tenantId, 10) : null;
+    const validUserId = userId ? parseInt(userId, 10) : null;
+
+    if (!validTenantId || isNaN(validTenantId) || validTenantId <= 0) {
+      console.warn('[RLS] Invalid tenant ID:', tenantId);
+      return;
     }
 
-    // Set user ID if provided (required for admin permission checks)
-    if (userId) {
-      const validUserId = parseInt(userId, 10);
-      if (isNaN(validUserId) || validUserId <= 0) {
-        console.warn('[RLS] Invalid user ID:', userId);
-        return; // Don't continue if user ID is invalid
-      }
-      try {
-        await prisma.$executeRawUnsafe(`SELECT set_config('app.current_user_id', '${validUserId}', false)`);
-        console.log('[RLS] ✅ Set current_user_id:', validUserId);
-      } catch (err) {
-        console.error('[RLS] ❌ Failed to set current_user_id:', validUserId, err.message);
-        throw err;
-      }
+    // ⚡ Performance: รวม 2 set_config เป็น 1 query เพื่อลด round-trip
+    if (validUserId && !isNaN(validUserId) && validUserId > 0) {
+      await prisma.$executeRawUnsafe(
+        `SELECT set_config('app.tenant_id', '${validTenantId}', false),
+                set_config('app.current_user_id', '${validUserId}', false)`
+      );
+    } else {
+      await prisma.$executeRawUnsafe(
+        `SELECT set_config('app.tenant_id', '${validTenantId}', false)`
+      );
     }
   } catch (error) {
-    console.error('[RLS] ⚠️  RLS Context Error - This will cause 403 on queries:', {
+    console.error('[RLS] ⚠️  RLS Context Error:', {
       tenantId,
       userId,
-      errorName: error.name,
       errorMessage: error.message,
-      errorCode: error.code,
-      stack: error.stack
+      errorCode: error.code
     });
-    // IMPORTANT: Re-throw the error so middleware can decide how to handle it
     throw error;
   }
 }
