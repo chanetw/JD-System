@@ -919,16 +919,16 @@ function StatCard({ title, subtitle, value, icon, color, active = false, onClick
 function PanelJobRow({ job }) {
     const STATUS_LABEL = {
         draft: 'Draft',
-        pending_approval: 'รออนุมัติ',
-        approved: 'อนุมัติแล้ว',
-        assigned: 'มอบหมายแล้ว',
-        in_progress: 'กำลังดำเนินการ',
-        draft_review: 'ตรวจสอบ Draft',
-        pending_rebrief: 'รอ Rebrief',
-        rebrief_submitted: 'ส่ง Rebrief แล้ว',
-        completed: 'เสร็จแล้ว',
-        rejected: 'ถูกปฏิเสธ',
-        overdue: 'เกินกำหนด',
+        pending_approval: 'Pending Approval',
+        approved: 'Approved',
+        assigned: 'Assigned',
+        in_progress: 'In Progress',
+        draft_review: 'Draft Review',
+        pending_rebrief: 'Pending Rebrief',
+        rebrief_submitted: 'Rebrief Submitted',
+        completed: 'Completed',
+        rejected: 'Rejected',
+        overdue: 'Overdue',
     };
     const STATUS_COLOR = {
         draft: 'bg-gray-100 text-gray-600',
@@ -966,7 +966,7 @@ function PanelJobRow({ job }) {
             <td className="px-4 py-3 whitespace-nowrap">
                 {job.isOverdue ? (
                     <span className="text-red-600 font-medium text-xs">
-                        ⚠ {formatDate(job.deadline)} (+{job.overdueDays} วัน)
+                        ⚠ {formatDate(job.deadline)} (+{job.overdueDays}d)
                     </span>
                 ) : (
                     <span className="text-gray-600 text-xs">{formatDate(job.deadline)}</span>
@@ -985,7 +985,7 @@ function PanelJobRow({ job }) {
                         <span className="text-gray-700 text-xs">{job.assignee}</span>
                     </div>
                 ) : (
-                    <span className="text-gray-400 text-xs">ยังไม่มอบหมาย</span>
+                    <span className="text-gray-400 text-xs">Unassigned</span>
                 )}
             </td>
         </tr>
