@@ -1035,6 +1035,30 @@ export class ApprovalService extends BaseService {
         }
       });
 
+      // ✅ NEW: Insert the final links/files into MediaFile table 
+      // so they can be shown in MediaPortal / UserPortal.
+      if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+        const mediaFilePromises = attachments.map(async (acc) => {
+          if (acc.url) {
+            return this.prisma.mediaFile.create({
+              data: {
+                tenantId: job.tenantId,
+                jobId: job.id,
+                projectId: job.projectId,
+                fileName: acc.name || `ลิงก์ส่งงาน - ${job.djId}`,
+                filePath: acc.url,
+                fileType: 'link',
+                mimeType: 'text/uri-list',
+                uploadedBy: userId,
+                fileSize: 0,
+              }
+            });
+          }
+          return Promise.resolve();
+        });
+        await Promise.all(mediaFilePromises);
+      }
+
       // Log Activity
       await this.logApprovalActivity({
         jobId,

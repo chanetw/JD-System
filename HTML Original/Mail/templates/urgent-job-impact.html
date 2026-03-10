@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>งานของคุณถูกเลื่อนกำหนดส่ง</title>
+    <style>
+        body { font-family: 'Sarabun', Arial, sans-serif; margin: 0; padding: 0; background-color: #f3f4f6; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .header { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 30px 20px; text-align: center; color: #ffffff; }
+        .content { padding: 40px 30px; }
+        .job-card { background-color: #fffbeb; border: 2px solid #fde68a; border-radius: 8px; padding: 20px; margin: 25px 0; }
+        .job-id { font-size: 18px; font-weight: 700; color: #d97706; margin-bottom: 10px; }
+        .job-detail { margin: 10px 0; font-size: 14px; color: #4b5563; }
+        .job-detail strong { color: #1f2937; font-weight: 600; }
+        .date-change { background-color: #fef3c7; padding: 15px; border-radius: 6px; margin: 15px 0; }
+        .old-date { text-decoration: line-through; color: #9ca3af; }
+        .new-date { color: #059669; font-weight: 700; }
+        .button { display: inline-block; padding: 14px 32px; background-color: #f59e0b; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; margin: 20px 0; }
+        .info-box { background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 15px; margin: 20px 0; border-radius: 4px; }
+        .footer { background-color: #f9fafb; padding: 30px 20px; text-align: center; border-top: 1px solid #e5e7eb; font-size: 14px; color: #6b7280; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div style="background-color: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px; display: inline-block; margin-bottom: 15px;">
+                <span style="font-size: 24px; font-weight: 700;">DJ SYSTEM</span>
+            </div>
+            <h1 style="margin: 0; font-size: 24px;">⏰ งานของคุณถูกเลื่อนกำหนดส่ง</h1>
+        </div>
+        
+        <div class="content">
+            <p style="font-size: 18px; color: #1f2937; margin-bottom: 20px;">เรียน {{REQUESTER_NAME}},</p>
+            
+            <p style="font-size: 16px; color: #4b5563; margin-bottom: 25px;">
+                งานของคุณถูกขยายกำหนดส่งอัตโนมัติ <strong>{{SHIFT_DAYS}} วันทำการ</strong> เนื่องจากมีงานด่วน <strong>{{URGENT_JOB_ID}}</strong> ที่ได้รับการอนุมัติ
+            </p>
+            
+            <div class="job-card">
+                <div class="job-id">{{JOB_ID}}</div>
+                <div class="job-detail"><strong>ชื่องาน:</strong> {{JOB_SUBJECT}}</div>
+                <div class="job-detail"><strong>ผู้รับผิดชอบ:</strong> {{ASSIGNEE_NAME}}</div>
+                
+                <div class="date-change">
+                    <div style="font-size: 14px; color: #78350f; margin-bottom: 8px;"><strong>การเปลี่ยนแปลงกำหนดส่ง:</strong></div>
+                    <div style="font-size: 16px;">
+                        <span class="old-date">{{OLD_DEADLINE}}</span>
+                        <span style="margin: 0 10px;">→</span>
+                        <span class="new-date">{{NEW_DEADLINE}}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="info-box">
+                <p style="margin: 0; font-size: 14px; color: #1e40af;">
+                    💡 <strong>หมายเหตุ:</strong> การเลื่อนกำหนดส่งนี้เป็นไปโดยอัตโนมัติเพื่อให้ผู้รับผิดชอบสามารถจัดการงานด่วนได้อย่างมีประสิทธิภาพ
+                </p>
+            </div>
+            
+            <div style="text-align: center;">
+                <a href="{{JOB_URL}}" class="button">ดูรายละเอียดงาน</a>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p style="font-weight: 600; color: #1f2937; margin-bottom: 10px;">DJ System - Design Job Management</p>
+            <p>ระบบจัดการงานออกแบบ</p>
+            <p style="margin-top: 15px;">หากมีข้อสงสัย กรุณาติดต่อ Admin ของคุณ</p>
+            <p style="font-size: 12px; color: #9ca3af; margin-top: 20px;">อีเมลนี้ส่งโดยอัตโนมัติ กรุณาอย่าตอบกลับ</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -565,14 +565,28 @@ export const jobService = {
 
     // Alias for consistency with Mock API
     completeJob: async (jobId, data) => {
-        // Data: { attachments, note, userId }
-        // Default userId from params or Auth context (ideally passed)
-        // For now assume logic handles it or we parse it
-        const note = data?.note || '';
-        const files = data?.attachments || [];
-        const userId = data?.userId; // Caller must ensure userId is passed or we get it from auth
+        try {
+            // ✅ V2: Use Backend API instead of Supabase
+            // Backend handles:
+            // - Insert attachments into MediaFile table
+            // - Update job status
+            // - Log activity
+            // - Trigger job chain
+            const response = await httpClient.post(`/jobs/${jobId}/complete`, {
+                note: data?.note || '',
+                attachments: data?.attachments || []
+            });
 
-        return await jobService.finishJob(jobId, files, note, userId);
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Complete job failed');
+            }
+
+            return response.data;
+        } catch (error) {
+            console.error('[jobService] completeJob error:', error);
+            const errorMessage = error.response?.data?.message || error.message || 'ไม่สามารถจบงานได้';
+            throw new Error(errorMessage);
+        }
     },
 
     // --- Dashboard Stats ---

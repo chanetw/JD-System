@@ -12,13 +12,15 @@
  * - เคล็ดลับ (Dark Background)
  */
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Badge from '@shared/components/Badge';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
+import { getUserScopes } from '@shared/utils/scopeHelpers';
 import { api } from '@shared/services/apiService';
 import { adminService } from '@shared/services/modules/adminService';
 import httpClient from '@shared/services/httpClient';
+import { JOB_ICONS } from '@shared/constants/jobIcons';
 
 // Icons
 import {
@@ -33,6 +35,7 @@ import {
     ArrowDownTrayIcon,
     EyeIcon,
     ChevronRightIcon,
+    ChevronDownIcon,
     VideoCameraIcon,
     PrinterIcon,
     ShareIcon,
@@ -40,7 +43,10 @@ import {
     CalendarDaysIcon,
     DocumentIcon,
     ArchiveBoxIcon,
-    ArrowRightIcon
+    ArrowRightIcon,
+    Bars3BottomLeftIcon,
+    ArrowTopRightOnSquareIcon,
+    LinkIcon
 } from '@heroicons/react/24/outline';
 
 import PendingApprovalSection from '../components/PendingApprovalSection';
@@ -49,6 +55,7 @@ export default function UserPortal() {
     const navigate = useNavigate();
     const { user } = useAuthStoreV2();
     const [recentJobs, setRecentJobs] = useState([]);
+    const [expandedRows, setExpandedRows] = useState(new Set());
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeProject, setActiveProject] = useState(0);
@@ -61,16 +68,159 @@ export default function UserPortal() {
         deliveredFiles: 0,
         totalDownloads: 0
     });
+    const [jobTypesList, setJobTypesList] = useState([]);
 
-    // โหลดงานล่าสุด (My Requests)
+    // Helper: Toggle row expansion
+    const toggleRowExpansion = (jobId) => {
+        setExpandedRows(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(jobId)) {
+                newSet.delete(jobId);
+            } else {
+                newSet.add(jobId);
+            }
+            return newSet;
+        });
+    };
+
+    // Helper: Build chain info for children (เรียงตาม dependency)
+    const buildChainInfo = (children) => {
+        if (!children || children.length === 0) return new Map();
+        
+        const childrenMap = new Map();
+        children.forEach(c => childrenMap.set(c.id, c));
+        
+        const predecessorIds = new Set(children.map(c => c.predecessorId).filter(Boolean));
+        const leaves = children.filter(c => !predecessorIds.has(c.id));
+        const jobChains = new Map();
+        
+        leaves.forEach(leaf => {
+            const chain = [];
+            let current = leaf;
+            while (current) {
+                chain.unshift(current.id);
+                if (current.predecessorId && childrenMap.has(current.predecessorId)) {
+                    current = childrenMap.get(current.predecessorId);
+                } else {
+                    current = null;
+                }
+            }
+            if (chain.length > 1) {
+                chain.forEach((jobId, idx) => {
+                    if (!jobChains.has(jobId) || jobChains.get(jobId).total < chain.length) {
+                        jobChains.set(jobId, { index: idx + 1, total: chain.length });
+                    }
+                });
+            }
+        });
+        
+        return jobChains;
+    };
+
+    // Helper: Calculate SLA
+    const calculateSLA = (job) => {
+        if (!job.deadline) return null;
+        
+        const now = new Date();
+        const deadline = new Date(job.deadline);
+        const diffTime = deadline - now;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (diffDays < 0) {
+            return <span className="text-xs text-red-600">เกิน {Math.abs(diffDays)} วัน</span>;
+        } else if (diffDays === 0) {
+            return <span className="text-xs text-orange-600">วันนี้</span>;
+        } else if (diffDays === 1) {
+            return <span className="text-xs text-yellow-600">พรุ่งนี้</span>;
+        }
+        return <span className="text-xs text-slate-500">อีก {diffDays} วัน</span>;
+    };
+
+    // Helper: Format date to Thai
+    const formatDateToThai = (date) => {
+        if (!date) return '-';
+        return new Date(date).toLocaleDateString('th-TH', { 
+            day: 'numeric', 
+            month: 'short',
+            year: 'numeric'
+        });
+    };
+
+    // โหลดงานล่าสุด (My Requests หรือทั้งหมดสำหรับ Admin)
     useEffect(() => {
         const loadJobs = async () => {
+            console.log('[UserPortal] Loading jobs, user:', user);
             try {
-                // Focus on "My Requests" for this section
-                const jobs = await api.getJobs({ role: 'requester' });
-                setRecentJobs(jobs.slice(0, 5));
+                // Admin: ดึงงานทั้งหมด, User อื่นๆ: ดึงเฉพาะงานที่ตัวเองเป็น requester
+                const isAdmin = user?.userRoles?.some(role => 
+                    role.roleName?.toLowerCase() === 'admin' && role.isActive
+                );
+                console.log('[UserPortal] Is admin:', isAdmin);
+                console.log('[UserPortal] User roles:', user?.userRoles);
+                
+                const jobs = isAdmin 
+                    ? await api.getJobs({}) // Admin ดึงทั้งหมด
+                    : await api.getJobsByRole(user); // User ดึงตาม role
+                
+                console.log('[UserPortal] API response:', jobs);
+                const jobsData = Array.isArray(jobs) ? jobs : (jobs?.data || []);
+                console.log('[UserPortal] Jobs data:', jobsData.length, 'jobs');
+                
+                if (jobsData.length > 0) {
+                    console.log('[UserPortal] Sample job:', jobsData[0]);
+                }
+                
+                // นับจำนวน Child ของแต่ละ Parent
+                const parentChildCount = {};
+                const childrenMap = {};
+                jobsData.forEach(job => {
+                    if (job.parentJobId) {
+                        parentChildCount[job.parentJobId] = (parentChildCount[job.parentJobId] || 0) + 1;
+                        if (!childrenMap[job.parentJobId]) childrenMap[job.parentJobId] = [];
+                        childrenMap[job.parentJobId].push(job);
+                    }
+                });
+                
+                // กรองงาน: ซ่อน Parent ที่มี Child เดียว, ซ่อน Child ที่มี siblings > 1
+                const filteredJobs = jobsData.filter(job => {
+                    if (job.isParent) {
+                        const childCount = parentChildCount[job.id] || 0;
+                        if (childCount === 1) return false; // ซ่อน Parent ที่มี Child เดียว
+                        if (childCount > 1) {
+                            job.children = childrenMap[job.id]; // เก็บ children array
+                        }
+                    } else if (job.parentJobId) {
+                        const siblingCount = parentChildCount[job.parentJobId] || 0;
+                        if (siblingCount > 1) return false; // ซ่อน Child ที่มี siblings
+                    }
+                    return true;
+                });
+                
+                // เรียงลำดับ: งานด่วน (priority: high) ขึ้นก่อน แล้วเรียงตาม updatedAt
+                const sortedJobs = [...filteredJobs].sort((a, b) => {
+                    // เรียงงานด่วนขึ้นก่อน
+                    const aPriority = a.priority?.toLowerCase() === 'high' ? 1 : 0;
+                    const bPriority = b.priority?.toLowerCase() === 'high' ? 1 : 0;
+                    if (bPriority !== aPriority) return bPriority - aPriority;
+                    
+                    // ถ้า priority เท่ากัน เรียงตาม updatedAt
+                    return new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt);
+                });
+                
+                console.log('[UserPortal] Filtered & sorted jobs (top 5):', sortedJobs.slice(0, 5).map(j => ({
+                    id: j.id,
+                    djId: j.djId,
+                    subject: j.subject,
+                    priority: j.priority,
+                    status: j.status,
+                    isParent: j.isParent,
+                    childrenCount: j.children?.length || 0
+                })));
+                
+                setRecentJobs(sortedJobs.slice(0, 5));
             } catch (err) {
-                console.error('Error loading jobs:', err);
+                console.error('[UserPortal] Error loading jobs:', err);
+                console.error('[UserPortal] Error details:', err.response?.data || err.message);
             } finally {
                 setIsLoading(false);
             }
@@ -85,20 +235,30 @@ export default function UserPortal() {
 
     const loadProjectsAndMedia = async () => {
         try {
-            // 1. Load Projects (Backend จะกรองตาม User Scope อัตโนมัติ)
+            // 1. Load Projects (Backend จะกรองตาม User Scope อัตโนมัติแต่นำการกรอง Scope เข้ามาเสริม)
             const projectsData = await adminService.getProjects();
-            setProjects(projectsData);
+            let filteredProjects = projectsData;
+
+            if (user?.id) {
+                const userScopes = await getUserScopes(user.id);
+                const hasTenantScope = userScopes.some(s => s.scope_level?.toLowerCase() === 'tenant');
+                if (!hasTenantScope && userScopes.length > 0) {
+                    const allowedProjectIds = new Set(userScopes.filter(s => s.scope_level?.toLowerCase() === 'project').map(s => s.project_id));
+                    if (allowedProjectIds.size > 0) {
+                        filteredProjects = projectsData.filter(p => allowedProjectIds.has(p.id));
+                    }
+                }
+            }
+
+            // 1.5 Load Job Types for SLA
+            const jtData = await adminService.getJobTypes();
+            setJobTypesList(jtData.filter(j => j.isActive !== false));
 
             // 2. Load Media Files
             const response = await httpClient.get('/storage/files');
             if (response.data.success) {
                 const files = response.data.data;
-
-                // เอาแค่ 5 ไฟล์ล่าสุด
-                const recentFiles = files
-                    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-                    .slice(0, 5);
-                setMediaFiles(recentFiles);
+                setMediaFiles(files);
 
                 // คำนวณ Stats
                 const totalDownloads = files.reduce((sum, f) => sum + (f.downloadCount || 0), 0);
@@ -107,6 +267,22 @@ export default function UserPortal() {
                     deliveredFiles: files.filter(f => f.jobId).length,
                     totalDownloads
                 });
+
+                // 3. นับจำนวนไฟล์ในแต่ละโครงการและเรียงลำดับ
+                const projectFileCounts = {};
+                files.forEach(f => {
+                    if (f.projectId) {
+                        projectFileCounts[f.projectId] = (projectFileCounts[f.projectId] || 0) + 1;
+                    }
+                });
+
+                // เพิ่มจำนวนไฟล์ให้แต่ละโครงการและเรียงลำดับ (โครงการที่มีไฟล์มากขึ้นก่อน)
+                const projectsWithCounts = filteredProjects.map(p => ({
+                    ...p,
+                    fileCount: projectFileCounts[p.id] || 0
+                })).sort((a, b) => b.fileCount - a.fileCount);
+
+                setProjects(projectsWithCounts);
             }
         } catch (error) {
             console.error('[UserPortal] Error loading projects/media:', error);
@@ -120,15 +296,7 @@ export default function UserPortal() {
         }
     };
 
-    // Job Types
-    const jobTypes = [
-        { id: 'online', name: 'Online Artwork', icon: PhotoIcon, color: 'rose' },
-        { id: 'print', name: 'Print Artwork', icon: PrinterIcon, color: 'purple' },
-        { id: 'video', name: 'Video Production', icon: VideoCameraIcon, color: 'blue' },
-        { id: 'social', name: 'Social Media', icon: ShareIcon, color: 'cyan' },
-        { id: 'banner', name: 'Website Banner', icon: ComputerDesktopIcon, color: 'amber' },
-        { id: 'event', name: 'Event Material', icon: CalendarDaysIcon, color: 'emerald' },
-    ];
+
 
     // ฟังก์ชันหา relative time
     const getRelativeTime = (dateStr) => {
@@ -224,11 +392,11 @@ export default function UserPortal() {
                             desc="ดูสถานะงานทั้งหมด"
                         />
                         <QuickActionCard
-                            to="/admin/job-types"
-                            icon={<ClockIcon className="w-7 h-7 text-amber-600" />}
+                            to="/dashboard"
+                            icon={<ComputerDesktopIcon className="w-7 h-7 text-amber-600" />}
                             bgColor="bg-amber-100 group-hover:bg-amber-200"
-                            title="SLA & ประเภทงาน"
-                            desc="ดูเวลาดำเนินการ"
+                            title="Dashboard"
+                            desc="ภาพรวมสถานะงาน"
                         />
                         <QuickActionCard
                             to="/media-portal"
@@ -255,6 +423,7 @@ export default function UserPortal() {
                                 <table className="w-full">
                                     <thead className="bg-slate-50 border-b border-slate-200">
                                         <tr>
+                                            <th className="px-2 py-3 w-8"></th>
                                             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">DJ ID</th>
                                             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">ชื่องาน</th>
                                             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">สถานะ</th>
@@ -264,36 +433,113 @@ export default function UserPortal() {
                                     <tbody className="divide-y divide-slate-100">
                                         {isLoading ? (
                                             <tr>
-                                                <td colSpan="4" className="px-4 py-8 text-center text-slate-500">
+                                                <td colSpan="5" className="px-4 py-8 text-center text-slate-500">
                                                     <div className="animate-spin w-6 h-6 border-2 border-rose-500 border-t-transparent rounded-full mx-auto"></div>
                                                 </td>
                                             </tr>
                                         ) : recentJobs.length === 0 ? (
                                             <tr>
-                                                <td colSpan="4" className="px-4 py-8 text-center text-slate-500">
+                                                <td colSpan="5" className="px-4 py-8 text-center text-slate-500">
                                                     ไม่มีงาน
                                                 </td>
                                             </tr>
                                         ) : (
                                             recentJobs.map((job) => (
-                                                <tr
-                                                    key={job.id}
-                                                    onClick={() => navigate(`/jobs/${job.id}`)}
-                                                    className="hover:bg-slate-50 cursor-pointer transition-colors"
-                                                >
-                                                    <td className="px-4 py-3">
-                                                        <span className="text-sm font-medium text-rose-600">{job.djId || `DJ-${job.id}`}</span>
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <p className="text-sm text-slate-800">{job.subject}</p>
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <Badge status={job.status} />
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <span className="text-sm text-slate-600">{getRelativeTime(job.updatedAt || job.createdAt)}</span>
-                                                    </td>
-                                                </tr>
+                                                <React.Fragment key={job.id}>
+                                                    {/* Parent Row */}
+                                                    <tr
+                                                        onClick={() => navigate(`/jobs/${job.id}`)}
+                                                        className="hover:bg-slate-50 cursor-pointer transition-colors"
+                                                    >
+                                                        <td className="px-2 py-3">
+                                                            {job.isParent && job.children?.length > 0 && (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        toggleRowExpansion(job.id);
+                                                                    }}
+                                                                    className="p-1 hover:bg-slate-200 rounded transition-colors"
+                                                                >
+                                                                    {expandedRows.has(job.id) ? (
+                                                                        <ChevronDownIcon className="w-4 h-4 text-slate-600" />
+                                                                    ) : (
+                                                                        <ChevronRightIcon className="w-4 h-4 text-slate-600" />
+                                                                    )}
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <span className="text-sm font-medium text-rose-600">{job.djId || `DJ-${job.id}`}</span>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <p className="text-sm text-slate-800">{job.subject}</p>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <Badge status={job.status} />
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <span className="text-sm text-slate-600">{getRelativeTime(job.updatedAt || job.createdAt)}</span>
+                                                        </td>
+                                                    </tr>
+
+                                                    {/* Child Rows (Accordion) */}
+                                                    {job.children?.length > 0 && expandedRows.has(job.id) && (
+                                                        (() => {
+                                                            const jobChains = buildChainInfo(job.children);
+                                                            
+                                                            // เรียงตาม chain index (เลขน้อยอยู่บน)
+                                                            const sortedChildren = [...job.children].sort((a, b) => {
+                                                                const aChain = jobChains.get(a.id);
+                                                                const bChain = jobChains.get(b.id);
+                                                                if (aChain && bChain) {
+                                                                    return aChain.index - bChain.index;
+                                                                }
+                                                                return 0;
+                                                            });
+                                                            
+                                                            return sortedChildren.map((child) => {
+                                                                const chainInfo = jobChains.get(child.id);
+                                                                const chainLabel = chainInfo 
+                                                                    ? `${chainInfo.index}/${chainInfo.total}` 
+                                                                    : '';
+                                                                
+                                                                return (
+                                                                    <tr
+                                                                        key={child.id}
+                                                                        onClick={() => navigate(`/jobs/${child.id}`)}
+                                                                        className="bg-slate-50/50 hover:bg-slate-100/50 cursor-pointer transition-colors"
+                                                                    >
+                                                                        <td className="px-2 py-3"></td>
+                                                                        <td className="px-4 py-3 pl-8">
+                                                                            <span className="text-sm text-slate-600">
+                                                                                ↳ {child.djId || `DJ-${child.id}`}
+                                                                                {chainLabel && (
+                                                                                    <span className="ml-2 text-xs text-slate-400">
+                                                                                        ({chainLabel})
+                                                                                    </span>
+                                                                                )}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="px-4 py-3">
+                                                                            {/* ว่างเปล่า - ไม่แสดงชื่องาน */}
+                                                                        </td>
+                                                                        <td className="px-4 py-3">
+                                                                            <Badge status={child.status} />
+                                                                        </td>
+                                                                        <td className="px-4 py-3">
+                                                                            <div className="flex flex-col gap-0.5">
+                                                                                <span className="text-xs text-slate-600">
+                                                                                    {formatDateToThai(child.deadline)}
+                                                                                </span>
+                                                                                {calculateSLA(child)}
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            });
+                                                        })()
+                                                    )}
+                                                </React.Fragment>
                                             ))
                                         )}
                                     </tbody>
@@ -306,32 +552,22 @@ export default function UserPortal() {
                             {/* SLA Info */}
                             <div>
                                 <h3 className="font-semibold text-slate-800 text-lg mb-4">ระยะเวลาดำเนินการ (SLA)</h3>
-                                <div className="bg-white rounded-xl shadow-sm p-4 space-y-3 border border-slate-200">
-                                    <SLAItem icon={PhotoIcon} iconColor="bg-rose-100 text-rose-600" title="Online Artwork" days="7 วันทำการ" />
-                                    <SLAItem icon={PrinterIcon} iconColor="bg-purple-100 text-purple-600" title="Print Artwork" days="10 วันทำการ" />
-                                    <SLAItem icon={VideoCameraIcon} iconColor="bg-blue-100 text-blue-600" title="Video Production" days="15 วันทำการ" />
-                                    <SLAItem icon={ShareIcon} iconColor="bg-cyan-100 text-cyan-600" title="Social Media Content" days="3 วันทำการ" />
-                                </div>
-                            </div>
-
-                            {/* Contact Info */}
-                            <div className="bg-rose-50 border border-rose-100 rounded-xl p-6">
-                                <h4 className="font-semibold text-rose-800 mb-3 flex items-center gap-2">
-                                    <QuestionMarkCircleIcon className="w-5 h-5" /> ต้องการความช่วยเหลือ?
-                                </h4>
-                                <div className="space-y-3 text-sm">
-                                    <div className="flex items-center gap-2 text-rose-700">
-                                        <PhoneIcon className="w-4 h-4" />
-                                        <span>Creative Team: 2345</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-rose-700">
-                                        <EnvelopeIcon className="w-4 h-4" />
-                                        <span>creative@sena.co.th</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-rose-700">
-                                        <ClockIcon className="w-4 h-4" />
-                                        <span>จ-ศ, 8:30 - 17:30</span>
-                                    </div>
+                                <div className="bg-white rounded-xl shadow-sm p-4 space-y-3 border border-slate-200 h-96 overflow-y-auto">
+                                    {jobTypesList.length > 0 ? (
+                                        jobTypesList.map(type => {
+                                            const iconConfig = JOB_ICONS[type.icon] || JOB_ICONS.social;
+                                            return (
+                                                <SLAItem
+                                                    key={type.id}
+                                                    iconConfig={iconConfig}
+                                                    title={type.name}
+                                                    days={`${type.sla || '-'} วันทำการ`}
+                                                />
+                                            );
+                                        })
+                                    ) : (
+                                        <p className="text-sm text-slate-500 text-center py-4">กำลังโหลดข้อมูล SLA...</p>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -365,7 +601,7 @@ export default function UserPortal() {
                                         : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
                                         }`}
                                 >
-                                    {project.name}
+                                    {project.name} ({project.fileCount || 0})
                                 </button>
                             ))
                         ) : (
@@ -374,17 +610,27 @@ export default function UserPortal() {
                     </div>
 
                     {/* Media Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                        {mediaFiles.length > 0 ? (
-                            mediaFiles.map((file) => (
-                                <MediaCard key={file.id} file={file} />
-                            ))
-                        ) : (
-                            <div className="col-span-full text-center py-8 text-slate-400">
-                                <PhotoIcon className="w-12 h-12 mx-auto mb-2 opacity-30" />
-                                <p>ยังไม่มีไฟล์</p>
-                            </div>
-                        )}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {(() => {
+                            // กรองไฟล์ตามโครงการที่เลือก
+                            const selectedProject = projects[activeProject];
+                            const filteredFiles = selectedProject 
+                                ? mediaFiles.filter(f => f.projectId === selectedProject.id)
+                                    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                                    .slice(0, 3)
+                                : [];
+                            
+                            return filteredFiles.length > 0 ? (
+                                filteredFiles.map((file) => (
+                                    <MediaCard key={file.id} file={file} />
+                                ))
+                            ) : (
+                                <div className="col-span-full text-center py-8 text-slate-400">
+                                    <PhotoIcon className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                                    <p>ยังไม่มีไฟล์ในโครงการนี้</p>
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     {/* Quick Stats - Real Data */}
@@ -410,18 +656,23 @@ export default function UserPortal() {
                 <div className="max-w-6xl mx-auto px-6 mt-12">
                     <h3 className="font-semibold text-slate-800 text-lg mb-4">เลือกประเภทงาน</h3>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
-                        {jobTypes.map((type) => (
-                            <Link
-                                key={type.id}
-                                to={`/create?type=${type.id}`}
-                                className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition text-center group border border-slate-100"
-                            >
-                                <div className={`w-12 h-12 bg-${type.color}-100 rounded-xl mx-auto mb-2 flex items-center justify-center group-hover:bg-${type.color}-200 transition`}>
-                                    <type.icon className={`w-6 h-6 text-${type.color}-600`} />
-                                </div>
-                                <p className="text-sm font-medium text-slate-700">{type.name}</p>
-                            </Link>
-                        ))}
+                        {jobTypesList.filter(type => type.status === 'active' || type.isActive).map((type) => {
+                            const iconConfig = JOB_ICONS[type.icon] || JOB_ICONS.social;
+                            return (
+                                <Link
+                                    key={type.id}
+                                    to={`/create?type=${type.id}`}
+                                    className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition text-center group border border-slate-100"
+                                >
+                                    <div className={`w-12 h-12 ${iconConfig.bg} rounded-xl mx-auto mb-2 flex items-center justify-center group-hover:brightness-95 transition`}>
+                                        <svg className={`w-6 h-6 ${iconConfig.text}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            {iconConfig.path}
+                                        </svg>
+                                    </div>
+                                    <p className="text-sm font-medium text-slate-700">{type.name}</p>
+                                </Link>
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -471,12 +722,20 @@ function QuickActionCard({ to, icon, bgColor, title, desc }) {
     );
 }
 
-function SLAItem({ icon: Icon, iconColor, title, days }) {
+function SLAItem({ icon: Icon, iconConfig, iconColor, title, days }) {
     return (
-        <div className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer">
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${iconColor}`}>
-                <Icon className="w-4 h-4" />
-            </div>
+        <div className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer border border-transparent hover:border-slate-100">
+            {iconConfig ? (
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${iconConfig.bg} ${iconConfig.text}`}>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        {iconConfig.path}
+                    </svg>
+                </div>
+            ) : (
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${iconColor}`}>
+                    <Icon className="w-4 h-4" />
+                </div>
+            )}
             <div>
                 <p className="text-sm font-medium text-slate-800">{title}</p>
                 <p className="text-xs text-slate-500">{days}</p>
@@ -486,102 +745,63 @@ function SLAItem({ icon: Icon, iconColor, title, days }) {
 }
 
 function MediaCard({ file }) {
-    // ตรวจสอบประเภทไฟล์และกำหนดสี
-    const getFileTypeAndColor = () => {
-        const mimeType = file.mimeType || file.fileType || '';
-        const fileName = file.fileName || '';
+    const isExternalLink = file.fileType === 'link';
+    const jobSubject = file.job?.subject || file.fileName || 'Untitled';
+    const dateStr = new Date(file.createdAt || new Date()).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const projectName = file.project?.name || file.project?.code || 'No Project';
 
-        if (mimeType.includes('video') || fileName.match(/\.(mp4|mov|avi|mkv)$/i)) {
-            return { type: 'VIDEO', color: 'from-purple-200 to-purple-400', badge: 'bg-purple-500', icon: VideoCameraIcon };
+    const handleView = (e) => {
+        if (e) e.stopPropagation();
+        // เปิดหน้าเว็บทันที (ไม่รอ tracking)
+        let urlToOpen = file.publicUrl || file.filePath;
+        // เติม https:// ถ้า URL ไม่มี protocol
+        if (urlToOpen && !urlToOpen.startsWith('http://') && !urlToOpen.startsWith('https://') && !urlToOpen.startsWith('/')) {
+            urlToOpen = 'https://' + urlToOpen;
         }
-        if (mimeType.includes('pdf') || fileName.endsWith('.pdf')) {
-            return { type: 'PDF', color: 'from-red-200 to-red-400', badge: 'bg-red-500', icon: DocumentIcon };
-        }
-        if (mimeType.includes('image') || fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-            return { type: 'IMAGE', color: 'from-cyan-200 to-cyan-400', badge: 'bg-cyan-500', icon: PhotoIcon };
-        }
-        return { type: 'FILE', color: 'from-slate-200 to-slate-400', badge: 'bg-slate-500', icon: DocumentIcon };
-    };
-
-    const { type, color, badge, icon: Icon } = getFileTypeAndColor();
-
-    // Format file size
-    const formatFileSize = (bytes) => {
-        if (!bytes) return '-';
-        const kb = bytes / 1024;
-        const mb = kb / 1024;
-        return mb >= 1 ? `${mb.toFixed(1)} MB` : `${kb.toFixed(0)} KB`;
-    };
-
-    const handleView = async () => {
-        try {
-            await httpClient.post('/analytics/track-click', {
-                fileId: file.id,
-                action: 'view'
-            });
-        } catch (error) {
-            console.error('[MediaCard] Error tracking click:', error);
-        } finally {
-            window.open(file.publicUrl || file.filePath, '_blank');
-        }
+        window.open(urlToOpen, '_blank');
+        
+        // Track แบบ async (ไม่ block)
+        httpClient.post('/analytics/track-click', {
+            fileId: file.id,
+            action: 'view'
+        }).catch(err => console.error('[MediaCard] Track error:', err));
     };
 
     return (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden group">
-            <div className="relative h-32 bg-slate-100">
-                {/* Thumbnail หรือ Icon */}
-                {file.thumbnailPath ? (
-                    <img
-                        src={`${import.meta.env.VITE_API_URL}/uploads/${file.thumbnailPath}`}
-                        alt={file.fileName}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                            e.target.style.display = 'none';
-                            e.target.nextSibling.style.display = 'flex';
-                        }}
-                    />
-                ) : null}
-                <div
-                    style={{ display: file.thumbnailPath ? 'none' : 'flex' }}
-                    className={`w-full h-full bg-gradient-to-br ${color} items-center justify-center`}
-                >
-                    <Icon className="w-10 h-10 text-white/80" />
-                </div>
-
-                {/* Badge Type */}
-                <div className="absolute top-2 right-2">
-                    <span className={`px-2 py-0.5 ${badge} text-white text-xs rounded font-medium`}>
-                        {type}
+        <div
+            onClick={handleView}
+            className="bg-white rounded border border-slate-200 shadow-sm p-3 hover:bg-slate-50 hover:shadow transition-all cursor-pointer flex flex-col justify-between min-h-[100px]"
+        >
+            <div>
+                {/* Project Badge */}
+                <div className="flex gap-1.5 mb-2">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-rose-100 text-rose-800">
+                        {projectName}
                     </span>
+                    {isExternalLink && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                            Link
+                        </span>
+                    )}
                 </div>
 
-                {/* Hover Actions */}
-                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
-                    <button
-                        onClick={handleView}
-                        className="p-2 bg-white rounded-full hover:bg-slate-100"
-                        title="ดูตัวอย่าง"
-                    >
-                        <EyeIcon className="w-4 h-4 text-slate-700" />
-                    </button>
-                    <button
-                        onClick={handleView}
-                        className="p-2 bg-rose-500 rounded-full hover:bg-rose-600"
-                        title="ดาวน์โหลด"
-                    >
-                        <ArrowDownTrayIcon className="w-4 h-4 text-white" />
-                    </button>
-                </div>
+                {/* Title */}
+                <p className="text-sm font-medium text-slate-800 line-clamp-2 leading-snug mb-3" title={file.fileName}>
+                    {jobSubject}
+                </p>
             </div>
 
-            {/* File Info */}
-            <div className="p-3">
-                <p className="text-sm font-medium text-slate-800 truncate" title={file.fileName}>
-                    {file.fileName}
-                </p>
-                <p className="text-xs text-slate-500 mt-1">
-                    {file.job?.djId || '-'} | {formatFileSize(file.fileSize)}
-                </p>
+            {/* Footer */}
+            <div className="flex items-center justify-between text-slate-400 mt-auto pt-2">
+                <div className="flex items-center gap-3">
+                    <Bars3BottomLeftIcon className="w-4 h-4" />
+                    <div className="flex items-center gap-1 text-xs font-medium">
+                        <ClockIcon className="w-3.5 h-3.5" />
+                        {dateStr}
+                    </div>
+                </div>
+                {/* Open Link Icon - ใช้อันเดียว */}
+                <ArrowTopRightOnSquareIcon className="w-4 h-4" />
             </div>
         </div>
     );

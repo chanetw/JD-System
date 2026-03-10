@@ -14,6 +14,7 @@ import { api } from '@shared/services/apiService';
 import httpClient from '@shared/services/httpClient';
 import Swal from 'sweetalert2';
 import { adminService } from '@shared/services/modules/adminService';
+import { draftReadLogService } from '@shared/services/modules/draftReadLogService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { ROLE_V1_DISPLAY, getJobRole, JOB_ROLE_THEMES } from '@shared/utils/permission.utils';
 import { formatDateToThai } from '@shared/utils/dateUtils';
@@ -224,6 +225,25 @@ export default function JobDetail() {
             }
         }
     }, [job?.id, user?.id]); // Check IDs only to avoid loop
+
+    // Draft Read Log (Track when Requester views draft submission)
+    useEffect(() => {
+        if (job && user && job.draftLink) {
+            const isRequester = String(job.requesterId) === String(user.id);
+            if (isRequester) {
+                console.log('[JobDetail] 📖 Recording draft read for Job', job.id);
+                draftReadLogService.recordRead(job.id)
+                    .then(result => {
+                        if (result.success) {
+                            console.log('[JobDetail] ✅ Draft read recorded:', result.data);
+                        }
+                    })
+                    .catch(err => {
+                        console.error('[JobDetail] ❌ Failed to record draft read:', err);
+                    });
+            }
+        }
+    }, [job?.id, job?.draftLink, user?.id]); // Track when draft link exists
 
     // ============================================
     // Actions Handlers

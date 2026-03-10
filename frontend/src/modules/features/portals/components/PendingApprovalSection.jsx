@@ -12,10 +12,15 @@ export default function PendingApprovalSection() {
     useEffect(() => {
         const loadApprovals = async () => {
             try {
-                // Backend is already patched to filter approvals for role='approver'
-                // This will return jobs that have a pending approval for CURRENT USER
-                const data = await api.getJobs({ role: 'approver' });
-                setApprovals(data);
+                // Backend returns jobs based on role 'approver'
+                const response = await api.getJobs({ role: 'approver' });
+                // Handle different response formats (with/without stats)
+                const jobsData = Array.isArray(response) ? response : (response?.data || []);
+
+                // Filter only jobs that are actually pending approval
+                const pendingJobs = jobsData.filter(job => job.status === 'pending_approval');
+
+                setApprovals(pendingJobs);
             } catch (error) {
                 console.error("Failed to load approvals", error);
             } finally {

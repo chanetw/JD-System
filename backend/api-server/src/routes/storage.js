@@ -209,13 +209,27 @@ router.get('/files', async (req, res) => {
 
     res.json({
       success: true,
-      data: files.map(file => ({
-        ...file,
-        fileSize: Number(file.fileSize),
-        publicUrl: isUsingSupabase() ?
-          `https://${process.env.SUPABASE_URL?.replace('https://', '')}/storage/v1/object/public/${process.env.SUPABASE_STORAGE_BUCKET || 'dj-system-files'}/${file.filePath}` :
-          `/uploads/${file.filePath}`
-      }))
+      data: files.map(file => {
+        // ถ้าเป็น link ภายนอก (Google Drive, Canva, etc.) ให้ใช้ filePath โดยตรง
+        let publicUrl;
+        if (file.fileType === 'link') {
+          publicUrl = file.filePath;
+          // เติม https:// ถ้า URL ไม่มี protocol
+          if (publicUrl && !publicUrl.startsWith('http://') && !publicUrl.startsWith('https://')) {
+            publicUrl = 'https://' + publicUrl;
+          }
+        } else if (isUsingSupabase()) {
+          publicUrl = `https://${process.env.SUPABASE_URL?.replace('https://', '')}/storage/v1/object/public/${process.env.SUPABASE_STORAGE_BUCKET || 'dj-system-files'}/${file.filePath}`;
+        } else {
+          publicUrl = `/uploads/${file.filePath}`;
+        }
+
+        return {
+          ...file,
+          fileSize: Number(file.fileSize),
+          publicUrl
+        };
+      })
     });
 
   } catch (error) {

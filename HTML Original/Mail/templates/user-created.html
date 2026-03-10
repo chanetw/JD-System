@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ยินดีต้อนรับสู่ DJ System</title>
+    <style>
+        body { font-family: 'Sarabun', Arial, sans-serif; margin: 0; padding: 0; background-color: #f3f4f6; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .header { background: linear-gradient(135deg, #e11d48 0%, #be123c 100%); padding: 30px 20px; text-align: center; color: #ffffff; }
+        .content { padding: 40px 30px; }
+        .welcome-box { background-color: #fef2f2; border: 2px solid #fecaca; border-radius: 8px; padding: 25px; margin: 25px 0; text-align: center; }
+        .credentials-box { background-color: #f9fafb; border: 2px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 25px 0; }
+        .credential-item { margin: 12px 0; font-size: 14px; color: #4b5563; }
+        .credential-item strong { color: #1f2937; font-weight: 600; }
+        .credential-value { background-color: #ffffff; padding: 8px 12px; border-radius: 4px; border: 1px solid #d1d5db; font-family: monospace; display: inline-block; margin-left: 10px; }
+        .button { display: inline-block; padding: 14px 32px; background-color: #e11d48; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; margin: 20px 0; }
+        .footer { background-color: #f9fafb; padding: 30px 20px; text-align: center; border-top: 1px solid #e5e7eb; font-size: 14px; color: #6b7280; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div style="background-color: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px; display: inline-block; margin-bottom: 15px;">
+                <span style="font-size: 24px; font-weight: 700;">DJ SYSTEM</span>
+            </div>
+            <h1 style="margin: 0; font-size: 24px;">🎉 ยินดีต้อนรับสู่ DJ System</h1>
+        </div>
+        
+        <div class="content">
+            <div class="welcome-box">
+                <h2 style="margin: 0 0 15px 0; color: #e11d48; font-size: 22px;">ยินดีต้อนรับ!</h2>
+                <p style="margin: 0; font-size: 16px; color: #4b5563;">
+                    บัญชีของคุณถูกสร้างเรียบร้อยแล้ว
+                </p>
+            </div>
+            
+            <p style="font-size: 18px; color: #1f2937; margin-bottom: 20px;">เรียน {{USER_NAME}},</p>
+            
+            <p style="font-size: 16px; color: #4b5563; margin-bottom: 25px;">
+                Admin ได้สร้างบัญชีผู้ใช้งานสำหรับคุณในระบบ DJ System แล้ว กรุณาใช้ข้อมูลด้านล่างในการเข้าสู่ระบบ
+            </p>
+            
+            <div class="credentials-box">
+                <h3 style="margin: 0 0 15px 0; color: #1f2937; font-size: 16px;">ข้อมูลการเข้าสู่ระบบ</h3>
+                <div class="credential-item">
+                    <strong>อีเมล:</strong>
+                    <span class="credential-value">{{USER_EMAIL}}</span>
+                </div>
+                <div class="credential-item">
+                    <strong>รหัสผ่านชั่วคราว:</strong>
+                    <span class="credential-value">{{TEMP_PASSWORD}}</span>
+                </div>
+            </div>
+            
+            <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                <p style="margin: 0; font-size: 14px; color: #92400e;">
+                    ⚠️ <strong>สำคัญ:</strong> กรุณาเปลี่ยนรหัสผ่านหลังจากเข้าสู่ระบบครั้งแรก
+                </p>
+            </div>
+            
+            <div style="text-align: center;">
+                <a href="{{LOGIN_URL}}" class="button">เข้าสู่ระบบ</a>
+            </div>
+            
+            <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 15px; margin: 20px 0; border-radius: 4px;">
+                <p style="margin: 0; font-size: 14px; color: #1e40af;">
+                    💡 <strong>เคล็ดลับ:</strong> หากมีปัญหาในการเข้าสู่ระบบ กรุณาติดต่อ Admin ของคุณ
+                </p>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p style="font-weight: 600; color: #1f2937; margin-bottom: 10px;">DJ System - Design Job Management</p>
+            <p>ระบบจัดการงานออกแบบ</p>
+            <p style="margin-top: 15px;">หากมีข้อสงสัย กรุณาติดต่อ Admin ของคุณ</p>
+            <p style="font-size: 12px; color: #9ca3af; margin-top: 20px;">อีเมลนี้ส่งโดยอัตโนมัติ กรุณาอย่าตอบกลับ</p>
+        </div>
+    </div>
+</body>
+</html>

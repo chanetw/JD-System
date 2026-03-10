@@ -38,12 +38,10 @@ export default function DJList() {
     // === สถานะการคัดกรอง (Filter States) ===
     const [filters, setFilters] = useState({
         project: '',
-        bud: '',
         jobType: '',
         status: '',
         assignee: '',
-        priority: '',
-        onlyScheduled: false // แสดงเฉพาะงานที่ตั้งเวลาส่งล่วงหน้า (auto-submit)
+        priority: ''
     });
 
     // === สถานะการค้นหาและจัดเรียง (Search & Sort States) ===
@@ -134,9 +132,6 @@ export default function DJList() {
         if (filters.project) {
             result = result.filter(j => j.project === filters.project);
         }
-        if (filters.bud) {
-            result = result.filter(j => j.bud === filters.bud);
-        }
         if (filters.jobType) {
             result = result.filter(j => j.jobType === filters.jobType);
         }
@@ -148,9 +143,6 @@ export default function DJList() {
         }
         if (filters.priority) {
             result = result.filter(j => j.priority === filters.priority);
-        }
-        if (filters.onlyScheduled) {
-            result = result.filter(j => j.status === 'scheduled');
         }
 
         // 2. นำ Search Query มาใช้งาน (ค้นจากเลขที่ DJ หรือหัวข้องาน)
@@ -296,12 +288,10 @@ export default function DJList() {
     const handleClearFilters = () => {
         setFilters({
             project: '',
-            bud: '',
             jobType: '',
             status: '',
             assignee: '',
-            priority: '',
-            onlyScheduled: false
+            priority: ''
         });
         setSearchQuery('');
     };
@@ -350,7 +340,6 @@ export default function DJList() {
     // Get Unique Values for Filters
     // ============================================
     const uniqueProjects = [...new Set(jobs.map(j => j.project))].filter(Boolean);
-    const uniqueBuds = [...new Set(jobs.map(j => j.bud))].filter(Boolean);
     const uniqueAssignees = [...new Set(jobs.map(j => j.assignee))].filter(Boolean);
 
     // ============================================
@@ -390,18 +379,12 @@ export default function DJList() {
 
             {/* ส่วนคัดกรองข้อมูล (Filters Section) */}
             <div className="bg-white rounded-xl border border-gray-400 shadow-sm p-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     <FilterSelect
                         label="โครงการ (Project)"
                         value={filters.project}
                         onChange={(val) => handleFilterChange('project', val)}
                         options={uniqueProjects}
-                    />
-                    <FilterSelect
-                        label="หน่วยงาน (BUD)"
-                        value={filters.bud}
-                        onChange={(val) => handleFilterChange('bud', val)}
-                        options={uniqueBuds}
                     />
                     <FilterSelect
                         label="ประเภทงาน (Job Type)"
@@ -429,16 +412,7 @@ export default function DJList() {
                     />
                 </div>
 
-                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
-                    <label className="flex items-center gap-2 text-sm text-gray-600">
-                        <input
-                            type="checkbox"
-                            checked={filters.onlyScheduled}
-                            onChange={(e) => handleFilterChange('onlyScheduled', e.target.checked)}
-                            className="rounded border-gray-300 text-rose-500 focus:ring-rose-500"
-                        />
-                        เฉพาะงานที่ตั้งเวลาส่งล่วงหน้า (Scheduled)
-                    </label>
+                <div className="flex items-center justify-end mt-4 pt-4 border-t border-gray-100">
                     <div className="flex gap-2">
                         <Button variant="ghost" className="text-sm" onClick={handleClearFilters}>ล้างค่า (Clear)</Button>
                         <Button className="text-sm" onClick={applyFiltersAndSearch}>ใช้งานการคัดกรอง (Apply)</Button>

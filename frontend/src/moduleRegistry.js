@@ -18,6 +18,7 @@ import { routes as jobManagementRoutes } from '@features/job-management';
 import { routes as adminRoutes } from '@features/admin/index.jsx';
 import { routes as assigneeRoutes } from '@features/assignee/index.jsx';
 import { routes as analyticsRoutes } from '@features/analytics/index.jsx';
+import { routes as dashboardRoutes } from '@features/dashboard/index.jsx';
 
 /**
  * รายการ Module ที่ลงทะเบียนในระบบ
@@ -68,6 +69,12 @@ export const registeredModules = [
         name: 'analytics',
         basePath: '',
         routes: analyticsRoutes,
+        enabled: true
+    },
+    {
+        name: 'dashboard',
+        basePath: '',
+        routes: dashboardRoutes,
         enabled: true
     },
 ];

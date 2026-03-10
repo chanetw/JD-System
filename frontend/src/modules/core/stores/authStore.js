@@ -144,7 +144,10 @@ export const useAuthStore = create(
                 try {
                     const { data, error } = await supabase
                         .from('users')
-                        .select('*')
+                        .select(`
+                            *,
+                            userRoles:user_roles(*)
+                        `)
                         .eq('id', user.id)
                         .single();
 
@@ -198,6 +201,9 @@ export const useAuthStore = create(
                         isAuthenticated: true,
                         isLoading: false,
                     });
+
+                    // Refresh user เพื่อดึง userRoles มาด้วย
+                    await get().refreshUser();
 
                     return user;
                 } catch (error) {

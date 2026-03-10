@@ -52,6 +52,7 @@ model Tenant {
   isActive                   Boolean  @default(true) @map("is_active")
   createdAt                  DateTime @default(now()) @map("created_at")
   defaultRejectionCcEmails   String[] @default([]) @map("default_rejection_cc_emails")
+  emailSettings              Json?    @default("{}") @map("email_settings")
 
   // Relations
   users                User[]

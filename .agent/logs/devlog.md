@@ -4,6 +4,185 @@
 
 ---
 
+## 📅 2026-03-10
+
+### 70. Feature: Draft Read Tracking System
+<details>
+<summary>🔍 <b>คลิกดูรายละเอียด</b> (Track Draft Submission Read Status with IP & Timestamp)</summary>
+
+🔴 **Request:**
+- สร้างระบบบันทึกการเปิดอ่าน Draft Submission โดย Requester
+- บันทึกเวลาที่เปิดอ่าน (timestamp)
+- บันทึก IP Address ของผู้เปิดอ่าน
+- แสดงสถานะว่า Requester อ่านแล้วหรือยัง
+- สำหรับ Assignee/Admin ให้เห็นรายละเอียดเพิ่มเติม (เวลา, IP)
+
+✅ **Action:**
+
+**Phase 1 & 2: Database Schema + Migration**
+- `backend/prisma/migrations/20260310_add_draft_read_logs/migration.sql` — สร้างตาราง `draft_read_logs`:
+  - `id` (Primary Key)
+  - `tenant_id` (Foreign Key → tenants)
+  - `job_id` (Foreign Key → jobs)
+  - `user_id` (Foreign Key → users)
+  - `read_at` (Timestamp with default CURRENT_TIMESTAMP)
+  - `ip_address` (VARCHAR(45) - รองรับ IPv4 และ IPv6)
+  - `user_agent` (TEXT - Browser/Device info)
+  - Unique constraint: `(job_id, user_id)` - บันทึกครั้งแรกเท่านั้น
+  - Indexes: job_id, user_id, tenant_id, read_at
+
+**Phase 3: Backend API**
+- `backend/api-server/src/routes/draft-read-logs.js` — API routes ใหม่:
+  - `POST /api/draft-read-logs/:jobId` — บันทึกการเปิดอ่าน
+    - ดึง IP จาก `x-forwarded-for`, `x-real-ip`, `req.ip`
+    - ดึง User Agent จาก headers
+    - ตรวจสอบว่าเป็น Requester ของงานนั้นหรือไม่
+    - บันทึก log (ON CONFLICT DO NOTHING - ครั้งแรกเท่านั้น)
+  - `GET /api/draft-read-logs/:jobId` — ดึงข้อมูล Read Logs ทั้งหมด (Admin/Assignee/Requester)
+  - `GET /api/draft-read-logs/:jobId/status` — เช็คว่า Requester อ่านแล้วหรือยัง
+- `backend/api-server/src/index.js` — ลงทะเบียน route `/api/draft-read-logs`
+
+**Phase 4: Frontend Service + Auto-tracking**
+- `frontend/src/modules/shared/services/modules/draftReadLogService.js` — Service ใหม่:
+  - `recordRead(jobId)` — บันทึกการเปิดอ่าน
+  - `getReadLogs(jobId)` — ดึงข้อมูล logs
+  - `checkReadStatus(jobId)` — เช็คสถานะ
+- `frontend/src/modules/features/job-management/pages/JobDetail.jsx` — เพิ่ม useEffect:
+  - Auto-track เมื่อ Requester เปิดดูงานที่มี `draftLink`
+  - บันทึกอัตโนมัติเมื่อโหลดหน้า Job Detail
+  - Log ทั้ง console และส่งไป backend
+
+**Phase 5: UI Components**
+- `frontend/src/modules/features/job-management/components/DraftReadStatus.jsx` — Component ใหม่:
+  - **สำหรับ Requester**: แสดง "คุณได้อ่าน Draft แล้ว" หรือ "คุณยังไม่ได้อ่าน Draft"
+  - **สำหรับ Assignee/Admin**: แสดงรายละเอียดเพิ่มเติม (เวลา, IP Address)
+  - 3 รูปแบบการแสดงผล:
+    - Badge (inline) - สำหรับ list view
+    - Simple - สำหรับ Requester
+    - Detailed - สำหรับ Assignee/Admin
+- `frontend/src/modules/features/job-management/components/JobBriefInfo.jsx` — เพิ่มการแสดง:
+  - แสดง Draft Submission section พร้อม link และ note
+  - แสดง `DraftReadStatus` component ใต้ draft link
+  - ส่ง props: `jobId`, `isRequester`, `showDetails`
+
+**🎨 Features:**
+- ✅ บันทึกอัตโนมัติเมื่อ Requester เปิดดูงาน
+- ✅ บันทึกครั้งแรกเท่านั้น (Unique constraint)
+- ✅ เก็บ IP Address (รองรับ proxy headers)
+- ✅ เก็บ User Agent (Browser/Device)
+- ✅ แสดงสถานะแบบ real-time
+- ✅ UI แยกตาม role (Requester vs Assignee/Admin)
+- ✅ ป้องกันการ access ข้อมูลโดยไม่มีสิทธิ์
+
+**📝 Notes:**
+- ต้องรัน migration ก่อนใช้งาน: `cd backend && npx prisma db push`
+- IP Address รองรับทั้ง IPv4 และ IPv6 (VARCHAR(45))
+- Unique constraint ป้องกันการบันทึกซ้ำ (1 user 1 job = 1 log)
+- หากต้องการบันทึกทุกครั้งที่เปิดอ่าน ให้ลบ unique index ออก
+
+</details>
+
+---
+
+### 69. Feature: Email & Notification System Enhancement
+<details>
+<summary>🔍 <b>คลิกดูรายละเอียด</b> (HTML Email Templates + Auto-refresh Notifications + Email Settings)</summary>
+
+🔴 **Request:**
+- ออกแบบ HTML email templates สำหรับทุกประเภทการแจ้งเตือน (14 templates)
+- เพิ่ม action buttons และ secure URLs (token 2 วัน) ใน email
+- ปรับปรุงระบบ notification ในแอป: auto-refresh ทุก 5 นาทีเฉพาะ icon กระดิ่ง
+- ลบ CC ทดสอบ (chanetw@sena.co.th) ออกจากระบบ
+- สร้างระบบ Email Settings ให้กำหนด CC emails แยกตามประเภทการแจ้งเตือนได้
+- ใช้ภาษาไทย, มี logo, Token expiration 2 วัน
+
+✅ **Action:**
+
+**Phase 0: ลบ CC ทดสอบ**
+- `backend/api-server/src/services/emailService.js` — ลบ hardcoded CC (chanetw@sena.co.th) ออกจาก sendEmail function
+
+**Phase 1: HTML Email Templates (13 templates)**
+- `HTML Original/Mail/templates/base-template.html` — Base template พร้อม DJ System branding, responsive design
+- `HTML Original/Mail/templates/job-assigned.html` — งานมอบหมาย
+- `HTML Original/Mail/templates/urgent-job-approved.html` — งานด่วนได้รับอนุมัติ (สีแดง, warning box)
+- `HTML Original/Mail/templates/urgent-job-impact.html` — งานถูกเลื่อนจากงานด่วน (แสดงการเปลี่ยน deadline)
+- `HTML Original/Mail/templates/job-rejection.html` — งานถูกยกเลิก/ปฏิเสธ (แสดงเหตุผล)
+- `HTML Original/Mail/templates/job-approval-request.html` — คำขออนุมัติงาน (ปุ่มอนุมัติ/ปฏิเสธ)
+- `HTML Original/Mail/templates/job-approved.html` — งานได้รับการอนุมัติ (สีเขียว)
+- `HTML Original/Mail/templates/job-deadline-reminder.html` — แจ้งเตือน Deadline
+- `HTML Original/Mail/templates/job-status-changed.html` — เปลี่ยนสถานะงาน
+- `HTML Original/Mail/templates/comment-notification.html` — ความคิดเห็นใหม่
+- `HTML Original/Mail/templates/additional-info-request.html` — ขอข้อมูลเพิ่มเติม
+- `HTML Original/Mail/templates/draft-submitted.html` — ส่ง Draft งาน
+- `HTML Original/Mail/templates/user-created.html` — ยินดีต้อนรับผู้ใช้ใหม่ (แสดง credentials)
+- `HTML Original/Mail/templates/README.md` — เอกสารการใช้งาน templates
+
+**Phase 2: Auto-refresh Notification (5 นาที)**
+- `frontend/src/modules/core/layout/Header.jsx` — เพิ่ม useEffect สำหรับ auto-refresh notifications ทุก 5 นาที (300,000 ms)
+  - Partial update: อัปเดตเฉพาะ notification icon และ badge counter
+  - ไม่ reload ทั้งหน้า
+  - Cleanup interval เมื่อ component unmount
+
+**Phase 4: Email Settings (Database + Backend + Frontend)**
+
+**4.1 Database Schema**
+- `backend/prisma/schema.prisma` — เพิ่ม field `emailSettings Json?` ใน Tenant model
+- `backend/prisma/migrations/20260310_add_email_settings/migration.sql` — Migration SQL สำหรับเพิ่ม email_settings column (JSONB)
+
+**4.2 Backend API**
+- `backend/api-server/src/routes/email-settings.js` — API routes ใหม่:
+  - GET `/api/email-settings` — ดึงการตั้งค่าทั้งหมด (10 ประเภท)
+  - GET `/api/email-settings/:type` — ดึงการตั้งค่าแยกตามประเภท
+  - PUT `/api/email-settings/:type` — อัปเดตการตั้งค่า (Admin only)
+  - POST `/api/email-settings/:type/test` — ทดสอบส่ง email (Admin only)
+  - Email types: urgentJob, urgentImpact, jobRejection, jobApprovalRequest, jobApproved, jobAssigned, jobDeadlineReminder, jobStatusChanged, commentNotification, additionalInfoRequest
+  - Validation: email format, max 10 CC emails per type
+- `backend/api-server/src/index.js` — ลงทะเบียน `/api/email-settings` route
+
+**4.3 Frontend UI**
+- `frontend/src/modules/features/admin/pages/EmailSettings.jsx` — หน้าจัดการ Email Settings (Admin only):
+  - แสดงรายการ email types ทั้งหมดพร้อม priority badge
+  - Toggle เปิด/ปิดแต่ละประเภท
+  - เพิ่ม/ลบ CC emails (max 10)
+  - Validate email format
+  - ทดสอบส่ง email
+  - Toast notifications
+  - Expandable cards
+- `frontend/src/modules/features/admin/index.jsx` — ลงทะเบียน route `/admin/email-settings`
+
+**📋 Email Settings Structure (JSON):**
+```json
+{
+  "urgentJob": {
+    "enabled": true,
+    "ccEmails": ["manager@example.com"],
+    "description": "งานด่วนที่ต้องการความสนใจจากผู้บริหาร"
+  },
+  "jobRejection": {
+    "enabled": true,
+    "ccEmails": ["hr@example.com", "admin@example.com"],
+    "description": "งานที่ถูกยกเลิก/ปฏิเสธ"
+  }
+}
+```
+
+**🎨 Design Features:**
+- Email templates: DJ System branding, responsive, inline CSS
+- Notification: Auto-refresh ทุก 5 นาที (partial update)
+- Token: JWT expiration 48 ชั่วโมง (2 วัน)
+- Language: ภาษาไทยทั้งหมด
+- CC Limit: สูงสุด 10 emails ต่อประเภท
+
+**📝 Notes:**
+- Email templates พร้อมใช้งาน (ต้อง integrate กับ emailService ใน Phase 3)
+- Migration SQL พร้อมรัน (ต้องรัน migration ก่อนใช้งาน)
+- Frontend UI พร้อมใช้งาน (เข้าได้ที่ /admin/email-settings)
+- CSS warnings `mso-table-*` เป็น properties สำหรับ Microsoft Outlook (ปกติ)
+
+</details>
+
+---
+
 ## 📅 2026-03-06
 
 ### 68. Feature: Viewer Role + User Profile Edit

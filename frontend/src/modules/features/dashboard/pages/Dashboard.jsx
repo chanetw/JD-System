@@ -376,6 +376,81 @@ export default function Dashboard() {
         return '-';
     }, []);
 
+    const getAssigneeName = useCallback((job) => {
+        const assignee = job?.assignee;
+        if (!assignee) return '';
+        if (typeof assignee === 'string') return assignee;
+        if (typeof assignee === 'object') {
+            if (assignee.name) return assignee.name;
+            const fullName = `${assignee.firstName || ''} ${assignee.lastName || ''}`.trim();
+            if (fullName) return fullName;
+        }
+        return '';
+    }, []);
+
+    const buildParentViewJobs = useCallback((sourceJobs) => {
+        const result = [...sourceJobs];
+        const parentChildCount = {};
+        const childrenMap = {};
+
+        result.forEach(job => {
+            if (job.parentJobId) {
+                parentChildCount[job.parentJobId] = (parentChildCount[job.parentJobId] || 0) + 1;
+                if (!childrenMap[job.parentJobId]) childrenMap[job.parentJobId] = [];
+                childrenMap[job.parentJobId].push(job);
+            }
+        });
+
+        return result
+            .filter(job => {
+                if (job.isParent) {
+                    const childCount = parentChildCount[job.id] || 0;
+                    if (childCount === 1) return false;
+                    if (childCount > 1) {
+                        job.calculatedApprovalStatus = calculateParentApprovalStatus(childrenMap[job.id]);
+                        job.calculatedJobStatus = calculateParentJobStatus(childrenMap[job.id]);
+                        job.children = childrenMap[job.id];
+                        job.derivedDeadline = getParentDerivedDeadline(childrenMap[job.id]);
+                        job.derivedSlaPriority = getParentSlaPriority(childrenMap[job.id]);
+                        job.derivedSlaText = getParentSlaText(childrenMap[job.id]);
+                    }
+                } else if (job.parentJobId) {
+                    const siblingCount = parentChildCount[job.parentJobId] || 0;
+                    if (siblingCount > 1) return false;
+                }
+                return true;
+            })
+            .filter(job => {
+                if (statusFilter) {
+                    if (job.isParent && job.children?.length > 0) {
+                        if (job.calculatedJobStatus !== statusFilter) return false;
+                    } else if (job.status !== statusFilter) {
+                        return false;
+                    }
+                }
+
+                if (assigneeFilter) {
+                    if (job.isParent && job.children?.length > 0) {
+                        const hasMatchingChild = job.children.some(child => getAssigneeName(child) === assigneeFilter);
+                        if (!hasMatchingChild) return false;
+                    } else if (getAssigneeName(job) !== assigneeFilter) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+    }, [
+        calculateParentApprovalStatus,
+        calculateParentJobStatus,
+        getParentDerivedDeadline,
+        getParentSlaPriority,
+        getParentSlaText,
+        getAssigneeName,
+        statusFilter,
+        assigneeFilter
+    ]);
+
     // ============================================
     // Filter Logic with View Mode Support
     // ============================================
@@ -383,54 +458,19 @@ export default function Dashboard() {
     const filteredJobs = useMemo(() => {
         let result = [...jobs];
 
-        // 1. Apply status/assignee filters (ทุก mode)
-        if (statusFilter && result.length > 0) {
-            result = result.filter(j => j.status === statusFilter);
-        }
-        if (assigneeFilter && result.length > 0) {
-            result = result.filter(j => j.assignee === assigneeFilter);
-        }
-
-        // 2. Apply View Mode Logic
+        // 1. Apply View Mode Logic + Filter
         if (viewMode === 'flat') {
-            // === FLAT VIEW (เดิม — เก็บไว้) ===
-            if (!showParent) {
-                result = result.filter(job => !job.isParent);
+            result = result.filter(job => !job.isParent);
+
+            if (statusFilter && result.length > 0) {
+                result = result.filter(j => j.status === statusFilter);
             }
-            // ถ้า showParent = true ก็แสดงทุกงานแบบ flat
+            if (assigneeFilter && result.length > 0) {
+                result = result.filter(j => getAssigneeName(j) === assigneeFilter);
+            }
 
         } else if (viewMode === 'parent') {
-            // === PARENT VIEW (ใหม่ — เพิ่มเข้ามา) ===
-            const parentChildCount = {};
-            const childrenMap = {};
-
-            result.forEach(job => {
-                if (job.parentJobId) {
-                    parentChildCount[job.parentJobId] = (parentChildCount[job.parentJobId] || 0) + 1;
-                    if (!childrenMap[job.parentJobId]) childrenMap[job.parentJobId] = [];
-                    childrenMap[job.parentJobId].push(job);
-                }
-            });
-
-            result = result.filter(job => {
-                if (job.isParent) {
-                    const childCount = parentChildCount[job.id] || 0;
-                    if (childCount === 1) return false; // ซ่อน Parent ที่มี Child เดียว
-                    if (childCount > 1) {
-                        job.calculatedApprovalStatus = calculateParentApprovalStatus(childrenMap[job.id]);
-                        job.calculatedJobStatus = calculateParentJobStatus(childrenMap[job.id]);
-                        job.children = childrenMap[job.id];
-                        // เพิ่ม derived values สำหรับ Parent
-                        job.derivedDeadline = getParentDerivedDeadline(childrenMap[job.id]);
-                        job.derivedSlaPriority = getParentSlaPriority(childrenMap[job.id]);
-                        job.derivedSlaText = getParentSlaText(childrenMap[job.id]);
-                    }
-                } else if (job.parentJobId) {
-                    const siblingCount = parentChildCount[job.parentJobId] || 0;
-                    if (siblingCount > 1) return false; // ซ่อน Child (แสดงใต้ Parent)
-                }
-                return true;
-            });
+            result = buildParentViewJobs(result);
         }
 
         // 3. Apply Sort Logic
@@ -459,10 +499,22 @@ export default function Dashboard() {
         }
 
         return result;
-    }, [jobs, statusFilter, assigneeFilter, showParent, viewMode, sortMode, calculateParentApprovalStatus, calculateParentJobStatus, getParentDerivedDeadline, getParentSlaPriority, getParentSlaText]);
+    }, [jobs, statusFilter, assigneeFilter, viewMode, sortMode, buildParentViewJobs, getAssigneeName]);
+
+    const filterableJobs = useMemo(() => {
+        if (viewMode === 'parent') {
+            return buildParentViewJobs(jobs);
+        }
+        return jobs.filter(job => !job.isParent);
+    }, [jobs, viewMode, buildParentViewJobs]);
 
     // รวบรวม assignee ที่มีในรายการงาน (unique)
-    const assigneeOptions = [...new Set(jobs.map(j => j.assignee).filter(Boolean))].sort();
+    const assigneeOptions = [...new Set(filterableJobs.map(j => {
+        if (j.isParent && j.children?.length > 0) {
+            return j.children.map(child => getAssigneeName(child)).filter(Boolean);
+        }
+        return getAssigneeName(j);
+    }).flat().filter(Boolean))].sort();
 
     // รายการ status ที่มีในรายการงาน (unique)
     const STATUS_LABELS = {
@@ -498,7 +550,12 @@ export default function Dashboard() {
         pending_rebrief: 'bg-yellow-100 text-yellow-700',
         rebrief_submitted: 'bg-indigo-100 text-indigo-700',
     };
-    const statusOptions = [...new Set(jobs.filter(j => !j.isParent || showParent).map(j => j.status).filter(Boolean))].sort();
+    const statusOptions = [...new Set(filterableJobs.map(j => {
+        if (j.isParent && j.children?.length > 0) {
+            return j.calculatedJobStatus;
+        }
+        return j.status;
+    }).filter(Boolean))].sort();
 
     if (isLoading) {
         return (

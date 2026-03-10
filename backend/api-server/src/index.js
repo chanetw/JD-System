@@ -48,6 +48,8 @@ import analyticsRoutes from './routes/analytics.js'; // ✓ NEW: Analytics Track
 import masterDataCombinedRoutes from './routes/master-data-combined.js'; // ⚡ Performance: Combined master data endpoint
 import tenantSettingsRoutes from './routes/tenant-settings.js'; // ✓ NEW: Tenant Settings (CC emails, etc.)
 import notificationsRoutes from './routes/notifications.js'; // ✓ NEW: In-App Notifications API
+import emailSettingsRoutes from './routes/email-settings.js'; // ✓ NEW: Email Settings (CC emails per notification type)
+import draftReadLogsRoutes from './routes/draft-read-logs.js'; // ✓ NEW: Draft Read Logs (Track when Requester reads draft)
 
 // V2 Flow Templates REMOVED - Using V1 Extended instead
 
@@ -284,7 +286,8 @@ app.use('/api/storage', storageRoutes);
 app.use('/api/analytics', analyticsRoutes); // ✓ NEW: Analytics API (routes: /api/analytics/track-click, /api/analytics/stats)
 app.use('/api/master-data-combined', masterDataCombinedRoutes); // ⚡ Performance: Combined endpoint (6-7 calls → 1 call)
 app.use('/api/tenant-settings', tenantSettingsRoutes); // ✓ NEW: Tenant Settings API (routes: /api/tenant-settings, /api/tenant-settings/rejection-cc-emails)
-
+app.use('/api/email-settings', emailSettingsRoutes); // ✓ NEW: Email Settings API (routes: /api/email-settings, /api/email-settings/:type)
+app.use('/api/draft-read-logs', draftReadLogsRoutes); // ✓ NEW: Draft Read Logs API (routes: /api/draft-read-logs/:jobId)
 
 // ✓ Notifications API
 app.use('/api/notifications', notificationsRoutes);

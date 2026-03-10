@@ -1,8 +1,10 @@
 import React from 'react';
 import { PaperClipIcon, LinkIcon } from '@heroicons/react/24/outline';
-
+import DraftReadStatus from './DraftReadStatus';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 
 const JobBriefInfo = ({ job }) => {
+    const { user } = useAuthStoreV2();
     if (!job) return null;
 
     // API returns fields at root level, not nested under 'brief'
@@ -70,6 +72,37 @@ const JobBriefInfo = ({ job }) => {
                                         <LinkIcon className="w-4 h-4" />
                                         {job.briefLink}
                                     </a>
+                                </dd>
+                            </div>
+                        )}
+                        {job.draftLink && (
+                            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 border-t border-gray-400">
+                                <dt className="text-sm font-medium text-gray-500">Draft Submission</dt>
+                                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2 space-y-3">
+                                    <a
+                                        href={
+                                            job.draftLink.startsWith('http://') || job.draftLink.startsWith('https://')
+                                                ? job.draftLink
+                                                : `https://${job.draftLink}`
+                                        }
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center gap-2 text-rose-600 hover:text-rose-800 hover:underline"
+                                    >
+                                        <LinkIcon className="w-4 h-4" />
+                                        {job.draftLink}
+                                    </a>
+                                    {job.draftNote && (
+                                        <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded border border-gray-200">
+                                            <span className="font-medium">หมายเหตุ: </span>
+                                            {job.draftNote}
+                                        </div>
+                                    )}
+                                    <DraftReadStatus 
+                                        jobId={job.id} 
+                                        isRequester={user && String(job.requesterId) === String(user.id)}
+                                        showDetails={user && String(job.assigneeId) === String(user.id)}
+                                    />
                                 </dd>
                             </div>
                         )}

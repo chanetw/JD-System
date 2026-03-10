@@ -15,11 +15,9 @@ import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import httpClient from '@shared/services/httpClient';
 import {
     PhotoIcon,
-    ArrowDownTrayIcon,
-    EyeIcon,
-    DocumentIcon,
-    VideoCameraIcon,
-    LinkIcon
+    Bars3BottomLeftIcon,
+    ClockIcon,
+    ArrowTopRightOnSquareIcon
 } from '@heroicons/react/24/outline';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
 
@@ -53,10 +51,12 @@ export default function MediaPortal() {
      * - Requester/Approver/Assignee: เห็นเฉพาะโครงการที่อยู่ใน Scope
      */
     const loadProjects = async () => {
+        console.log('[MediaPortal] loadProjects called');
         try {
             setIsLoading(true);
             // ดึงโครงการทั้งหมดจาก Backend (Backend จะกรองตาม RLS/User Scope อัตโนมัติ)
             const projectsData = await adminService.getProjects();
+            console.log('[MediaPortal] Projects loaded:', projectsData.length, 'projects');
 
             // นับจำนวนไฟล์ในแต่ละโครงการ (TODO: ควรให้ Backend ส่งมาพร้อมกัน)
             const projectsWithCount = projectsData.map(p => ({
@@ -82,12 +82,16 @@ export default function MediaPortal() {
      * (กรองตามโครงการที่เลือก)
      */
     const loadMediaFiles = async () => {
+        console.log('[MediaPortal] loadMediaFiles called, selectedProject:', selectedProject);
         try {
             const params = selectedProject === 'all' ? {} : { projectId: selectedProject };
+            console.log('[MediaPortal] Fetching files with params:', params);
             const response = await httpClient.get('/storage/files', { params });
+            console.log('[MediaPortal] API response:', response.data);
 
             if (response.data.success) {
                 const files = response.data.data;
+                console.log('[MediaPortal] Files loaded:', files.length, 'files');
                 setMediaFiles(files);
 
                 // คำนวณสถิติ
@@ -103,6 +107,7 @@ export default function MediaPortal() {
             }
         } catch (error) {
             console.error('[MediaPortal] Error loading media files:', error);
+            console.error('[MediaPortal] Error details:', error.response?.data || error.message);
             setMediaFiles([]);
         }
     };
@@ -127,27 +132,29 @@ export default function MediaPortal() {
     /**
      * Track Click (เพื่อนับสถิติการกด Link)
      */
-    const handleViewFile = async (file) => {
-        try {
-            // Track click/view ก่อนเปิดไฟล์
-            await httpClient.post('/analytics/track-click', {
-                fileId: file.id,
-                action: 'view'
-            });
-
-            console.log('[MediaPortal] Tracked view for file:', file.fileName);
-        } catch (error) {
-            console.error('[MediaPortal] Error tracking click:', error);
-            // ไม่ block การเปิดไฟล์แม้ tracking ล้มเหลว
-        } finally {
-            // เปิด Link/URL ในแท็บใหม่ (เปิดไฟล์แม้ tracking ล้มเหลว)
-            window.open(file.publicUrl || file.filePath, '_blank');
+    const handleViewFile = (file) => {
+        // เปิด Link/URL ในแท็บใหม่ทันที (ไม่รอ tracking)
+        let urlToOpen = file.publicUrl || file.filePath;
+        // เติม https:// ถ้า URL ไม่มี protocol
+        if (urlToOpen && !urlToOpen.startsWith('http://') && !urlToOpen.startsWith('https://') && !urlToOpen.startsWith('/')) {
+            urlToOpen = 'https://' + urlToOpen;
         }
+        window.open(urlToOpen, '_blank');
+        
+        // Track click/view แบบ async (ไม่ block การเปิดหน้า)
+        httpClient.post('/analytics/track-click', {
+            fileId: file.id,
+            action: 'view'
+        }).catch(err => console.error('[MediaPortal] Track error:', err));
     };
 
     const filteredFiles = selectedProject === 'all'
         ? mediaFiles
-        : mediaFiles.filter(f => f.projectId === parseInt(selectedProject));
+        : mediaFiles.filter(f => {
+            // แปลง selectedProject เป็น number เพื่อเปรียบเทียบกับ projectId
+            const projectIdToMatch = selectedProject === 'all' ? null : Number(selectedProject);
+            return f.projectId === projectIdToMatch;
+        });
 
     if (isLoading) {
         return (
@@ -226,87 +233,57 @@ export default function MediaPortal() {
  * รองรับ Link ภายนอก (แสดง Icon Link แทนประเภทไฟล์)
  */
 function MediaCard({ file, onView }) {
-    const isExternalLink = file.filePath?.includes('http') || file.filePath?.includes('drive.google');
-
-    const getIcon = () => {
-        // ถ้าเป็น Link ภายนอก แสดงไอคอน Link
-        if (isExternalLink) {
-            return <LinkIcon className="w-8 h-8 text-indigo-500" />;
-        }
-
-        // ถ้าเป็นไฟล์จริง แสดงตามประเภท
-        const mimeType = file.mimeType || file.fileType || '';
-        if (mimeType.includes('video')) return <VideoCameraIcon className="w-8 h-8 text-purple-500" />;
-        if (mimeType.includes('pdf') || mimeType.includes('document')) return <DocumentIcon className="w-8 h-8 text-red-500" />;
-        return <PhotoIcon className="w-8 h-8 text-blue-500" />;
-    };
-
-    const formatFileSize = (bytes) => {
-        if (!bytes) return '-';
-        const kb = bytes / 1024;
-        const mb = kb / 1024;
-        return mb >= 1 ? `${mb.toFixed(1)} MB` : `${kb.toFixed(0)} KB`;
-    };
+    const isExternalLink = file.fileType === 'link';
+    const jobSubject = file.job?.subject || file.fileName || 'Untitled';
+    const dateStr = new Date(file.createdAt || new Date()).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const projectName = file.project?.name || file.project?.code || 'No Project';
+    
+    console.log('[MediaCard] File data:', {
+        id: file.id,
+        fileName: file.fileName,
+        fileType: file.fileType,
+        filePath: file.filePath,
+        publicUrl: file.publicUrl,
+        isExternalLink,
+        projectName
+    });
 
     return (
-        <Card className="hover:shadow-lg transition-shadow">
-            <CardBody>
-                <div className="aspect-video bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg overflow-hidden flex items-center justify-center mb-3">
-                    {/* แสดง Thumbnail ถ้ามี, ไม่งั้นแสดง Icon */}
-                    {file.thumbnailPath ? (
-                        <img
-                            src={`${import.meta.env.VITE_API_URL}/uploads/${file.thumbnailPath}`}
-                            alt={file.fileName}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                                // Fallback to icon ถ้าโหลดรูปไม่ได้
-                                e.target.style.display = 'none';
-                                e.target.nextSibling.style.display = 'flex';
-                            }}
-                        />
-                    ) : null}
-                    <div style={{ display: file.thumbnailPath ? 'none' : 'flex' }} className="w-full h-full items-center justify-center">
-                        {getIcon()}
-                    </div>
-                </div>
-                <p className="font-medium text-gray-900 text-sm truncate" title={file.fileName}>
-                    {file.fileName}
-                </p>
-                <div className="flex items-center gap-2 mt-1">
-                    {file.job?.djId && (
-                        <span className="text-xs text-gray-500">{file.job.djId}</span>
-                    )}
+        <div
+            onClick={() => onView(file)}
+            className="bg-white rounded border border-gray-200 shadow-sm p-3 hover:bg-gray-50 hover:shadow transition-all cursor-pointer flex flex-col justify-between min-h-[100px]"
+        >
+            <div>
+                {/* Project Badge */}
+                <div className="flex gap-1.5 mb-2">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-rose-100 text-rose-800">
+                        {projectName}
+                    </span>
                     {isExternalLink && (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-indigo-50 text-indigo-700">
-                            🔗 Link
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                            Link
                         </span>
                     )}
                 </div>
-                <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                    <span className="text-xs text-gray-400">
-                        {formatFileSize(file.fileSize)}
-                    </span>
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => onView(file)}
-                            className="p-1.5 hover:bg-indigo-50 rounded transition-colors"
-                            title="เปิด/ดูไฟล์"
-                        >
-                            <EyeIcon className="w-4 h-4 text-indigo-600" />
-                        </button>
-                        <button
-                            onClick={() => onView(file)}
-                            className="p-1.5 hover:bg-rose-50 rounded transition-colors"
-                            title="ดาวน์โหลด/เข้าชม"
-                        >
-                            <ArrowDownTrayIcon className="w-4 h-4 text-rose-600" />
-                        </button>
+
+                {/* Title */}
+                <p className="text-sm font-medium text-gray-800 line-clamp-2 leading-snug mb-3" title={file.fileName}>
+                    {jobSubject}
+                </p>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between text-gray-400 mt-auto pt-2">
+                <div className="flex items-center gap-3">
+                    <Bars3BottomLeftIcon className="w-4 h-4" />
+                    <div className="flex items-center gap-1 text-xs font-medium">
+                        <ClockIcon className="w-3.5 h-3.5" />
+                        {dateStr}
                     </div>
                 </div>
-                <p className="text-xs text-gray-400 mt-2">
-                    เข้าชม: {file.downloadCount || 0} ครั้ง
-                </p>
-            </CardBody>
-        </Card>
+                {/* Open Link Icon - ใช้อันเดียว */}
+                <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+            </div>
+        </div>
     );
 }
