@@ -1753,14 +1753,18 @@ export class ApprovalService extends BaseService {
       const cached = cacheService.get(cacheKey);
       if (cached) return cached;
 
-      let flow = null;
-
-      // 1. หา flow เฉพาะ JobType ก่อน
-      let specificFlow = await this.prisma.approvalFlow.findFirst({
+      // ⚡ Performance: Fetch both specific and default flows in single query
+      // NOTE: Prisma does not support null inside `in` clause, must use OR
+      const flows = await this.prisma.approvalFlow.findMany({
         where: {
           projectId: parseInt(projectId),
-          jobTypeId: jobTypeId ? parseInt(jobTypeId) : null,
-          isActive: true
+          isActive: true,
+          OR: jobTypeId
+            ? [
+                { jobTypeId: parseInt(jobTypeId) }, // Specific flow for this jobType
+                { jobTypeId: null }                 // Default flow (fallback)
+              ]
+            : [{ jobTypeId: null }]                 // Default flow only (no jobType)
         },
         include: {
           autoAssignUser: {
@@ -1769,32 +1773,23 @@ export class ApprovalService extends BaseService {
           jobType: {
             select: { id: true, name: true }
           }
-        }
+        },
+        orderBy: [
+          { id: 'desc' } // Latest flow if multiple
+        ],
+        take: 2 // Max 2: specific + default
       });
+
+      let flow = null;
+      const specificFlow = flows.find(f => f.jobTypeId !== null);
+      const defaultFlow = flows.find(f => f.jobTypeId === null);
 
       // ถ้าเป็นงาน Urgent และ Specific Flow ตั้งค่าให้ข้าม (Skip Approval)
       // ให้ถือว่าไม่มี Flow เฉพาะ (เพื่อไปดึง Default Flow ของโครงการมาใช้แทน)
       if (isUrgent && specificFlow && specificFlow.skipApproval) {
-        console.log(`[ApprovalService] Urgent job type ${jobTypeId} skips approval, falling back to default project flow`);
-        flow = null; // Force fallback
+        flow = defaultFlow || null;
       } else {
-        flow = specificFlow;
-      }
-
-      // 2. ถ้าไม่เจอ (หรือโดน Urgent override) ให้หา Default (jobTypeId = NULL)
-      if (!flow) {
-        flow = await this.prisma.approvalFlow.findFirst({
-          where: {
-            projectId: parseInt(projectId),
-            jobTypeId: null, // Default for all JobTypes
-            isActive: true
-          },
-          include: {
-            autoAssignUser: {
-              select: { id: true, firstName: true, lastName: true, email: true }
-            }
-          }
-        });
+        flow = specificFlow || defaultFlow || null;
       }
 
       // ⚡ Performance: Cache for 1 hour (3600 seconds)

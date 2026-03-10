@@ -54,7 +54,6 @@ export default function ApprovalsQueue() {
 
     // === สถานะข้อมูล (Data States) ===
     const [jobs, setJobs] = useState([]);
-    const [urgentCount, setUrgentCount] = useState(0);      // รายการงานทั้งหมดที่โหลดมา
     const [isLoading, setIsLoading] = useState(false); // สถานะการโหลดข้อมูล
     const [isApproving, setIsApproving] = useState(false); // สถานะกำลังอนุมัติงาน
 
@@ -116,7 +115,6 @@ export default function ApprovalsQueue() {
             const sorted = (Array.isArray(data) ? data : []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
             setJobs(sorted);
-            setUrgentCount(stats.urgentCount || 0);
         } catch (error) {
             console.error("[ApprovalsQueue] Error loading jobs:", error);
         } finally {
@@ -129,7 +127,17 @@ export default function ApprovalsQueue() {
         if (j.isParent) return false;
         const isPending = j.status === 'pending_approval' || j.status?.startsWith('pending_level_') || j.status === 'assignee_rejected' || j.status === 'pending_rejection';
         if (!isPending) return false;
-        return j.isCurrentApprover !== false;
+        if (j.isCurrentApprover === false) return false;
+        return true;
+    }).length;
+
+    const urgentCount = jobs.filter(j => {
+        if (j.isParent) return false;
+        if (j.priority !== 'urgent') return false;
+        const isPending = j.status === 'pending_approval' || j.status?.startsWith('pending_level_') || j.status === 'pending_rejection';
+        if (!isPending) return false;
+        if (j.isCurrentApprover === false) return false;
+        return true;
     }).length;
     const returnedCount = jobs.filter(j =>
         (j.status === 'returned' || j.status === 'rejected') &&

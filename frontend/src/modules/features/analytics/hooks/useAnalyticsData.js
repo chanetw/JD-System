@@ -10,7 +10,52 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
-import { reportService } from '@shared/services/modules/reportService';
+import httpClient from '@shared/services/httpClient';
+
+/**
+ * Helper: คำนวณช่วงวันที่ตาม Period
+ */
+function getPeriodDates(periodType) {
+    const now = new Date();
+    let startDate, endDate;
+
+    switch (periodType) {
+        case 'this_month':
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            break;
+        case 'last_month':
+            startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+            break;
+        case 'this_quarter':
+            const quarter = Math.floor(now.getMonth() / 3);
+            startDate = new Date(now.getFullYear(), quarter * 3, 1);
+            endDate = new Date(now.getFullYear(), quarter * 3 + 3, 0);
+            break;
+        case 'last_quarter':
+            const lastQuarter = Math.floor(now.getMonth() / 3) - 1;
+            startDate = new Date(now.getFullYear(), lastQuarter * 3, 1);
+            endDate = new Date(now.getFullYear(), lastQuarter * 3 + 3, 0);
+            break;
+        case 'this_year':
+            startDate = new Date(now.getFullYear(), 0, 1);
+            endDate = new Date(now.getFullYear(), 11, 31);
+            break;
+        case 'last_year':
+            startDate = new Date(now.getFullYear() - 1, 0, 1);
+            endDate = new Date(now.getFullYear() - 1, 11, 31);
+            break;
+        default:
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            endDate = now;
+    }
+
+    return {
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0]
+    };
+}
 
 /**
  * @function useAnalyticsData
@@ -34,27 +79,36 @@ export function useAnalyticsData(filters = {}) {
         setError(null);
 
         try {
-            // ดึงข้อมูลรายงานจาก reportService
-            const reportData = await reportService.getReportData(
-                filters.period || 'this_month',
-                filters.startDate,
-                filters.endDate,
-                {
-                    status: filters.status,
-                    jobTypeId: filters.jobTypeId,
-                    projectId: filters.projectId,
-                    assigneeId: filters.assigneeId
-                }
-            );
+            // คำนวณ date range จาก period
+            const dates = filters.startDate && filters.endDate 
+                ? { startDate: filters.startDate, endDate: filters.endDate }
+                : getPeriodDates(filters.period || 'this_month');
 
-            setData(reportData);
+            // สร้าง query parameters
+            const params = {
+                startDate: dates.startDate,
+                endDate: dates.endDate
+            };
+
+            if (filters.status) params.status = filters.status;
+            if (filters.projectId) params.projectId = filters.projectId;
+            if (filters.assigneeId) params.assigneeId = filters.assigneeId;
+
+            // เรียก Backend API
+            const response = await httpClient.get('/reports/analytics', { params });
+
+            if (response.data.success) {
+                setData(response.data.data);
+            } else {
+                setError(response.data.message || 'Failed to fetch analytics data');
+            }
         } catch (err) {
             console.error('Error fetching analytics data:', err);
-            setError(err.message || 'ไม่สามารถดึงข้อมูลได้');
+            setError(err.response?.data?.message || err.message || 'ไม่สามารถดึงข้อมูลได้');
         } finally {
             setIsLoading(false);
         }
-    }, [user, filters.period, filters.startDate, filters.endDate, filters.status, filters.jobTypeId, filters.projectId, filters.assigneeId]);
+    }, [user, filters.period, filters.startDate, filters.endDate, filters.status, filters.projectId, filters.assigneeId]);
 
     /**
      * ดึงข้อมูลเมื่อ filters เปลี่ยน
@@ -92,11 +146,28 @@ export function useTrendComparison(currentPeriod = 'this_month', previousPeriod 
             setError(null);
 
             try {
-                // ดึงข้อมูลช่วงเวลาปัจจุบัน
-                const currentData = await reportService.getReportData(currentPeriod);
+                // คำนวณ date range สำหรับช่วงเวลาปัจจุบัน
+                const currentDates = getPeriodDates(currentPeriod);
+                const previousDates = getPeriodDates(previousPeriod);
 
-                // ดึงข้อมูลช่วงเวลาก่อนหน้า
-                const previousData = await reportService.getReportData(previousPeriod);
+                // ⚡ Performance: ดึงข้อมูลทั้ง 2 ช่วงแบบ parallel
+                const [currentResponse, previousResponse] = await Promise.all([
+                    httpClient.get('/reports/analytics', {
+                        params: {
+                            startDate: currentDates.startDate,
+                            endDate: currentDates.endDate
+                        }
+                    }),
+                    httpClient.get('/reports/analytics', {
+                        params: {
+                            startDate: previousDates.startDate,
+                            endDate: previousDates.endDate
+                        }
+                    })
+                ]);
+
+                const currentData = currentResponse.data.data;
+                const previousData = previousResponse.data.data;
 
                 // คำนวณการเปลี่ยนแปลง
                 const comparison = {
@@ -121,7 +192,7 @@ export function useTrendComparison(currentPeriod = 'this_month', previousPeriod 
                 setData(comparison);
             } catch (err) {
                 console.error('Error fetching trend comparison:', err);
-                setError(err.message || 'ไม่สามารถดึงข้อมูลแนวโน้มได้');
+                setError(err.response?.data?.message || err.message || 'ไม่สามารถดึงข้อมูลแนวโน้มได้');
             } finally {
                 setIsLoading(false);
             }

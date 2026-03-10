@@ -49,8 +49,6 @@ import {
     LinkIcon
 } from '@heroicons/react/24/outline';
 
-import PendingApprovalSection from '../components/PendingApprovalSection';
-
 export default function UserPortal() {
     const navigate = useNavigate();
     const { user } = useAuthStoreV2();
@@ -371,9 +369,6 @@ export default function UserPortal() {
                     </div>
                 </div>
 
-                {/* Pending Approvals Section (Dynamic) */}
-                <PendingApprovalSection />
-
                 {/* Quick Actions Cards */}
                 <div className="max-w-6xl mx-auto px-6 -mt-8 relative z-10">
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
@@ -554,17 +549,28 @@ export default function UserPortal() {
                                 <h3 className="font-semibold text-slate-800 text-lg mb-4">ระยะเวลาดำเนินการ (SLA)</h3>
                                 <div className="bg-white rounded-xl shadow-sm p-4 space-y-3 border border-slate-200 h-96 overflow-y-auto">
                                     {jobTypesList.length > 0 ? (
-                                        jobTypesList.map(type => {
-                                            const iconConfig = JOB_ICONS[type.icon] || JOB_ICONS.social;
-                                            return (
-                                                <SLAItem
-                                                    key={type.id}
-                                                    iconConfig={iconConfig}
-                                                    title={type.name}
-                                                    days={`${type.sla || '-'} วันทำการ`}
-                                                />
-                                            );
-                                        })
+                                        jobTypesList
+                                            // ซ่อน Project Group JobTypes
+                                            .filter(type => {
+                                                const name = type.name.toLowerCase();
+                                                // ซ่อน JobTypes ที่เป็น Project Group (คำว่า group, project, parent ในชื่อ)
+                                                return !name.includes('group') && 
+                                                       !name.includes('project') && 
+                                                       !name.includes('parent') &&
+                                                       !name.includes('โครงการ') &&
+                                                       !name.includes('กลุ่ม');
+                                            })
+                                            .map(type => {
+                                                const iconConfig = JOB_ICONS[type.icon] || JOB_ICONS.social;
+                                                return (
+                                                    <SLAItem
+                                                        key={type.id}
+                                                        iconConfig={iconConfig}
+                                                        title={type.name}
+                                                        days={`${type.sla || '-'} วันทำการ`}
+                                                    />
+                                                );
+                                            })
                                     ) : (
                                         <p className="text-sm text-slate-500 text-center py-4">กำลังโหลดข้อมูล SLA...</p>
                                     )}

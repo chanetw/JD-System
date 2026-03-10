@@ -5,6 +5,8 @@
  * - เวลาทำการ: 8:00-18:00
  * - วันทำการ: จันทร์-ศุกร์ (ไม่รวมวันหยุดราชการ)
  */
+import { format } from 'date-fns';
+import { th } from 'date-fns/locale';
 
 /**
  * ตรวจสอบว่าเวลาอยู่ในช่วงเวลาทำการหรือไม่ (8:00-18:00)
@@ -194,9 +196,6 @@ function validateAndAdjustDueDate(dueDate) {
  * @returns {string} ข้อความอธิบายการปรับ
  */
 function formatAdjustmentMessage(originalDate, adjustedDate, reasons) {
-    const { format } = require('date-fns');
-    const th = require('date-fns/locale/th');
-    
     const originalStr = format(originalDate, 'dd/MM/yyyy HH:mm', { locale: th });
     const adjustedStr = format(adjustedDate, 'dd/MM/yyyy HH:mm', { locale: th });
     const reasonStr = reasons.join(', ');
@@ -204,7 +203,7 @@ function formatAdjustmentMessage(originalDate, adjustedDate, reasons) {
     return `Due Date ถูกปรับ: ${originalStr} → ${adjustedStr} (${reasonStr})`;
 }
 
-module.exports = {
+export {
     validateWorkingHours,
     validateBusinessDay,
     adjustToWorkingHours,

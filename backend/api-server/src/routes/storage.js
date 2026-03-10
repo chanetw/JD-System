@@ -167,6 +167,13 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 router.get('/files', async (req, res) => {
   try {
     const { folder, jobId, projectId } = req.query;
+    const userId = req.user.userId;
+    const userRoles = req.user.roles || [];
+
+    // ตรวจสอบว่า user เป็น admin/superadmin หรือไม่
+    const isAdmin = userRoles.some(role => 
+      ['admin', 'superadmin'].includes(typeof role === 'string' ? role.toLowerCase() : role?.name?.toLowerCase())
+    );
 
     const whereCondition = {
       tenantId: req.user.tenantId
@@ -177,6 +184,35 @@ router.get('/files', async (req, res) => {
     }
     if (projectId) {
       whereCondition.projectId = parseInt(projectId);
+    }
+
+    // ถ้าไม่ใช่ admin ให้กรองเฉพาะโครงการที่ user มีส่วนเกี่ยวข้อง
+    if (!isAdmin) {
+      // ดึงโครงการที่ user เป็น requester, assignee, หรือ approver
+      const userJobs = await prisma.job.findMany({
+        where: {
+          tenantId: req.user.tenantId,
+          OR: [
+            { requesterId: userId },
+            { assigneeId: userId },
+            { approvals: { some: { approverId: userId } } }
+          ]
+        },
+        select: { projectId: true },
+        distinct: ['projectId']
+      });
+
+      const userProjectIds = [...new Set(userJobs.map(j => j.projectId).filter(Boolean))];
+      
+      if (userProjectIds.length === 0) {
+        // ถ้าไม่มีโครงการที่เกี่ยวข้อง ส่ง empty array
+        return res.json({
+          success: true,
+          data: []
+        });
+      }
+
+      whereCondition.projectId = { in: userProjectIds };
     }
 
     const files = await prisma.mediaFile.findMany({

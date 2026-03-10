@@ -157,7 +157,7 @@ export default function Sidebar() {
                         </SidebarLink>
 
                         <SidebarLink to="/reports" icon={ReportIcon}>
-                            รายงานสรุป (Reports)
+                            รายงานบุคคล (Individual Reports)
                         </SidebarLink>
                     </>
                 )}

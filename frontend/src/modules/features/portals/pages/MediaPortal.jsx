@@ -43,7 +43,8 @@ export default function MediaPortal() {
         if (projects.length > 0) {
             loadMediaFiles();
         }
-    }, [selectedProject, projects]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedProject]);
 
     /**
      * ดึงรายชื่อโครงการที่ User มีสิทธิ์เข้าถึง

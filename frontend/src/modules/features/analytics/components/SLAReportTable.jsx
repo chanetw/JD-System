@@ -19,8 +19,9 @@ import { useState } from 'react';
  * @param {boolean} props.isLoading - สถานะ Loading
  * @param {string} props.error - ข้อความ Error
  * @param {number} props.pageSize - จำนวนรายการต่อหน้า
+ * @param {function} props.onUserClick - Callback เมื่อคลิกที่ชื่อผู้ใช้
  */
-export default function SLAReportTable({ data = [], isLoading, error, pageSize = 10 }) {
+export default function SLAReportTable({ data = [], isLoading, error, pageSize = 10, onUserClick }) {
     const [currentPage, setCurrentPage] = useState(1);
 
     // คำนวณ Pagination
@@ -67,7 +68,7 @@ export default function SLAReportTable({ data = [], isLoading, error, pageSize =
     // แสดง Loading state
     if (isLoading) {
         return (
-            <div className="bg-white rounded-xl border border-gray-400 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                 <div className="p-6">
                     <div className="animate-pulse space-y-4">
                         {[1, 2, 3, 4, 5].map((i) => (
@@ -98,7 +99,7 @@ export default function SLAReportTable({ data = [], isLoading, error, pageSize =
     // แสดง Empty state
     if (data.length === 0) {
         return (
-            <div className="bg-white rounded-xl border border-gray-400 shadow-sm p-6">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
                 <div className="text-center py-8">
                     <EmptyIcon />
                     <p className="text-gray-500 mt-2">ไม่พบข้อมูล</p>
@@ -108,11 +109,11 @@ export default function SLAReportTable({ data = [], isLoading, error, pageSize =
     }
 
     return (
-        <div className="bg-white rounded-xl border border-gray-400 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             {/* Table */}
             <div className="overflow-x-auto">
                 <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-400">
+                    <thead className="bg-gray-50 border-b border-gray-200">
                         <tr>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 รหัสงาน
@@ -147,9 +148,18 @@ export default function SLAReportTable({ data = [], isLoading, error, pageSize =
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="text-sm text-gray-900">
-                                            {job.assignee?.firstName || job.assignee?.firstName || '-'}
-                                        </div>
+                                        {job.assignee?.name && onUserClick ? (
+                                            <button
+                                                onClick={() => onUserClick(job.assignee.id)}
+                                                className="text-sm text-blue-600 hover:text-blue-800 hover:underline font-medium transition-colors cursor-pointer"
+                                            >
+                                                {job.assignee.firstName || job.assignee.name}
+                                            </button>
+                                        ) : (
+                                            <div className="text-sm text-gray-900">
+                                                {job.assignee?.firstName || job.assignee?.name || '-'}
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="text-sm text-gray-900">
@@ -183,7 +193,7 @@ export default function SLAReportTable({ data = [], isLoading, error, pageSize =
 
             {/* Pagination */}
             {totalPages > 1 && (
-                <div className="px-6 py-4 border-t border-gray-400 flex items-center justify-between">
+                <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
                     <div className="text-sm text-gray-500">
                         แสดง {startIndex + 1} ถึง {Math.min(endIndex, data.length)} จากทั้งหมด {data.length} รายการ
                     </div>

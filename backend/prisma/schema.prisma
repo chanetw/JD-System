@@ -505,6 +505,7 @@ model Approval {
   @@index([status, createdAt])
   @@index([jobId, status])
   @@index([tenantId, status])
+  @@index([approverId, status]) // ⚡ Performance: Approver history lookup
   @@map("approvals")
 }
 

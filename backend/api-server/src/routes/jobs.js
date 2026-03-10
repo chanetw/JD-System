@@ -16,6 +16,10 @@ import ApprovalService from '../services/approvalService.js';
 import JobService from '../services/jobService.js';
 import chainService from '../services/chainService.js';
 import jobChainService from '../services/jobChainService.js';
+import * as workingHoursHelper from '../utils/workingHoursHelper.js';
+import EmailService from '../services/emailService.js';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
 
 const approvalService = new ApprovalService();
 const jobService = new JobService();
@@ -72,6 +76,8 @@ router.get('/', async (req, res) => {
             ]
           };
         case 'approver': {
+          console.time('[Approver Query] Total');
+          console.time('[Approver Query] 1. Fetch allJobs');
           // ✅ Approver sees ALL jobs with any pending approval status AND rejected/returned jobs
           // Frontend JobActionPanel will determine if user can approve based on approval flow
           // This query gets all pending + rejected jobs - both explicit (pending_approval/pending_level_N)
@@ -103,14 +109,25 @@ router.get('/', async (req, res) => {
               status: true,
               projectId: true,
               jobTypeId: true,
-              priority: true
-            }
+              priority: true,
+              djId: true,
+              createdAt: true
+            },
+            orderBy: [
+              { priority: 'desc' },  // urgent > high > normal > low
+              { createdAt: 'desc' }  // newest first
+            ]
           });
+          console.timeEnd('[Approver Query] 1. Fetch allJobs');
 
           const validJobIds = [];
 
-          if (allJobs.length === 0) return null;
+          if (allJobs.length === 0) {
+            console.timeEnd('[Approver Query] Total');
+            return null;
+          }
 
+          console.time('[Approver Query] 2. Fetch approvedJobs');
           // ⚡ Performance Fix: Batch query for history approvals
           const approvedJobs = await prisma.approval.findMany({
             where: {
@@ -129,6 +146,9 @@ router.get('/', async (req, res) => {
             }
           });
 
+          console.timeEnd('[Approver Query] 2. Fetch approvedJobs');
+          console.log(`[Approver Query] Found ${approvedJobs.length} approved jobs`);
+
           const approvedJobMap = new Map();
           approvedJobs.forEach(a => {
             if (!approvedJobMap.has(a.jobId)) {
@@ -137,6 +157,7 @@ router.get('/', async (req, res) => {
           });
           const approvedJobIds = new Set(approvedJobs.map(a => a.jobId));
 
+          console.time('[Approver Query] 3. Build flow keys');
           // ⚡ Performance Fix: Batch query for approval flows
           // We need unique projectId + jobTypeId combinations
           const flowKeys = new Set();
@@ -147,20 +168,56 @@ router.get('/', async (req, res) => {
             }
           });
 
+          // ⚡ Performance: Fetch all approval flows in parallel instead of sequential loop
           const flowMap = new Map();
-          for (const key of flowKeys) {
+          const flowEntries = [...flowKeys].map(key => {
             const [projIdStr, jobTypeIdStr] = key.split('_');
             const pId = parseInt(projIdStr, 10);
             const jtId = jobTypeIdStr !== 'null' ? parseInt(jobTypeIdStr, 10) : null;
-
-            // Find job to get priority for urgent flow fallback
             const sampleJob = allJobs.find(j => j.projectId === pId && j.jobTypeId === jtId);
             const priority = sampleJob ? sampleJob.priority : 'normal';
+            return { key, pId, jtId, priority };
+          });
 
+          console.timeEnd('[Approver Query] 3. Build flow keys');
+          console.log(`[Approver Query] Need to fetch ${flowEntries.length} approval flows`);
 
-            const flow = await approvalService.getApprovalFlow(pId, jtId, priority);
-            flowMap.set(key, flow);
-          }
+          console.time('[Approver Query] 4. Fetch approval flows');
+          const flowResults = await Promise.all(
+            flowEntries.map(entry => approvalService.getApprovalFlow(entry.pId, entry.jtId, entry.priority))
+          );
+          flowEntries.forEach((entry, i) => flowMap.set(entry.key, flowResults[i]));
+          console.timeEnd('[Approver Query] 4. Fetch approval flows');
+
+          console.time('[Approver Query] 5. Pre-build approver lookup');
+          // ⚡ Performance: Pre-build approver lookup maps to avoid nested loops
+          // Map: flowKey -> { currentLevelApprovers: Set, anyLevelApprovers: Set }
+          const approverLookup = new Map();
+          flowMap.forEach((flow, key) => {
+            const currentLevelMap = new Map(); // level -> Set of approverIds
+            const anyLevelApprovers = new Set();
+            
+            if (flow?.approverSteps && Array.isArray(flow.approverSteps)) {
+              flow.approverSteps.forEach(step => {
+                const stepNum = step.stepNumber || step.level;
+                if (step.approvers && Array.isArray(step.approvers)) {
+                  const approverSet = new Set();
+                  step.approvers.forEach(a => {
+                    const approverId = String(a.id || a.userId);
+                    approverSet.add(approverId);
+                    anyLevelApprovers.add(approverId);
+                  });
+                  currentLevelMap.set(stepNum, approverSet);
+                }
+              });
+            }
+            approverLookup.set(key, { currentLevelMap, anyLevelApprovers });
+          });
+
+          console.timeEnd('[Approver Query] 5. Pre-build approver lookup');
+
+          console.time('[Approver Query] 6. Filter jobs by approver');
+          const userIdStr = String(userId);
 
           // For 'approver' role, we need to check if the user is actually an approver for the CURRENT step of each job
           // or if they have already approved it (for history tab).
@@ -173,10 +230,15 @@ router.get('/', async (req, res) => {
               continue;
             }
 
-            // If job is rejected/returned/pending_dependency, skip current level check (they might need to see it)
-            if (['rejected', 'returned', 'pending_dependency', 'pending_rejection'].includes(job.status)) {
+            // If job is rejected/returned/pending_rejection, skip current level check (active participant)
+            if (['rejected', 'returned', 'pending_rejection'].includes(job.status)) {
               validJobIds.push(job.id);
-              currentApproverJobIds.add(job.id); // rejected/returned = active participant
+              currentApproverJobIds.add(job.id); // rejected/returned/pending_rejection = active participant
+              continue;
+            }
+            // pending_dependency = waiting for predecessor, include but NOT as current approver
+            if (job.status === 'pending_dependency') {
+              validJobIds.push(job.id);
               continue;
             }
 
@@ -186,46 +248,22 @@ router.get('/', async (req, res) => {
             else if (job.status.startsWith('pending_level_')) {
               currentLevel = parseInt(job.status.split('_')[2], 10);
             }
-            // ✅ สำหรับ pending_rejection จะใช้ fallback ระดับสูงสุด/ล่าสุด หรือให้ currentLevel=0 (เพราะข้าม check level ด้านล่างไปดึงผ่าน fallback)
-            // แต่เนื่องจากเราต้องการให้ Approver เห็นงาน pending_rejection ในหน้าคิว เราจึงจำเป็นต้องเซ็ต currentApprover ด้วยวิธีอื่น หรือให้ผ่านเงื่อนไข level
-
-            if (job.status === 'pending_rejection') {
-              validJobIds.push(job.id);
-              currentApproverJobIds.add(job.id); // For rejection request, we let the frontend/API decide who actually approves it or we just broadcast to approvers
-              continue;
-            }
 
             if (currentLevel > 0) {
-              // Get flow from pre-fetched map
+              // ⚡ Performance: Use pre-built lookup map instead of nested loops
               const flowKey = `${job.projectId}_${job.jobTypeId || 'null'}`;
-              const approvalFlow = flowMap.get(flowKey);
-              let isApproverForCurrentLevel = false;
-              let isApproverInAnyLevel = false;
+              const lookup = approverLookup.get(flowKey);
+              
+              if (lookup) {
+                const isApproverForCurrentLevel = lookup.currentLevelMap.get(currentLevel)?.has(userIdStr) || false;
+                const isApproverInAnyLevel = lookup.anyLevelApprovers.has(userIdStr);
 
-              if (approvalFlow && approvalFlow.approverSteps && Array.isArray(approvalFlow.approverSteps)) {
-                // Check current level (for Approvals Queue priority)
-                const currentLevelConfig = approvalFlow.approverSteps.find(s => s.stepNumber === currentLevel || s.level === currentLevel);
-
-                if (currentLevelConfig && currentLevelConfig.approvers && Array.isArray(currentLevelConfig.approvers)) {
-                  isApproverForCurrentLevel = currentLevelConfig.approvers.some(a => {
-                    const approverId = a.id || a.userId;
-                    return String(approverId) === String(userId);
-                  });
+                if (isApproverForCurrentLevel) {
+                  validJobIds.push(job.id);
+                  currentApproverJobIds.add(job.id);
+                } else if (isApproverInAnyLevel) {
+                  validJobIds.push(job.id);
                 }
-
-                // ✅ Also check if user is approver in ANY level of this flow
-                // This allows them to see jobs in DJ List even if not yet at their level
-                isApproverInAnyLevel = approvalFlow.approverSteps.some(step =>
-                  step.approvers && Array.isArray(step.approvers) &&
-                  step.approvers.some(a => String(a.id || a.userId) === String(userId))
-                );
-              }
-
-              if (isApproverForCurrentLevel) {
-                validJobIds.push(job.id);
-                currentApproverJobIds.add(job.id);
-              } else if (isApproverInAnyLevel) {
-                validJobIds.push(job.id);
               }
             } else {
               // Fallback for other statuses not handled above
@@ -233,10 +271,14 @@ router.get('/', async (req, res) => {
             }
           }
 
+          console.timeEnd('[Approver Query] 6. Filter jobs by approver');
+
           if (validJobIds.length === 0) {
+            console.timeEnd('[Approver Query] Total');
             return null;  // Signal no jobs found
           }
 
+          console.time('[Approver Query] 7. Fetch parent jobs');
           // ✅ Also include parent jobs of child jobs in validJobIds
           // Frontend DJList needs parent jobs to render parent-child accordion correctly
           const childJobsWithParent = await prisma.job.findMany({
@@ -263,6 +305,10 @@ router.get('/', async (req, res) => {
               }
             });
           }
+
+          console.timeEnd('[Approver Query] 7. Fetch parent jobs');
+          console.timeEnd('[Approver Query] Total');
+          console.log(`[Approver Query] Final job count: ${validJobIds.length}`);
 
           return {
             id: { in: validJobIds }
@@ -497,17 +543,6 @@ router.get('/', async (req, res) => {
     // We also need to add 'historyData' logic for returned jobs from the loaded 'historyData' where possible:
     // This is just mapping, historyData already set correctly above inside the map function.
 
-    // ✅ Count urgent jobs (all, not just paginated)
-    // Exclude parent jobs - they are containers, not actionable items
-    const urgentCount = await prisma.job.count({
-      where: {
-        ...where,
-        isParent: false,
-        priority: 'urgent',
-        status: { in: ['pending_approval', 'pending_rejection'] } // นับเฉพาะงานรออนุมัติที่เป็น urgent
-      }
-    });
-
     res.json({
       success: true,
       data: transformed,
@@ -516,9 +551,6 @@ router.get('/', async (req, res) => {
         limit: parseInt(limit),
         total,
         totalPages: Math.ceil(total / parseInt(limit))
-      },
-      stats: {
-        urgentCount
       }
     });
 
@@ -957,7 +989,6 @@ router.post('/', async (req, res) => {
     // คำนวณวันรับงานและ Due Date จาก SLA
     // ============================================
     const jobAcceptanceService = require('../services/jobAcceptanceService');
-    const workingHoursHelper = require('../utils/workingHoursHelper');
 
     let acceptanceDate = req.body.acceptanceDate ? new Date(req.body.acceptanceDate) : null;
     let calculatedDueDate = new Date(dueDate);
@@ -2681,21 +2712,22 @@ router.post('/parent-child', async (req, res) => {
       let allChildrenSkip = true;
       const childNeedsApprovalMap = new Map(); // jobTypeId -> boolean
 
-      // 1. Check Flow for ALL children
-      for (const childConfig of jobTypes) {
-        const jid = parseInt(childConfig.jobTypeId);
-
-        // Get flow config (Pass priority to get correct flow for urgent jobs)
-        const childFlow = await approvalService.getApprovalFlow(parseInt(projectId), jid, priority);
-        const levels = approvalService.getApprovalLevels(childFlow);
+      // ⚡ Performance: Check Flow for ALL children in parallel
+      const childFlowResults = await Promise.all(
+        jobTypes.map(childConfig => {
+          const jid = parseInt(childConfig.jobTypeId);
+          return approvalService.getApprovalFlow(parseInt(projectId), jid, priority)
+            .then(flow => ({ jid, flow }));
+        })
+      );
+      childFlowResults.forEach(({ jid, flow }) => {
+        const levels = approvalService.getApprovalLevels(flow);
         const needsApproval = levels > 0;
-
         childNeedsApprovalMap.set(jid, needsApproval);
-
         if (needsApproval) {
           allChildrenSkip = false;
         }
-      }
+      });
 
       // 2. Urgent Priority Override
       if (priority.toLowerCase() === 'urgent') {
@@ -2716,7 +2748,7 @@ router.post('/parent-child', async (req, res) => {
       // ----------------------------------------
       // 2.3: Validate and Adjust Parent Deadline
       // ----------------------------------------
-      const workingHoursHelper = require('../utils/workingHoursHelper');
+  
       let parentDueDate = deadline ? new Date(deadline) : null;
       let parentDueDateAdjustmentReasons = [];
 
@@ -3581,7 +3613,6 @@ router.post('/:id/extend', async (req, res) => {
       });
     }
 
-    // Import jobAcceptanceService
     const jobAcceptanceService = require('../services/jobAcceptanceService');
 
     const updatedJob = await jobAcceptanceService.extendJobManually(
@@ -3745,23 +3776,24 @@ router.post('/:id/submit-draft', async (req, res) => {
       }).catch(err => console.warn('[SubmitDraft] Notification to requester failed:', err));
     }
 
-    // Notify Approvers
-    for (const approverId of approverIds) {
-      if (approverId !== job.requesterId) { // Don't duplicate if requester is also approver
-        await notificationService.createNotification({
-          tenantId,
-          userId: approverId,
-          type: 'draft_submitted',
-          title: `📝 Draft งาน ${job.djId} ส่งมาแล้ว`,
-          message: `${job.assignee?.firstName || 'ผู้รับงาน'} ส่ง draft งาน "${job.subject}" มาให้ตรวจสอบ`,
-          link: `/jobs/${jobId}`
-        }).catch(err => console.warn('[SubmitDraft] Notification to approver failed:', err));
-      }
-    }
+    // ⚡ Performance: ส่ง notification แบบ parallel แทน sequential
+    await Promise.allSettled(
+      approverIds
+        .filter(approverId => approverId !== job.requesterId)
+        .map(approverId =>
+          notificationService.createNotification({
+            tenantId,
+            userId: approverId,
+            type: 'draft_submitted',
+            title: `📝 Draft งาน ${job.djId} ส่งมาแล้ว`,
+            message: `${job.assignee?.firstName || 'ผู้รับงาน'} ส่ง draft งาน "${job.subject}" มาให้ตรวจสอบ`,
+            link: `/jobs/${jobId}`
+          }).catch(err => console.warn('[SubmitDraft] Notification to approver failed:', err))
+        )
+    );
 
     // Send Email to Requester + Approvers
     try {
-      const EmailService = require('../services/emailService');
       const emailService = new EmailService();
 
       const recipients = [];
@@ -3780,11 +3812,9 @@ router.post('/:id/submit-draft', async (req, res) => {
         });
       }
 
-      for (const email of recipients) {
-        await emailService.sendEmail(
-          email,
-          `📝 Draft งาน ${job.djId} ส่งมาแล้ว`,
-          `
+      // ⚡ Performance: ส่ง email แบบ parallel แทน sequential
+      const emailSubject = `📝 Draft งาน ${job.djId} ส่งมาแล้ว`;
+      const emailBody = `
             <h2>Draft งานส่งมาแล้ว</h2>
             <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
             <p><strong>ผู้ส่ง:</strong> ${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}</p>
@@ -3792,9 +3822,13 @@ router.post('/:id/submit-draft', async (req, res) => {
             ${link ? `<p><strong>ลิงก์ Draft:</strong> <a href="${link}">${link}</a></p>` : ''}
             <p>กรุณาตรวจสอบและให้ feedback ในระบบ</p>
             <p><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/jobs/${jobId}">ดูรายละเอียดงาน</a></p>
-          `
-        ).catch(err => console.warn('[SubmitDraft] Email failed:', err));
-      }
+          `;
+      await Promise.allSettled(
+        recipients.map(email =>
+          emailService.sendEmail(email, emailSubject, emailBody)
+            .catch(err => console.warn('[SubmitDraft] Email failed:', err))
+        )
+      );
     } catch (emailErr) {
       console.error('[SubmitDraft] Email error:', emailErr);
     }
@@ -3907,7 +3941,6 @@ router.post('/:id/rebrief', async (req, res) => {
     // Send Email to Requester
     if (job.requester?.email) {
       try {
-        const EmailService = require('../services/emailService');
         const emailService = new EmailService();
 
         await emailService.sendEmail(
@@ -4040,7 +4073,6 @@ router.post('/:id/submit-rebrief', async (req, res) => {
     // Send Email to Assignee
     if (job.assignee?.email) {
       try {
-        const EmailService = require('../services/emailService');
         const emailService = new EmailService();
 
         await emailService.sendEmail(
@@ -4169,7 +4201,6 @@ router.post('/:id/accept-rebrief', async (req, res) => {
     // Send Email to Requester
     if (job.requester?.email) {
       try {
-        const EmailService = require('../services/emailService');
         const emailService = new EmailService();
 
         await emailService.sendEmail(

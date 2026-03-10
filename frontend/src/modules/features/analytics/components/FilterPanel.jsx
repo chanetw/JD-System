@@ -1,52 +1,32 @@
 /**
  * @file FilterPanel.jsx
- * @description Component สำหรับแผงตัวกรองข้อมูล
- * 
- * วัตถุประสงค์:
- * - ให้ผู้ใช้กรองข้อมูลตามช่วงเวลา, แผนก, พนักงาน
- * - รองรับการเลือก Period ที่หลากหลาย (เดือนนี้, ไตรมาส, ปี, Custom)
- * - แสดงตัวกรองที่เหมาะสมตาม Role ของผู้ใช้
+ * @description Component ตัวกรองข้อมูลแบบ Inline - ใช้งานง่าย ไม่ต้องพับ/กาง
  */
 
 import { useState } from 'react';
+import { Calendar, Filter, RotateCcw, ChevronDown, X } from 'lucide-react';
 
 /**
  * @component FilterPanel
- * @description แผงตัวกรองข้อมูล
- * @param {object} props
- * @param {object} props.filters - Filters ปัจจุบัน
- * @param {function} props.onFiltersChange - Callback เมื่อ Filters เปลี่ยน
- * @param {array} props.projects - รายการโปรเจกต์
- * @param {array} props.users - รายการผู้ใช้
+ * @description แผงตัวกรองข้อมูลแบบ Inline พร้อม Active Filters
  */
 export default function FilterPanel({ filters, onFiltersChange, projects = [], users = [] }) {
-    const [isExpanded, setIsExpanded] = useState(false);
+    const [showCustomDate, setShowCustomDate] = useState(filters.period === 'custom');
 
-    /**
-     * จัดการเมื่อ Filter เปลี่ยน
-     */
     const handleFilterChange = (key, value) => {
-        onFiltersChange({
-            ...filters,
-            [key]: value
-        });
+        const newFilters = { ...filters, [key]: value };
+        if (key === 'period' && value === 'custom') {
+            setShowCustomDate(true);
+        } else if (key === 'period' && value !== 'custom') {
+            setShowCustomDate(false);
+            newFilters.startDate = null;
+            newFilters.endDate = null;
+        }
+        onFiltersChange(newFilters);
     };
 
-    /**
-     * จัดการเมื่อเลือก Custom Date Range
-     */
-    const handleCustomDateChange = (field, value) => {
-        onFiltersChange({
-            ...filters,
-            period: 'custom',
-            [field]: value
-        });
-    };
-
-    /**
-     * Reset Filters
-     */
     const handleReset = () => {
+        setShowCustomDate(false);
         onFiltersChange({
             period: 'this_month',
             startDate: null,
@@ -57,173 +37,229 @@ export default function FilterPanel({ filters, onFiltersChange, projects = [], u
         });
     };
 
+    // สร้าง Active Filters Badge
+    const getActiveFilters = () => {
+        const active = [];
+        
+        // Period
+        const periodLabels = {
+            this_month: 'เดือนนี้',
+            last_month: 'เดือนที่แล้ว',
+            this_quarter: 'ไตรมาสนี้',
+            last_quarter: 'ไตรมาสที่แล้ว',
+            this_year: 'ปีนี้',
+            last_year: 'ปีที่แล้ว',
+            custom: 'กำหนดเอง'
+        };
+        if (filters.period && filters.period !== 'this_month') {
+            active.push({ key: 'period', label: periodLabels[filters.period] || filters.period, icon: Calendar });
+        }
+
+        // Status
+        const statusLabels = {
+            completed: 'เสร็จสมบูรณ์',
+            in_progress: 'กำลังดำเนินการ',
+            pending_approval: 'รออนุมัติ',
+            rejected: 'ถูกปฏิเสธ'
+        };
+        if (filters.status) {
+            active.push({ key: 'status', label: statusLabels[filters.status] || filters.status });
+        }
+
+        // Project
+        if (filters.projectId) {
+            const project = projects.find(p => p.id === filters.projectId);
+            if (project) active.push({ key: 'projectId', label: project.name });
+        }
+
+        // Assignee
+        if (filters.assigneeId) {
+            const user = users.find(u => u.id === filters.assigneeId);
+            if (user) active.push({ key: 'assigneeId', label: user.firstName || user.email });
+        }
+
+        return active;
+    };
+
+    const activeFilters = getActiveFilters();
+    const hasActiveFilters = activeFilters.length > 0;
+
+    const removeFilter = (key) => {
+        handleFilterChange(key, key === 'period' ? 'this_month' : null);
+    };
+
     return (
-        <div className="bg-white rounded-xl border border-gray-400 shadow-sm">
-            {/* Header */}
-            <div className="p-4 border-b border-gray-400">
-                <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold text-gray-900">ตัวกรองข้อมูล</h3>
-                    <button
-                        onClick={() => setIsExpanded(!isExpanded)}
-                        className="text-gray-500 hover:text-gray-700 transition-colors"
-                    >
-                        {isExpanded ? (
-                            <ChevronUpIcon />
-                        ) : (
-                            <ChevronDownIcon />
+        <div className="space-y-3">
+            {/* Filter Controls - Inline Layout */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                <div className="flex flex-col lg:flex-row lg:items-end gap-4">
+                    {/* Row 1: Period & Custom Date */}
+                    <div className="flex flex-col sm:flex-row gap-3 flex-1">
+                        {/* Period */}
+                        <div className="flex-1 min-w-[140px]">
+                            <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                                ช่วงเวลา
+                            </label>
+                            <div className="relative">
+                                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                <select
+                                    value={filters.period || 'this_month'}
+                                    onChange={(e) => handleFilterChange('period', e.target.value)}
+                                    className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-transparent appearance-none cursor-pointer hover:bg-white transition-colors"
+                                >
+                                    <option value="this_month">เดือนนี้</option>
+                                    <option value="last_month">เดือนที่แล้ว</option>
+                                    <option value="this_quarter">ไตรมาสนี้</option>
+                                    <option value="last_quarter">ไตรมาสที่แล้ว</option>
+                                    <option value="this_year">ปีนี้</option>
+                                    <option value="last_year">ปีที่แล้ว</option>
+                                    <option value="custom">กำหนดเอง...</option>
+                                </select>
+                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                            </div>
+                        </div>
+
+                        {/* Custom Date Range */}
+                        {showCustomDate && (
+                            <>
+                                <div className="flex-1 min-w-[140px]">
+                                    <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                                        จากวันที่
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={filters.startDate || ''}
+                                        onChange={(e) => handleFilterChange('startDate', e.target.value)}
+                                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-transparent hover:bg-white transition-colors"
+                                    />
+                                </div>
+                                <div className="flex-1 min-w-[140px]">
+                                    <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                                        ถึงวันที่
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={filters.endDate || ''}
+                                        onChange={(e) => handleFilterChange('endDate', e.target.value)}
+                                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-transparent hover:bg-white transition-colors"
+                                    />
+                                </div>
+                            </>
                         )}
-                    </button>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="hidden lg:block w-px h-12 bg-gray-200" />
+
+                    {/* Row 2: Status, Project, Assignee */}
+                    <div className="flex flex-col sm:flex-row gap-3 flex-1">
+                        {/* Status */}
+                        <div className="flex-1 min-w-[140px]">
+                            <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                                สถานะ
+                            </label>
+                            <div className="relative">
+                                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                <select
+                                    value={filters.status || ''}
+                                    onChange={(e) => handleFilterChange('status', e.target.value || null)}
+                                    className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-transparent appearance-none cursor-pointer hover:bg-white transition-colors"
+                                >
+                                    <option value="">ทั้งหมด</option>
+                                    <option value="completed">เสร็จสมบูรณ์</option>
+                                    <option value="in_progress">กำลังดำเนินการ</option>
+                                    <option value="pending_approval">รออนุมัติ</option>
+                                    <option value="rejected">ถูกปฏิเสธ</option>
+                                </select>
+                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                            </div>
+                        </div>
+
+                        {/* Project */}
+                        {projects.length > 0 && (
+                            <div className="flex-1 min-w-[140px]">
+                                <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                                    โปรเจกต์
+                                </label>
+                                <div className="relative">
+                                    <select
+                                        value={filters.projectId || ''}
+                                        onChange={(e) => handleFilterChange('projectId', e.target.value || null)}
+                                        className="w-full px-3 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-transparent appearance-none cursor-pointer hover:bg-white transition-colors"
+                                    >
+                                        <option value="">ทั้งหมด</option>
+                                        {projects.map(project => (
+                                            <option key={project.id} value={project.id}>
+                                                {project.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Assignee */}
+                        {users.length > 0 && (
+                            <div className="flex-1 min-w-[140px]">
+                                <label className="block text-xs font-medium text-gray-500 mb-1.5">
+                                    ผู้รับผิดชอบ
+                                </label>
+                                <div className="relative">
+                                    <select
+                                        value={filters.assigneeId || ''}
+                                        onChange={(e) => handleFilterChange('assigneeId', e.target.value || null)}
+                                        className="w-full px-3 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-transparent appearance-none cursor-pointer hover:bg-white transition-colors"
+                                    >
+                                        <option value="">ทั้งหมด</option>
+                                        {users.map(user => (
+                                            <option key={user.id} value={user.id}>
+                                                {user.firstName || user.email}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Reset Button */}
+                    {hasActiveFilters && (
+                        <div className="flex-shrink-0">
+                            <label className="block text-xs font-medium text-transparent mb-1.5 select-none">
+                                รีเซ็ต
+                            </label>
+                            <button
+                                onClick={handleReset}
+                                className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                                title="รีเซ็ตตัวกรอง"
+                            >
+                                <RotateCcw className="w-4 h-4" />
+                                <span className="hidden sm:inline">รีเซ็ต</span>
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* Filters */}
-            {isExpanded && (
-                <div className="p-4 space-y-4">
-                    {/* Period Filter */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            ช่วงเวลา
-                        </label>
-                        <select
-                            value={filters.period || 'this_month'}
-                            onChange={(e) => handleFilterChange('period', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-                        >
-                            <option value="this_month">เดือนนี้</option>
-                            <option value="last_month">เดือนที่แล้ว</option>
-                            <option value="this_quarter">ไตรมาสนี้</option>
-                            <option value="last_quarter">ไตรมาสที่แล้ว</option>
-                            <option value="this_year">ปีนี้</option>
-                            <option value="last_year">ปีที่แล้ว</option>
-                            <option value="custom">กำหนดเอง</option>
-                        </select>
-                    </div>
-
-                    {/* Custom Date Range */}
-                    {filters.period === 'custom' && (
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    วันที่เริ่มต้น
-                                </label>
-                                <input
-                                    type="date"
-                                    value={filters.startDate || ''}
-                                    onChange={(e) => handleCustomDateChange('startDate', e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    วันที่สิ้นสุด
-                                </label>
-                                <input
-                                    type="date"
-                                    value={filters.endDate || ''}
-                                    onChange={(e) => handleCustomDateChange('endDate', e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-                                />
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Status Filter */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            สถานะงาน
-                        </label>
-                        <select
-                            value={filters.status || ''}
-                            onChange={(e) => handleFilterChange('status', e.target.value || null)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-                        >
-                            <option value="">ทั้งหมด</option>
-                            <option value="completed">เสร็จสมบูรณ์</option>
-                            <option value="in_progress">กำลังดำเนินการ</option>
-                            <option value="pending_approval">รออนุมัติ</option>
-                            <option value="rejected">ถูกปฏิเสธ</option>
-                        </select>
-                    </div>
-
-                    {/* Project Filter */}
-                    {projects.length > 0 && (
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                โปรเจกต์
-                            </label>
-                            <select
-                                value={filters.projectId || ''}
-                                onChange={(e) => handleFilterChange('projectId', e.target.value || null)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-                            >
-                                <option value="">ทั้งหมด</option>
-                                {projects.map(project => (
-                                    <option key={project.id} value={project.id}>
-                                        {project.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
-
-                    {/* Assignee Filter */}
-                    {users.length > 0 && (
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                ผู้รับผิดชอบ
-                            </label>
-                            <select
-                                value={filters.assigneeId || ''}
-                                onChange={(e) => handleFilterChange('assigneeId', e.target.value || null)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-                            >
-                                <option value="">ทั้งหมด</option>
-                                {users.map(user => (
-                                    <option key={user.id} value={user.id}>
-                                        {user.firstName || user.email}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
-
-                    {/* Actions */}
-                    <div className="flex gap-2 pt-4 border-t border-gray-400">
+            {/* Active Filters */}
+            {activeFilters.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 px-1">
+                    <span className="text-xs text-gray-500">ตัวกรองที่ใช้:</span>
+                    {activeFilters.map((filter, index) => (
                         <button
-                            onClick={handleReset}
-                            className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                            key={`${filter.key}-${index}`}
+                            onClick={() => removeFilter(filter.key)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-700 text-sm rounded-full hover:bg-rose-100 transition-colors group"
                         >
-                            รีเซ็ต
+                            {filter.icon && <filter.icon className="w-3.5 h-3.5" />}
+                            <span>{filter.label}</span>
+                            <X className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100" />
                         </button>
-                        <button
-                            onClick={() => setIsExpanded(false)}
-                            className="flex-1 px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors font-medium"
-                        >
-                            ใช้ตัวกรอง
-                        </button>
-                    </div>
+                    ))}
                 </div>
             )}
         </div>
-    );
-}
-
-// ============================================
-// Icons
-// ============================================
-
-function ChevronUpIcon() {
-    return (
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-        </svg>
-    );
-}
-
-function ChevronDownIcon() {
-    return (
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
     );
 }

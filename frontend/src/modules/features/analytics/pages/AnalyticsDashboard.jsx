@@ -20,6 +20,7 @@ import PerformanceChart from '../components/PerformanceChart';
 import SLAReportTable from '../components/SLAReportTable';
 import FilterPanel from '../components/FilterPanel';
 import ExportButton from '../components/ExportButton';
+import UserDetailSidePanel from '@features/reports/components/UserDetailSidePanel';
 
 /**
  * @component AnalyticsDashboard
@@ -37,6 +38,7 @@ export default function AnalyticsDashboard() {
     });
     const [isExporting, setIsExporting] = useState(false);
     const [exportError, setExportError] = useState(null);
+    const [selectedUserId, setSelectedUserId] = useState(null); // For drill-down Side Panel
 
     // ดึงข้อมูล Analytics
     const { data, isLoading, error, refetch } = useAnalyticsData(filters);
@@ -278,8 +280,18 @@ export default function AnalyticsDashboard() {
                     data={slaReportData}
                     isLoading={isLoading}
                     error={error}
+                    onUserClick={(userId) => setSelectedUserId(userId)}
                 />
             </div>
+
+            {/* User Detail Side Panel - Drill-down */}
+            <UserDetailSidePanel
+                userId={selectedUserId}
+                isOpen={!!selectedUserId}
+                onClose={() => setSelectedUserId(null)}
+                startDate={filters.startDate}
+                endDate={filters.endDate}
+            />
         </div>
     );
 }

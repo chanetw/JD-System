@@ -19,6 +19,7 @@ import { routes as adminRoutes } from '@features/admin/index.jsx';
 import { routes as assigneeRoutes } from '@features/assignee/index.jsx';
 import { routes as analyticsRoutes } from '@features/analytics/index.jsx';
 import { routes as dashboardRoutes } from '@features/dashboard/index.jsx';
+import { routes as reportsRoutes } from '@features/reports/index.jsx';
 
 /**
  * รายการ Module ที่ลงทะเบียนในระบบ
@@ -75,6 +76,12 @@ export const registeredModules = [
         name: 'dashboard',
         basePath: '',
         routes: dashboardRoutes,
+        enabled: true
+    },
+    {
+        name: 'reports',
+        basePath: '',
+        routes: reportsRoutes,
         enabled: true
     },
 ];

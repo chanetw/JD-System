@@ -24,6 +24,8 @@ router.get('/', async (req, res) => {
     try {
         const prisma = getDatabase();
         const tenantId = req.user.tenantId;
+        const userId = req.user.userId;
+        const userRoles = req.user.roles || [];
 
         console.log('[Projects] GET / - User context:', {
             userId: req.user.userId,
@@ -32,14 +34,56 @@ router.get('/', async (req, res) => {
             roles: req.user.roles
         });
 
-        const projects = await prisma.project.findMany({
-            where: { tenantId },
-            include: {
-                bud: { select: { id: true, name: true, code: true } },
-                department: { select: { id: true, name: true, code: true } }
-            },
-            orderBy: { name: 'asc' }
-        });
+        // ตรวจสอบว่า user เป็น admin/superadmin หรือไม่
+        const isAdmin = userRoles.some(role => 
+            ['admin', 'superadmin'].includes(typeof role === 'string' ? role.toLowerCase() : role?.name?.toLowerCase())
+        );
+
+        let projects;
+
+        if (isAdmin) {
+            // Admin เห็นทุกโครงการ
+            projects = await prisma.project.findMany({
+                where: { tenantId },
+                include: {
+                    bud: { select: { id: true, name: true, code: true } },
+                    department: { select: { id: true, name: true, code: true } }
+                },
+                orderBy: { name: 'asc' }
+            });
+        } else {
+            // User ทั่วไป เห็นเฉพาะโครงการที่มีส่วนเกี่ยวข้อง
+            const userJobs = await prisma.job.findMany({
+                where: {
+                    tenantId,
+                    OR: [
+                        { requesterId: userId },
+                        { assigneeId: userId },
+                        { approvals: { some: { approverId: userId } } }
+                    ]
+                },
+                select: { projectId: true },
+                distinct: ['projectId']
+            });
+
+            const userProjectIds = [...new Set(userJobs.map(j => j.projectId).filter(Boolean))];
+
+            if (userProjectIds.length === 0) {
+                return res.json({ success: true, data: [] });
+            }
+
+            projects = await prisma.project.findMany({
+                where: {
+                    tenantId,
+                    id: { in: userProjectIds }
+                },
+                include: {
+                    bud: { select: { id: true, name: true, code: true } },
+                    department: { select: { id: true, name: true, code: true } }
+                },
+                orderBy: { name: 'asc' }
+            });
+        }
 
         const transformed = projects.map(p => ({
             id: p.id,

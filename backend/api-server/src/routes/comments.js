@@ -277,12 +277,8 @@ router.post('/jobs/:jobId/comments', async (req, res) => {
       }
     });
 
-    // Get commenter info
-    const commenter = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { firstName: true, lastName: true }
-    });
-    const commenterName = [commenter?.firstName, commenter?.lastName].filter(Boolean).join(' ') || 'Unknown';
+    // ⚡ Performance: ใช้ข้อมูลจาก newComment.user แทนการ query ซ้ำ
+    const commenterName = [newComment.user?.firstName, newComment.user?.lastName].filter(Boolean).join(' ') || 'Unknown';
 
     // Prepare notification recipients
     const notifyUserIds = new Set();

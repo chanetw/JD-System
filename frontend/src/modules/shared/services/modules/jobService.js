@@ -77,7 +77,7 @@ export const jobService = {
 
 
             const response = await httpClient.get('/jobs', {
-                params: { role: roleParam }
+                params: { role: roleParam, limit: 500 }
             });
 
             if (!response.data.success) {
