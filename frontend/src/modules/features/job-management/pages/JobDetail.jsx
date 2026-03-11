@@ -14,7 +14,6 @@ import { api } from '@shared/services/apiService';
 import httpClient from '@shared/services/httpClient';
 import Swal from 'sweetalert2';
 import { adminService } from '@shared/services/modules/adminService';
-import { draftReadLogService } from '@shared/services/modules/draftReadLogService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { ROLE_V1_DISPLAY, getJobRole, JOB_ROLE_THEMES } from '@shared/utils/permission.utils';
 import { formatDateToThai } from '@shared/utils/dateUtils';
@@ -48,6 +47,7 @@ import JobChainStatus from '../components/JobChainStatus';
 import ParentJobChildrenList from '../components/ParentJobChildrenList';
 import RejectionRequestModal from '../components/RejectionRequestModal';
 import DraftSubmitModal from '../components/DraftSubmitModal';
+import DraftCard from '../components/DraftCard';
 import RejectionApprovalCard from '../components/RejectionApprovalCard';
 import JobItems from '../components/JobItems';
 import JobAssigneeInfo from '../components/JobAssigneeInfo';
@@ -97,6 +97,9 @@ export default function JobDetail() {
 
     // Alert State
     const [alertState, setAlertState] = useState({ isOpen: false, title: '', message: '', type: 'success' });
+    
+    // Loading States
+    const [isCompleting, setIsCompleting] = useState(false);
 
     // ============================================
     // Data Loading
@@ -231,24 +234,7 @@ export default function JobDetail() {
         }
     }, [job?.id, user?.id]); // Check IDs only to avoid loop
 
-    // Draft Read Log (Track when Requester views draft submission)
-    useEffect(() => {
-        if (job && user && job.draftLink) {
-            const isRequester = String(job.requesterId) === String(user.id);
-            if (isRequester) {
-                console.log('[JobDetail] 📖 Recording draft read for Job', job.id);
-                draftReadLogService.recordRead(job.id)
-                    .then(result => {
-                        if (result.success) {
-                            console.log('[JobDetail] ✅ Draft read recorded:', result.data);
-                        }
-                    })
-                    .catch(err => {
-                        console.error('[JobDetail] ❌ Failed to record draft read:', err);
-                    });
-            }
-        }
-    }, [job?.id, job?.draftLink, user?.id]); // Track when draft link exists
+    // Draft Read Log: บันทึกเฉพาะเมื่อคลิก link ใน DraftCard (ไม่ใช่ page load)
 
     // ============================================
     // Actions Handlers
@@ -351,6 +337,9 @@ export default function JobDetail() {
                 confirmButtonColor: '#e11d48'
             });
         }
+        if (isCompleting) return; // ป้องกันการกดซ้ำ
+        
+        setIsCompleting(true);
         try {
             await api.completeJob(job.id, {
                 note: completeNote,
@@ -371,6 +360,8 @@ export default function JobDetail() {
                 text: err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์',
                 confirmButtonColor: '#e11d48'
             });
+        } finally {
+            setIsCompleting(false);
         }
     };
 
@@ -796,6 +787,9 @@ export default function JobDetail() {
                                 {/* Delivered Work (Only visible if completed/closed) */}
                                 <JobDeliveryCard job={job} />
 
+                                {/* Draft Review Card (Only visible when status = draft_review) */}
+                                <DraftCard job={job} currentUser={user} onSuccess={loadJob} />
+
                                 {/* Assignee Info */}
                                 <div className="bg-white px-4 py-5 sm:px-6 shadow sm:rounded-lg">
                                     <JobAssigneeInfo job={job} />
@@ -910,8 +904,18 @@ export default function JobDetail() {
                             onChange={e => setCompleteNote(e.target.value)}
                         />
                         <div className="flex gap-2 justify-end">
-                            <Button variant="ghost" onClick={() => setShowCompleteModal(false)}>ยกเลิก</Button>
-                            <Button variant="primary" onClick={handleCompleteJob}>ส่งงาน</Button>
+                            <Button variant="ghost" onClick={() => setShowCompleteModal(false)} disabled={isCompleting}>ยกเลิก</Button>
+                            <Button variant="primary" onClick={handleCompleteJob} disabled={isCompleting}>
+                                {isCompleting ? (
+                                    <>
+                                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        กำลังส่งงาน...
+                                    </>
+                                ) : 'ส่งงาน'}
+                            </Button>
                         </div>
                     </div>
                 </div>

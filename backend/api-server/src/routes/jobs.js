@@ -1558,6 +1558,11 @@ router.get('/:id', async (req, res) => {
       items: job.jobItems || [],
       attachments: job.attachments || [],
 
+      // Draft Review Details
+      draftFiles: job.draftFiles || [],
+      draftSubmittedAt: job.draftSubmittedAt,
+      draftCount: job.draftCount || 0,
+
       // Completion Details
       completedAt: job.completedAt,
       finalFiles: job.finalFiles,
@@ -3731,8 +3736,10 @@ router.post('/:id/submit-draft', async (req, res) => {
       });
     }
 
-    // Prepare draft files
-    const draftFiles = link ? [{ name: 'Draft Link', url: link, submittedAt: new Date() }] : [];
+    // Prepare draft files - append to existing array
+    const existingDrafts = Array.isArray(job.draftFiles) ? job.draftFiles : [];
+    const newDraft = link ? { name: 'Draft Link', url: link, note, submittedAt: new Date() } : null;
+    const updatedDraftFiles = newDraft ? [...existingDrafts, newDraft] : existingDrafts;
 
     // Update job (handle null draftCount)
     const currentDraftCount = job.draftCount || 0;
@@ -3740,7 +3747,7 @@ router.post('/:id/submit-draft', async (req, res) => {
       where: { id: jobId },
       data: {
         status: 'draft_review',
-        draftFiles: draftFiles,
+        draftFiles: updatedDraftFiles,
         draftSubmittedAt: new Date(),
         draftCount: currentDraftCount + 1
       }
@@ -3758,16 +3765,39 @@ router.post('/:id/submit-draft', async (req, res) => {
       }
     });
 
-    // Get approvers from Approval table
-    const approverIds = [];
-    if (job.approvals && job.approvals.length > 0) {
-      job.approvals.forEach(approval => {
-        const approverId = approval.approverId;
-        if (approverId && !approverIds.includes(approverId)) {
-          approverIds.push(approverId);
+    // Get last-level approvers from ApprovalFlow (ไม่ใช่ทุกคนใน job.approvals)
+    // เฉพาะ approver level สุดท้ายของ flow เท่านั้นที่ต้องรีวิว draft
+    const lastLevelApproverIds = [];
+    try {
+      const flow = await approvalService.getApprovalFlow(job.projectId, job.jobTypeId);
+      if (flow?.approverSteps && Array.isArray(flow.approverSteps) && flow.approverSteps.length > 0) {
+        const lastStep = flow.approverSteps[flow.approverSteps.length - 1];
+        if (lastStep?.approvers && Array.isArray(lastStep.approvers)) {
+          lastStep.approvers.forEach(a => {
+            const approverId = a.id || a.userId;
+            if (approverId && !lastLevelApproverIds.includes(approverId)) {
+              lastLevelApproverIds.push(approverId);
+            }
+          });
         }
-      });
+      } else {
+        // Fallback: ถ้าไม่มี flow ใช้ job.approvals แต่เฉพาะ stepNumber สูงสุด
+        if (job.approvals && job.approvals.length > 0) {
+          const maxStep = Math.max(...job.approvals.map(a => a.stepNumber || 0));
+          job.approvals
+            .filter(a => (a.stepNumber || 0) === maxStep)
+            .forEach(a => {
+              if (a.approverId && !lastLevelApproverIds.includes(a.approverId)) {
+                lastLevelApproverIds.push(a.approverId);
+              }
+            });
+        }
+      }
+    } catch (flowErr) {
+      console.warn('[SubmitDraft] Could not get approval flow for last-level approvers:', flowErr.message);
     }
+
+    console.log(`[SubmitDraft] Notifying requester=${job.requesterId}, lastLevelApprovers=${JSON.stringify(lastLevelApproverIds)}`);
 
     // Notify Requester
     if (job.requesterId) {
@@ -3781,9 +3811,9 @@ router.post('/:id/submit-draft', async (req, res) => {
       }).catch(err => console.warn('[SubmitDraft] Notification to requester failed:', err));
     }
 
-    // ⚡ Performance: ส่ง notification แบบ parallel แทน sequential
+    // Notify เฉพาะ last-level approvers (ไม่ซ้ำ requester)
     await Promise.allSettled(
-      approverIds
+      lastLevelApproverIds
         .filter(approverId => approverId !== job.requesterId)
         .map(approverId =>
           notificationService.createNotification({
@@ -3793,7 +3823,7 @@ router.post('/:id/submit-draft', async (req, res) => {
             title: `📝 Draft งาน ${job.djId} ส่งมาแล้ว`,
             message: `${job.assignee?.firstName || 'ผู้รับงาน'} ส่ง draft งาน "${job.subject}" มาให้ตรวจสอบ`,
             link: `/jobs/${jobId}`
-          }).catch(err => console.warn('[SubmitDraft] Notification to approver failed:', err))
+          }).catch(err => console.warn('[SubmitDraft] Notification to last-level approver failed:', err))
         )
     );
 
@@ -3804,10 +3834,10 @@ router.post('/:id/submit-draft', async (req, res) => {
       const recipients = [];
       if (job.requester?.email) recipients.push(job.requester.email);
 
-      // Get approver emails
-      if (approverIds.length > 0) {
+      // Get last-level approver emails
+      if (lastLevelApproverIds.length > 0) {
         const approvers = await prisma.user.findMany({
-          where: { id: { in: approverIds } },
+          where: { id: { in: lastLevelApproverIds } },
           select: { email: true }
         });
         approvers.forEach(a => {
@@ -3854,6 +3884,228 @@ router.post('/:id/submit-draft', async (req, res) => {
       success: false,
       error: 'SUBMIT_DRAFT_FAILED',
       message: 'ไม่สามารถส่ง draft ได้',
+      detail: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/approve-draft
+ * Requester approves or rejects draft submission
+ * 
+ * Body: {
+ *   action: 'approve' | 'reject' (required)
+ *   reason: string (required)
+ * }
+ */
+router.post('/:id/approve-draft', async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
+    const { action, reason } = req.body;
+    const prisma = getDatabase();
+
+    // Validation
+    if (!action || !['approve', 'reject'].includes(action)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid action. Must be "approve" or "reject"'
+      });
+    }
+
+    if (!reason || reason.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reason is required'
+      });
+    }
+
+    // Get job with relations
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      include: {
+        requester: { select: { id: true, email: true, firstName: true, lastName: true } },
+        assignee: { select: { id: true, email: true, firstName: true, lastName: true } },
+        approvals: {
+          select: {
+            approverId: true,
+            approver: { select: { id: true, email: true, firstName: true, lastName: true } }
+          }
+        }
+      }
+    });
+
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'Job not found' });
+    }
+
+    // Check permission: only requester can approve/reject draft
+    if (job.requesterId !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only requester can approve or reject draft'
+      });
+    }
+
+    // Check status
+    if (job.status !== 'draft_review') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot approve/reject draft in status: ${job.status}`
+      });
+    }
+
+    // Update job status
+    const newStatus = action === 'approve' ? 'in_progress' : 'rework';
+    const updatedJob = await prisma.job.update({
+      where: { id: jobId },
+      data: { status: newStatus }
+    });
+
+    // Log activity
+    await prisma.jobActivity.create({
+      data: {
+        tenantId,
+        jobId,
+        userId,
+        activityType: action === 'approve' ? 'draft_approved' : 'draft_rejected',
+        description: `${action === 'approve' ? 'อนุมัติ' : 'ปฏิเสธ'} Draft: ${reason.trim()}`,
+        metadata: { action, reason: reason.trim() }
+      }
+    });
+
+    // Add comment to chat
+    await prisma.jobComment.create({
+      data: {
+        tenantId,
+        jobId,
+        userId,
+        comment: `${action === 'approve' ? '✅ อนุมัติ Draft' : '❌ ปฏิเสธ Draft'}: ${reason.trim()}`
+      }
+    });
+
+    // Notify Assignee
+    if (job.assigneeId) {
+      await notificationService.createNotification({
+        tenantId,
+        userId: job.assigneeId,
+        type: action === 'approve' ? 'draft_approved' : 'draft_rejected',
+        title: action === 'approve'
+          ? `✅ Draft งาน ${job.djId} ผ่านการตรวจสอบ`
+          : `❌ Draft งาน ${job.djId} ไม่ผ่าน`,
+        message: `${job.requester?.firstName || 'Requester'} ${action === 'approve' ? 'อนุมัติ' : 'ปฏิเสธ'} draft: ${reason.trim()}`,
+        link: `/jobs/${jobId}`
+      }).catch(err => console.warn('[ApproveDraft] Notification to assignee failed:', err));
+    }
+
+    // Get last-level approvers (same logic as submit-draft)
+    const lastLevelApproverIds = [];
+    try {
+      const flow = await approvalService.getApprovalFlow(job.projectId, job.jobTypeId);
+      if (flow?.approverSteps && Array.isArray(flow.approverSteps) && flow.approverSteps.length > 0) {
+        const lastStep = flow.approverSteps[flow.approverSteps.length - 1];
+        if (lastStep?.approvers && Array.isArray(lastStep.approvers)) {
+          lastStep.approvers.forEach(a => {
+            const approverId = a.id || a.userId;
+            if (approverId && !lastLevelApproverIds.includes(approverId)) {
+              lastLevelApproverIds.push(approverId);
+            }
+          });
+        }
+      } else {
+        // Fallback: use job.approvals
+        if (job.approvals && job.approvals.length > 0) {
+          const maxStep = Math.max(...job.approvals.map(a => a.stepNumber || 0));
+          job.approvals
+            .filter(a => (a.stepNumber || 0) === maxStep)
+            .forEach(a => {
+              if (a.approverId && !lastLevelApproverIds.includes(a.approverId)) {
+                lastLevelApproverIds.push(a.approverId);
+              }
+            });
+        }
+      }
+    } catch (flowErr) {
+      console.warn('[ApproveDraft] Could not get approval flow for last-level approvers:', flowErr.message);
+    }
+
+    // Notify last-level approvers (exclude requester)
+    await Promise.allSettled(
+      lastLevelApproverIds
+        .filter(approverId => approverId !== job.requesterId)
+        .map(approverId =>
+          notificationService.createNotification({
+            tenantId,
+            userId: approverId,
+            type: action === 'approve' ? 'draft_approved' : 'draft_rejected',
+            title: action === 'approve'
+              ? `✅ Draft งาน ${job.djId} ผ่านการตรวจสอบ`
+              : `❌ Draft งาน ${job.djId} ไม่ผ่าน`,
+            message: `${job.requester?.firstName || 'Requester'} ${action === 'approve' ? 'อนุมัติ' : 'ปฏิเสธ'} draft`,
+            link: `/jobs/${jobId}`
+          }).catch(err => console.warn('[ApproveDraft] Notification to approver failed:', err))
+        )
+    );
+
+    // Send Email (optional)
+    try {
+      const emailService = new EmailService();
+      const recipients = [];
+
+      if (job.assignee?.email) recipients.push(job.assignee.email);
+
+      // Get last-level approver emails
+      if (lastLevelApproverIds.length > 0) {
+        const approvers = await prisma.user.findMany({
+          where: { id: { in: lastLevelApproverIds } },
+          select: { email: true }
+        });
+        approvers.forEach(a => {
+          if (a.email && !recipients.includes(a.email)) {
+            recipients.push(a.email);
+          }
+        });
+      }
+
+      if (recipients.length > 0) {
+        const emailSubject = action === 'approve'
+          ? `✅ Draft งาน ${job.djId} ผ่านการตรวจสอบ`
+          : `❌ Draft งาน ${job.djId} ไม่ผ่าน`;
+        const emailBody = `
+          <h2>${action === 'approve' ? 'Draft ผ่านการตรวจสอบ' : 'Draft ไม่ผ่านการตรวจสอบ'}</h2>
+          <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
+          <p><strong>ผู้ตรวจสอบ:</strong> ${job.requester?.firstName || ''} ${job.requester?.lastName || ''}</p>
+          <p><strong>${action === 'approve' ? 'ความเห็น' : 'เหตุผล'}:</strong> ${reason.trim()}</p>
+          <p>${action === 'approve' ? 'สามารถทำงานต่อได้เลย' : 'กรุณาแก้ไขและส่ง draft ใหม่'}</p>
+          <p><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/jobs/${jobId}">ดูรายละเอียดงาน</a></p>
+        `;
+        await Promise.allSettled(
+          recipients.map(email =>
+            emailService.sendEmail(email, emailSubject, emailBody)
+              .catch(err => console.warn('[ApproveDraft] Email failed:', err))
+          )
+        );
+      }
+    } catch (emailErr) {
+      console.error('[ApproveDraft] Email error:', emailErr);
+    }
+
+    res.json({
+      success: true,
+      message: `Draft ${action === 'approve' ? 'approved' : 'rejected'} successfully`,
+      data: {
+        jobId: updatedJob.id,
+        djId: updatedJob.djId,
+        status: updatedJob.status
+      }
+    });
+  } catch (error) {
+    console.error('[ApproveDraft] Error:', error.message, error.stack);
+    res.status(500).json({
+      success: false,
+      error: 'APPROVE_DRAFT_FAILED',
+      message: 'ไม่สามารถบันทึกการอนุมัติได้',
       detail: error.message
     });
   }

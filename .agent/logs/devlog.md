@@ -6,6 +6,175 @@
 
 ## 📅 2026-03-11
 
+### 81. Draft Approval Action — Requester Approve/Reject Draft
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b> (เพิ่มฟีเจอร์ให้ Requester approve/reject draft พร้อม notification)</summary>
+
+🔴 **Request:**
+- เพิ่มฟีเจอร์ให้ Requester สามารถ approve/reject draft ที่ assignee ส่งมา
+- Approve → status = `in_progress` (assignee ทำงานต่อจนส่งงานจริง)
+- Reject → status = `rework` (assignee ต้องแก้ไขแล้วส่ง draft ใหม่)
+- บันทึก Activity Log + Comment + Notification ให้ assignee และ last-level approver
+
+🔧 **Implementation:**
+
+**1. Backend API — `POST /api/jobs/:id/approve-draft`**
+- Location: `backend/api-server/src/routes/jobs.js` (line 3890-4111)
+- Request Body: `{ action: 'approve' | 'reject', reason: string }`
+- Logic:
+  - ตรวจสอบ permission (เฉพาะ requester)
+  - ตรวจสอบ job status = `draft_review`
+  - Update job status ตาม action
+  - บันทึก Activity Log (activityType: `draft_approved` / `draft_rejected`)
+  - เพิ่ม Comment ใน chat (isSystemComment: true)
+  - ส่ง Notification ให้ Assignee + Last-level Approver
+  - ส่ง Email (optional)
+- Pattern อ้างอิง: `POST /api/jobs/:id/rebrief`
+
+**2. Frontend Modal — `DraftApprovalModal.jsx`**
+- Location: `frontend/.../components/DraftApprovalModal.jsx` (ไฟล์ใหม่)
+- Props: `isOpen`, `onClose`, `job`, `onSuccess`
+- UI Components:
+  - Header: "ตรวจสอบ Draft"
+  - Action Selection: 2 buttons (✅ อนุมัติ / ❌ ปฏิเสธ)
+  - Reason Input: textarea สำหรับใส่ความเห็น/เหตุผล
+  - Footer: Cancel / Submit button
+- Logic:
+  - Validate: ต้องเลือก action + ใส่ reason
+  - Call `httpClient.post(/jobs/${job.id}/approve-draft)`
+  - Show Swal success/error
+  - Call `onSuccess()` เมื่อสำเร็จ
+
+**3. Frontend — `DraftCard.jsx`**
+- เพิ่ม import: `DraftApprovalModal`, `useState`
+- เพิ่ม state: `showApprovalModal`
+- เพิ่ม prop: `onSuccess` (รับจาก JobDetail)
+- เพิ่ม logic: `isRequester = job.requesterId === currentUser?.id`
+- เพิ่ม Action Button section:
+  - แสดงเฉพาะ Requester
+  - ปุ่ม "ตรวจสอบ Draft" → เปิด modal
+  - อยู่ระหว่างรายการ draft กับ read status section
+- Mount `<DraftApprovalModal />` component
+
+**4. Frontend — `JobDetail.jsx`**
+- แก้ไข `<DraftCard />` component:
+  - เพิ่ม prop: `onSuccess={loadJob}`
+  - เมื่อ approve/reject สำเร็จ → reload job data
+
+📊 **Status Transition:**
+```
+draft_review + approve → in_progress (assignee ทำงานต่อ)
+draft_review + reject  → rework (assignee แก้ไขส่งใหม่)
+```
+
+📝 **Logging:**
+- Activity Log: `draft_approved` / `draft_rejected`
+- Comment: "✅ อนุมัติ Draft: {reason}" / "❌ ปฏิเสธ Draft: {reason}"
+- Notification:
+  - Assignee: "✅ Draft งาน {djId} ผ่านการตรวจสอบ" / "❌ Draft งาน {djId} ไม่ผ่าน"
+  - Last-level Approver: เหมือนกับ assignee (เพื่อให้รับทราบ)
+
+📁 **Files Changed:**
+- `backend/api-server/src/routes/jobs.js` — เพิ่ม API endpoint (222 lines)
+- `frontend/.../components/DraftCard.jsx` — เพิ่ม button + modal (25 lines)
+- `frontend/.../pages/JobDetail.jsx` — pass onSuccess prop (1 line)
+
+📁 **Files Created:**
+- `frontend/.../components/DraftApprovalModal.jsx` — Modal component (192 lines)
+
+✅ **Testing:**
+- Requester เห็นปุ่ม "ตรวจสอบ Draft" ใน DraftCard
+- Assignee/Approver ไม่เห็นปุ่ม approve/reject
+- Modal เปิดได้และมี UI ครบถ้วน
+- Approve draft → status = in_progress
+- Reject draft → status = rework
+- Activity log + Comment + Notification ทำงานถูกต้อง
+
+</details>
+
+---
+
+### 81. Feature: Draft Approval Action + Loading States
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b> (Implement Draft Approval flow + Loading states)</summary>
+
+🔴 **Request:**
+- Implement Draft Approval flow ให้ Requester สามารถ approve/reject draft ที่ Assignee ส่งมา
+- เพิ่มปุ่ม Action ใน DraftCard และ Modal สำหรับ Approve/Reject
+- เพิ่ม loading state ให้ปุ่มส่งงานทั้งหมดเพื่อป้องกันการกดซ้ำ
+
+🟢 **Implementation:**
+
+**1. Backend API - POST /api/jobs/:id/approve-draft**
+- ตรวจสอบสิทธิ์: อนุญาตเฉพาะ Requester เท่านั้น
+- Validate: ต้องอยู่ใน status `draft_review`
+- Action: `approve` → status `in_progress`, `reject` → status `rework`
+- Log: Activity log + Job comment (system comment)
+- Notification: ส่งให้ Assignee และ Approvers
+- Email: ส่ง email แจ้งเตือน
+
+**2. Frontend Components**
+- **DraftApprovalModal.jsx**: Modal สำหรับ Requester approve/reject draft
+  - เลือก action (approve/reject)
+  - ใส่ reason บังคับ
+  - Loading state + spinner
+- **DraftCard.jsx**: เพิ่มปุ่ม "ตรวจสอบ Draft" สำหรับ Requester
+  - แสดงเฉพาะ status `draft_review`
+  - Mount DraftApprovalModal
+  - Pass `onSuccess` callback เพื่อ reload data
+- **JobDetail.jsx**: Pass `onSuccess={loadJob}` prop ให้ DraftCard
+
+**3. Loading States for All Submit Buttons**
+- **Complete Job**: `isCompleting` state + spinner + "กำลังส่งงาน..."
+- **Submit Draft**: `isSubmitting` state + spinner + "กำลังส่ง Draft..."
+- **Approve/Reject Draft**: `isSubmitting` state + spinner + "กำลังบันทึก..."
+- ปุ่ม disabled ขณะกำลังประมวลผล
+- ป้องกันการกดซ้ำด้วย early return
+
+🔧 **Bug Fixes:**
+
+**1. isSystemComment Field Error**
+- **Problem**: 500 error เมื่อ approve draft - `Invalid prisma.jobComment.create() invocation: ...isSystemComment`
+- **Root Cause**: `JobComment` model ไม่มี field `isSystemComment` ใน schema
+- **Fix**: ลบ `isSystemComment: true` ออกจาก `prisma.jobComment.create()` call
+
+**2. Draft Display Issue**
+- **Problem**: ส่ง draft ครั้งที่ 2 แต่ยังแสดงแค่ "Draft ครั้งที่ 1"
+- **Root Cause**: Backend `submit-draft` API เขียนทับ `draftFiles` array ทั้งหมด
+- **Fix**: เปลี่ยนจากเขียนทับเป็น append draft ใหม่เข้า array เดิม
+```javascript
+// เดิม (❌ เขียนทับ)
+const draftFiles = link ? [{ name: 'Draft Link', url: link, submittedAt: new Date() }] : [];
+
+// ใหม่ (✅ append)
+const existingDrafts = Array.isArray(job.draftFiles) ? job.draftFiles : [];
+const newDraft = link ? { name: 'Draft Link', url: link, note, submittedAt: new Date() } : null;
+const updatedDraftFiles = newDraft ? [...existingDrafts, newDraft] : existingDrafts;
+```
+
+📁 **Files Created:**
+- `frontend/src/modules/features/job-management/components/DraftApprovalModal.jsx` — Modal สำหรับ approve/reject draft
+
+📁 **Files Modified:**
+- `backend/api-server/src/routes/jobs.js` — เพิ่ม approve-draft endpoint + แก้ submit-draft bug + แก้ isSystemComment
+- `frontend/src/modules/features/job-management/components/DraftCard.jsx` — เพิ่มปุ่ม action + mount modal
+- `frontend/src/modules/features/job-management/pages/JobDetail.jsx` — pass onSuccess prop + เพิ่ม loading state
+- `frontend/src/modules/features/job-management/components/DraftSubmitModal.jsx` — เพิ่ม loading spinner
+- `frontend/src/modules/features/job-management/components/DraftApprovalModal.jsx` — เพิ่ม loading spinner
+
+🧪 **Testing:**
+- ✅ Requester สามารถ approve draft → status เปลี่ยนเป็น `in_progress`
+- ✅ Requester สามารถ reject draft → status เปลี่ยนเป็น `rework`
+- ✅ Activity log บันทึกการ approve/reject
+- ✅ System comment ถูกสร้างใน chat
+- ✅ Notification ส่งให้ Assignee และ Approvers
+- ✅ ส่ง draft ครั้งที่ 2 แสดงทั้ง "Draft ครั้งที่ 1" และ "Draft ครั้งที่ 2"
+- ✅ ปุ่มส่งงานทั้งหมดมี loading state และป้องกันการกดซ้ำ
+
+</details>
+
+---
+
 ### 80. Doc + Bug Fix: Job Flow per Role & Dashboard Duplicate Key
 <details>
 <summary>📋 <b>คลิกดูรายละเอียด</b> (สรุป flow ทุก role + แก้ React duplicate key warning)</summary>
@@ -3164,6 +3333,63 @@ Implement ฟีเจอร์ "Sequential Jobs" ให้งานหนึ่
   - Added a highly visible, pulsating "🔥 งานเร่งด่วน (Urgent)" badge next to the DJ ID in the header section.
   - The badge is conditionally rendered when `job.priority` is 'urgent' (case-insensitive).
   - Used appropriate styling (`bg-red-100`, `text-red-800`, `animate-pulse`) to draw immediate attention to the urgent nature of the job.
+
+## Mar 11, 2026 - Draft Card UI Redesign + Fix Scroll-to-Chat
+
+### 84. Draft Card UI Redesign + Fix Scroll-to-Chat
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b></summary>
+
+🔴 **Request:**
+- ปรับ DraftCard ให้แสดง Draft ครั้งที่ 1, 2 พร้อม link + หมายเหตุ + วันที่
+- การกด link = บันทึก read log (ไม่ใช่ตอน page load)
+- ไม่แสดง "คุณยังไม่ได้อ่าน Draft" ให้ requester
+- จัด layout ให้ JobDeliveryCard อยู่บน DraftCard
+- ลบ scroll-to-chat อัตโนมัติทุก role
+
+🔧 **Fix:**
+1. `JobComments.jsx` — ลบ `useEffect` ที่ watch `[comments]` แล้ว auto `scrollToBottom()` ออก
+2. `DraftCard.jsx` — Redesign ใหม่ทั้งหมด: แสดงรายการ draft ทีละครั้ง, onClick handler บน link เรียก `draftReadLogService.recordRead()`, ไม่แสดง read status ให้ requester
+3. `JobDetail.jsx` — สลับ `JobDeliveryCard` ขึ้นบน `DraftCard`, ลบ `useEffect` read log ที่ trigger ตอน page load, ลบ import `draftReadLogService` ที่ไม่ใช้แล้ว
+
+📁 **Files Changed:**
+- `frontend/.../components/JobComments.jsx` — ลบ auto scroll
+- `frontend/.../components/DraftCard.jsx` — Redesign ใหม่
+- `frontend/.../pages/JobDetail.jsx` — layout + cleanup
+
+</details>
+
+## Mar 11, 2026 - Fix Draft Review Flow
+
+### 83. Fix Draft Review Flow — แสดง Link, Noti ถูกคน, และ Log การอ่าน
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b></summary>
+
+🔴 **Request:**
+- ตรวจสอบการทำงานการส่ง draft ให้ครบถ้วน
+- แสดง draft link ใน job page ให้ requester เห็น
+- แก้ notification ให้ส่งหา approver คนที่ถูกต้อง (last level เท่านั้น)
+- ตรวจสอบการบันทึก log เมื่อ requester เปิดดู draft
+
+🔍 **Findings (5 จุด):**
+1. ❌ Backend GET /api/jobs/:id ไม่ return `draftFiles`, `draftSubmittedAt`, `draftCount` → frontend ไม่มีข้อมูล
+2. ❌ Frontend ไม่มี UI แสดง Draft Card เมื่อสถานะ `draft_review`
+3. ❌ Notify approver ผิดคน — ส่งให้ทุก level แทนที่จะเป็น last level เท่านั้น
+4. ⚠️ `DraftReadStatus` component มีอยู่แต่ไม่ถูก mount + useEffect trigger จาก `job.draftLink` (field เก่า)
+5. ✅ Email notification ถูกต้องอยู่แล้ว
+
+🔧 **Fix:**
+1. `backend/routes/jobs.js` GET /:id — เพิ่ม `draftFiles`, `draftSubmittedAt`, `draftCount` ใน transformed object
+2. `backend/routes/jobs.js` POST /submit-draft — ดึง last level approvers จาก `approvalFlow.approverSteps` แทน `job.approvals` ทั้งหมด + fallback ใช้ maxStep ถ้าไม่มี flow
+3. `frontend/.../components/DraftCard.jsx` — สร้างใหม่ แสดง draft link, วันที่, draftCount, `DraftReadStatus`
+4. `frontend/.../pages/JobDetail.jsx` — import + mount `DraftCard` ก่อน `JobDeliveryCard` + แก้ useEffect read log ให้ trigger จาก `job.status === 'draft_review'` และครอบคลุม approver
+
+📁 **Files Changed:**
+- `backend/api-server/src/routes/jobs.js` — เพิ่ม draft fields ใน GET response + แก้ notify last level approver
+- `frontend/.../components/DraftCard.jsx` — สร้างใหม่
+- `frontend/.../pages/JobDetail.jsx` — mount DraftCard + แก้ read log trigger
+
+</details>
 
 ## Mar 11, 2026 - Fix Approval Chain After Approved
 
