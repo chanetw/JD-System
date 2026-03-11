@@ -4,6 +4,56 @@
 
 ---
 
+## 📅 2026-03-11
+
+### 80. Doc + Bug Fix: Job Flow per Role & Dashboard Duplicate Key
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b> (สรุป flow ทุก role + แก้ React duplicate key warning)</summary>
+
+🔴 **Request:**
+- ตรวจสอบ flow การทำงานว่าแต่ละ role เห็นงานเมื่อใด ในหน้า Dashboard
+- สรุปเป็นเอกสาร: สร้าง, อนุมัติ, ปฏิเสธ, ส่ง Draft, จบงาน, ยกเลิก, Notification, Email
+- แก้ React error `Encountered two children with the same key` ใน Dashboard.jsx
+
+🟢 **Root Cause (Duplicate Key):**
+- `fetchQueueJobs` ใช้ lazy load (infinite scroll) แบบ append: `[...prev, ...newJobs]`
+- ระหว่าง page 1 กับ page 2 ถ้ามีงานเพิ่ม/เปลี่ยน status → skip-based pagination ส่ง job ซ้ำ
+- `fetchPanelJobs` (KPI Drill-down) มีปัญหาเดียวกัน
+
+🔧 **Fix:**
+1. **Dashboard.jsx — `fetchQueueJobs`** (line 144):
+   - เปลี่ยนจาก `append ? [...prev, ...newJobs] : newJobs`
+   - เป็น deduplicate ด้วย `Map` → `merged.set(j.id, j)` → `Array.from(merged.values())`
+   
+2. **Dashboard.jsx — `fetchPanelJobs`** (line 185):
+   - ใช้ logic deduplicate เดียวกัน
+
+📝 **เอกสาร:**
+- สร้างไฟล์ `.agent/docs/job-flow-per-role.md` — สรุป flow ครบทุก action:
+  - Status ทั้งหมดในระบบ (16 statuses)
+  - Flow สร้างงาน: Skip vs Non-skip Approval, Auto-Approve, Auto-Assign
+  - Flow อนุมัติ: Web vs Email Link (Notification ต่างกัน!)
+  - Flow ปฏิเสธ: Approver reject vs Assignee request-rejection
+  - Flow ส่ง Draft: ส่ง Notification + Email ครบที่สุด
+  - Flow จบงาน: Trigger chain + Parent closure
+  - Notification & Email Matrix — ระบุชัดเจนว่า action ไหนส่ง/ไม่ส่ง
+
+⚠️ **พบ Gap ในระบบ:**
+- `POST /api/jobs` (สร้างงาน) — Step 9: TODO ยังไม่ส่ง notification
+- `POST /api/jobs/:id/approve` (Web) — ไม่ส่ง notification (เทียบ Email Link ที่ส่ง)
+- `POST /api/jobs/:id/reject` (Web) — ไม่ส่ง notification
+- `POST /api/jobs/:id/request-rejection` — TODO ยังไม่ส่ง notification ให้ approver
+
+📁 **Files Changed:**
+- `frontend/src/modules/features/dashboard/pages/Dashboard.jsx` — deduplicate lazy load (2 จุด)
+
+📁 **Files Created:**
+- `.agent/docs/job-flow-per-role.md` — เอกสารสรุป flow ทั้งหมด
+
+</details>
+
+---
+
 ## 📅 2026-03-10
 
 ### 77. Performance: แก้ Timeout 15s ใน GET /api/jobs (Approver Role)
@@ -3114,6 +3164,74 @@ Implement ฟีเจอร์ "Sequential Jobs" ให้งานหนึ่
   - Added a highly visible, pulsating "🔥 งานเร่งด่วน (Urgent)" badge next to the DJ ID in the header section.
   - The badge is conditionally rendered when `job.priority` is 'urgent' (case-insensitive).
   - Used appropriate styling (`bg-red-100`, `text-red-800`, `animate-pulse`) to draw immediate attention to the urgent nature of the job.
+
+## Mar 11, 2026 - Fix Approval Chain After Approved
+
+### 82. Fix Approval Chain Logic — หยุดอัปเดตหลังอนุมัติ
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b></summary>
+
+🔴 **Request:**
+- เมื่องาน approved แล้ว → Approval Chain ต้องแสดง "อนุมัติครบ + Start Job สีเขียว" เสมอ
+- ไม่ว่าสถานะจะเปลี่ยนไปเป็นอะไรหลังจากนั้น (rebrief, cancel, rework ฯลฯ)
+- Flow หลังอนุมัติเป็นเรื่องของ "การทำงาน" ไม่เกี่ยวกับ Approval Chain
+
+🟢 **Root Cause:**
+`currentLevel` คำนวณจาก `job.status` ใน `JobDetail.jsx` ใช้ whitelist:
+- เฉพาะ `approved, assigned, in_progress, pending_close, completed, closed` เท่านั้นที่ได้ `currentLevel = 999`
+- สถานะหลัง approved เช่น `pending_rebrief`, `rebrief_submitted`, `correction`, `rework`, `draft_review` ฯลฯ ได้ `currentLevel = 0`
+- ทำให้ Approval Chain กลับไปแสดง "Pending" ทุก level ทั้งที่จริงแล้วอนุมัติผ่านหมด
+
+🔧 **Fix:**
+เปลี่ยน logic จาก whitelist → blacklist ใน `JobDetail.jsx` (line 193-208):
+- เฉพาะ `pending_approval`, `pending_level_X`, `draft`, `pending_dependency` เท่านั้นที่ยังไม่ approved
+- **สถานะอื่นทั้งหมดถือว่าผ่านอนุมัติแล้ว** → `currentLevel = 999`
+
+📁 **Files Changed:**
+- `frontend/src/modules/features/job-management/pages/JobDetail.jsx` — แก้ currentLevel logic ให้ครอบคลุมทุกสถานะหลัง approved
+
+📝 **Note:**
+ไม่ต้องแก้ backend หรือ component อื่น เพราะ `JobSidebar`, `JobActionPanel`, `JobApprovalFlow` อ่าน `job.currentLevel` ที่ `JobDetail.jsx` คำนวณให้อยู่แล้ว
+
+</details>
+
+## Mar 11, 2026 - Fix Submit Draft, Rebrief & My Queue Action Buttons
+
+### 81. Fix Backend 500/400 Errors & Add My Queue Action Buttons
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b></summary>
+
+🔴 **Request:**
+- แก้ submit-draft 500 Internal Server Error
+- แก้ rebrief 400 Bad Request
+- ยกเลิก auto-scroll ไปที่ chat เมื่อโหลดหน้า JobDetail
+- เพิ่มปุ่ม ส่ง Draft / ขอ Rebrief ในหน้า My Queue เหมือนกล่องดำเนินการใน JobDetail
+
+🟢 **Root Causes:**
+1. **submit-draft 500**: `notificationService is not defined` — ไม่ได้ import `NotificationService` ใน `jobs.js`
+2. **rebrief 400**: job status `approved` ไม่อยู่ใน `allowedStatuses` ของ rebrief endpoint
+3. **scroll**: fix อยู่แล้วใน `JobComments.jsx` (isFirstLoad ref) จาก session ก่อน
+4. **My Queue**: ไม่มีปุ่มดำเนินการ ส่ง Draft / ขอ Rebrief ใน JobCard
+
+🔧 **Fix:**
+1. **backend/api-server/src/routes/jobs.js**:
+   - เพิ่ม `import NotificationService from '../services/notificationService.js'`
+   - สร้าง instance `const notificationService = new NotificationService()`
+   - เพิ่ม `'approved'` ใน `allowedStatuses` ของทั้ง submit-draft และ rebrief endpoints
+
+2. **frontend/src/modules/features/assignee/pages/MyQueue.jsx**:
+   - เพิ่ม imports: `DraftSubmitModal`, `httpClient`, `Swal`, `PencilSquareIcon`, `ArrowPathIcon`
+   - เพิ่ม state: `showDraftModal`, `showRebriefModal`, `selectedJob`, `rebriefReason`
+   - เพิ่ม handlers: `handleOpenDraftModal`, `handleOpenRebriefModal`, `handleRebrief`
+   - เพิ่ม `DraftSubmitModal` component และ Rebrief Modal ใน JSX
+   - ส่ง `onOpenDraftModal` และ `onOpenRebriefModal` props ให้ทุก JobCard
+   - แก้ไข `JobCard` component ให้รับ props ใหม่และแสดงปุ่ม "ส่ง Draft" + "ขอ Rebrief" สำหรับสถานะ in_progress
+
+📁 **Files Changed:**
+- `backend/api-server/src/routes/jobs.js` — import NotificationService + เพิ่ม approved ใน allowedStatuses
+- `frontend/src/modules/features/assignee/pages/MyQueue.jsx` — เพิ่มปุ่มดำเนินการ + modals
+
+</details>
 
 ## Mar 2, 2026 - Show Approval Date and Comments in History Tab
 

@@ -18,11 +18,13 @@ import chainService from '../services/chainService.js';
 import jobChainService from '../services/jobChainService.js';
 import * as workingHoursHelper from '../utils/workingHoursHelper.js';
 import EmailService from '../services/emailService.js';
+import NotificationService from '../services/notificationService.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
 const approvalService = new ApprovalService();
 const jobService = new JobService();
+const notificationService = new NotificationService();
 
 const router = express.Router();
 
@@ -3701,7 +3703,13 @@ router.post('/:id/submit-draft', async (req, res) => {
       where: { id: jobId },
       include: {
         requester: { select: { id: true, email: true, firstName: true, lastName: true } },
-        assignee: { select: { id: true, email: true, firstName: true, lastName: true } }
+        assignee: { select: { id: true, email: true, firstName: true, lastName: true } },
+        approvals: {
+          select: {
+            approverId: true,
+            approver: { select: { id: true, email: true, firstName: true, lastName: true } }
+          }
+        }
       }
     });
 
@@ -3715,7 +3723,7 @@ router.post('/:id/submit-draft', async (req, res) => {
     }
 
     // Check status
-    const allowedStatuses = ['assigned', 'in_progress', 'correction', 'rework', 'returned', 'draft_review'];
+    const allowedStatuses = ['approved', 'assigned', 'in_progress', 'correction', 'rework', 'returned', 'draft_review'];
     if (!allowedStatuses.includes(job.status)) {
       return res.status(400).json({
         success: false,
@@ -3726,14 +3734,15 @@ router.post('/:id/submit-draft', async (req, res) => {
     // Prepare draft files
     const draftFiles = link ? [{ name: 'Draft Link', url: link, submittedAt: new Date() }] : [];
 
-    // Update job
+    // Update job (handle null draftCount)
+    const currentDraftCount = job.draftCount || 0;
     const updatedJob = await prisma.job.update({
       where: { id: jobId },
       data: {
         status: 'draft_review',
         draftFiles: draftFiles,
         draftSubmittedAt: new Date(),
-        draftCount: { increment: 1 }
+        draftCount: currentDraftCount + 1
       }
     });
 
@@ -3743,23 +3752,19 @@ router.post('/:id/submit-draft', async (req, res) => {
         tenantId,
         jobId,
         userId,
-        action: 'draft_submitted',
-        message: `ส่ง Draft ครั้งที่ ${updatedJob.draftCount}${note ? ': ' + note : ''}`,
-        detail: { link, note, draftCount: updatedJob.draftCount }
+        activityType: 'draft_submitted',
+        description: `ส่ง Draft ครั้งที่ ${updatedJob.draftCount}${note ? ': ' + note : ''}`,
+        metadata: { link, note, draftCount: updatedJob.draftCount }
       }
     });
 
-    // Get approvers from flowSnapshot
+    // Get approvers from Approval table
     const approverIds = [];
-    if (job.flowSnapshot && job.flowSnapshot.levels) {
-      job.flowSnapshot.levels.forEach(level => {
-        if (level.approvers) {
-          level.approvers.forEach(approver => {
-            const approverId = approver.userId || approver.id;
-            if (approverId && !approverIds.includes(approverId)) {
-              approverIds.push(approverId);
-            }
-          });
+    if (job.approvals && job.approvals.length > 0) {
+      job.approvals.forEach(approval => {
+        const approverId = approval.approverId;
+        if (approverId && !approverIds.includes(approverId)) {
+          approverIds.push(approverId);
         }
       });
     }
@@ -3844,11 +3849,12 @@ router.post('/:id/submit-draft', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('[Jobs] Submit draft error:', error);
+    console.error('[Jobs] Submit draft error:', error.message, error.stack);
     res.status(500).json({
       success: false,
       error: 'SUBMIT_DRAFT_FAILED',
-      message: 'ไม่สามารถส่ง draft ได้'
+      message: 'ไม่สามารถส่ง draft ได้',
+      detail: error.message
     });
   }
 });
@@ -3895,7 +3901,7 @@ router.post('/:id/rebrief', async (req, res) => {
     }
 
     // Check status
-    const allowedStatuses = ['assigned', 'in_progress', 'correction', 'rework', 'returned', 'rebrief_submitted'];
+    const allowedStatuses = ['approved', 'assigned', 'in_progress', 'correction', 'rework', 'returned', 'rebrief_submitted'];
     if (!allowedStatuses.includes(job.status)) {
       return res.status(400).json({
         success: false,
@@ -3903,14 +3909,15 @@ router.post('/:id/rebrief', async (req, res) => {
       });
     }
 
-    // Update job
+    // Update job (handle null rebriefCount)
+    const currentRebriefCount = job.rebriefCount || 0;
     const updatedJob = await prisma.job.update({
       where: { id: jobId },
       data: {
         status: 'pending_rebrief',
         rebriefReason: reason.trim(),
         rebriefAt: new Date(),
-        rebriefCount: { increment: 1 }
+        rebriefCount: currentRebriefCount + 1
       }
     });
 
@@ -3920,9 +3927,9 @@ router.post('/:id/rebrief', async (req, res) => {
         tenantId,
         jobId,
         userId,
-        action: 'rebrief_requested',
-        message: `ขอ Rebrief ครั้งที่ ${updatedJob.rebriefCount}: ${reason.trim()}`,
-        detail: { reason: reason.trim(), rebriefCount: updatedJob.rebriefCount }
+        activityType: 'rebrief_requested',
+        description: `ขอ Rebrief ครั้งที่ ${updatedJob.rebriefCount}: ${reason.trim()}`,
+        metadata: { reason: reason.trim(), rebriefCount: updatedJob.rebriefCount }
       }
     });
 

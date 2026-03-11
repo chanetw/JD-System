@@ -8,7 +8,12 @@ const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
     const isAdmin = currentUser?.roles?.some(r => (typeof r === 'string' ? r : r?.name)?.toLowerCase() === 'admin') || currentUser?.roleName?.toLowerCase() === 'admin';
     const isManager = currentUser?.roles?.some(r => (typeof r === 'string' ? r : r?.name)?.toLowerCase() === 'manager') || currentUser?.roleName?.toLowerCase() === 'manager';
     const isAssignee = job.assigneeId === currentUser?.id;
-    const canReassign = isAdmin || isManager || isAssignee;
+    
+    // สถานะที่ไม่ควรให้เปลี่ยนผู้รับผิดชอบ
+    const lockedStatuses = ['draft_review', 'completed', 'pending_rebrief', 'rejected', 'pending_rejection', 'closed'];
+    const isStatusLocked = lockedStatuses.includes(job.status);
+    
+    const canReassign = (isAdmin || isManager || isAssignee) && !isStatusLocked;
 
     return (
         <div className="space-y-6">

@@ -24,10 +24,15 @@ import {
     FunnelIcon,
     ArrowsUpDownIcon,
     XCircleIcon,
-    CalendarDaysIcon
+    CalendarDaysIcon,
+    PencilSquareIcon,
+    ArrowPathIcon
 } from '@heroicons/react/24/outline';
 import { FormInput, FormSelect } from '@shared/components/FormInput';
 import TimelineView from '../components/TimelineView';
+import DraftSubmitModal from '@features/job-management/components/DraftSubmitModal';
+import httpClient from '@shared/services/httpClient';
+import Swal from 'sweetalert2';
 
 /**
  * แถบเมนูสถานะงาน (Tabs Configuration)
@@ -88,6 +93,17 @@ export default function MyQueue() {
     const [searchTerm, setSearchTerm] = useState('');
     const [sortBy, setSortBy] = useState('deadline'); // 'deadline', 'priority', 'newest'
     const [filterProject, setFilterProject] = useState('all');
+
+    // Draft & Rebrief Modal State
+    const [showDraftModal, setShowDraftModal] = useState(false);
+    const [showRebriefModal, setShowRebriefModal] = useState(false);
+    const [selectedJob, setSelectedJob] = useState(null);
+    const [rebriefReason, setRebriefReason] = useState('');
+
+    // Complete Modal State
+    const [showCompleteModal, setShowCompleteModal] = useState(false);
+    const [finalLink, setFinalLink] = useState('');
+    const [completeNote, setCompleteNote] = useState('');
 
     // Derived Data for Filters
     const projects = [...new Set(jobs.map(j => j.projectName))].filter(Boolean);
@@ -236,22 +252,105 @@ export default function MyQueue() {
     };
 
     /**
-     * ส่งงาน (Finish Job)
+     * เปิด Complete Modal
      */
-    const handleFinishJob = async (jobId, e) => {
-        e.stopPropagation();
-        const note = prompt('บันทึกเพิ่มเติม (ถ้ามี):', '');
-        if (note === null) return; // Cancelled
+    const handleOpenCompleteModal = (job, e) => {
+        if (e) e.stopPropagation();
+        setSelectedJob(job);
+        setFinalLink('');
+        setCompleteNote('');
+        setShowCompleteModal(true);
+    };
 
-        if (!confirm('ยืนยันเพื่อส่งงานหรือไม่?')) return;
-
+    /**
+     * ส่งงาน (Complete Job) - เหมือน JobDetail
+     */
+    const handleCompleteJob = async () => {
+        if (!finalLink.trim()) {
+            return Swal.fire({
+                icon: 'warning',
+                title: 'กรุณาระบุลิงก์ผลงาน',
+                text: 'จำเป็นต้องแนบลิงก์ผลงานก่อนส่งงาน',
+                confirmButtonColor: '#e11d48'
+            });
+        }
         try {
-            // เรียก API completeJob (Alias ที่เพิ่มใน jobService / mockApi)
-            await api.completeJob(jobId, { note, userId: user.id });
-            alert('ส่งงานเรียบร้อยแล้ว');
+            await api.completeJob(selectedJob.id, {
+                note: completeNote,
+                attachments: [{ name: 'Final Link', url: finalLink }]
+            });
+            await Swal.fire({
+                icon: 'success',
+                title: 'ส่งมอบงานสำเร็จ!',
+                text: 'ระบบได้แจ้งเตือนไปยังผู้สั่งงานเรียบร้อยแล้ว',
+                confirmButtonColor: '#e11d48'
+            });
+            setShowCompleteModal(false);
+            setFinalLink('');
+            setCompleteNote('');
+            setSelectedJob(null);
             fetchJobs();
-        } catch (error) {
-            alert('เกิดข้อผิดพลาด: ' + error.message);
+        } catch (err) {
+            Swal.fire({
+                icon: 'error',
+                title: 'ส่งงานไม่สำเร็จ',
+                text: err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์',
+                confirmButtonColor: '#e11d48'
+            });
+        }
+    };
+
+    /**
+     * เปิด Draft Submit Modal
+     */
+    const handleOpenDraftModal = (job, e) => {
+        if (e) e.stopPropagation();
+        setSelectedJob(job);
+        setShowDraftModal(true);
+    };
+
+    /**
+     * เปิด Rebrief Modal
+     */
+    const handleOpenRebriefModal = (job, e) => {
+        if (e) e.stopPropagation();
+        setSelectedJob(job);
+        setRebriefReason('');
+        setShowRebriefModal(true);
+    };
+
+    /**
+     * ส่ง Rebrief Request
+     */
+    const handleRebrief = async () => {
+        if (!rebriefReason.trim()) {
+            return Swal.fire({
+                icon: 'warning',
+                title: 'กรุณาระบุเหตุผล',
+                confirmButtonColor: '#e11d48'
+            });
+        }
+        try {
+            await httpClient.post(`/jobs/${selectedJob.id}/rebrief`, {
+                reason: rebriefReason.trim()
+            });
+            await Swal.fire({
+                icon: 'success',
+                title: 'ขอ Rebrief สำเร็จ',
+                text: 'ระบบได้แจ้งเตือนไปยัง Requester แล้ว',
+                confirmButtonColor: '#e11d48'
+            });
+            setShowRebriefModal(false);
+            setRebriefReason('');
+            setSelectedJob(null);
+            fetchJobs();
+        } catch (err) {
+            Swal.fire({
+                icon: 'error',
+                title: 'ขอ Rebrief ไม่สำเร็จ',
+                text: err.response?.data?.message || err.message,
+                confirmButtonColor: '#e11d48'
+            });
         }
     };
 
@@ -547,7 +646,7 @@ export default function MyQueue() {
                                         <h3 className="text-sm font-bold text-red-700 uppercase tracking-wide">งานด่วน ({urgentJobs.length})</h3>
                                     </div>
                                     <div className="grid gap-3">
-                                        {urgentJobs.map((job) => <JobCard key={job.id} job={job} activeTab={activeTab} onView={handleViewDetail} onStart={handleStartJob} onFinish={handleFinishJob} renderSLAText={renderSLAText} renderSLABar={renderSLABar} renderDateInfo={renderDateInfo} getHealthBorderColor={getHealthBorderColor} />)}
+                                        {urgentJobs.map((job) => <JobCard key={job.id} job={job} activeTab={activeTab} onView={handleViewDetail} onStart={handleStartJob} onOpenCompleteModal={handleOpenCompleteModal} onOpenDraftModal={handleOpenDraftModal} onOpenRebriefModal={handleOpenRebriefModal} renderSLAText={renderSLAText} renderSLABar={renderSLABar} renderDateInfo={renderDateInfo} getHealthBorderColor={getHealthBorderColor} />)}
                                     </div>
                                 </div>
                             )}
@@ -560,7 +659,7 @@ export default function MyQueue() {
                                         <h3 className="text-sm font-bold text-orange-600 uppercase tracking-wide">ต้องดำเนินการ / ใกล้เลย SLA ({riskJobs.length})</h3>
                                     </div>
                                     <div className="grid gap-3">
-                                        {riskJobs.map((job) => <JobCard key={job.id} job={job} activeTab={activeTab} onView={handleViewDetail} onStart={handleStartJob} onFinish={handleFinishJob} renderSLAText={renderSLAText} renderSLABar={renderSLABar} renderDateInfo={renderDateInfo} getHealthBorderColor={getHealthBorderColor} />)}
+                                        {riskJobs.map((job) => <JobCard key={job.id} job={job} activeTab={activeTab} onView={handleViewDetail} onStart={handleStartJob} onOpenCompleteModal={handleOpenCompleteModal} onOpenDraftModal={handleOpenDraftModal} onOpenRebriefModal={handleOpenRebriefModal} renderSLAText={renderSLAText} renderSLABar={renderSLABar} renderDateInfo={renderDateInfo} getHealthBorderColor={getHealthBorderColor} />)}
                                     </div>
                                 </div>
                             )}
@@ -575,12 +674,84 @@ export default function MyQueue() {
                                         </div>
                                     )}
                                     <div className="grid gap-3">
-                                        {normalJobs.map((job) => <JobCard key={job.id} job={job} activeTab={activeTab} onView={handleViewDetail} onStart={handleStartJob} onFinish={handleFinishJob} renderSLAText={renderSLAText} renderSLABar={renderSLABar} renderDateInfo={renderDateInfo} getHealthBorderColor={getHealthBorderColor} />)}
+                                        {normalJobs.map((job) => <JobCard key={job.id} job={job} activeTab={activeTab} onView={handleViewDetail} onStart={handleStartJob} onOpenCompleteModal={handleOpenCompleteModal} onOpenDraftModal={handleOpenDraftModal} onOpenRebriefModal={handleOpenRebriefModal} renderSLAText={renderSLAText} renderSLABar={renderSLABar} renderDateInfo={renderDateInfo} getHealthBorderColor={getHealthBorderColor} />)}
                                     </div>
                                 </div>
                             )}
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Draft Submit Modal */}
+            <DraftSubmitModal
+                isOpen={showDraftModal}
+                onClose={() => { setShowDraftModal(false); setSelectedJob(null); }}
+                job={selectedJob}
+                onSuccess={fetchJobs}
+            />
+
+            {/* Rebrief Modal */}
+            {showRebriefModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                        <h3 className="text-lg font-bold mb-4 text-orange-600">🔄 ขอข้อมูลเพิ่มเติม (Rebrief)</h3>
+                        <p className="text-sm text-gray-600 mb-4">
+                            ระบุเหตุผลที่ต้องการข้อมูลเพิ่มเติมจาก Requester
+                        </p>
+                        <label className="block mb-2 text-sm font-medium">
+                            เหตุผล <span className="text-red-500">*</span>
+                        </label>
+                        <textarea
+                            className="w-full border rounded p-2 mb-4"
+                            rows={4}
+                            value={rebriefReason}
+                            onChange={e => setRebriefReason(e.target.value)}
+                            placeholder="เช่น ข้อมูล brief ไม่ชัดเจน, ต้องการ reference เพิ่มเติม..."
+                        />
+                        <div className="flex gap-2 justify-end">
+                            <Button variant="ghost" onClick={() => {
+                                setShowRebriefModal(false);
+                                setRebriefReason('');
+                                setSelectedJob(null);
+                            }}>ยกเลิก</Button>
+                            <Button variant="primary" onClick={handleRebrief}>ส่งคำขอ</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Complete Modal */}
+            {showCompleteModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                        <h3 className="text-lg font-bold mb-4 text-green-600">ส่งงาน (Complete)</h3>
+                        <label className="block mb-2 text-sm font-medium">ลิงก์ผลงาน <span className="text-red-500">*</span></label>
+                        <input
+                            type="text"
+                            className="w-full border rounded p-2 mb-4"
+                            value={finalLink}
+                            onChange={e => setFinalLink(e.target.value)}
+                            placeholder="https://..."
+                        />
+                        <label className="block mb-2 text-sm font-medium">หมายเหตุ (ไม่บังคับ)</label>
+                        <textarea
+                            className="w-full border rounded p-2 mb-4"
+                            rows={3}
+                            value={completeNote}
+                            onChange={e => setCompleteNote(e.target.value)}
+                            placeholder="บันทึกเพิ่มเติม..."
+                        />
+                        <div className="flex gap-2 justify-end">
+                            <Button variant="ghost" onClick={() => {
+                                setShowCompleteModal(false);
+                                setFinalLink('');
+                                setCompleteNote('');
+                                setSelectedJob(null);
+                            }}>ยกเลิก</Button>
+                            <Button variant="primary" onClick={handleCompleteJob}>ส่งงาน</Button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
@@ -595,10 +766,14 @@ function FolderIcon(props) {
     );
 }
 
-function JobCard({ job, activeTab, onView, onStart, onFinish, renderSLAText, renderSLABar, renderDateInfo, getHealthBorderColor }) {
+function JobCard({ job, activeTab, onView, onStart, onOpenCompleteModal, onOpenDraftModal, onOpenRebriefModal, renderSLAText, renderSLABar, renderDateInfo, getHealthBorderColor }) {
     const isUrgent = job.priority?.toLowerCase() === 'urgent' && activeTab !== 'done';
     const isPredecessorPending = job.predecessorDjId && job.predecessorStatus &&
         !['completed', 'approved'].includes(job.predecessorStatus);
+
+    // สถานะที่แสดงปุ่มดำเนินการ (เหมือน JobActionPanel)
+    const actionStatuses = ['approved', 'assigned', 'in_progress', 'rework', 'correction', 'returned', 'draft_review'];
+    const canDoActions = actionStatuses.includes(job.status);
 
     return (
         <div
@@ -682,10 +857,10 @@ function JobCard({ job, activeTab, onView, onStart, onFinish, renderSLAText, ren
                             <PlayCircleIcon className="w-3.5 h-3.5" /> เริ่มงาน
                         </button>
                     )}
-                    {activeTab === 'in_progress' && (
+                    {activeTab === 'in_progress' && onOpenCompleteModal && (
                         <button
-                            onClick={(e) => onFinish(job.id, e)}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium rounded-lg shadow-sm transition-colors"
+                            onClick={(e) => onOpenCompleteModal(job, e)}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded-lg shadow-sm transition-colors"
                         >
                             <CheckCircleIcon className="w-3.5 h-3.5" /> ส่งงาน
                         </button>
@@ -697,6 +872,28 @@ function JobCard({ job, activeTab, onView, onStart, onFinish, renderSLAText, ren
                     )}
                 </div>
             </div>
+
+            {/* Action Buttons Row - ส่ง Draft / ขอ Rebrief (เหมือนกล่องดำเนินการใน JobDetail) */}
+            {canDoActions && activeTab === 'in_progress' && (
+                <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
+                    {onOpenDraftModal && (
+                        <button
+                            onClick={(e) => onOpenDraftModal(job, e)}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded-lg shadow-sm transition-colors"
+                        >
+                            <PencilSquareIcon className="w-3.5 h-3.5" /> ส่ง Draft
+                        </button>
+                    )}
+                    {onOpenRebriefModal && (
+                        <button
+                            onClick={(e) => onOpenRebriefModal(job, e)}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-lg shadow-sm transition-colors"
+                        >
+                            <ArrowPathIcon className="w-3.5 h-3.5" /> ขอ Rebrief
+                        </button>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

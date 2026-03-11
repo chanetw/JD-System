@@ -13,12 +13,18 @@ const JobComments = ({ jobId, currentUser, isEmbedded = false }) => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState(null);
     const messagesEndRef = useRef(null);
+    const isFirstLoad = useRef(true);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
     useEffect(() => {
+        // ไม่ scroll เมื่อโหลดหน้าครั้งแรก scroll เฉพาะเมื่อมี comment ใหม่
+        if (isFirstLoad.current) {
+            isFirstLoad.current = false;
+            return;
+        }
         scrollToBottom();
     }, [comments]);
 

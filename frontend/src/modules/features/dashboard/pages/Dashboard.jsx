@@ -15,6 +15,7 @@ import api from '@shared/services/apiService';
 import httpClient from '@shared/services/httpClient';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
 import { hasAnyRole } from '@shared/utils/permission.utils';
+import DraftSubmitModal from '@features/job-management/components/DraftSubmitModal';
 
 // ============================================
 // Constants
@@ -62,7 +63,7 @@ const KPI_CONFIG = {
  * @component Dashboard
  * @description หน้า Dashboard หลัก
  */
-export default function Dashboard() {
+function Dashboard() {
     const { user } = useAuthStoreV2();
 
     // KPI Stats
@@ -82,6 +83,10 @@ export default function Dashboard() {
     const [viewMode, setViewMode] = useState('flat');          // 'flat' | 'parent' — View Mode Toggle
     const [expandedRows, setExpandedRows] = useState(new Set()); // Parent IDs ที่กางอยู่ (Parent View)
     const [sortMode, setSortMode] = useState('updatedAt');     // 'sla' | 'createdAt' | 'updatedAt'
+
+    // Draft Submit Modal state
+    const [showDraftModal, setShowDraftModal] = useState(false);
+    const [selectedJobForDraft, setSelectedJobForDraft] = useState(null); // Parent IDs ที่กางอยู่ (Parent View)
 
     // Drill-down Panel state (KPI Cards)
     const [activePanel, setActivePanel] = useState(null); // 'newToday' | 'dueToday' | 'overdue' | null
@@ -141,7 +146,14 @@ export default function Dashboard() {
                 const newJobs = Array.isArray(response.data.data) ? response.data.data : [];
                 const total = response.data.pagination?.total || 0;
                 const totalPages = response.data.pagination?.totalPages || 1;
-                setJobs(prev => append ? [...prev, ...newJobs] : newJobs);
+                setJobs(prev => {
+                    if (!append) return newJobs;
+                    // Deduplicate: ใช้ Map เพื่อป้องกัน duplicate key จาก pagination shift
+                    const merged = new Map();
+                    prev.forEach(j => merged.set(j.id, j));
+                    newJobs.forEach(j => merged.set(j.id, j));
+                    return Array.from(merged.values());
+                });
                 setQueuePage(pageNum);
                 setQueueTotal(total);
                 setQueueHasMore(pageNum < totalPages);
@@ -175,7 +187,13 @@ export default function Dashboard() {
             });
             if (response.data.success) {
                 const { jobs: newJobs, total, hasMore } = response.data.data;
-                setPanelJobs(prev => append ? [...prev, ...newJobs] : newJobs);
+                setPanelJobs(prev => {
+                    if (!append) return newJobs;
+                    const merged = new Map();
+                    prev.forEach(j => merged.set(j.id, j));
+                    newJobs.forEach(j => merged.set(j.id, j));
+                    return Array.from(merged.values());
+                });
                 setPanelTotal(total);
                 setPanelHasMore(hasMore);
                 setPanelPage(page);
@@ -255,6 +273,19 @@ export default function Dashboard() {
             return newSet;
         });
     }, []);
+
+    // Handler สำหรับเปิด Draft Modal
+    const handleOpenDraftModal = useCallback((job) => {
+        setSelectedJobForDraft(job);
+        setShowDraftModal(true);
+    }, []);
+
+    // Handler เมื่อส่ง Draft สำเร็จ
+    const handleDraftSuccess = useCallback(() => {
+        // Reload queue jobs
+        setQueuePage(1);
+        fetchQueueJobs(false);
+    }, [fetchQueueJobs]);
 
     const calculateParentApprovalStatus = useCallback((children) => {
         if (!children || children.length === 0) return null;
@@ -808,7 +839,7 @@ export default function Dashboard() {
                                 filteredJobs.map(job => {
                                     // === FLAT VIEW: แสดงแบบธรรมดา (เดิม) ===
                                     if (viewMode === 'flat') {
-                                        return <JobRow key={job.id} job={job} />;
+                                        return <JobRow key={job.id} job={job} onOpenDraftModal={handleOpenDraftModal} />;
                                     }
                                     
                                     // === PARENT VIEW: แสดงแบบ Accordion (ใหม่) ===
@@ -820,6 +851,7 @@ export default function Dashboard() {
                                                 hasChildren={job.children && job.children.length > 0}
                                                 isExpanded={expandedRows.has(job.id)}
                                                 onToggleExpand={() => toggleRowExpansion(job.id)}
+                                                onOpenDraftModal={handleOpenDraftModal}
                                             />
                                             
                                             {/* Child Jobs Accordion — แสดงเฉพาะ Parent View */}
@@ -857,6 +889,7 @@ export default function Dashboard() {
                                                             job={child}
                                                             isChild={true}
                                                             childInfo={jobChains.get(child.id)}
+                                                            onOpenDraftModal={handleOpenDraftModal}
                                                         />
                                                     ));
                                                 })()
@@ -883,7 +916,15 @@ export default function Dashboard() {
                     </div>
                 </div>
             </div>
-        </div >
+
+            {/* Draft Submit Modal */}
+            <DraftSubmitModal
+                isOpen={showDraftModal}
+                onClose={() => setShowDraftModal(false)}
+                job={selectedJobForDraft}
+                onSuccess={handleDraftSuccess}
+            />
+        </div>
     );
 }
 
@@ -1071,7 +1112,8 @@ function JobRow({
     isExpanded = false,
     onToggleExpand = null,
     isChild = false,
-    childInfo = null
+    childInfo = null,
+    onOpenDraftModal = null
 }) {
     const statusColors = {
         draft: 'bg-gray-100 text-gray-700',
@@ -1193,9 +1235,20 @@ function JobRow({
                     : '-'}
             </td>
             <td className="px-4 py-3">
-                <Link to={`/jobs/${job.id}`} className="text-sm text-rose-600 hover:text-rose-700 font-medium">
-                    View
-                </Link>
+                <div className="flex items-center gap-2">
+                    <Link to={`/jobs/${job.id}`} className="text-sm text-rose-600 hover:text-rose-700 font-medium">
+                        View
+                    </Link>
+                    {/* แสดงปุ่ม ส่ง Draft เฉพาะงานที่อยู่ในสถานะ assigned หรือ in_progress */}
+                    {(job.status === 'assigned' || job.status === 'in_progress') && onOpenDraftModal && (
+                        <button
+                            onClick={() => onOpenDraftModal(job)}
+                            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                        >
+                            ส่ง Draft
+                        </button>
+                    )}
+                </div>
             </td>
         </tr>
     );
@@ -1285,3 +1338,5 @@ function ChevronRightIcon({ className = 'w-4 h-4' }) {
         </svg>
     );
 }
+
+export default Dashboard;

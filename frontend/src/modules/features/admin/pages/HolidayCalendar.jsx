@@ -530,7 +530,7 @@ export default function AdminHoliday() {
             {/* Import Result Modal */}
             {importResult && (
                 <div className="fixed inset-0 flex items-center justify-center z-[70]">
-                    <div className="absolute inset-0 bg-black/20" onClick={() => setImportResult(null)}></div>
+                    <div className="absolute inset-0 bg-black/50" onClick={() => setImportResult(null)}></div>
                     <div className="bg-white rounded-xl shadow-2xl border border-gray-100 max-w-md w-full p-6 space-y-4 relative z-10 animate-scaleIn">
                         <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto">
                             <ArrowUpTrayIcon className="w-6 h-6 text-green-600" />

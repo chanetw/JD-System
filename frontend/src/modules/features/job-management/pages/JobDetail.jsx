@@ -47,6 +47,7 @@ import ExtendDueDateModal from '../components/ExtendDueDateModal';
 import JobChainStatus from '../components/JobChainStatus';
 import ParentJobChildrenList from '../components/ParentJobChildrenList';
 import RejectionRequestModal from '../components/RejectionRequestModal';
+import DraftSubmitModal from '../components/DraftSubmitModal';
 import RejectionApprovalCard from '../components/RejectionApprovalCard';
 import JobItems from '../components/JobItems';
 import JobAssigneeInfo from '../components/JobAssigneeInfo';
@@ -85,8 +86,6 @@ export default function JobDetail() {
     
     // Draft Submit States
     const [showDraftModal, setShowDraftModal] = useState(false);
-    const [draftLink, setDraftLink] = useState('');
-    const [draftNote, setDraftNote] = useState('');
     
     // Rebrief States
     const [showRebriefModal, setShowRebriefModal] = useState(false);
@@ -192,14 +191,20 @@ export default function JobDetail() {
                 }
 
                 // Level logic
+                // สถานะที่ยังอยู่ในขั้นตอนอนุมัติ → currentLevel ตามจริง
+                // สถานะอื่นทั้งหมด (หลัง approved) → currentLevel = 999 (อนุมัติครบแล้ว)
                 if (jobData.status === 'pending_approval') {
                     jobData.currentLevel = 1;
                 } else if (jobData.status && jobData.status.startsWith('pending_level_')) {
                     jobData.currentLevel = parseInt(jobData.status.split('_')[2]);
-                } else if (['approved', 'assigned', 'in_progress', 'pending_close', 'completed', 'closed'].includes(jobData.status)) {
-                    jobData.currentLevel = 999;
-                } else {
+                } else if (jobData.status === 'draft' || jobData.status === 'pending_dependency') {
                     jobData.currentLevel = 0;
+                } else {
+                    // approved, assigned, in_progress, pending_close, completed, closed,
+                    // pending_rebrief, rebrief_submitted, correction, rework, returned,
+                    // draft_review, pending_rejection, assignee_rejected, cancelled ฯลฯ
+                    // ทั้งหมดถือว่าผ่านอนุมัติแล้ว → Approval Chain แสดง "อนุมัติครบ"
+                    jobData.currentLevel = 999;
                 }
 
                 setJob(jobData);
@@ -270,6 +275,13 @@ export default function JobDetail() {
                 });
                 setShowReassignModal(false);
                 setReassignReason('');
+                setSelectedAssignee('');
+                // ปิดกล่องการดำเนินงานของผู้รับงานเก่า เพราะงานไม่ใช่ของตัวเองแล้ว
+                setShowCompleteModal(false);
+                setShowRejectModal(false);
+                setShowAssigneeRejectModal(false);
+                setShowDraftModal(false);
+                setShowRebriefModal(false);
                 loadJob();
             } else {
                 Swal.fire({
@@ -545,31 +557,6 @@ export default function JobDetail() {
     // ============================================
     // Draft Submit & Rebrief Handlers
     // ============================================
-    const handleSubmitDraft = async () => {
-        try {
-            await httpClient.post(`/jobs/${job.id}/submit-draft`, {
-                link: draftLink.trim() || undefined,
-                note: draftNote.trim() || undefined
-            });
-            await Swal.fire({
-                icon: 'success',
-                title: 'ส่ง Draft สำเร็จ',
-                text: 'ระบบได้แจ้งเตือนไปยัง Requester และ Approver แล้ว',
-                confirmButtonColor: '#e11d48'
-            });
-            setShowDraftModal(false);
-            setDraftLink('');
-            setDraftNote('');
-            loadJob();
-        } catch (err) {
-            Swal.fire({
-                icon: 'error',
-                title: 'ส่ง Draft ไม่สำเร็จ',
-                text: err.response?.data?.message || err.message,
-                confirmButtonColor: '#e11d48'
-            });
-        }
-    };
 
     const handleRebrief = async () => {
         if (!rebriefReason.trim()) {
@@ -884,7 +871,7 @@ export default function JobDetail() {
             {/* Modals */}
             {/* Reject Modal */}
             {showRejectModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg p-6 max-w-md w-full">
                         <h3 className="text-lg font-bold mb-4 text-red-600">ปฏิเสธงาน</h3>
                         <textarea
@@ -904,7 +891,7 @@ export default function JobDetail() {
 
             {/* Complete Modal */}
             {showCompleteModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg p-6 max-w-md w-full">
                         <h3 className="text-lg font-bold mb-4 text-green-600">ส่งงาน (Complete)</h3>
                         <label className="block mb-2 text-sm">ลิงก์ผลงาน (Final Link)*</label>
@@ -932,7 +919,7 @@ export default function JobDetail() {
 
             {/* Assignee Reject Modal */}
             {showAssigneeRejectModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg p-6 max-w-md w-full">
                         <h3 className="text-lg font-bold mb-4 text-red-600">ปฏิเสธงาน (Assignee)</h3>
                         <p className="text-sm text-gray-600 mb-3">
@@ -955,7 +942,7 @@ export default function JobDetail() {
 
             {/* Deny Rejection Modal */}
             {showDenyRejectionModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg p-6 max-w-md w-full">
                         <h3 className="text-lg font-bold mb-4 text-rose-600">ไม่อนุมัติคำขอปฏิเสธงาน</h3>
                         <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 mb-4">
@@ -992,7 +979,7 @@ export default function JobDetail() {
 
             {/* Confirm Assignee Rejection Modal with CC Emails */}
             {showConfirmRejectionModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
                         <h3 className="text-lg font-bold mb-4 text-red-600">ยืนยันการปฏิเสธงาน</h3>
 
@@ -1115,7 +1102,7 @@ export default function JobDetail() {
 
             {/* Reassign Modal */}
             {showReassignModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg p-6 max-w-md w-full">
                         <h3 className="text-lg font-bold mb-4">เปลี่ยนผู้รับผิดชอบ</h3>
                         <select
@@ -1124,9 +1111,15 @@ export default function JobDetail() {
                             onChange={e => setSelectedAssignee(e.target.value)}
                         >
                             <option value="">เลือกผู้รับงาน...</option>
-                            {users.map(u => (
-                                <option key={u.id} value={u.id}>{u.name}</option>
-                            ))}
+                            {users.map(u => {
+                                // กรองออกผู้รับผิดชอบปัจจุบัน ไม่ให้เลือกตัวเอง
+                                if (u.id === job?.assigneeId) {
+                                    return null;
+                                }
+                                return (
+                                    <option key={u.id} value={u.id}>{u.name}</option>
+                                );
+                            })}
                         </select>
                         <textarea
                             className="w-full border rounded p-2 mb-4"
@@ -1170,44 +1163,16 @@ export default function JobDetail() {
             />
 
             {/* Draft Submit Modal */}
-            {showDraftModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg p-6 max-w-md w-full">
-                        <h3 className="text-lg font-bold mb-4 text-blue-600">📝 ส่ง Draft ให้ตรวจ</h3>
-                        <p className="text-sm text-gray-600 mb-4">
-                            ส่ง draft ให้ Requester และ Approver ตรวจสอบก่อนส่งงานจริง
-                        </p>
-                        <label className="block mb-2 text-sm font-medium">ลิงก์ Draft (ไม่บังคับ)</label>
-                        <input
-                            type="text"
-                            className="w-full border rounded p-2 mb-4"
-                            value={draftLink}
-                            onChange={e => setDraftLink(e.target.value)}
-                            placeholder="https://..."
-                        />
-                        <label className="block mb-2 text-sm font-medium">หมายเหตุ (ไม่บังคับ)</label>
-                        <textarea
-                            className="w-full border rounded p-2 mb-4"
-                            rows={3}
-                            value={draftNote}
-                            onChange={e => setDraftNote(e.target.value)}
-                            placeholder="เช่น กรุณาตรวจสอบ concept และสี..."
-                        />
-                        <div className="flex gap-2 justify-end">
-                            <Button variant="ghost" onClick={() => {
-                                setShowDraftModal(false);
-                                setDraftLink('');
-                                setDraftNote('');
-                            }}>ยกเลิก</Button>
-                            <Button variant="primary" onClick={handleSubmitDraft}>ส่ง Draft</Button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <DraftSubmitModal
+                isOpen={showDraftModal}
+                onClose={() => setShowDraftModal(false)}
+                job={job}
+                onSuccess={loadJob}
+            />
 
             {/* Rebrief Modal */}
             {showRebriefModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg p-6 max-w-md w-full">
                         <h3 className="text-lg font-bold mb-4 text-orange-600">🔄 ขอข้อมูลเพิ่มเติม (Rebrief)</h3>
                         <p className="text-sm text-gray-600 mb-4">
@@ -1236,7 +1201,7 @@ export default function JobDetail() {
 
             {/* Submit Rebrief Modal (Requester) */}
             {showSubmitRebriefModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
                         <h3 className="text-lg font-bold mb-4 text-orange-600">📤 ส่งข้อมูลเพิ่มเติม</h3>
                         

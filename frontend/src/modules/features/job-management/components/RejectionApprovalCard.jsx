@@ -200,7 +200,7 @@ const RejectionApprovalCard = ({ rejectionRequest, onApprove, onDeny }) => {
           <div className="flex min-h-screen items-center justify-center p-4 text-center sm:p-0">
             {/* Backdrop */}
             <div
-              className="fixed inset-0 bg-gray-900 bg-opacity-75 transition-opacity"
+              className="fixed inset-0 bg-black/50 transition-opacity"
               onClick={() => !isDenying && setShowDenyModal(false)}
             />
 

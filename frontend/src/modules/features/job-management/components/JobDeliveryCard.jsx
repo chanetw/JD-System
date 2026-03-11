@@ -73,7 +73,11 @@ export default function JobDeliveryCard({ job }) {
                             {finalFiles.map((file, index) => (
                                 <a
                                     key={index}
-                                    href={file.url}
+                                    href={
+                                        file.url.startsWith('http://') || file.url.startsWith('https://')
+                                            ? file.url
+                                            : `https://${file.url}`
+                                    }
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 hover:border-emerald-300 hover:shadow-sm transition-all group"
