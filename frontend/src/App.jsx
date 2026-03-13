@@ -11,7 +11,7 @@
  */
 
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { useEffect, Suspense, lazy } from 'react';
+import React, { useEffect, Suspense, lazy } from 'react';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 
 // Core Modules (loaded immediately)
@@ -53,6 +53,38 @@ const PageLoadingFallback = () => (
     </div>
   </div>
 );
+
+/**
+ * Error Boundary - จับ runtime error แทน Suspense spinner ที่ซ่อน error
+ */
+class PageErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('[PageErrorBoundary]', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center max-w-md">
+            <div className="text-4xl mb-3">⚠️</div>
+            <h2 className="text-lg font-bold text-red-700 mb-2">เกิดข้อผิดพลาด</h2>
+            <p className="text-sm text-gray-600 mb-3">{this.state.error?.message || 'Unknown error'}</p>
+            <button onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
+              className="px-4 py-2 bg-rose-600 text-white rounded-lg text-sm hover:bg-rose-700">โหลดใหม่</button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 /**
  * @component App
@@ -136,15 +168,17 @@ function App() {
               key={`${route.moduleName}-${index}`}
               path={route.path}
               element={
-                <Suspense fallback={<PageLoadingFallback />}>
-                  {route.roles ? (
-                    <RoleProtectedRoute allowedRoles={route.roles}>
-                      {route.element}
-                    </RoleProtectedRoute>
-                  ) : (
-                    route.element
-                  )}
-                </Suspense>
+                <PageErrorBoundary>
+                  <Suspense fallback={<PageLoadingFallback />}>
+                    {route.roles ? (
+                      <RoleProtectedRoute allowedRoles={route.roles}>
+                        {route.element}
+                      </RoleProtectedRoute>
+                    ) : (
+                      route.element
+                    )}
+                  </Suspense>
+                </PageErrorBoundary>
               }
             />
           ))}

@@ -42,6 +42,11 @@ export class NotificationService {
         }
       });
 
+      // Auto-cleanup: เก็บแค่ 10 รายการล่าสุดต่อ user
+      this.cleanupNotifications(userId).catch(err =>
+        console.error('[NotificationService] Cleanup failed (non-blocking):', err)
+      );
+
       return {
         success: true,
         data: notification
@@ -333,6 +338,45 @@ export class NotificationService {
         error: 'MARK_AS_READ_FAILED',
         message: 'ไม่สามารถทำเครื่องหมายว่าอ่านแล้วได้'
       };
+    }
+  }
+  /**
+   * Auto-cleanup: เก็บแค่ maxKeep รายการล่าสุดต่อ user
+   * ลบอันที่อ่านแล้ว (เก่าสุด) ก่อน ถ้ายังเกินให้ลบ unread เก่าสุด
+   * 
+   * @param {number} userId - ID ของผู้ใช้
+   * @param {number} maxKeep - จำนวนสูงสุดที่เก็บ (default: 10)
+   */
+  async cleanupNotifications(userId, maxKeep = 10) {
+    try {
+      const total = await this.prisma.notification.count({
+        where: { userId }
+      });
+
+      if (total <= maxKeep) return;
+
+      // ดึง notifications เรียงตาม: อ่านแล้วก่อน (isRead DESC), เก่าก่อน (createdAt ASC)
+      const allNotifications = await this.prisma.notification.findMany({
+        where: { userId },
+        orderBy: [
+          { isRead: 'desc' },   // อ่านแล้ว (true) มาก่อน → ลบก่อน
+          { createdAt: 'asc' }  // เก่าก่อน → ลบก่อน
+        ],
+        select: { id: true }
+      });
+
+      // ลบส่วนที่เกิน maxKeep (เอาตั้งแต่ต้น list = อ่านแล้ว+เก่าสุด)
+      const toDelete = allNotifications.slice(0, total - maxKeep);
+      if (toDelete.length > 0) {
+        await this.prisma.notification.deleteMany({
+          where: {
+            id: { in: toDelete.map(n => n.id) }
+          }
+        });
+        console.log(`[NotificationService] Cleanup: Deleted ${toDelete.length} old notifications for user ${userId}`);
+      }
+    } catch (error) {
+      console.error('[NotificationService] Cleanup notifications failed:', error);
     }
   }
 }

@@ -59,6 +59,7 @@ import v2Routes from './v2/index.js';
 
 // Cron Services
 import rejectionAutoCloseCron from './services/rejectionAutoCloseCron.js';
+import jobReminderCron from './services/jobReminderCron.js';
 
 // ==========================================
 // ขั้นตอนที่ 1: ตั้งค่า Environment Variables
@@ -339,6 +340,12 @@ server.listen(PORT, () => {
   } catch (cronErr) {
     console.error('✗ Failed to start rejection auto-close cron:', cronErr);
   }
+  try {
+    jobReminderCron.start();
+    console.log('✓ Job reminder cron started');
+  } catch (cronErr) {
+    console.error('✗ Failed to start job reminder cron:', cronErr);
+  }
 });
 
 // ==========================================
@@ -358,6 +365,12 @@ process.on('SIGTERM', async () => {
     console.log('✓ Rejection auto-close cron stopped');
   } catch (cronErr) {
     console.error('✗ Failed to stop rejection auto-close cron:', cronErr);
+  }
+  try {
+    jobReminderCron.stop();
+    console.log('✓ Job reminder cron stopped');
+  } catch (cronErr) {
+    console.error('✗ Failed to stop job reminder cron:', cronErr);
   }
 
   // ปิด database connection
@@ -381,6 +394,12 @@ process.on('SIGINT', async () => {
     console.log('✓ Rejection auto-close cron stopped');
   } catch (cronErr) {
     console.error('✗ Failed to stop rejection auto-close cron:', cronErr);
+  }
+  try {
+    jobReminderCron.stop();
+    console.log('✓ Job reminder cron stopped');
+  } catch (cronErr) {
+    console.error('✗ Failed to stop job reminder cron:', cronErr);
   }
 
   // ปิด database connection

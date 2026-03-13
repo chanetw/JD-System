@@ -384,8 +384,8 @@ const JobActionPanel = ({
     const renderRebriefPanel = () => {
         if (job.status !== 'pending_rebrief') return null;
 
-        // Check if current user is requester
-        const isRequester = job.requesterId === currentUser?.id;
+        // Check if current user is requester (String comparison เพื่อป้องกัน type mismatch)
+        const isRequester = String(job.requesterId) === String(currentUser?.id);
         if (!isRequester && !isAdmin) return null;
 
         return (

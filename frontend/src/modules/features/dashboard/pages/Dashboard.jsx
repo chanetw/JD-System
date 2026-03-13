@@ -16,6 +16,7 @@ import httpClient from '@shared/services/httpClient';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
 import { hasAnyRole } from '@shared/utils/permission.utils';
 import DraftSubmitModal from '@features/job-management/components/DraftSubmitModal';
+import { WORK_STATUS_LABEL, STATUS_COLOR, matchesStatusFilter } from '@shared/constants/jobStatus';
 
 // ============================================
 // Constants
@@ -454,8 +455,8 @@ function Dashboard() {
             .filter(job => {
                 if (statusFilter) {
                     if (job.isParent && job.children?.length > 0) {
-                        if (job.calculatedJobStatus !== statusFilter) return false;
-                    } else if (job.status !== statusFilter) {
+                        if (!matchesStatusFilter(job.calculatedJobStatus, statusFilter)) return false;
+                    } else if (!matchesStatusFilter(job.status, statusFilter)) {
                         return false;
                     }
                 }
@@ -494,7 +495,7 @@ function Dashboard() {
             result = result.filter(job => !job.isParent);
 
             if (statusFilter && result.length > 0) {
-                result = result.filter(j => j.status === statusFilter);
+                result = result.filter(j => matchesStatusFilter(j.status, statusFilter));
             }
             if (assigneeFilter && result.length > 0) {
                 result = result.filter(j => getAssigneeName(j) === assigneeFilter);
@@ -548,39 +549,6 @@ function Dashboard() {
     }).flat().filter(Boolean))].sort();
 
     // รายการ status ที่มีในรายการงาน (unique)
-    const STATUS_LABELS = {
-        pending_approval: 'Pending Approval',
-        approved: 'Approved',
-        assigned: 'Assigned',
-        in_progress: 'In Progress',
-        draft_review: 'Draft Review',
-        completed: 'Completed',
-        rejected: 'Rejected',
-        rejected_by_assignee: 'Rejected (Assignee)',
-        correction: 'Correction',
-        rework: 'Rework',
-        returned: 'Returned',
-        pending_dependency: 'Pending Dependency',
-        pending_rebrief: 'Pending Rebrief',
-        rebrief_submitted: 'Rebrief Submitted',
-    };
-    // สีของแต่ละ status (text + background) เหมือนกับ badge
-    const STATUS_COLORS = {
-        pending_approval: 'bg-amber-100 text-amber-700',
-        approved: 'bg-green-100 text-green-700',
-        assigned: 'bg-cyan-100 text-cyan-700',
-        in_progress: 'bg-blue-100 text-blue-700',
-        draft_review: 'bg-purple-100 text-purple-700',
-        completed: 'bg-emerald-100 text-emerald-700',
-        rejected: 'bg-red-100 text-red-700',
-        rejected_by_assignee: 'bg-red-100 text-red-700',
-        correction: 'bg-orange-100 text-orange-700',
-        rework: 'bg-yellow-100 text-yellow-700',
-        returned: 'bg-gray-100 text-gray-700',
-        pending_dependency: 'bg-slate-100 text-slate-700',
-        pending_rebrief: 'bg-yellow-100 text-yellow-700',
-        rebrief_submitted: 'bg-indigo-100 text-indigo-700',
-    };
     const statusOptions = [...new Set(filterableJobs.map(j => {
         if (j.isParent && j.children?.length > 0) {
             return j.calculatedJobStatus;
@@ -789,9 +757,9 @@ function Dashboard() {
                                     onChange={e => setStatusFilter(e.target.value)}
                                     className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
                                 >
-                                    <option value="">Status</option>
+                                    <option value="">สถานะ</option>
                                     {statusOptions.map(s => (
-                                        <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>
+                                        <option key={s} value={s}>{WORK_STATUS_LABEL[s] || s}</option>
                                     ))}
                                 </select>
                             )}
@@ -1015,31 +983,6 @@ function StatCard({ title, subtitle, value, icon, color, active = false, onClick
  * @param {Object} job - ข้อมูลงาน
  */
 function PanelJobRow({ job }) {
-    const STATUS_LABEL = {
-        draft: 'Draft',
-        pending_approval: 'Pending Approval',
-        approved: 'Approved',
-        assigned: 'Assigned',
-        in_progress: 'In Progress',
-        draft_review: 'Draft Review',
-        pending_rebrief: 'Pending Rebrief',
-        rebrief_submitted: 'Rebrief Submitted',
-        completed: 'Completed',
-        rejected: 'Rejected',
-        overdue: 'Overdue',
-    };
-    const STATUS_COLOR = {
-        draft: 'bg-gray-100 text-gray-600',
-        pending_approval: 'bg-amber-100 text-amber-700',
-        approved: 'bg-green-100 text-green-700',
-        assigned: 'bg-cyan-100 text-cyan-700',
-        in_progress: 'bg-blue-100 text-blue-700',
-        draft_review: 'bg-purple-100 text-purple-700',
-        pending_rebrief: 'bg-yellow-100 text-yellow-700',
-        rebrief_submitted: 'bg-indigo-100 text-indigo-700',
-        completed: 'bg-green-100 text-green-700',
-        rejected: 'bg-red-100 text-red-700',
-    };
 
     const formatDate = (d) =>
         d ? new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '-';
@@ -1058,7 +1001,7 @@ function PanelJobRow({ job }) {
             <td className="px-4 py-3 whitespace-nowrap text-gray-500">{job.jobType || '-'}</td>
             <td className="px-4 py-3 whitespace-nowrap">
                 <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLOR[job.status] || 'bg-gray-100 text-gray-600'}`}>
-                    {STATUS_LABEL[job.status] || job.status}
+                    {WORK_STATUS_LABEL[job.status] || job.status}
                 </span>
             </td>
             <td className="px-4 py-3 whitespace-nowrap">

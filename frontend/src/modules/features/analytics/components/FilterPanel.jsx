@@ -5,6 +5,7 @@
 
 import { useState } from 'react';
 import { Calendar, Filter, RotateCcw, ChevronDown, X } from 'lucide-react';
+import { ANALYTICS_FILTER_OPTIONS, WORK_STATUS_LABEL } from '@shared/constants/jobStatus';
 
 /**
  * @component FilterPanel
@@ -56,14 +57,8 @@ export default function FilterPanel({ filters, onFiltersChange, projects = [], u
         }
 
         // Status
-        const statusLabels = {
-            completed: 'เสร็จสมบูรณ์',
-            in_progress: 'กำลังดำเนินการ',
-            pending_approval: 'รออนุมัติ',
-            rejected: 'ถูกปฏิเสธ'
-        };
         if (filters.status) {
-            active.push({ key: 'status', label: statusLabels[filters.status] || filters.status });
+            active.push({ key: 'status', label: WORK_STATUS_LABEL[filters.status] || filters.status });
         }
 
         // Project
@@ -166,10 +161,9 @@ export default function FilterPanel({ filters, onFiltersChange, projects = [], u
                                     className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-transparent appearance-none cursor-pointer hover:bg-white transition-colors"
                                 >
                                     <option value="">ทั้งหมด</option>
-                                    <option value="completed">เสร็จสมบูรณ์</option>
-                                    <option value="in_progress">กำลังดำเนินการ</option>
-                                    <option value="pending_approval">รออนุมัติ</option>
-                                    <option value="rejected">ถูกปฏิเสธ</option>
+                                    {ANALYTICS_FILTER_OPTIONS.map(opt => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
                                 </select>
                                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                             </div>

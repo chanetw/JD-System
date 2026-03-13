@@ -18,6 +18,7 @@ import { formatDateToThai } from '@shared/utils/dateUtils';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { getUserScopes, getAllowedProjectIds } from '@shared/utils/scopeHelpers';
 import { hasRole } from '@shared/utils/permission.utils';
+import { DJ_LIST_FILTER_OPTIONS, matchesStatusFilter } from '@shared/constants/jobStatus';
 
 // Icons
 import {
@@ -136,7 +137,7 @@ export default function DJList() {
             result = result.filter(j => j.jobType === filters.jobType);
         }
         if (filters.status) {
-            result = result.filter(j => j.status === filters.status);
+            result = result.filter(j => matchesStatusFilter(j.status, filters.status));
         }
         if (filters.assignee) {
             result = result.filter(j => j.assignee === filters.assignee);
@@ -393,10 +394,11 @@ export default function DJList() {
                         options={[...new Set(masterData.jobTypes.map(jt => jt.name))]}
                     />
                     <FilterSelect
-                        label="สถานะ (Status)"
+                        label="สถานะ"
                         value={filters.status}
                         onChange={(val) => handleFilterChange('status', val)}
-                        options={['draft', 'pending_approval', 'approved', 'in_progress', 'completed', 'rejected', 'scheduled']}
+                        options={DJ_LIST_FILTER_OPTIONS.map(o => o.value)}
+                        optionLabels={Object.fromEntries(DJ_LIST_FILTER_OPTIONS.map(o => [o.value, o.label]))}
                     />
                     <FilterSelect
                         label="ผู้ออกแบบ (Assignee)"
@@ -637,7 +639,7 @@ export default function DJList() {
  * @component FilterSelect
  * @description Dropdown สำหรับ filter
  */
-function FilterSelect({ label, value, onChange, options }) {
+function FilterSelect({ label, value, onChange, options, optionLabels }) {
     return (
         <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
@@ -648,7 +650,7 @@ function FilterSelect({ label, value, onChange, options }) {
             >
                 <option value="">ทั้งหมด</option>
                 {options.map(opt => (
-                    <option key={opt} value={opt}>{opt}</option>
+                    <option key={opt} value={opt}>{optionLabels?.[opt] || opt}</option>
                 ))}
             </select>
         </div>

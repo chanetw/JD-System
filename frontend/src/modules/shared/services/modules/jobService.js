@@ -563,32 +563,6 @@ export const jobService = {
         return data;
     },
 
-    // Alias for consistency with Mock API
-    completeJob: async (jobId, data) => {
-        try {
-            // ✅ V2: Use Backend API instead of Supabase
-            // Backend handles:
-            // - Insert attachments into MediaFile table
-            // - Update job status
-            // - Log activity
-            // - Trigger job chain
-            const response = await httpClient.post(`/jobs/${jobId}/complete`, {
-                note: data?.note || '',
-                attachments: data?.attachments || []
-            });
-
-            if (!response.data.success) {
-                throw new Error(response.data.message || 'Complete job failed');
-            }
-
-            return response.data;
-        } catch (error) {
-            console.error('[jobService] completeJob error:', error);
-            const errorMessage = error.response?.data?.message || error.message || 'ไม่สามารถจบงานได้';
-            throw new Error(errorMessage);
-        }
-    },
-
     // --- Dashboard Stats ---
 
     // ⚡ Performance: ใช้ Backend API ที่ใช้ COUNT() แทน Supabase ที่ดึงทุก row

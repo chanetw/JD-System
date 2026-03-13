@@ -1706,6 +1706,12 @@ router.get('/:id', async (req, res) => {
       draftSubmittedAt: job.draftSubmittedAt,
       draftCount: job.draftCount || 0,
 
+      // Rebrief Details
+      rebriefReason: job.rebriefReason,
+      rebriefResponse: job.rebriefResponse,
+      rebriefCount: job.rebriefCount || 0,
+      rebriefAt: job.rebriefAt,
+
       // Completion Details
       completedAt: job.completedAt,
       finalFiles: job.finalFiles,
@@ -3969,9 +3975,30 @@ router.post('/:id/complete', async (req, res) => {
       attachments
     });
 
-    // 🔥 Trigger Job Chain (Sequential Jobs)
+    // 🔔 Notify Requester: งานเสร็จสมบูรณ์
     if (result.success) {
-      // Logic for Job Chain: Auto-start successor jobs
+      try {
+        const prisma = getDatabase();
+        const completedJobInfo = await prisma.job.findUnique({
+          where: { id: jobId },
+          select: { requesterId: true, djId: true, subject: true, tenantId: true, assignee: { select: { firstName: true, lastName: true } } }
+        });
+        if (completedJobInfo?.requesterId && completedJobInfo.requesterId !== userId) {
+          const assigneeName = completedJobInfo.assignee ? `${completedJobInfo.assignee.firstName} ${completedJobInfo.assignee.lastName}`.trim() : 'ผู้รับงาน';
+          await notificationService.createNotification({
+            tenantId: completedJobInfo.tenantId,
+            userId: completedJobInfo.requesterId,
+            type: 'job_completed',
+            title: `งาน ${completedJobInfo.djId} เสร็จสมบูรณ์`,
+            message: `${assigneeName} ทำงาน "${completedJobInfo.subject}" เสร็จแล้ว`,
+            link: `/jobs/${jobId}`
+          });
+        }
+      } catch (notiError) {
+        console.error('[Jobs] Complete notification error (non-blocking):', notiError);
+      }
+
+      // 🔥 Trigger Job Chain (Sequential Jobs)
       try {
         await jobService.onJobCompleted(jobId, userId);
 

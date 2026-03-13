@@ -37,16 +37,16 @@ export default function Header() {
         fetchNotifications();
     }, [user, fetchNotifications]);
 
-    // Auto-refresh notifications ทุก 5 นาที (300,000 ms) - เฉพาะ icon กระดิ่ง ไม่ reload ทั้งหน้า
+    // Auto-refresh notifications ทุก 2 นาที (120,000 ms) - เฉพาะ icon กระดิ่ง ไม่ reload ทั้งหน้า
     useEffect(() => {
         // Initial fetch
         fetchNotifications();
 
-        // Set interval สำหรับ auto-refresh ทุก 5 นาที
+        // Set interval สำหรับ auto-refresh ทุก 2 นาที
         const refreshInterval = setInterval(() => {
             console.log('[Notification] Auto-refresh: Fetching notifications...');
             fetchNotifications();
-        }, 300000); // 5 นาที = 300,000 ms
+        }, 120000); // 2 นาที = 120,000 ms
 
         // Cleanup interval เมื่อ component unmount
         return () => {

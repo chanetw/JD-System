@@ -6,6 +6,101 @@
 
 ## 📅 2026-03-13
 
+### 94. Bug Fixes — Rebrief Flow, MyQueue, jobReminderCron, Error Boundary
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b> (rebrief type mismatch, cron crash, error boundary, backfill noti)</summary>
+
+🔴 **Request:**
+- MyQueue (/assignee/my-queue) หมุนอย่างเดียวไม่แสดงข้อมูล
+- Rebrief flow: requester กดส่งข้อมูลเพิ่มเติมไม่ได้ เมนูไม่ขึ้น
+- Module ส่งงาน assignee/requester หายไป
+- Notification rebrief ไม่แจ้งเตือน + ดึง noti ย้อนหลัง
+- Dashboard สถานะยังเป็น ENG (แก้ไปแล้วรอบก่อน)
+
+🟢 **Actions Taken:**
+
+1. **แก้ `jobReminderCron.js`** — Prisma schema ไม่มี `updatedAt` field → crash ทุกรอบ
+   - เปลี่ยนจาก `updatedAt` เป็น `assignedAt` / `createdAt` 
+   - แก้ `emailService.notifyJobStatusChanged` (ไม่มี) → ใช้ `EmailService.sendEmail()` แทน
+   - แก้ `import emailService` → `import EmailService` (class)
+
+2. **แก้ `JobActionPanel.jsx` renderRebriefPanel** — type mismatch
+   - `job.requesterId === currentUser?.id` → `String(job.requesterId) === String(currentUser?.id)`
+   - ป้องกัน int vs string comparison ที่ทำให้ requester ไม่เห็นปุ่ม "ส่งข้อมูลเพิ่มเติม"
+
+3. **เพิ่ม `PageErrorBoundary` ใน `App.jsx`**
+   - React Error Boundary class component ครอบ dynamic routes ทั้งหมด
+   - แสดงข้อความ error + ปุ่มโหลดใหม่ แทน Suspense spinner ที่ซ่อน error
+
+4. **สร้าง `backfillNotifications.js`** — script ดึง noti ย้อนหลัง
+   - ตรวจ activity_logs สำหรับ rebrief_requested, rebrief_submitted, rebrief_accepted, completed, draft_submitted
+   - สร้าง notification ที่ขาดหายไป (มี dedup ±1 นาที)
+
+5. **ลบ `completeJob` duplicate ใน `jobService.js`**
+   - มี 2 ตัว (บรรทัด 567 และ 792) ลบตัวแรกที่เป็น alias ออก
+
+6. **เพิ่ม `rebriefReason` ใน backend `GET /jobs/:id`**
+   - Backend transform response ไม่ได้ส่ง `rebriefReason`, `rebriefResponse`, `rebriefCount`, `rebriefAt`
+   - เพิ่ม fields เหล่านี้ใน transform response (บรรทัด 1709-1713)
+   - Requester จะเห็นเหตุผลที่ assignee ขอ rebrief ได้แล้ว
+
+📁 **Files Changed:**
+- `backend/api-server/src/services/jobReminderCron.js` — แก้ updatedAt + email
+- `frontend/src/modules/features/job-management/components/JobActionPanel.jsx` — type mismatch fix
+- `frontend/src/App.jsx` — เพิ่ม PageErrorBoundary
+- `backend/api-server/src/scripts/backfillNotifications.js` — สร้างใหม่
+- `frontend/src/modules/shared/services/modules/jobService.js` — ลบ completeJob duplicate
+- `backend/api-server/src/routes/jobs.js` — เพิ่ม rebriefReason ใน GET /jobs/:id transform
+
+⚠️ **Pending:**
+- MyQueue หมุน: ต้องทดสอบใน browser จริง — ErrorBoundary จะช่วยแสดง error แทน spinner
+- ทดสอบ rebrief flow end-to-end
+
+</details>
+
+### 93. Job Status Centralization + Notification Enhancements + Auto-Cleanup
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b> (status mapping ภาษาไทย + noti + cleanup + cron reminder)</summary>
+
+🔴 **Request:**
+- สถานะงาน frontend ต้องสอดคล้องกันทุกหน้า (DJ List, Dashboard, Timeline, Analytics) แสดงภาษาไทย
+- รวมกลุ่มสถานะ (เช่น correction/rework/returned → "แก้ไข/ตรวจสอบ")
+- เพิ่มกลุ่ม "รอตรวจ" สำหรับ draft_review, pending_rebrief, rebrief_submitted
+- Filter dropdown ใช้ภาษาไทย + รองรับการ filter กลุ่มสถานะ
+- เพิ่ม notification `job_completed` แจ้ง Requester
+- เปลี่ยน noti refresh จาก 5 นาทีเป็น 2 นาที + กดกระดิ่ง refresh ทันที
+- Auto-cleanup noti เก็บแค่ 10 รายการ ลบอ่านแล้ว+เก่าก่อน
+- Cron reminder งาน approved/assigned เกิน 24 ชม. + ส่ง email
+
+🛠️ **Actions:**
+1. **สร้าง `shared/constants/jobStatus.js`** — Single source of truth: labels ไทย, colors, filter options, filter group map, helper functions
+2. **แก้ `Badge.jsx`** — import จาก constants แทน hardcode
+3. **แก้ `Dashboard.jsx`** — ลบ local STATUS_LABELS/STATUS_COLORS, filter ใช้ `matchesStatusFilter()`, dropdown แสดงภาษาไทย
+4. **แก้ `DJList.jsx`** — filter options ใช้ `DJ_LIST_FILTER_OPTIONS` (15 สถานะ ภาษาไทย), filter logic รวมกลุ่ม, แก้ `FilterSelect` รองรับ `optionLabels` prop
+5. **แก้ `FilterPanel.jsx`** — ใช้ `ANALYTICS_FILTER_OPTIONS` (6 สถานะ), import `WORK_STATUS_LABEL`
+6. **แก้ `TimelineBar.jsx`** — ลบ local STATUS_LABEL, ใช้ `WORK_STATUS_LABEL`
+7. **แก้ `backend/routes/jobs.js`** — เพิ่ม noti `job_completed` แจ้ง Requester เมื่องานเสร็จ
+8. **แก้ `Header.jsx`** — interval 5 นาที → 2 นาที (120000ms)
+9. **แก้ `notificationService.js`** — เพิ่ม `cleanupNotifications()` method + เรียกหลัง `createNotification()`
+10. **สร้าง `backend/services/jobReminderCron.js`** — Cron ทุก 60 นาที ตรวจงาน approved/assigned เกิน 24 ชม. + ส่ง noti + email + ป้องกัน spam
+11. **แก้ `backend/index.js`** — Register jobReminderCron: import, start, stop (SIGTERM/SIGINT)
+
+✅ **Result:** Frontend build สำเร็จ ไม่มี error
+
+📁 **Files Changed:**
+- `frontend/src/modules/shared/constants/jobStatus.js` (NEW)
+- `frontend/src/modules/shared/components/Badge.jsx`
+- `frontend/src/modules/features/dashboard/pages/Dashboard.jsx`
+- `frontend/src/modules/features/job-management/pages/DJList.jsx`
+- `frontend/src/modules/features/analytics/components/FilterPanel.jsx`
+- `frontend/src/modules/features/assignee/components/TimelineBar.jsx`
+- `frontend/src/modules/core/layout/Header.jsx`
+- `backend/api-server/src/routes/jobs.js`
+- `backend/api-server/src/services/notificationService.js`
+- `backend/api-server/src/services/jobReminderCron.js` (NEW)
+- `backend/api-server/src/index.js`
+</details>
+
 ### 92. SLA Line Enhancement + Responsive Calendar + Due Date Marker Fix
 <details>
 <summary>📋 <b>คลิกดูรายละเอียด</b> (SLA เส้นประ + วงกลมแดง + responsive calendar)</summary>

@@ -7,6 +7,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { differenceInDays, format, isWeekend, eachDayOfInterval, isSameDay } from 'date-fns';
 import { th } from 'date-fns/locale';
+import { WORK_STATUS_LABEL } from '@shared/constants/jobStatus';
 
 // นับวันทำงาน (ยกเว้นเสาร์-อาทิตย์ และวันหยุดนักขัตฤกษ์)
 const countWorkingDays = (startDate, endDate, holidays = []) => {
@@ -18,17 +19,6 @@ const countWorkingDays = (startDate, endDate, holidays = []) => {
     }).length;
 };
 
-const STATUS_LABEL = {
-    approved: 'อนุมัติแล้ว',
-    assigned: 'ได้รับมอบหมาย',
-    in_progress: 'กำลังทำ',
-    correction: 'แก้ไข',
-    rework: 'ทำใหม่',
-    returned: 'ส่งคืน',
-    completed: 'เสร็จแล้ว',
-    rejected: 'ปฏิเสธ',
-    pending_dependency: 'รอ dependency',
-};
 
 const PRIORITY_LABEL = {
     urgent: '🔴 ด่วนมาก',
@@ -281,7 +271,7 @@ export default function TimelineBar({ job, dateRange, rowIndex, onClick, holiday
                         </div>
                         <div className="flex justify-between gap-3">
                             <span className="text-gray-400 shrink-0">สถานะ</span>
-                            <span className="text-white">{STATUS_LABEL[job.status] || job.status}</span>
+                            <span className="text-white">{WORK_STATUS_LABEL[job.status] || job.status}</span>
                         </div>
                         <div className="flex justify-between gap-3">
                             <span className="text-gray-400 shrink-0">ความสำคัญ</span>
