@@ -4,6 +4,311 @@
 
 ---
 
+## 📅 2026-03-13
+
+### 92. SLA Line Enhancement + Responsive Calendar + Due Date Marker Fix
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b> (SLA เส้นประ + วงกลมแดง + responsive calendar)</summary>
+
+🔴 **Request:**
+- เส้น SLA ต้องต่อจากแถบ timeline จริงๆ (ไม่มีช่องว่าง)
+- ปลายเส้น SLA เป็นวงกลมสีแดง อยู่กึ่งกลาง day cell
+- วงกลมส่งงาน (due date marker) ต้องอยู่กึ่งกลาง day cell
+- Hover วงกลมแสดง tooltip ("ส่งงาน" / "เกิน SLA")
+- Calendar responsive (auto-resize + scroll แนวนอน)
+
+🛠️ **Actions:**
+1. **TimelineBar.jsx:**
+   - เพิ่ม `slaMarkerTooltip` state
+   - แก้ `overrunStyle` ให้คำนวณ `endOffset + 1` ต่อจากแถบ timeline
+   - เพิ่มวงกลมสีแดงปลายเส้น SLA + tooltip "เกิน SLA: X วัน"
+   - แก้ due date marker ใช้ `transform: translate(-50%, -50%)` ให้อยู่กึ่งกลาง
+2. **TimelineView.jsx:**
+   - เพิ่ม `getDayCellWidth()` responsive (28px mobile / 32px tablet / 40px desktop)
+   - เพิ่ม resize listener
+   - ส่ง `dayCellWidth` prop ไป TimelineHeader
+3. **TimelineHeader.jsx:**
+   - รับ `dayCellWidth` prop แทนค่าคงที่ 40px
+
+📁 **Files Modified:**
+- `frontend/src/modules/features/assignee/components/TimelineBar.jsx`
+- `frontend/src/modules/features/assignee/components/TimelineView.jsx`
+- `frontend/src/modules/features/assignee/components/TimelineHeader.jsx`
+
+</details>
+
+---
+
+## 📅 2026-03-12
+
+### 91. แก้ Error 500 Request Rejection + Timeline แสดงงานไม่ครบ
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b> (request-rejection 500, Timeline filter ไม่ครบ)</summary>
+
+🔴 **Request:**
+- Assignee ส่งคำขอปฏิเสธงานไม่ได้ — Error 500 ยังอยู่ (server ยังไม่ restart)
+- Timeline แสดง 6 งาน แต่ปฏิทินแสดง 17 (เข้าใจผิด: 17 = จำนวนวันหยุด)
+- งานบางตัวไม่แสดงใน Timeline
+
+🐛 **Root Cause:**
+1. Backend server ยังไม่ได้ restart หลังแก้ `calculateNextWorkingDay` (code #90)
+2. Select query ใน `request-rejection` ไม่ได้ดึง `subject` และ `assignee` — email template ต้องใช้
+3. Timeline filter `activeJobs` ใช้ whitelist statuses → งาน `pending_rejection`, `pending_approval` ไม่แสดง
+
+🔧 **Implementation:**
+
+**1. `backend/.../routes/jobs.js` — request-rejection select**
+- เพิ่ม `subject: true` ใน select
+- เพิ่ม `assignee: { select: { id, firstName, lastName } }`
+- เพิ่ม debug error message ใน catch block
+
+**2. `frontend/.../TimelineView.jsx` — activeJobs filter**
+- เปลี่ยนจาก whitelist → **blacklist** (exclude เฉพาะ completed, closed, rejected, rejected_by_assignee, cancelled)
+- งานทุกสถานะที่ยังไม่จบจะแสดงใน Timeline
+
+**3. Restart backend server** — PID 51954 → 53077
+
+📁 **Files Changed:**
+- `backend/api-server/src/routes/jobs.js`
+- `frontend/src/modules/features/assignee/components/TimelineView.jsx`
+
+</details>
+
+---
+
+### 90. แก้ Error 500 ที่ Request Rejection Endpoint
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b> (calculateNextWorkingDay ใช้ raw SQL ผิด column name)</summary>
+
+🔴 **Request:**
+- Assignee ส่งคำขอปฏิเสธงานไม่ได้ — Error 500 Internal Server Error
+
+🐛 **Root Cause:**
+- Function `calculateNextWorkingDay()` ใช้ `$queryRaw` กับ column `tenant_id` (snake_case)
+- แต่ Prisma model `Holiday` ใช้ `tenantId` (camelCase)
+- SQL query error ทำให้ endpoint crash
+
+🔧 **Implementation:**
+
+**`backend/.../routes/jobs.js`**
+- เปลี่ยนจาก raw SQL query → Prisma query
+- ใช้ `prisma.holiday.findMany()` แทน `$queryRaw`
+- Query ที่ถูกต้อง:
+```js
+const holidays = await prisma.holiday.findMany({
+  where: {
+    tenantId,
+    date: { gte: rangeStart, lte: rangeEnd }
+  },
+  select: { date: true }
+});
+```
+
+📁 **Files Changed:**
+- `backend/api-server/src/routes/jobs.js` (line 3576-3585)
+
+</details>
+
+---
+
+### 89. แก้ Timeline Bar ให้ใช้ acceptanceDate + บล็อกวันหยุดใน Due Date Picker
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b> (Timeline Bar = acceptanceDate→dueDate, บล็อกวันหยุด Normal)</summary>
+
+🔴 **Request:**
+- Timeline Bar แสดงผิด — ควรเริ่มที่วันเริ่มงาน (acceptanceDate) ไม่ใช่ createdAt
+- AcceptanceDatePicker ไม่บล็อกวันหยุด (เสาร์-อาทิตย์ + นักขัตฤกษ์) สำหรับงาน Normal
+
+🐛 **Root Cause:**
+1. Backend API ไม่ส่ง `acceptanceDate`, `slaDays`, `startedAt` กลับมาใน job list response
+2. `TimelineBar.jsx` ใช้ `job.createdAt` เป็น start date ของ bar แทนที่จะใช้ `acceptanceDate`
+3. `AcceptanceDatePicker.jsx` ใน `isSelectable()` ไม่มีการบล็อกวันหยุดสำหรับ Normal priority
+
+🔧 **Implementation:**
+
+**1. `backend/.../routes/jobs.js`**
+- เพิ่ม `acceptanceDate: true, slaDays: true` ใน Prisma `select` block
+- เพิ่ม `acceptanceDate`, `startedAt`, `slaDays` ใน `transformed` response object
+
+**2. `frontend/.../TimelineBar.jsx`**
+- เปลี่ยน `jobStart` จาก `new Date(job.createdAt)` → `new Date(job.acceptanceDate || job.startedAt || job.createdAt)`
+- แก้ทั้ง 3 จุด: `workingDays` memo, `barStyle` memo, `overrunStyle` memo
+- Tooltip เพิ่มแถว "วันสั่งงาน" (createdAt) และ "วันเริ่มงาน" (acceptanceDate, สีน้ำเงิน)
+
+**3. `frontend/.../TimelineView.jsx`**
+- `earliestJobDate` ใช้ `acceptanceDate || startedAt || createdAt` สำหรับ auto-fit window
+
+**4. `frontend/.../AcceptanceDatePicker.jsx`**
+- `isSelectable()` เพิ่มเงื่อนไข: ถ้า `priority !== 'Urgent'` → บล็อก `isWeekend || isHolidayDay`
+- ลบ branch ซ้ำออก (dead code) เพื่อความสะอาด
+
+📁 **Files Changed:**
+- `backend/api-server/src/routes/jobs.js`
+- `frontend/src/modules/features/assignee/components/TimelineBar.jsx`
+- `frontend/src/modules/features/assignee/components/TimelineView.jsx`
+- `frontend/src/modules/features/job-request/components/AcceptanceDatePicker.jsx`
+
+</details>
+
+---
+
+### 88. Timeline Bar: SLA Alignment + Overrun Indicator + Auto-fit Window
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b> (Bar = createdAt→deadline, red line เมื่อเกิน SLA, auto-fit 5 สัปดาห์)</summary>
+
+🔴 **Request:**
+- Bar ต้องแสดงตรงกับวันสั่งงาน (createdAt) ถึง deadline (SLA) — ไม่ใช่ startedAt
+- เมื่อเกิน SLA ให้มีเส้นสีแดงขีดต่อจาก deadline ถึงวันนี้
+- Timeline แสดงแค่ 5 สัปดาห์ โดย auto-fit ไปที่งานที่เริ่มเร็วที่สุด
+
+🔧 **Implementation:**
+
+**1. TimelineBar.jsx** — Bar Date + SLA Overrun Segment
+- เปลี่ยน `barStart` จาก `startedAt || createdAt` → **`createdAt`** เท่านั้น
+- คำนวณ `overrunDays`: ถ้า `today > deadline` และงานยังไม่เสร็จ → นับจำนวนวันที่เกิน
+- เพิ่ม `overrunStyle`: div ความสูง 4px, `border-dashed border-red-500`, วางตำแหน่งกลาง bar
+  - `left` = pixel ที่ตรงกับ deadline
+  - `width` = ระยะจาก deadline ถึง today
+- Tooltip เพิ่มแถว "เกิน SLA: 🔴 X วัน" เมื่อ overrun > 0
+
+**2. TimelineView.jsx** — Auto-fit + 5-week Window
+- คำนวณ `earliestJobDate` = `Math.min(...jobs.map(j => createdAt))`
+- `useEffect` ตั้ง `currentDate = earliestJobDate` เมื่อ jobs load ครั้งแรก (auto-fit)
+- `dateRange` fixed 5 สัปดาห์: `startOfWeek(currentDate)` → `endOfWeek(+4 weeks)`
+- ลบ `viewMode` state และ toggle "4/8 สัปดาห์" ออก
+- Navigation: ปุ่ม ◀ ▶ เลื่อนทีละ **1 สัปดาห์** (เดิมเลื่อน 4/8 สัปดาห์)
+- เพิ่มปุ่ม "ดูทั้งหมด" ที่เรียก `handleAutoFit()` → jump กลับไปที่ earliest job
+
+**Visual:**
+```
+[DJ ID]  1   2   3   4   5   6   7   8   9  10  11  12
+                                  ║ TODAY
+DJ-001  [████████████████████████]╠─ ─ ─ ─▶  ← SLA เกิน 3 วัน
+        ^createdAt        ^deadline
+```
+
+📁 **Files Changed:**
+- `frontend/src/modules/features/assignee/components/TimelineBar.jsx`
+- `frontend/src/modules/features/assignee/components/TimelineView.jsx`
+
+</details>
+
+---
+
+## 📅 2026-03-12
+
+### 87. แก้ bug Manual Assignment + ปรับ UI Popup
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b> (Fix PGRST116 Supabase error + redesign assignment panel)</summary>
+
+🔴 **Request:**
+- Error 406 `PGRST116: The result contains 0 rows` เมื่อกด มอบหมายงาน
+- UI popup ใช้ native `alert()` ดูไม่สวยงาม ไม่ professional
+- Debug console.log จำนวนมากใน JobActionPanel.jsx และ JobDetail.jsx
+
+🐛 **Root Cause:**
+- `assignJobManually` ใน `jobService.js` เรียก Supabase โดยตรง (`supabase.from('jobs').update(...)`) แต่ไม่มี Row Level Security policy รองรับ → ได้ 0 rows → error 406
+- ไม่มี backend REST API endpoint `/jobs/:id/assign` สำหรับ first-time assignment
+
+🔧 **Implementation:**
+
+**1. Backend — `POST /api/jobs/:id/assign`** (ไฟล์ `jobs.js` line ~3742)
+- Permission: Admin หรือ Manager เท่านั้น
+- Validate: job ต้องมีอยู่ใน tenant, assignee ต้องมีอยู่ใน users
+- Update: set `assigneeId`, `assignedAt`
+- Status transition: ถ้า status เป็น `approved` หรือ `pending_approval` → เปลี่ยนเป็น `assigned`
+- Log: บันทึก ActivityLog action = `assigned`
+- Notification: แจ้ง assignee + Email ด้วย Magic Link (non-blocking)
+
+**2. Frontend `jobService.js`** — แก้ `assignJobManually`
+- เปลี่ยนจาก Supabase direct call เป็น `httpClient.post('/jobs/${jobId}/assign', { assigneeId })`
+- ลด signature จาก 5 params → 2 params (`jobId`, `assigneeId`)
+
+**3. Frontend `JobActionPanel.jsx`** — ปรับ UI + ลบ debug logs
+- เพิ่ม state: `assignError`, `assignSuccess`
+- Header: gradient `from-orange-500 to-amber-500` + icon
+- Selector: label + แสดงจำนวน assignable users + highlight error border
+- Inline error: `ExclamationCircleIcon` แทน `alert()`
+- Inline success: `CheckCircleIcon` banner แทน `alert()`
+- Preview card: แสดง avatar initial + ชื่อผู้ที่เลือกก่อน confirm
+- Confirm button: spinner animation ขณะ loading
+- ลบ debug console.log ทั้งหมดใน `renderApprovalActions`
+
+**4. Frontend `JobDetail.jsx`** — clean up
+- ลบ debug console.log 5 บรรทัดใน `loadUsers`
+- แก้ `handleManualAssign` ให้ return result แทน `alert()` (รับ error จาก backend แล้วส่งให้ JobActionPanel แสดง inline)
+
+📁 **Files Changed:**
+- `backend/api-server/src/routes/jobs.js` (เพิ่ม endpoint POST /assign)
+- `frontend/src/modules/shared/services/modules/jobService.js`
+- `frontend/src/modules/features/job-management/components/JobActionPanel.jsx`
+- `frontend/src/modules/features/job-management/pages/JobDetail.jsx`
+
+</details>
+
+---
+
+## 📅 2025-06-11
+
+### 86. ปรับปรุง UX/UI Timeline (ปฏิทิน My Queue)
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b> (Smart Tooltip, Auto-scroll to Today, เส้นวันนี้, Weekend/Holiday overlay)</summary>
+
+🔴 **Request:**
+- Tooltip ของงานแถวล่างสุดแสดงเกินจอ มองไม่เห็นข้อมูล
+- เปิดหน้า Timeline แล้วไม่ scroll มาที่วันนี้ ต้องเลื่อนหาเอง
+- ปรับ Layout ให้ดูง่ายขึ้น: แถวสูงขึ้น, สีวันหยุด/เสาร์-อาทิตย์ชัดขึ้น
+- แสดงวันหยุดนักขัตฤกษ์ที่ตั้งค่าในระบบบน Timeline
+
+🔧 **Implementation:**
+
+**1. TimelineBar.jsx** — Smart Tooltip via `createPortal`
+- ใช้ `createPortal` render tooltip ลงใน `document.body` ป้องกัน overflow clipping
+- `handleMouseEnter` คำนวณ `getBoundingClientRect()` และตรวจสอบว่า tooltip ล้นจอล่างหรือเปล่า
+- ถ้า `rect.bottom + tooltipH > window.innerHeight` → flip tooltip ขึ้นเหนือ bar
+- ถ้า tooltip ล้นขอบขวา → clamp ให้อยู่ใน viewport
+- นับ `workingDays` โดยนับรวมวันหยุดนักขัตฤกษ์จาก `holidays` prop
+- ลบ debug `console.log` ทั้งหมด
+- รับ `holidays[]` prop เพิ่มเติม
+
+**2. TimelineView.jsx** — Auto-scroll, Today Line, Holiday Overlay
+- เพิ่ม `useRef(scrollRef)` บน `overflow-x-auto` container
+- `useEffect([dateRange])` คำนวณ pixel position ของวันนี้แล้ว `scrollTo({ behavior: 'smooth' })`
+- `useEffect([])` ดึงวันหยุดจาก `api.getHolidays()` ตอน mount
+- เส้น "วันนี้": absolute vertical line ใช้สูตร `left: calc(${(1-f)*256}px + ${f*100}%)`
+- Weekend/Holiday overlay: div `absolute inset-0` ที่ `marginLeft: 256px` มี flex children ทับทุกแถว
+- Row `minHeight: 56px` (เดิม 48px)
+- Priority Badge แสดงทุก level (ไม่ใช่แค่ urgent)
+- ลบ debug console.log ทั้งหมด
+
+**3. TimelineHeader.jsx** — Holiday Support, Better Contrast
+- รับ `holidays[]` prop
+- วันหยุดนักขัตฤกษ์: `bg-red-100` + แสดง emoji 🎌 พร้อม tooltip ชื่อวันหยุด
+- วันเสาร์-อาทิตย์: `bg-gray-200` (เดิม `bg-gray-100`)
+- วันนี้: `bg-rose-100 ring-1 ring-inset ring-rose-400` เด่นขึ้น
+- แก้ left column จาก `w-48` → `w-64` ให้ตรงกับ TimelineView
+- Header sticky `top-0 z-10`
+
+**4. TimelineLegend.jsx** — Holiday Count Badge
+- รับ `holidays[]` prop
+- เพิ่ม legend group "วัน": วันนี้ (🔴), เสาร์-อาทิตย์ (สีเทา), วันหยุด (สีแดง พร้อมจำนวน)
+- Compact layout `flex-wrap`
+
+**5. MyQueue.jsx** — Clean up debug logs
+- ลบ debug `console.log` 8 จุด (เหลือแค่ `console.error`)
+- ลบ IIFE wrapper ที่ใช้ render TimelineView
+
+📁 **Files Changed:**
+- `frontend/src/modules/features/assignee/components/TimelineBar.jsx`
+- `frontend/src/modules/features/assignee/components/TimelineView.jsx`
+- `frontend/src/modules/features/assignee/components/TimelineHeader.jsx`
+- `frontend/src/modules/features/assignee/components/TimelineLegend.jsx`
+- `frontend/src/modules/features/assignee/pages/MyQueue.jsx`
+
+</details>
+
+---
+
 ## 📅 2026-03-11
 
 ### 81. Draft Approval Action — Requester Approve/Reject Draft
@@ -89,6 +394,57 @@ draft_review + reject  → rework (assignee แก้ไขส่งใหม่
 - Approve draft → status = in_progress
 - Reject draft → status = rework
 - Activity log + Comment + Notification ทำงานถูกต้อง
+
+</details>
+
+---
+
+### 82. Bug Fix: สถานะงานขึ้น "ยังไม่มอบหมาย" ทั้งที่มี Assignee แล้ว
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b></summary>
+
+🔴 **Request:**
+- งานที่มี Assignee ชัดเจนแล้ว แต่ badge สถานะแสดง "ยังไม่มอบหมาย"
+
+🟢 **Root Cause:**
+- `autoAssignJob()` ใน `approvalService.js` มี fallback logic ที่ตรวจสอบตาม flow config ก่อน
+- ถ้าไม่มี `autoAssignType` ใน flow และไม่มี dept manager → fallback จะ **set `assigneeId: null`** และ `status: 'approved'`
+- ผลคือ Assignee ที่ manual assign ไว้ก่อนอนุมัติ **ถูกลบออก** และ status กลายเป็น `approved` = "ยังไม่มอบหมาย"
+
+**Flow ที่มีปัญหา:**
+1. Admin/Requester assign คนรับงานไว้ก่อน (มี `assigneeId`)
+2. Approver กด Approve งาน
+3. `approveJobViaWeb` → update status = `approved`
+4. เรียก `autoAssignJob` → ตรวจสอบ flow config
+5. ไม่พบ `autoAssignType` / dept manager → fallback: set `assigneeId: null`, `status: 'approved'`
+6. งานสูญเสีย assignee และแสดงสถานะ "ยังไม่มอบหมาย" ❌
+
+🔧 **Fix:**
+- เพิ่ม check `assigneeId` เป็น **priority 0** ก่อน logic อื่นทั้งหมดใน `autoAssignJob`
+- ถ้ามี assignee อยู่แล้ว → เรียก `assignJobManually` ด้วย id เดิม → status = `in_progress`
+- ป้องกันไม่ให้ fallback dept manager logic override assignee ที่ manual assign ไว้
+
+```javascript
+// 0. Priority: ถ้ามี assignee ถูก manual assign ไว้แล้ว → ใช้ค่าเดิม (in_progress)
+if (job.assigneeId) {
+  return await this.assignJobManually(jobId, job.assigneeId, null, 'auto-assign: pre-assigned');
+}
+```
+
+📁 **Files Modified:**
+- `backend/api-server/src/services/approvalService.js`
+  - เพิ่ม `assigneeId: true` ใน select query ของ `autoAssignJob`
+  - เพิ่ม pre-assigned check เป็น priority 0
+  - ลบ duplicate block ที่เช็ค assigneeId ซ้ำด้านล่าง
+
+🧪 **Expected Behavior หลัง Fix:**
+- งานที่มี Assignee assign ไว้ก่อนอนุมัติ → เมื่ออนุมัติครบ status = `in_progress` ✅
+- งานที่ไม่มี Assignee และไม่มี flow config → status = `approved` (รอ manual assign) ✅
+
+**🔧 Additional Fix: Reassign Endpoint**
+- พบว่า `POST /api/jobs/:id/reassign` ไม่ได้เปลี่ยน status เมื่อ assign งาน
+- แก้ไขให้เช็ค: ถ้า `status === 'approved'` → เปลี่ยนเป็น `in_progress` + set `assignedAt`, `startedAt`
+- ตอนนี้ assign งานที่ status `approved` จะเปลี่ยนเป็น `in_progress` ทันที ✅
 
 </details>
 
@@ -3456,6 +3812,62 @@ Implement ฟีเจอร์ "Sequential Jobs" ให้งานหนึ่
 📁 **Files Changed:**
 - `backend/api-server/src/routes/jobs.js` — import NotificationService + เพิ่ม approved ใน allowedStatuses
 - `frontend/src/modules/features/assignee/pages/MyQueue.jsx` — เพิ่มปุ่มดำเนินการ + modals
+
+</details>
+
+### 82. Notification System Audit & Full Implementation
+<details>
+<summary>📋 <b>คลิกดูรายละเอียด</b> (เพิ่ม In-App + Email notification ครบทุก job action)</summary>
+
+🔴 **Request:**
+- ตรวจสอบระบบแจ้งเตือนทุก action ของงาน (สร้าง, อนุมัติ, ทำงาน, ส่งงาน, ส่ง draft, ตีกลับ, ปฏิเสธ) ของทุก role
+- In-App notification (กระดิ่ง) + Email ต้องแจ้งเตือนได้ครบถ้วน
+
+🔧 **Implementation:**
+
+**Phase 1 — เพิ่ม In-App Notification 9 จุดที่ขาด:**
+1. สร้างงาน → แจ้ง Approver Level 1 (ถ้ามี flow) / Assignee (ถ้า skip)
+2. Approve non-final → แจ้ง Approver level ถัดไป
+3. Approve final → แจ้ง Requester ว่างานอนุมัติครบ
+4. Reject (by approver) → แจ้ง Requester
+5. Reassign → แจ้ง Assignee ใหม่ + เก่า
+6. Start Job → แจ้ง Requester
+7. Extend deadline → แจ้ง Requester
+8. Request Rejection → แจ้ง Approver(s)
+9. Approve Rejection Request → แจ้ง Requester + Assignee
+10. Deny Rejection Request → แจ้ง Assignee
+
+**Phase 2 — เพิ่ม Email ในจุดที่ยังไม่มี:**
+- Approve final → Email Assignee
+- Reject (by approver) → Email Requester
+- Complete Job → Email Requester
+- Reject by Assignee → Email Approver/Requester
+- ทุกจุดใหม่ Phase 1 ก็เพิ่ม Email ไปพร้อมกัน
+
+**สรุป notification ที่ครบแล้ว (17 actions):**
+| Action | ผู้รับ noti | In-App | Email |
+|--------|-----------|--------|-------|
+| สร้างงาน | Approver/Assignee | ✅ | ✅ |
+| Approve (non-final) | Approver level ถัดไป | ✅ | ✅ |
+| Approve (final) | Requester + Assignee | ✅ | ✅ |
+| Reject (by approver) | Requester + cascade | ✅ | ✅ |
+| Reassign | Assignee ใหม่ + เก่า | ✅ | ✅ |
+| Start Job | Requester | ✅ | - |
+| Submit Draft | Requester + Approvers | ✅ | ✅ |
+| Approve/Reject Draft | Assignee + Approvers | ✅ | ✅ |
+| Complete Job | Requester | ✅ | ✅ |
+| Extend | Requester | ✅ | ✅ |
+| Request Rejection | Approver(s) | ✅ | ✅ |
+| Approve Rejection Req | Requester + Assignee | ✅ | ✅ |
+| Deny Rejection Req | Assignee | ✅ | ✅ |
+| Rebrief | Requester | ✅ | ✅ |
+| Submit Rebrief | Assignee | ✅ | ✅ |
+| Accept Rebrief | Requester | ✅ | ✅ |
+| Reject by Assignee | Approver/Requester | ✅ | ✅ |
+
+📁 **Files Changed:**
+- `backend/api-server/src/routes/jobs.js` — เพิ่ม notification ใน: สร้างงาน, reassign, start, extend, request-rejection, approve/deny rejection-request
+- `backend/api-server/src/services/approvalService.js` — เพิ่ม notification ใน: approve (non-final→next approver, final→requester), reject→requester, complete→email, reject-by-assignee→email
 
 </details>
 

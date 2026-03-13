@@ -1239,15 +1239,6 @@ function JobRow({
                     <Link to={`/jobs/${job.id}`} className="text-sm text-rose-600 hover:text-rose-700 font-medium">
                         View
                     </Link>
-                    {/* แสดงปุ่ม ส่ง Draft เฉพาะงานที่อยู่ในสถานะ assigned หรือ in_progress */}
-                    {(job.status === 'assigned' || job.status === 'in_progress') && onOpenDraftModal && (
-                        <button
-                            onClick={() => onOpenDraftModal(job)}
-                            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                        >
-                            ส่ง Draft
-                        </button>
-                    )}
                 </div>
             </td>
         </tr>

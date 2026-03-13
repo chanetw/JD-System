@@ -7,6 +7,8 @@
  */
 
 import nodemailer from 'nodemailer';
+import { getDatabase } from '../config/database.js';
+import { createPasswordResetEmail, createForgotPasswordEmail } from '../utils/emailTemplates.js';
 
 export class EmailService {
   constructor() {
@@ -284,55 +286,28 @@ DJ System
   }
 
   /**
-   * แจ้งเตือนเมื่อมีการ Reset Password โดย Admin
+   * แจ้งเตือนเมื่อมีการ Reset Password โดย Admin (Rose Theme)
    */
   async notifyPasswordReset({ userEmail, userName, newPassword, loginUrl }) {
     const subject = '🔐 รหัสผ่านของคุณถูกรีเซ็ต - DJ System';
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <style>
-          body { font-family: 'Sarabun', Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #EF4444, #B91C1C); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-          .content { background: #fff; padding: 30px; border: 1px solid #e5e7eb; }
-          .password-box { background: #FEF3C7; border: 2px solid #F59E0B; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center; }
-          .password { font-family: monospace; font-size: 24px; font-weight: bold; color: #B45309; letter-spacing: 2px; }
-          .warning { background: #FEE2E2; border-left: 4px solid #EF4444; padding: 15px; margin: 20px 0; }
-          .button { display: inline-block; background: #EF4444; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin-top: 20px; }
-          .footer { text-align: center; padding: 20px; color: #6B7280; font-size: 14px; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1 style="margin:0;">🔐 รหัสผ่านของคุณถูกรีเซ็ต</h1>
-          </div>
-          <div class="content">
-            <p>เรียน <strong>${userName}</strong>,</p>
-            <p>Admin ได้ทำการรีเซ็ตรหัสผ่านของคุณเรียบร้อยแล้ว</p>
-            <p>นี่คือรหัสผ่านใหม่ของคุณ:</p>
+    const html = createPasswordResetEmail({
+      userName,
+      newPassword,
+      loginUrl
+    });
 
-            <div class="password-box">
-              <div class="password">${newPassword}</div>
-            </div>
+    return await this.sendEmail(userEmail, subject, html);
+  }
 
-            <div class="warning">
-              <strong>⚠️ เพื่อความปลอดภัย:</strong> กรุณาเข้าสู่ระบบและเปลี่ยนรหัสผ่านทันที
-            </div>
-
-            ${loginUrl ? `<center><a href="${loginUrl}" class="button">เข้าสู่ระบบ</a></center>` : ''}
-          </div>
-          <div class="footer">
-            <p>หากคุณไม่ได้ร้องขอการรีเซ็ตนี้ กรุณาติดต่อ Admin ทันที</p>
-            <p>DJ System - Design Job Management</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
+  /**
+   * แจ้งเตือนเมื่อมีการขอลืมรหัสผ่าน (Forgot Password) - Rose Theme
+   */
+  async notifyForgotPassword({ userEmail, userName, resetUrl }) {
+    const subject = '🔑 รีเซ็ตรหัสผ่านของคุณ - DJ System';
+    const html = createForgotPasswordEmail({
+      userName,
+      resetUrl
+    });
 
     return await this.sendEmail(userEmail, subject, html);
   }

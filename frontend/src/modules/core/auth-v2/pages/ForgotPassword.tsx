@@ -47,29 +47,29 @@ const ForgotPasswordV2: React.FC = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
             </div>
-            <h2 className="mt-6 text-2xl font-semibold text-gray-900">Check your email</h2>
-            <p className="mt-2 text-sm text-gray-600">
-              If an account exists for <span className="font-medium">{email}</span>, you will receive a password reset link shortly.
+            <h2 className="mt-6 text-2xl font-semibold text-white">ตรวจสอบอีเมลของคุณ</h2>
+            <p className="mt-2 text-base text-white/80">
+              หากมีบัญชีใช้งานที่ตรงกับ <span className="font-medium text-white">{email}</span> ระบบได้ส่งลิงก์สำหรับเปลี่ยนรหัสผ่านไปเรียบร้อยแล้ว
             </p>
           </div>
 
           <div className="bg-white p-8 rounded-xl shadow-lg space-y-4">
-            <p className="text-sm text-gray-600 text-center">
-              Didn't receive the email? Check your spam folder or try again.
+            <p className="text-base text-gray-700 text-center">
+              ไม่ได้รับอีเมล? โปรดตรวจสอบกล่องข้อความขยะ (Spam) หรือลองอีกครั้ง
             </p>
 
             <button
               onClick={() => setIsSubmitted(false)}
               className="w-full py-3 px-4 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 transition-colors"
             >
-              Try again
+              ลองอีกครั้ง
             </button>
 
             <Link
-              to="/login-v2"
+              to="/"
               className="block w-full py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-center text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 transition-colors"
             >
-              Back to login
+              กลับสู่หน้าเข้าสู่ระบบ
             </Link>
           </div>
         </div>
@@ -82,10 +82,10 @@ const ForgotPasswordV2: React.FC = () => {
       <div className="max-w-md w-full space-y-8">
         {/* Header */}
         <div className="text-center">
-          <h1 className="text-4xl font-bold text-rose-600">DJ System</h1>
-          <h2 className="mt-4 text-2xl font-semibold text-gray-900">Reset your password</h2>
-          <p className="mt-2 text-sm text-gray-600">
-            Enter your email address and we'll send you a link to reset your password.
+          <h1 className="text-4xl font-bold text-white">DJ System</h1>
+          <h2 className="mt-4 text-2xl font-semibold text-white">ลืมรหัสผ่าน</h2>
+          <p className="mt-2 text-base text-white/80">
+            กรุณากรอกอีเมลของคุณ แล้วเราจะส่งลิงก์สำหรับรีเซ็ตรหัสผ่านไปให้
           </p>
         </div>
 
@@ -99,8 +99,8 @@ const ForgotPasswordV2: React.FC = () => {
           )}
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-              Email address
+            <label htmlFor="email" className="block text-base font-medium text-gray-700 mb-1">
+              อีเมล
             </label>
             <input
               id="email"
@@ -110,8 +110,8 @@ const ForgotPasswordV2: React.FC = () => {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-indigo-500 sm:text-sm"
-              placeholder="Enter your email"
+              className="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-indigo-500 sm:text-sm"
+              placeholder="กรอกอีเมลของคุณ"
             />
           </div>
 
@@ -127,20 +127,20 @@ const ForgotPasswordV2: React.FC = () => {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                 </svg>
-                Sending...
+                กำลังส่ง...
               </span>
             ) : (
-              'Send reset link'
+              'ส่งลิงก์สำหรับเปลี่ยนรหัสผ่าน'
             )}
           </button>
 
           {/* Back to Login */}
           <div className="text-center text-sm">
             <Link
-              to="/login-v2"
+              to="/"
               className="font-medium text-rose-600 hover:text-indigo-500"
             >
-              Back to login
+              กลับสู่หน้าเข้าสู่ระบบ
             </Link>
           </div>
         </form>

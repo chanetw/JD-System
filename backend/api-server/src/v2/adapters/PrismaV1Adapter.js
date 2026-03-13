@@ -15,6 +15,7 @@
 
 import { getDatabase } from '../../config/database.js';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 
 class PrismaV1Adapter {
   /**
@@ -932,7 +933,7 @@ class PrismaV1Adapter {
    * @param {number} expiresInHours - Token expiration time in hours (default: 1)
    * @returns {Object} Token data
    */
-  static async createPasswordResetToken(userId, expiresInHours = 1) {
+  static async createPasswordResetToken(userId, expiresInHours = 24) {
     const prisma = getDatabase();
 
     // Get user to verify exists
@@ -945,19 +946,20 @@ class PrismaV1Adapter {
     }
 
     // Generate random token
-    const crypto = require('crypto');
     const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000);
+    const otpExpiresAt = new Date(Date.now() + expiresInHours * 60 * 60 * 1000);
+    // สร้าง OTP code 6 หลักเพื่อให้ผ่าน NOT NULL constraint ของ otp_code
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     // Create password reset token in V1 table
     const resetToken = await prisma.passwordResetRequest.create({
       data: {
-        tenantId: user.tenantId,
         userId,
         token,
-        expiresAt,
-        createdAt: new Date(),
-        isUsed: false
+        otpCode,
+        otpExpiresAt,
+        status: 'pending',
+        createdAt: new Date()
       }
     });
 
@@ -965,7 +967,7 @@ class PrismaV1Adapter {
       id: resetToken.id,
       userId: resetToken.userId,
       token: resetToken.token,
-      expiresAt: resetToken.expiresAt
+      expiresAt: resetToken.otpExpiresAt
     };
   }
 
@@ -980,8 +982,8 @@ class PrismaV1Adapter {
     const resetToken = await prisma.passwordResetRequest.findFirst({
       where: {
         token,
-        isUsed: false,
-        expiresAt: { gt: new Date() } // Not expired
+        status: 'pending',
+        otpExpiresAt: { gt: new Date() } // Not expired
       },
       include: {
         user: true
@@ -996,7 +998,7 @@ class PrismaV1Adapter {
       id: resetToken.id,
       userId: resetToken.userId,
       userEmail: resetToken.user.email,
-      expiresAt: resetToken.expiresAt
+      expiresAt: resetToken.otpExpiresAt
     };
   }
 
@@ -1013,8 +1015,8 @@ class PrismaV1Adapter {
     const resetToken = await prisma.passwordResetRequest.findFirst({
       where: {
         token,
-        isUsed: false,
-        expiresAt: { gt: new Date() }
+        status: 'pending',
+        otpExpiresAt: { gt: new Date() }
       }
     });
 
@@ -1042,8 +1044,8 @@ class PrismaV1Adapter {
     await prisma.passwordResetRequest.update({
       where: { id: resetToken.id },
       data: {
-        isUsed: true,
-        usedAt: new Date()
+        status: 'used',
+        updatedAt: new Date()
       }
     });
 
@@ -1092,11 +1094,11 @@ class PrismaV1Adapter {
     await prisma.passwordResetRequest.updateMany({
       where: {
         userId,
-        isUsed: false
+        status: 'pending'
       },
       data: {
-        isUsed: true,
-        usedAt: new Date()
+        status: 'invalidated',
+        updatedAt: new Date()
       }
     });
 

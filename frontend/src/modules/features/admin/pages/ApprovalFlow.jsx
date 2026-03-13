@@ -318,6 +318,20 @@ export default function AdminApprovalFlow() {
         }
     };
 
+    const refreshFlowsAndAssignments = async () => {
+        if (!selectedProject?.id) return;
+        try {
+            const [assignments, flows] = await Promise.allSettled([
+                adminService.getProjectJobAssignments(selectedProject.id),
+                adminService.getAllApprovalFlows()
+            ]);
+            if (assignments.status === 'fulfilled') setProjectJobAssignments(assignments.value || []);
+            if (flows.status === 'fulfilled') setAllApprovalFlows(flows.value || []);
+        } catch (error) {
+            console.error('[ApprovalFlow] Error refreshing flows and assignments:', error);
+        }
+    };
+
     /**
      * useEffect Hook สำหรับดึงข้อมูล Job Assignments เมื่อเปลี่ยนโปรเจกต์
      */
@@ -1175,16 +1189,17 @@ export default function AdminApprovalFlow() {
                                                         <div className="bg-white rounded-lg border border-emerald-200/50 p-4 mb-4">
                                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                                 {jobTypes.map(jt => {
-                                                                    const assignment = projectJobAssignments.find(a => a.jobTypeId === jt.id);
+                                                                    const jtId = parseInt(jt.id);
+                                                                    const assignment = projectJobAssignments.find(a => parseInt(a.jobTypeId) === jtId);
                                                                     // Fallback: ดู assignee จาก allApprovalFlows ที่มี autoAssignUserId
                                                                     // กรณีที่ projectJobAssignments ยังไม่อัพเดต หรือ job type นี้มีการบันทึกผ่าน flow
                                                                     const flowForJt = allApprovalFlows.find(
-                                                                        f => f.projectId === selectedProject?.id &&
-                                                                            f.jobTypeId === jt.id &&
+                                                                        f => parseInt(f.projectId) === parseInt(selectedProject?.id) &&
+                                                                            parseInt(f.jobTypeId) === jtId &&
                                                                             f.autoAssignUserId
                                                                     );
                                                                     const flowAssigneeUser = flowForJt?.autoAssignUserId
-                                                                        ? allUsers.find(u => u.id === flowForJt.autoAssignUserId)
+                                                                        ? allUsers.find(u => parseInt(u.id) === parseInt(flowForJt.autoAssignUserId))
                                                                         : null;
 
                                                                     // hasAssignee: มี record จาก job-assignments API หรือมี autoAssignUserId ใน flow
@@ -1193,7 +1208,7 @@ export default function AdminApprovalFlow() {
                                                                         || (flowAssigneeUser
                                                                             ? `${flowAssigneeUser.firstName || ''} ${flowAssigneeUser.lastName || ''}`.trim()
                                                                             : null);
-                                                                    const isSelected = selectedJobTypesForSkip.some(id => parseInt(id) === parseInt(jt.id));
+                                                                    const isSelected = selectedJobTypesForSkip.some(id => parseInt(id) === jtId);
 
                                                                     return (
                                                                         <div
@@ -1472,7 +1487,7 @@ export default function AdminApprovalFlow() {
                                             <AssignmentMatrix
                                                 projectId={selectedProject.id}
                                                 assignees={responsibleTeam.assignees}
-                                                onSaveSuccess={fetchJobAssignments}
+                                                onSaveSuccess={refreshFlowsAndAssignments}
                                             />
                                         )}
                                     </div>

@@ -865,68 +865,17 @@ export const jobService = {
      * @param {Object} user - Current user object with roles
      * @returns {Promise<Object>} - Result with success status
      */
-    assignJobManually: async (jobId, assigneeId, assignedBy = null, source = 'manual', user = null) => {
+    assignJobManually: async (jobId, assigneeId) => {
         try {
-            // ========================================
-            // Permission Check
-            // ========================================
-            // Get user roles if not provided
-            let userRoles = [];
-            if (user?.roles) {
-                userRoles = user.roles.map(r => (typeof r === 'string' ? r : r?.name || r?.roleName || '').toLowerCase());
+            const response = await httpClient.post(`/jobs/${jobId}/assign`, { assigneeId });
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'มอบหมายงานไม่สำเร็จ');
             }
-
-            // Permission check: Only Admin and Manager can manually assign
-            const isAdminOrManager = userRoles.includes('admin') || userRoles.includes('manager');
-
-            if (!isAdminOrManager) {
-                const error = new Error('ไม่มีสิทธิ์มอบหมายงาน: เฉพาะ Admin และ Manager เท่านั้น');
-                error.code = 'PERMISSION_DENIED';
-                throw error;
-            }
-
-            // Update job with assignee
-            const { data: updatedJob, error: updateErr } = await supabase
-                .from('jobs')
-                .update({
-                    assignee_id: assigneeId,
-                    assigned_at: new Date().toISOString(),
-                    status: 'assigned'
-                })
-                .eq('id', jobId)
-                .select()
-                .single();
-
-            if (updateErr) throw updateErr;
-
-            // Log activity
-            await supabase.from('job_activities').insert({
-                job_id: jobId,
-                user_id: assignedBy,
-                activity_type: 'assigned',
-                description: `Job assigned to user ${assigneeId}`,
-                metadata: { source, timestamp: new Date().toISOString() }
-            });
-
-            console.log('[Assign] Job assigned successfully:', { jobId, assigneeId, source });
-
-            // Send notification to assignee
-            try {
-                await notificationService.createNotification({
-                    userId: assigneeId,
-                    jobId: jobId,
-                    type: 'job_assigned',
-                    message: `You have been assigned to job ${updatedJob.dj_id}`,
-                    metadata: { source }
-                });
-            } catch (notifErr) {
-                console.warn('[Assign] Failed to send notification:', notifErr);
-            }
-
-            return { success: true, data: updatedJob };
+            return { success: true, data: response.data.data };
         } catch (error) {
-            console.error('[Assign] Failed:', error);
-            return { success: false, error: error.message };
+            console.error('[jobService] assignJobManually error:', error);
+            const message = error.response?.data?.message || error.message || 'เกิดข้อผิดพลาด';
+            return { success: false, error: message };
         }
     },
 

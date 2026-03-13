@@ -95,18 +95,52 @@ const JobActivityLog = ({ jobId }) => {
 // Helper function to translate actions
 const translateAction = (action) => {
     const map = {
+        // Job lifecycle
         'job_created': 'สร้างงาน',
+        'parent_child_created': 'สร้างงานกลุ่ม (Parent-Child)',
+        'draft_saved': 'บันทึกร่างงาน',
+        'job_started': 'เริ่มดำเนินการงาน',
+        'job_auto_approved': 'อนุมัติอัตโนมัติ',
         'status_updated': 'อัปเดตสถานะ',
-        'comment_added': 'แสดงความคิดเห็น',
-        'comment_deleted': 'ลบความคิดเห็น',
-        'file_uploaded': 'อัปโหลดไฟล์',
-        'assigned': 'มอบหมายงาน',
-        'reassigned': 'ย้ายงาน',
+        'due_date_adjusted': 'ปรับวันกำหนดส่ง',
+        'closed': 'ปิดงาน',
+        'parent_job_closed': 'ปิดงานหลัก',
+        // Approval
+        'job_approved': 'อนุมัติงาน',
+        'job_rejected': 'ส่งกลับแก้ไข',
+        'approval_requested': 'ส่งเรื่องขออนุมัติ',
+        'job_approved_cascade': 'อนุมัติอัตโนมัติ (Cascade)',
+        'job_approved_cascade_sequential': 'อนุมัติอัตโนมัติตามลำดับ',
         'approved': 'อนุมัติงาน',
         'rejected': 'ส่งกลับแก้ไข',
-        'started': 'เริ่มงาน',
+        // Assignment
+        'assigned': 'มอบหมายงาน',
+        'reassigned': 'ย้ายผู้รับผิดชอบ',
+        // Completion
+        'job_completed': 'ส่งมอบงาน',
         'completed': 'ส่งงาน',
-        'closed': 'ปิดงาน'
+        // Rejection request flow
+        'rejection_requested': 'ขอปฏิเสธงาน',
+        'rejection_approved': 'อนุมัติคำขอปฏิเสธ',
+        'rejection_denied': 'ไม่อนุมัติคำขอปฏิเสธ',
+        'job_rejected_by_assignee': 'ผู้รับงานปฏิเสธงาน',
+        'assignee_rejection_confirmed': 'ยืนยันการปฏิเสธของผู้รับงาน',
+        'assignee_rejection_denied': 'ไม่ยืนยันการปฏิเสธของผู้รับงาน',
+        // Draft review
+        'draft_submitted': 'ส่ง Draft',
+        'draft_approved': 'อนุมัติ Draft',
+        'draft_rejected': 'ปฏิเสธ Draft',
+        // Rebrief
+        'rebrief_requested': 'ขอข้อมูลเพิ่มเติม',
+        'rebrief_submitted': 'ส่งข้อมูลเพิ่มเติม',
+        'rebrief_accepted': 'รับงานหลัง Rebrief',
+        // Comments
+        'comment_added': 'แสดงความคิดเห็น',
+        'comment_deleted': 'ลบความคิดเห็น',
+        // Files
+        'file_uploaded': 'อัปโหลดไฟล์',
+        // Legacy
+        'started': 'เริ่มงาน',
     };
     return map[action] || action;
 };

@@ -113,7 +113,6 @@ export default function MyQueue() {
      */
     useEffect(() => {
         if (user?.id) {
-            console.log(`[MyQueue] 🔄 Tab changed to: ${activeTab}`);
             fetchJobs();
         }
     }, [user?.id, activeTab]);
@@ -144,8 +143,6 @@ export default function MyQueue() {
             // Event: job:assigned - งานใหม่ได้รับมอบหมาย
             // =====================================
             const handleJobAssigned = (data) => {
-                console.log('[MyQueue] Received job:assigned event:', data);
-
                 // Refresh jobs list เพื่อแสดงงานใหม่
                 // ไม่ต้อง toast ที่นี่เพราะ useNotifications จะจัดการ
                 if (activeTab === 'todo') {
@@ -157,8 +154,6 @@ export default function MyQueue() {
             // Event: job:status-changed - สถานะงานเปลี่ยน
             // =====================================
             const handleJobStatusChanged = (data) => {
-                console.log('[MyQueue] Received job:status-changed event:', data);
-
                 // Refresh jobs list เพื่อให้ updated status
                 fetchJobs();
             };
@@ -167,8 +162,6 @@ export default function MyQueue() {
             // Event: job:completed - งานเสร็จสิ้น
             // =====================================
             const handleJobCompleted = (data) => {
-                console.log('[MyQueue] Received job:completed event:', data);
-
                 // Refresh jobs list เพื่อให้ completed status
                 fetchJobs();
             };
@@ -178,8 +171,6 @@ export default function MyQueue() {
             socket.on('job:status-changed', handleJobStatusChanged);
             socket.on('job:completed', handleJobCompleted);
 
-            console.log('[MyQueue] Socket event listeners set up');
-
             // =====================================
             // Cleanup: ลบ listeners ตอน unmount
             // =====================================
@@ -187,7 +178,6 @@ export default function MyQueue() {
                 socket.off('job:assigned', handleJobAssigned);
                 socket.off('job:status-changed', handleJobStatusChanged);
                 socket.off('job:completed', handleJobCompleted);
-                console.log('[MyQueue] Socket event listeners cleaned up');
             };
         } catch (err) {
             console.error('[MyQueue] Error setting up socket listeners:', err);
@@ -200,12 +190,9 @@ export default function MyQueue() {
     const fetchJobs = async () => {
         setLoading(true);
         try {
-            // Timeline tab ต้องใช้ 'all' เพื่อดึงงานทั้งหมด
-            const filterStatus = activeTab === 'timeline' ? 'all' : activeTab;
-            console.log(`[MyQueue] 📥 Fetching jobs for tab: ${activeTab} (filter: ${filterStatus})`);
-            
+            // Timeline tab ดึงงานที่กำลังทำ (เหมือน in_progress tab)
+            const filterStatus = activeTab === 'timeline' ? 'in_progress' : activeTab;
             const data = await api.getAssigneeJobs(user.id, filterStatus);
-            console.log(`[MyQueue] ✅ Fetched ${data?.length || 0} jobs for ${activeTab} tab`);
             setJobs(data || []);
 
             const criticalCount = (data || []).filter(j => j.healthStatus === 'critical').length;
@@ -227,7 +214,7 @@ export default function MyQueue() {
                 in_progress: counts.in_progress || 0,
                 completed: counts.completed || 0,
                 rejected: counts.rejected || 0,
-                timeline: counts.all || 0,
+                timeline: counts.in_progress || 0, // ให้ปฏิทินเท่ากับกำลังทำ
             });
         } catch (err) {
             console.error('[MyQueue] fetchAllTabCounts error:', err);
@@ -621,10 +608,7 @@ export default function MyQueue() {
             {/* Content Area */}
             {activeTab === 'timeline' ? (
                 /* Timeline View */
-                (() => {
-                    console.log(`[MyQueue] 📅 Rendering Timeline View with ${jobs.length} jobs`);
-                    return <TimelineView jobs={jobs} onJobClick={handleViewDetail} />;
-                })()
+                <TimelineView jobs={filteredJobs} onJobClick={handleViewDetail} />
             ) : (
                 /* Job List View */
                 <div className="space-y-4">

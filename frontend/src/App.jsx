@@ -16,7 +16,8 @@ import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 
 // Core Modules (loaded immediately)
 import { Layout } from '@core/layout';
-import { Login, LoginDemo, Register, ForgotPassword, ChangePassword, ProtectedRoute, RoleProtectedRoute } from '@core/auth';
+import { Login, LoginDemo, Register, ChangePassword, ProtectedRoute, RoleProtectedRoute } from '@core/auth';
+import MagicLinkAuth from './modules/core/auth/pages/MagicLinkAuth';
 
 // V2 Auth Pages (TypeScript - Production-ready)
 import { LoginV2, RegisterV2, ForgotPasswordV2, ResetPasswordV2, ForceChangePassword } from '@core/auth-v2';
@@ -87,15 +88,11 @@ function App() {
         {/* Public Pages (No Login Required) */}
         <Route path="/login" element={<LoginV2 />} />
         <Route path="/login_demo" element={<LoginDemo />} />
+        <Route path="/auth/magic-link" element={<MagicLinkAuth />} />
 
         <Route path="/register" element={<Register />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-
-        {/* V2 Auth Pages (Production-ready with Sequelize + RBAC) */}
-        {/* <Route path="/login-v2" element={<LoginV2 />} /> -> Moved to /login */}
-        <Route path="/register-v2" element={<RegisterV2 />} />
-        <Route path="/forgot-password-v2" element={<ForgotPasswordV2 />} />
-        <Route path="/reset-password-v2" element={<ResetPasswordV2 />} />
+        <Route path="/forgot-password" element={<ForgotPasswordV2 />} />
+        <Route path="/reset-password" element={<ResetPasswordV2 />} />
 
         {/* Change Password (Requires Login) */}
         <Route path="/change-password" element={

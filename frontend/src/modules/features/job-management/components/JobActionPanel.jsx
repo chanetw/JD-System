@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckIcon, XMarkIcon, UserIcon } from '@heroicons/react/24/outline';
+import { CheckIcon, XMarkIcon, UserIcon, ExclamationCircleIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 
 const JobActionPanel = ({
     job,
@@ -24,6 +24,8 @@ const JobActionPanel = ({
 }) => {
     const [selectedAssignee, setSelectedAssignee] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [assignError, setAssignError] = useState('');
+    const [assignSuccess, setAssignSuccess] = useState('');
 
     // Permission Helpers
     // ✅ FIX: Improved role normalization with null safety
@@ -49,63 +51,23 @@ const JobActionPanel = ({
     // 1. Approval Actions
     const renderApprovalActions = () => {
         const isPending = job.currentLevel > 0 && job.currentLevel < 999;
-        const isPendingStatus = job.status === 'pending_approval' || 
-                               job.status?.startsWith('pending_level_') ||
-                               job.status === 'assignee_rejected';
-
-        console.log('[JobActionPanel] 🔍 Approval Check:', {
-            jobStatus: job.status,
-            currentLevel: job.currentLevel,
-            isPending,
-            isPendingStatus,
-            isAdmin,
-            hasFlowSnapshot: !!job.flowSnapshot,
-            currentUserId: currentUser?.id,
-            currentUserIdType: typeof currentUser?.id,
-            currentUserEmail: currentUser?.email
-        });
+        const isPendingStatus = job.status === 'pending_approval' ||
+            job.status?.startsWith('pending_level_') ||
+            job.status === 'assignee_rejected';
 
         let canApprove = false;
-        
-        // ✅ Admin/Superadmin can approve ALL pending jobs (Superuser mode)
+
         if (isAdmin && isPendingStatus) {
             canApprove = true;
-            console.log('[JobActionPanel] ✅ Admin Superuser - can approve all pending jobs');
         } else if (isPending && job.flowSnapshot) {
-            // Normal approver: check if in current level
             const currentLevelConfig = job.flowSnapshot.levels.find(l => l.level === job.currentLevel);
-            console.log('[JobActionPanel] 🔍 Current Level Config:', {
-                level: job.currentLevel,
-                found: !!currentLevelConfig,
-                approversCount: currentLevelConfig?.approvers?.length,
-                approvers: currentLevelConfig?.approvers?.map(a => ({
-                    id: a.id,
-                    idType: typeof a.id,
-                    userId: a.userId,
-                    userIdType: typeof a.userId,
-                    name: a.name
-                }))
-            });
             if (currentLevelConfig && currentLevelConfig.approvers) {
-                // ✅ FIX: Use loose equality (==) to handle string vs number comparison
-                // Backend may return userId as string '4', currentUser.id is number 4
                 canApprove = currentLevelConfig.approvers.some(a => a.id == currentUser?.id) ||
                     currentLevelConfig.approvers.some(a => a.userId == currentUser?.id);
-
-                console.log('[JobActionPanel] ✅ Can Approve Result:', {
-                    canApprove,
-                    currentUserId: currentUser?.id,
-                    approvers: currentLevelConfig.approvers.map(a => a.userId || a.id)
-                });
             }
         }
 
-        if (!canApprove) {
-            console.log('[JobActionPanel] ❌ Cannot approve - no buttons shown');
-            return null;
-        }
-
-        console.log('[JobActionPanel] ✅ Can approve - showing buttons');
+        if (!canApprove) return null;
 
         return (
             <div className={`bg-white rounded-xl border ${theme?.borderClass || 'border-gray-400'} shadow-sm p-6 mb-6`}>
@@ -132,62 +94,128 @@ const JobActionPanel = ({
 
     // 2. Manual Assignment (Admin/Mgr)
     const renderManualAssignment = () => {
-        // Allow assignment if:
-        // 1. Job is not yet assigned
-        // 2. User is admin or manager
-        // Can assign at any job status (pending, pending dependency, etc.) before approval
-        if (job.assigneeId) return null; // Already assigned - show reassign instead
+        if (job.assigneeId) return null;
 
         const canAssign = isAdmin || isDeptManager;
         if (!canAssign) return null;
 
+        const assignableUsers = (users || []).filter(u =>
+            u.roles?.some(r => [
+                'assignee', 'senior_designer', 'creative'
+            ].includes((typeof r === 'string' ? r : r?.name || r?.roleName || '').toLowerCase()))
+        );
+
+        const selectedUser = assignableUsers.find(u => String(u.id) === String(selectedAssignee));
+
         const handleAssignClick = async () => {
-            if (!selectedAssignee) return alert('กรุณาเลือกผู้รับงาน');
+            setAssignError('');
+            setAssignSuccess('');
+            if (!selectedAssignee) {
+                setAssignError('กรุณาเลือกผู้รับงาน');
+                return;
+            }
             setIsLoading(true);
             try {
-                await onManualAssign(job.id, selectedAssignee);
-                setSelectedAssignee('');
+                const result = await onManualAssign(job.id, selectedAssignee);
+                if (result?.success === false) {
+                    setAssignError(result.error || 'มอบหมายไม่สำเร็จ');
+                } else {
+                    setAssignSuccess(`มอบหมายงานให้ ${selectedUser?.firstName || ''} ${selectedUser?.lastName || ''} เรียบร้อยแล้ว`);
+                    setSelectedAssignee('');
+                }
+            } catch (err) {
+                setAssignError(err?.message || 'เกิดข้อผิดพลาด');
             } finally {
                 setIsLoading(false);
             }
         };
 
         return (
-            <div className="bg-orange-50 border-l-4 border-l-orange-500 rounded-xl p-6 shadow-sm mb-6">
-                <div className="flex items-center justify-between mb-4">
+            <div className="rounded-xl shadow-sm mb-6 overflow-hidden border border-orange-200">
+                {/* Header */}
+                <div className="bg-gradient-to-r from-orange-500 to-amber-500 px-5 py-3 flex items-center gap-3">
+                    <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+                        <UserIcon className="w-5 h-5 text-white" />
+                    </div>
                     <div>
-                        <h3 className="font-bold text-orange-800 flex items-center gap-2">
-                            <UserIcon className="w-5 h-5" />
-                            ต้องมอบหมายงาน (Pending Assignment)
-                        </h3>
-                        <p className="text-sm text-orange-600 mt-1">
-                            งานผ่านการอนุมัติแล้ว แต่ยังต้องเลือกผู้รับผิดชอบ
-                        </p>
+                        <h3 className="font-bold text-white text-sm">ต้องมอบหมายงาน</h3>
+                        <p className="text-orange-100 text-xs">งานยังไม่มีผู้รับผิดชอบ กรุณาเลือกผู้ดำเนินการ</p>
                     </div>
                 </div>
 
-                <div className="flex gap-3">
-                    <select
-                        value={selectedAssignee}
-                        onChange={(e) => setSelectedAssignee(e.target.value)}
-                        className="flex-1 px-4 py-3 border border-orange-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                        disabled={isLoading}
-                    >
-                        <option value="">-- เลือกผู้รับงาน --</option>
-                        {users.filter(u => u.roles?.some(r => ['assignee', 'senior_designer', 'creative'].includes((typeof r === 'string' ? r : r?.name)?.toLowerCase()))).map(u => (
-                            <option key={u.id} value={u.id}>
-                                {`${u.firstName} ${u.lastName}`}
-                            </option>
-                        ))}
-                    </select>
+                {/* Body */}
+                <div className="bg-orange-50 p-5 space-y-4">
+                    {/* Success Banner */}
+                    {assignSuccess && (
+                        <div className="flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-2.5 text-sm">
+                            <CheckCircleIcon className="w-4 h-4 shrink-0" />
+                            {assignSuccess}
+                        </div>
+                    )}
 
-                    <button
-                        onClick={handleAssignClick}
-                        disabled={!selectedAssignee || isLoading}
-                        className="px-6 py-3 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-                    >
-                        {isLoading ? 'กำลังบันทึก...' : 'มอบหมาย'}
-                    </button>
+                    {/* Assignee Selector */}
+                    <div className="space-y-2">
+                        <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">เลือกผู้รับงาน</label>
+                        <select
+                            value={selectedAssignee}
+                            onChange={(e) => { setSelectedAssignee(e.target.value); setAssignError(''); setAssignSuccess(''); }}
+                            className={`w-full px-4 py-2.5 border rounded-lg text-sm bg-white focus:ring-2 focus:outline-none transition-colors ${assignError
+                                    ? 'border-red-400 focus:ring-red-300'
+                                    : 'border-orange-300 focus:ring-orange-400 focus:border-orange-400'
+                                }`}
+                            disabled={isLoading}
+                        >
+                            <option value="">-- เลือกผู้ดำเนินการ ({assignableUsers.length} คน) --</option>
+                            {assignableUsers.map(u => (
+                                <option key={u.id} value={u.id}>
+                                    {u.firstName} {u.lastName}
+                                    {u.displayName && u.displayName !== `${u.firstName} ${u.lastName}` ? ` (${u.displayName})` : ''}
+                                </option>
+                            ))}
+                        </select>
+
+                        {/* Inline error */}
+                        {assignError && (
+                            <div className="flex items-center gap-1.5 text-red-600 text-sm">
+                                <ExclamationCircleIcon className="w-4 h-4 shrink-0" />
+                                {assignError}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Preview + Confirm button */}
+                    <div className="flex items-center gap-3">
+                        {selectedUser && (
+                            <div className="flex-1 flex items-center gap-2 bg-white border border-orange-200 rounded-lg px-3 py-2">
+                                <div className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 font-bold text-xs shrink-0">
+                                    {(selectedUser.firstName || '?')[0].toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-sm font-semibold text-gray-800 truncate">
+                                        {selectedUser.firstName} {selectedUser.lastName}
+                                    </div>
+                                </div>
+                                <CheckCircleIcon className="w-4 h-4 text-orange-400 ml-auto shrink-0" />
+                            </div>
+                        )}
+                        <button
+                            onClick={handleAssignClick}
+                            disabled={!selectedAssignee || isLoading}
+                            className="shrink-0 px-5 py-2.5 bg-orange-600 text-white rounded-lg font-semibold text-sm hover:bg-orange-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center gap-2"
+                        >
+                            {isLoading ? (
+                                <>
+                                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    กำลังบันทึก...
+                                </>
+                            ) : (
+                                <>
+                                    <CheckIcon className="w-4 h-4" />
+                                    ยืนยันมอบหมาย
+                                </>
+                            )}
+                        </button>
+                    </div>
                 </div>
             </div>
         );

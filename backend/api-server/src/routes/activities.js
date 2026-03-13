@@ -80,39 +80,72 @@ router.get('/jobs/:jobId/activities', async (req, res) => {
             });
         }
 
-        // Get activities with user info
-        const skip = (parseInt(page) - 1) * parseInt(limit);
-        const [activities, total] = await Promise.all([
+        // Get activities from both tables and merge
+        const [activityLogs, jobActivities] = await Promise.all([
             prisma.activityLog.findMany({
-                where: {
-                    jobId: parseInt(jobId)
-                },
+                where: { jobId: parseInt(jobId) },
                 include: {
                     user: {
-                        select: {
-                            id: true,
-                            // Use standard User fields from Prisma schema
-                            firstName: true,
-                            lastName: true,
-                            email: true,
-                            avatarUrl: true
-                        }
+                        select: { id: true, firstName: true, lastName: true, email: true, avatarUrl: true }
                     }
                 },
-                orderBy: { createdAt: 'desc' }, // Newest first
-                skip,
-                take: parseInt(limit)
+                orderBy: { createdAt: 'desc' },
+                take: 200
             }),
-            prisma.activityLog.count({
-                where: {
-                    jobId: parseInt(jobId)
-                }
-            })
+            prisma.jobActivity.findMany({
+                where: { jobId: parseInt(jobId) },
+                include: {
+                    user: {
+                        select: { id: true, firstName: true, lastName: true, email: true, avatarUrl: true }
+                    }
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 200
+            }).catch(() => []) // jobActivity อาจไม่มีใน schema เก่า ให้ fallback เป็น []
         ]);
+
+        // Normalize activityLog entries
+        const normalizedLogs = activityLogs.map(a => ({
+            id: `log_${a.id}`,
+            source: 'activity_log',
+            action: a.action,
+            message: a.message || a.action,
+            detail: a.detail,
+            createdAt: a.createdAt,
+            user: a.user || null
+        }));
+
+        // Normalize jobActivity entries (map activityType → action, description → message)
+        const normalizedJobActivities = jobActivities.map(a => ({
+            id: `jact_${a.id}`,
+            source: 'job_activity',
+            action: a.activityType,
+            message: a.description || a.activityType,
+            detail: a.metadata,
+            createdAt: a.createdAt,
+            user: a.user || null
+        }));
+
+        // Merge and deduplicate: prefer activityLog entries, skip jobActivity if same action+time exists
+        const activityLogSignatures = new Set(
+            normalizedLogs.map(a => `${a.action}_${new Date(a.createdAt).getTime()}`)
+        );
+        const uniqueJobActivities = normalizedJobActivities.filter(a => {
+            const sig = `${a.action}_${new Date(a.createdAt).getTime()}`;
+            return !activityLogSignatures.has(sig);
+        });
+
+        // Combine, sort newest-first, then paginate
+        const allActivities = [...normalizedLogs, ...uniqueJobActivities]
+            .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        const total = allActivities.length;
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const paginated = allActivities.slice(skip, skip + parseInt(limit));
 
         res.json({
             success: true,
-            data: activities,
+            data: paginated,
             pagination: {
                 page: parseInt(page),
                 limit: parseInt(limit),

@@ -119,14 +119,19 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
 
         try {
             setLoading(true);
-            const payload = matrix
-                .filter(m => m.assigneeId && m.assigneeId !== "")
-                .map(m => ({
-                    jobTypeId: m.jobTypeId,
-                    assigneeId: parseInt(m.assigneeId)
-                }));
+            // ส่งทุกแถว รวมถึงแถวที่ไม่ระบุ (assigneeId = null) เพื่อให้ clear ค่าเดิมได้
+            const payload = matrix.map(m => ({
+                jobTypeId: m.jobTypeId,
+                assigneeId: m.assigneeId && m.assigneeId !== "" ? parseInt(m.assigneeId) : null
+            }));
 
             await api.saveAssignmentMatrix(selectedProjectId, payload);
+
+            // Sync matrix state ใน local โดยไม่ต้อง reload ทั้งหมด
+            setMatrix(prev => prev.map(m => ({
+                ...m,
+                assigneeId: m.assigneeId && m.assigneeId !== "" ? parseInt(m.assigneeId) : null
+            })));
 
             setModalConfig({
                 type: 'success',
@@ -134,9 +139,7 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
                 message: 'บันทึกการตั้งค่าผู้รับงานอัตโนมัติเรียบร้อยแล้ว'
             });
             setShowModal(true);
-            loadMatrixData();
 
-            // แจ้ง parent component ว่าบันทึกสำเร็จแล้ว
             if (onSaveSuccess) {
                 onSaveSuccess();
             }

@@ -324,11 +324,11 @@ router.post('/jobs/:jobId/comments', async (req, res) => {
     try {
       await prisma.activityLog.create({
         data: {
-          tenantId,
           jobId: parseInt(jobId),
           userId,
           action: 'comment_added',
-          details: {
+          message: `แสดงความคิดเห็น`,
+          detail: {
             commentId: newComment.id,
             commentPreview: comment.substring(0, 100),
             mentionCount: mentionedUsers.length
@@ -502,11 +502,11 @@ router.delete('/jobs/:jobId/comments/:commentId', async (req, res) => {
     try {
       await prisma.activityLog.create({
         data: {
-          tenantId,
           jobId: parseInt(jobId),
           userId,
           action: 'comment_deleted',
-          details: {
+          message: `ลบความคิดเห็น`,
+          detail: {
             commentId: parseInt(commentId)
           }
         }

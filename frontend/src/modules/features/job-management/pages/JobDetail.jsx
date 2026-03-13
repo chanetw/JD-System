@@ -115,31 +115,14 @@ export default function JobDetail() {
 
     const loadUsers = async () => {
         try {
-            console.log('[JobDetail] 🔍 Loading users for assignee dropdown...');
-
-            // Fetch all users from backend
             const usersData = await adminService.getUsers(1, 1000);
             const usersList = usersData?.data || usersData || [];
 
-            console.log('[JobDetail] 📊 Total users from API:', usersList.length);
-            console.log('[JobDetail] 👤 Sample user (first):', usersList[0]);
-
-            // Filter for Assignee role only (frontend filtering)
             const assigneeUsers = (Array.isArray(usersList) ? usersList : []).filter(u => {
-                const hasRoles = u.roles && Array.isArray(u.roles);
-                if (!hasRoles) {
-                    console.log('[JobDetail] ⚠️ User without roles:', u.id, u.name);
-                    return false;
-                }
-
-                const isAssignee = u.roles.some(r => r.name && r.name.toLowerCase() === 'assignee');
-                if (isAssignee) {
-                    console.log('[JobDetail] ✅ Assignee found:', u.name, 'roles:', u.roles.map(r => r.name));
-                }
-                return isAssignee;
+                if (!u.roles || !Array.isArray(u.roles)) return false;
+                return u.roles.some(r => r.name && r.name.toLowerCase() === 'assignee');
             });
 
-            console.log('[JobDetail] 🎯 Filtered assignee users:', assigneeUsers.length);
             setUsers(assigneeUsers);
         } catch (error) {
             console.error('[JobDetail] ❌ Failed to load users:', error);
@@ -509,17 +492,11 @@ export default function JobDetail() {
     };
 
     const handleManualAssign = async (jobId, assigneeId) => {
-        try {
-            const result = await api.assignJobManually(jobId, assigneeId, user?.id, 'manual', user);
-            if (result.success) {
-                alert('มอบหมายงานสำเร็จ');
-                loadJob();
-            } else {
-                alert('ไม่สำเร็จ: ' + result.error);
-            }
-        } catch (err) {
-            alert('Error: ' + (err.message || 'ไม่ทราบสาเหตุ'));
+        const result = await api.assignJobManually(jobId, assigneeId);
+        if (result.success) {
+            loadJob();
         }
+        return result;
     };
 
     const handleConfirmClose = async () => {

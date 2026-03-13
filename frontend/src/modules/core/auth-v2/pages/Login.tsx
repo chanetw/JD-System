@@ -174,7 +174,7 @@ const LoginV2: React.FC = () => {
               สมัครใช้งาน
             </Link>
             <Link
-              to="/forgot-password-v2"
+              to="/forgot-password"
               className="text-slate-500 hover:text-slate-700 font-medium"
             >
               ลืมรหัสผ่าน?

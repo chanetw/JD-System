@@ -137,7 +137,8 @@ export class UserService extends BaseService {
       limit = 20,
       search = '',
       isActive = undefined,
-      role = ''
+      role = '',
+      departmentId = undefined
     } = options;
 
     try {
@@ -146,6 +147,11 @@ export class UserService extends BaseService {
       // Filter by active status
       if (isActive !== undefined) {
         where.isActive = isActive;
+      }
+
+      // Filter by department
+      if (departmentId !== undefined) {
+        where.departmentId = departmentId;
       }
 
       // Search by name or email
@@ -158,15 +164,14 @@ export class UserService extends BaseService {
         ];
       }
 
-      // TEMPORARY: Role filter disabled due to Prisma query issue
-      // Filter will be done on frontend instead
-      // if (role) {
-      //   where.userRoles = {
-      //     some: {
-      //       roleName: role
-      //     }
-      //   };
-      // }
+      // Filter by role
+      if (role) {
+        where.userRoles = {
+          some: {
+            roleName: role
+          }
+        };
+      }
 
       const result = await this.paginate('user', {
         page,

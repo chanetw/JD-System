@@ -538,12 +538,24 @@ router.post('/auth/forgot-password', async (req, res) => {
     // Use Adapter
     // Note: Defaulting tenantId to 1 (SENA) if not specified, as this is a public endpoint
     const user = await PrismaV1Adapter.findUserByEmail(email, 1);
+    console.log(`[V2 Auth] forgot-password request for email: ${email}. User found:`, !!user, 'isActive:', user?.isActive);
 
     if (user && user.isActive) {
       const resetToken = await PrismaV1Adapter.createPasswordResetToken(user.id);
-      console.log(`[V2 Auth] Password reset token for ${email}: ${resetToken.token}`);
+      console.log(`[V2 Auth] Password reset token for ${email} generated successfully (length: ${resetToken.token?.length})`);
 
-      // TODO: Send email
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const resetUrl = `${frontendUrl}/reset-password?token=${resetToken.token}`;
+
+      console.log(`[V2 Auth] About to send notifyForgotPassword email to ${user.email}`);
+      const emailResult = await emailService.notifyForgotPassword({
+        userEmail: user.email,
+        userName: user.firstName || 'ผู้ใช้งาน',
+        resetUrl
+      });
+      console.log(`[V2 Auth] Email service response for ${email}:`, emailResult);
+    } else {
+       console.log(`[V2 Auth] User not found or inactive for email: ${email}`);
     }
   } catch (e) {
     console.error('[V2 Auth] forgot-password error:', e);

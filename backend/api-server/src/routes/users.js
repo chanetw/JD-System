@@ -82,14 +82,15 @@ router.get('/:id/roles', async (req, res) => {
  */
 router.get('/', async (req, res) => {
   try {
-    const { page, limit, search, isActive, role } = req.query;
+    const { page, limit, search, isActive, role, departmentId } = req.query;
 
     const result = await userService.getUsers(req.user.tenantId, {
       page: page ? parseInt(page) : 1,
       limit: limit ? parseInt(limit) : 20,
       search,
       isActive: isActive !== undefined ? isActive === 'true' : undefined,
-      role
+      role,
+      departmentId: departmentId ? parseInt(departmentId) : undefined
     });
 
     res.json(result);

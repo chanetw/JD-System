@@ -16,11 +16,14 @@ import { getDatabase } from '../config/database.js';
 import NotificationService from './notificationService.js';
 import chainService from './chainService.js';
 import { cacheService } from './cacheService.js';
+import MagicLinkService from './magicLinkService.js';
+import { createJobApprovalEmail, createJobRejectionEmail, createJobCompletionEmail } from '../utils/emailTemplates.js';
 
 export class ApprovalService extends BaseService {
   constructor() {
     super();
     this.notificationService = new NotificationService();
+    this.magicLinkService = new MagicLinkService();
   }
 
   /**
@@ -356,7 +359,8 @@ export class ApprovalService extends BaseService {
    * @param {string} logData.ipAddress - IP address
    * @param {Object} logData.metadata - ข้อมูลเพิ่มเติม
    */
-  async logApprovalActivity({ jobId, approverId, activityType, description, ipAddress, metadata }) {
+  async logApprovalActivity({ jobId, approverId, userId, activityType, description, ipAddress, metadata }) {
+    const actorId = approverId || userId;
     try {
       const job = await this.prisma.job.findUnique({
         where: { id: jobId },
@@ -368,7 +372,7 @@ export class ApprovalService extends BaseService {
         data: {
           tenantId: job.tenantId,
           jobId,
-          userId: approverId,
+          userId: actorId,
           activityType,
           description,
           metadata: {
@@ -377,6 +381,17 @@ export class ApprovalService extends BaseService {
             userAgent: metadata?.userAgent || 'Unknown',
             timestamp: new Date().toISOString()
           }
+        }
+      });
+
+      // Mirror to ActivityLog (canonical timeline for JobDetails Activity tab)
+      await this.prisma.activityLog.create({
+        data: {
+          jobId,
+          userId: actorId,
+          action: activityType,
+          message: description,
+          detail: metadata ? { ...metadata, ipAddress } : null
         }
       });
     } catch (error) {
@@ -654,6 +669,77 @@ export class ApprovalService extends BaseService {
         data: updateData
       });
 
+      // ✅ Notification: Approve non-final → แจ้ง Approver level ถัดไป
+      if (!isFinal && this.notificationService) {
+        try {
+          const nextLevel = currentLevel + 1;
+          const nextApproverIds = [];
+          if (flow?.approverSteps && Array.isArray(flow.approverSteps)) {
+            const nextStep = flow.approverSteps.find(s => (s.stepNumber || s.level) === nextLevel);
+            if (nextStep?.approvers && Array.isArray(nextStep.approvers)) {
+              nextStep.approvers.forEach(a => {
+                const aid = a.id || a.userId;
+                if (aid) nextApproverIds.push(aid);
+              });
+            }
+          }
+
+          for (const nextApproverId of nextApproverIds) {
+            await this.notificationService.createNotification({
+              tenantId: job.tenantId || 1,
+              userId: nextApproverId,
+              type: 'job_pending_approval',
+              title: `📋 งานรออนุมัติ Level ${nextLevel}: ${job.djId}`,
+              message: `งาน "${job.subject}" ผ่าน Level ${currentLevel} แล้ว รอการอนุมัติจากคุณ (Level ${nextLevel})`,
+              link: `/jobs/${jobId}`
+            }).catch(err => console.warn('[Approval] Noti to next approver failed:', err.message));
+          }
+
+          // Email next-level approvers with Magic Link
+          if (nextApproverIds.length > 0) {
+            const EmailService = (await import('./emailService.js')).default || (await import('./emailService.js')).EmailService;
+            const emailService = new EmailService();
+            const approvers = await this.prisma.user.findMany({
+              where: { id: { in: nextApproverIds } },
+              select: { id: true, email: true, firstName: true, lastName: true }
+            });
+            await Promise.allSettled(
+              approvers.filter(a => a.email).map(async (a) => {
+                const magicLink = await this.magicLinkService.createJobActionLink({
+                  userId: a.id,
+                  jobId: jobId,
+                  action: 'approve',
+                  djId: job.djId
+                });
+                const emailHtml = createJobApprovalEmail({
+                  djId: job.djId,
+                  subject: job.subject,
+                  priority: job.priority || 'normal',
+                  magicLink,
+                  approverName: `${a.firstName} ${a.lastName}`
+                });
+                return emailService.sendEmail(a.email, `📋 งานรออนุมัติ Level ${nextLevel}: ${job.djId}`, emailHtml)
+                  .catch(err => console.warn('[Approval] Email to next approver failed:', err.message));
+              })
+            );
+          }
+        } catch (notiErr) {
+          console.warn('[Approval] Non-final approval notification failed:', notiErr.message);
+        }
+      }
+
+      // ✅ Notification: Approve final → แจ้ง Requester
+      if (isFinal && this.notificationService && job.requesterId) {
+        await this.notificationService.createNotification({
+          tenantId: job.tenantId || 1,
+          userId: job.requesterId,
+          type: 'job_approved',
+          title: `✅ งานอนุมัติแล้ว: ${job.djId}`,
+          message: `งาน "${job.subject}" ได้รับการอนุมัติครบทุก level แล้ว`,
+          link: `/jobs/${jobId}`
+        }).catch(err => console.warn('[Approval] Noti to requester failed:', err.message));
+      }
+
       // V1 Extended: Auto-Assign Logic if Final Approval (skip if has predecessor)
       let assignResult = null;
       if (isFinal && !job.predecessorId) {
@@ -671,6 +757,26 @@ export class ApprovalService extends BaseService {
               message: `งาน ${job.djId} - ${job.subject} ได้รับการอนุมัติและเริ่มนับเวลาทำงานแล้ว กรุณาดำเนินการ`,
               link: `/jobs/${jobId}`
             }).catch(err => console.warn('[AutoStart] Notification failed:', err.message));
+
+            // Email Assignee
+            try {
+              const EmailService = (await import('./emailService.js')).default || (await import('./emailService.js')).EmailService;
+              const emailService = new EmailService();
+              const assignee = await this.prisma.user.findUnique({
+                where: { id: assignResult.assigneeId },
+                select: { email: true }
+              });
+              if (assignee?.email) {
+                await emailService.sendEmail(assignee.email, `✅ งาน ${job.djId} เริ่มทำงานแล้ว`,
+                  `<h2>งานเริ่มนับเวลาทำงานแล้ว</h2>
+                  <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
+                  <p>งานได้รับการอนุมัติและมอบหมายให้คุณแล้ว กรุณาดำเนินการ</p>
+                  <p><a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/jobs/${jobId}">ดูรายละเอียดงาน</a></p>`
+                ).catch(err => console.warn('[AutoStart] Email failed:', err.message));
+              }
+            } catch (emailErr) {
+              console.warn('[AutoStart] Email error:', emailErr.message);
+            }
           }
         }
       }
@@ -930,7 +1036,7 @@ export class ApprovalService extends BaseService {
     try {
       const job = await this.prisma.job.findUnique({
         where: { id: jobId },
-        select: { id: true, djId: true, status: true, isParent: true, tenantId: true }
+        select: { id: true, djId: true, status: true, isParent: true, tenantId: true, requesterId: true, subject: true }
       });
 
       if (!job) throw new Error('Job not found');
@@ -1002,6 +1108,47 @@ export class ApprovalService extends BaseService {
           previousStatus: job.status
         }
       });
+
+      // ✅ Notification: แจ้ง Requester ว่างานถูกปฏิเสธ + Email
+      if (job.requesterId && this.notificationService) {
+        await this.notificationService.createNotification({
+          tenantId: job.tenantId,
+          userId: job.requesterId,
+          type: 'job_rejected',
+          title: `❌ งานถูกปฏิเสธ: ${job.djId}`,
+          message: `งาน "${job.subject}" ถูกปฏิเสธโดยผู้อนุมัติ เหตุผล: ${comment}`,
+          link: `/jobs/${jobId}`
+        }).catch(err => console.warn('[Reject] Noti to requester failed:', err.message));
+
+        // Email Requester with Magic Link
+        try {
+          const EmailService = (await import('./emailService.js')).default || (await import('./emailService.js')).EmailService;
+          const emailService = new EmailService();
+          const requester = await this.prisma.user.findUnique({
+            where: { id: job.requesterId },
+            select: { id: true, email: true, firstName: true, lastName: true }
+          });
+          if (requester?.email) {
+            const magicLink = await this.magicLinkService.createJobActionLink({
+              userId: job.requesterId,
+              jobId: jobId,
+              action: 'view',
+              djId: job.djId
+            });
+            const emailHtml = createJobRejectionEmail({
+              djId: job.djId,
+              subject: job.subject,
+              reason: comment,
+              magicLink,
+              requesterName: `${requester.firstName} ${requester.lastName}`
+            });
+            await emailService.sendEmail(requester.email, `❌ งานถูกปฏิเสธ: ${job.djId}`, emailHtml)
+              .catch(err => console.warn('[Reject] Email to requester failed:', err.message));
+          }
+        } catch (emailErr) {
+          console.warn('[Reject] Email error:', emailErr.message);
+        }
+      }
 
       return { success: true, data: { status: 'rejected' } };
     } catch (error) {
@@ -1084,12 +1231,41 @@ export class ApprovalService extends BaseService {
       if (this.notificationService && job.requesterId) {
         await this.notificationService.createNotification({
           tenantId: job.tenantId,
-          userId: job.requesterId, // The person who requested the job
+          userId: job.requesterId,
           type: 'job_completed',
           title: `✅ งานส่งมอบแล้ว: ${job.djId}`,
           message: note ? `หมายเหตุ: ${note}` : `งาน ${job.subject} ดำเนินการเสร็จสิ้น`,
           link: `/jobs/${job.id}`
         });
+
+        // Email Requester with Magic Link
+        try {
+          const EmailService = (await import('./emailService.js')).default || (await import('./emailService.js')).EmailService;
+          const emailService = new EmailService();
+          const requester = await this.prisma.user.findUnique({
+            where: { id: job.requesterId },
+            select: { id: true, email: true, firstName: true, lastName: true }
+          });
+          if (requester?.email) {
+            const magicLink = await this.magicLinkService.createJobActionLink({
+              userId: job.requesterId,
+              jobId: job.id,
+              action: 'view',
+              djId: job.djId
+            });
+            const emailHtml = createJobCompletionEmail({
+              djId: job.djId,
+              subject: job.subject,
+              note: note || null,
+              magicLink,
+              requesterName: `${requester.firstName} ${requester.lastName}`
+            });
+            await emailService.sendEmail(requester.email, `✅ งานส่งมอบแล้ว: ${job.djId}`, emailHtml)
+              .catch(err => console.warn('[CompleteJob] Email failed:', err.message));
+          }
+        } catch (emailErr) {
+          console.warn('[CompleteJob] Email error:', emailErr.message);
+        }
       }
 
       return { success: true, data: updatedJob };
@@ -1216,6 +1392,35 @@ export class ApprovalService extends BaseService {
           message: `ผู้รับงานปฏิเสธงาน "${job.subject}" เหตุผล: ${comment}`,
           link: `/jobs/${jobId}`
         }).catch(err => console.warn('[RejectByAssignee] Notification failed:', err.message));
+
+        // Email with Magic Link
+        try {
+          const EmailService = (await import('./emailService.js')).default || (await import('./emailService.js')).EmailService;
+          const emailService = new EmailService();
+          const targetUser = await this.prisma.user.findUnique({
+            where: { id: notifyUserId },
+            select: { id: true, email: true, firstName: true, lastName: true }
+          });
+          if (targetUser?.email) {
+            const magicLink = await this.magicLinkService.createJobActionLink({
+              userId: notifyUserId,
+              jobId: jobId,
+              action: 'view',
+              djId: job.djId
+            });
+            const emailHtml = createJobRejectionEmail({
+              djId: job.djId,
+              subject: job.subject,
+              reason: `ผู้รับงานปฏิเสธ: ${comment}`,
+              magicLink,
+              requesterName: `${targetUser.firstName} ${targetUser.lastName}`
+            });
+            await emailService.sendEmail(targetUser.email, `⚠️ ผู้รับงานปฏิเสธงาน ${job.djId}`, emailHtml)
+              .catch(err => console.warn('[RejectByAssignee] Email failed:', err.message));
+          }
+        } catch (emailErr) {
+          console.warn('[RejectByAssignee] Email error:', emailErr.message);
+        }
 
         console.log(`[RejectByAssignee] Notified ${notifyRole} (userId: ${notifyUserId}) for job ${job.djId}`);
       }
@@ -1450,6 +1655,7 @@ export class ApprovalService extends BaseService {
           requesterId: true,
           jobTypeId: true,
           tenantId: true,
+          assigneeId: true,
           requester: {
             select: {
               id: true,
@@ -1501,6 +1707,11 @@ export class ApprovalService extends BaseService {
       // Get approval flow config (already loaded)
       const approvalFlow = job.project?.approvalFlows?.[0];
 
+      // 0. Priority: ถ้ามี assignee ถูก manual assign ไว้แล้ว → ใช้ค่าเดิม (in_progress)
+      if (job.assigneeId) {
+        return await this.assignJobManually(jobId, job.assigneeId, null, 'auto-assign: pre-assigned');
+      }
+
       // 1. Check Approval Flow Config (auto-assign specific user)
       if (approvalFlow?.autoAssignType === 'specific_user' && approvalFlow.autoAssignUserId) {
         return await this.assignJobManually(jobId, approvalFlow.autoAssignUserId, null, 'auto-assign: specific-user');
@@ -1516,13 +1727,12 @@ export class ApprovalService extends BaseService {
         return await this.assignJobManually(jobId, job.requester.department.managerId, null, 'auto-assign: dept-manager');
       }
 
-      // 3. Fallback: No Manager found (or no flow config)
-      // Change: Set status to 'approved' but assigneeId remains NULL (Manual Assignment Flow)
+      // 4. Fallback: No Manager found (or no flow config) → status = 'approved' รอ manual assign
       await this.prisma.job.update({
         where: { id: jobId },
         data: {
           status: 'approved',
-          assigneeId: null, // Explicitly null
+          assigneeId: null,
           assignedAt: null
         }
       });

@@ -50,6 +50,7 @@ import tenantSettingsRoutes from './routes/tenant-settings.js'; // ✓ NEW: Tena
 import notificationsRoutes from './routes/notifications.js'; // ✓ NEW: In-App Notifications API
 import emailSettingsRoutes from './routes/email-settings.js'; // ✓ NEW: Email Settings (CC emails per notification type)
 import draftReadLogsRoutes from './routes/draft-read-logs.js'; // ✓ NEW: Draft Read Logs (Track when Requester reads draft)
+import magicLinkRoutes from './routes/magic-link.js'; // ✓ NEW: Magic Link Authentication
 
 // V2 Flow Templates REMOVED - Using V1 Extended instead
 
@@ -288,6 +289,7 @@ app.use('/api/master-data-combined', masterDataCombinedRoutes); // ⚡ Performan
 app.use('/api/tenant-settings', tenantSettingsRoutes); // ✓ NEW: Tenant Settings API (routes: /api/tenant-settings, /api/tenant-settings/rejection-cc-emails)
 app.use('/api/email-settings', emailSettingsRoutes); // ✓ NEW: Email Settings API (routes: /api/email-settings, /api/email-settings/:type)
 app.use('/api/draft-read-logs', draftReadLogsRoutes); // ✓ NEW: Draft Read Logs API (routes: /api/draft-read-logs/:jobId)
+app.use('/api/magic-link', magicLinkRoutes); // ✓ NEW: Magic Link Authentication API
 
 // ✓ Notifications API
 app.use('/api/notifications', notificationsRoutes);

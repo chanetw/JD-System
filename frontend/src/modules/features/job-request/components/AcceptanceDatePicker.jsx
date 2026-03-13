@@ -122,7 +122,14 @@ const AcceptanceDatePicker = ({
         if (!minSelectableDate) return false;
         const date = new Date(calendarYear, calendarMonth, day);
         date.setHours(0, 0, 0, 0);
-        return date >= minSelectableDate;
+        if (date < minSelectableDate) return false;
+
+        // งาน Normal: ห้ามเลือกวันหยุด (เสาร์-อาทิตย์ + นักขัตฤกษ์) เป็น Due Date
+        if (priority !== 'Urgent') {
+            if (isWeekend(day) || isHolidayDay(day)) return false;
+        }
+
+        return true;
     };
 
     // ฟังก์ชันเลื่อนเดือน
@@ -252,12 +259,15 @@ const AcceptanceDatePicker = ({
                         } else if (todayDate) {
                             // วันนี้ - Green
                             className += "bg-green-500 text-white font-medium";
+                        } else if (!selectable && (weekend || holiday)) {
+                            // วันหยุดที่ถูกบล็อก (Normal priority) - สีเทาอ่อน + disabled
+                            className += "bg-gray-100 text-gray-400 cursor-not-allowed";
                         } else if (!selectable) {
-                            // ห้ามเลือก - สีจางมาก + disabled
+                            // ห้ามเลือก (วันที่ผ่านมาแล้ว) - สีจางมาก + disabled
                             className += "text-gray-200 bg-gray-50 cursor-not-allowed opacity-40";
                         } else if (weekend || holiday) {
-                            // วันหยุด (แต่เลือกได้) - เลือกได้
-                            className += "text-gray-600 hover:bg-rose-50 hover:text-rose-600 cursor-pointer border border-transparent hover:border-rose-200";
+                            // วันหยุด (Urgent - เลือกได้) - สีเทาอ่อน
+                            className += "bg-gray-100 text-gray-500 hover:bg-rose-50 hover:text-rose-600 cursor-pointer border border-transparent hover:border-rose-200";
                         } else {
                             // วันธรรมดา เลือกได้ - สีปกติ + Clickable
                             className += "text-gray-800 hover:bg-rose-100 hover:text-rose-700 cursor-pointer font-medium border border-transparent hover:border-rose-300";

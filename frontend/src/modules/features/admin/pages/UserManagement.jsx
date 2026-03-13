@@ -174,8 +174,19 @@ export default function UserManagementNew() {
         try {
             setIsLoading(true);
             console.log('[UserManagement] calling apiDatabase.getUsers', apiDatabase.getUsers);
-            // Pass page and limit (default 20)
-            const result = await apiDatabase.getUsers(page, pagination.limit);
+            
+            // Build filter object
+            const filters = {};
+            if (filterDepartment) filters.departmentId = filterDepartment;
+            if (filterRole) filters.role = filterRole;
+            if (filterStatus !== 'all') filters.isActive = filterStatus === 'active';
+            if (debouncedSearchTerm) filters.search = debouncedSearchTerm;
+            
+            console.log('[UserManagement] Filter State:', { filterDepartment, filterRole, filterStatus, debouncedSearchTerm });
+            console.log('[UserManagement] Built filters:', filters);
+            
+            // Pass page, limit, and filters
+            const result = await apiDatabase.getUsers(page, pagination.limit, filters);
             console.log('[UserManagement] getUsers result:', result);
 
             setUsers(result?.data || []);
@@ -958,37 +969,16 @@ export default function UserManagementNew() {
         }
     };
 
-    // ⚡ Filter Users with Memoization (uses debouncedSearchTerm for performance)
-    const filteredUsers = useMemo(() => {
-        return users.filter(u => {
-            // 1. Department Filter
-            if (filterDepartment && u.department?.id?.toString() !== filterDepartment) return false;
+    // ⚡ Reload users when filters change
+    useEffect(() => {
+        if (activeTab === 'active') {
+            loadUsers(1); // Reset to page 1 when filters change
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filterDepartment, filterRole, filterStatus, debouncedSearchTerm, activeTab]);
 
-            // 2. Search Filter (Name, Email) - uses debounced value for smooth UX
-            if (debouncedSearchTerm) {
-                const lowerTerm = debouncedSearchTerm.toLowerCase();
-                const matchName = (u.name || '').toLowerCase().includes(lowerTerm);
-                const matchDisplay = ('').toLowerCase().includes(lowerTerm);
-                const matchEmail = (u.email || '').toLowerCase().includes(lowerTerm);
-                if (!matchName && !matchDisplay && !matchEmail) return false;
-            }
-
-            // 3. Role Filter
-            if (filterRole) {
-                // Check primary role or roles array
-                const userRoles = u.roles || (u.role ? [u.role] : []);
-                if (!userRoles.includes(filterRole)) return false;
-            }
-
-            // 4. Status Filter
-            if (filterStatus !== 'all') {
-                const wantActive = filterStatus === 'active';
-                if (u.isActive !== wantActive) return false;
-            }
-
-            return true;
-        });
-    }, [users, filterDepartment, filterRole, filterStatus, debouncedSearchTerm]);
+    // ⚡ Use users directly (backend already filtered)
+    const filteredUsers = users;
 
 
     return (

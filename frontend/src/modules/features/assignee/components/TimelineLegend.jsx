@@ -5,7 +5,7 @@
 
 import React from 'react';
 
-export default function TimelineLegend() {
+export default function TimelineLegend({ holidays = [] }) {
     const priorityColors = [
         { label: 'Urgent', color: 'bg-red-500', border: 'border-red-500' },
         { label: 'High', color: 'bg-orange-500', border: 'border-orange-500' },
@@ -20,15 +20,15 @@ export default function TimelineLegend() {
     ];
 
     return (
-        <div className="bg-white p-4 rounded-xl border border-gray-400 shadow-sm">
-            <div className="flex flex-col md:flex-row md:items-center gap-4">
+        <div className="bg-white px-4 py-2.5 rounded-xl border border-gray-400 shadow-sm">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                 {/* Priority Colors */}
                 <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-gray-600 uppercase">ความสำคัญ:</span>
-                    <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">ความสำคัญ</span>
+                    <div className="flex items-center gap-2.5">
                         {priorityColors.map((item) => (
-                            <div key={item.label} className="flex items-center gap-1.5">
-                                <div className={`w-4 h-4 ${item.color} rounded`}></div>
+                            <div key={item.label} className="flex items-center gap-1">
+                                <div className={`w-3 h-3 ${item.color} rounded`}></div>
                                 <span className="text-xs text-gray-600">{item.label}</span>
                             </div>
                         ))}
@@ -36,15 +36,36 @@ export default function TimelineLegend() {
                 </div>
 
                 {/* Status Indicators */}
-                <div className="flex items-center gap-2 md:ml-4">
-                    <span className="text-xs font-semibold text-gray-600 uppercase">สถานะ (ขอบ):</span>
-                    <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">สถานะ</span>
+                    <div className="flex items-center gap-2.5">
                         {statusIndicators.map((item) => (
-                            <div key={item.label} className="flex items-center gap-1.5">
-                                <div className={`w-4 h-4 bg-white border-2 ${item.border} rounded`}></div>
+                            <div key={item.label} className="flex items-center gap-1">
+                                <div className={`w-3 h-3 bg-white border-2 ${item.border} rounded`}></div>
                                 <span className="text-xs text-gray-600">{item.label}</span>
                             </div>
                         ))}
+                    </div>
+                </div>
+
+                {/* Day Type Indicators */}
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">วัน</span>
+                    <div className="flex items-center gap-2.5">
+                        <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 bg-rose-500 rounded-full"></div>
+                            <span className="text-xs text-gray-600">วันนี้</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 rounded" style={{ background: 'rgba(0,0,0,0.1)' }}></div>
+                            <span className="text-xs text-gray-600">เสาร์-อาทิตย์</span>
+                        </div>
+                        {holidays.length > 0 && (
+                            <div className="flex items-center gap-1">
+                                <div className="w-3 h-3 bg-red-200 rounded"></div>
+                                <span className="text-xs text-gray-600">วันหยุด ({holidays.length})</span>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

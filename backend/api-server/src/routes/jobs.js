@@ -19,12 +19,22 @@ import jobChainService from '../services/jobChainService.js';
 import * as workingHoursHelper from '../utils/workingHoursHelper.js';
 import EmailService from '../services/emailService.js';
 import NotificationService from '../services/notificationService.js';
+import MagicLinkService from '../services/magicLinkService.js';
+import {
+  createJobApprovalEmail,
+  createJobAssignmentEmail,
+  createJobExtensionEmail,
+  createRejectionRequestEmail,
+  createRejectionApprovedEmail,
+  createRejectionDeniedEmail
+} from '../utils/emailTemplates.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
 const approvalService = new ApprovalService();
 const jobService = new JobService();
 const notificationService = new NotificationService();
+const magicLinkService = new MagicLinkService();
 
 const router = express.Router();
 
@@ -198,7 +208,7 @@ router.get('/', async (req, res) => {
           flowMap.forEach((flow, key) => {
             const currentLevelMap = new Map(); // level -> Set of approverIds
             const anyLevelApprovers = new Set();
-            
+
             if (flow?.approverSteps && Array.isArray(flow.approverSteps)) {
               flow.approverSteps.forEach(step => {
                 const stepNum = step.stepNumber || step.level;
@@ -255,7 +265,7 @@ router.get('/', async (req, res) => {
               // ⚡ Performance: Use pre-built lookup map instead of nested loops
               const flowKey = `${job.projectId}_${job.jobTypeId || 'null'}`;
               const lookup = approverLookup.get(flowKey);
-              
+
               if (lookup) {
                 const isApproverForCurrentLevel = lookup.currentLevelMap.get(currentLevel)?.has(userIdStr) || false;
                 const isApproverInAnyLevel = lookup.anyLevelApprovers.has(userIdStr);
@@ -445,6 +455,8 @@ router.get('/', async (req, res) => {
           startedAt: true,
           completedAt: true,
           createdAt: true,
+          acceptanceDate: true,
+          slaDays: true,
           activityLogs: {
             select: { createdAt: true },
             orderBy: { createdAt: 'desc' },
@@ -518,6 +530,9 @@ router.get('/', async (req, res) => {
         projectCode: j.project?.code,
         deadline: j.dueDate,
         createdAt: j.createdAt,
+        acceptanceDate: j.acceptanceDate,
+        startedAt: j.startedAt,
+        slaDays: j.slaDays,
         updatedAt: j.completedAt || j.activityLogs?.[0]?.createdAt || j.createdAt,
         requesterId: j.requesterId,
         requester: j.requester?.displayName || `${j.requester?.firstName} ${j.requester?.lastName}`.trim(),
@@ -1087,6 +1102,7 @@ router.post('/', async (req, res) => {
         await tx.designJobItem.createMany({
           data: items.map(item => ({
             jobId: newJob.id,
+            jobTypeItemId: item.jobTypeItemId ? parseInt(item.jobTypeItemId) : null,
             name: item.name,
             quantity: item.quantity || 1,
             status: 'pending'
@@ -1264,12 +1280,103 @@ router.post('/', async (req, res) => {
     }
 
     // ============================================
-    // Step 9: Send Notifications (Future Enhancement)
-    // TODO: แจ้งเตือนผู้ที่เกี่ยวข้อง
-    // - pending_approval → แจ้ง Approver
-    // - assigned → แจ้ง Assignee
+    // Step 9: Send Notifications
+    // - pending_approval → แจ้ง Approver Level 1
+    // - in_progress/approved → แจ้ง Assignee
     // ============================================
-    // await notificationService.sendJobCreatedNotification(result.job);
+    try {
+      const emailService = new EmailService();
+      const jobStatus = result.job.status;
+      const jobLink = `/jobs/${result.job.id}`;
+
+      if (['pending_approval', 'pending_level_1'].includes(jobStatus)) {
+        // แจ้ง Approver Level 1
+        const level1ApproverIds = [];
+        if (flow?.approverSteps && Array.isArray(flow.approverSteps) && flow.approverSteps.length > 0) {
+          const step1 = flow.approverSteps.find(s => (s.stepNumber || s.level) === 1) || flow.approverSteps[0];
+          if (step1?.approvers && Array.isArray(step1.approvers)) {
+            step1.approvers.forEach(a => {
+              const aid = a.id || a.userId;
+              if (aid) level1ApproverIds.push(aid);
+            });
+          }
+        }
+
+        for (const approverId of level1ApproverIds) {
+          await notificationService.createNotification({
+            tenantId,
+            userId: approverId,
+            type: 'job_pending_approval',
+            title: `📋 งานใหม่รออนุมัติ: ${djId}`,
+            message: `งาน "${subject}" รอการอนุมัติจากคุณ`,
+            link: jobLink
+          }).catch(err => console.warn('[Jobs] Noti to approver failed:', err.message));
+        }
+
+        // Email Approver(s) with Magic Link
+        if (level1ApproverIds.length > 0) {
+          const approvers = await prisma.user.findMany({
+            where: { id: { in: level1ApproverIds } },
+            select: { id: true, email: true, firstName: true, lastName: true }
+          });
+          await Promise.allSettled(
+            approvers.filter(a => a.email).map(async (a) => {
+              const magicLink = await magicLinkService.createJobActionLink({
+                userId: a.id,
+                jobId: result.job.id,
+                action: 'approve',
+                djId: djId
+              });
+              const emailHtml = createJobApprovalEmail({
+                djId,
+                subject,
+                priority,
+                magicLink,
+                approverName: `${a.firstName} ${a.lastName}`
+              });
+              return emailService.sendEmail(a.email, `📋 งานใหม่รออนุมัติ: ${djId}`, emailHtml)
+                .catch(err => console.warn('[Jobs] Email to approver failed:', err.message));
+            })
+          );
+        }
+      } else if (result.assigneeId && ['in_progress', 'approved', 'assigned'].includes(jobStatus)) {
+        // แจ้ง Assignee
+        await notificationService.createNotification({
+          tenantId,
+          userId: result.assigneeId,
+          type: 'job_assigned',
+          title: `👤 คุณได้รับมอบหมายงาน: ${djId}`,
+          message: `งาน "${subject}" ถูกมอบหมายให้คุณ${result.autoAssigned ? ' (อัตโนมัติ)' : ''}`,
+          link: jobLink
+        }).catch(err => console.warn('[Jobs] Noti to assignee failed:', err.message));
+
+        // Email Assignee with Magic Link
+        const assignee = await prisma.user.findUnique({
+          where: { id: result.assigneeId },
+          select: { email: true, firstName: true, lastName: true }
+        });
+        if (assignee?.email) {
+          const magicLink = await magicLinkService.createJobActionLink({
+            userId: result.assigneeId,
+            jobId: result.job.id,
+            action: 'view',
+            djId: djId
+          });
+          const emailHtml = createJobAssignmentEmail({
+            djId,
+            subject,
+            priority,
+            dueDate: result.job.dueDate ? new Date(result.job.dueDate).toLocaleDateString('th-TH') : null,
+            magicLink,
+            assigneeName: `${assignee.firstName} ${assignee.lastName}`
+          });
+          await emailService.sendEmail(assignee.email, `👤 คุณได้รับมอบหมายงาน: ${djId}`, emailHtml)
+            .catch(err => console.warn('[Jobs] Email to assignee failed:', err.message));
+        }
+      }
+    } catch (notiError) {
+      console.warn('[Jobs] Job created notification failed (non-blocking):', notiError.message);
+    }
 
     // ============================================
     // Step 10: Return Response
@@ -1339,7 +1446,10 @@ router.get('/:id', async (req, res) => {
           select: { id: true, name: true, code: true }
         },
         jobType: {
-          select: { id: true, name: true, icon: true, colorTheme: true, slaWorkingDays: true }
+          select: {
+            id: true, name: true, icon: true, colorTheme: true, slaWorkingDays: true,
+            jobTypeItems: { select: { id: true, name: true, defaultSize: true } }
+          }
         },
         requester: {
           select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, email: true }
@@ -1351,7 +1461,10 @@ router.get('/:id', async (req, res) => {
           select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, email: true }
         },
         jobItems: {
-          select: { id: true, name: true, quantity: true, status: true },
+          select: {
+            id: true, name: true, quantity: true, status: true,
+            jobTypeItem: { select: { defaultSize: true } }
+          },
           take: 100  // ⚡ Performance: Limit to 100 items
         },
         attachments: {
@@ -1419,7 +1532,12 @@ router.get('/:id', async (req, res) => {
             jobType: { select: { id: true, name: true } },
             assignee: { select: { id: true, firstName: true, lastName: true, displayName: true } },
             dueDate: true,
-            jobItems: { select: { id: true, name: true, quantity: true, status: true } } // ✅ NEW: ดึง items ของงานย่อยมาด้วย
+            jobItems: {
+              select: {
+                id: true, name: true, quantity: true, status: true,
+                jobTypeItem: { select: { defaultSize: true } }
+              }
+            } // ✅ NEW: ดึง items ของงานย่อยมาด้วย
           },
           where: { isParent: false },  // ⚡ Performance: Only non-parent children
           orderBy: { createdAt: 'asc' },
@@ -1546,7 +1664,13 @@ router.get('/:id', async (req, res) => {
         jobType: child.jobType?.name,
         assignee: child.assignee ? (child.assignee.displayName || `${child.assignee.firstName || ''} ${child.assignee.lastName || ''}`.trim()) : null,
         deadline: child.dueDate,
-        items: child.jobItems || [] // ✅ NEW: Pass items for UI
+        items: (child.jobItems || []).map(item => ({
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          status: item.status,
+          defaultSize: item.jobTypeItem?.defaultSize || null
+        })) // ✅ NEW: Pass items for UI with defaultSize
       })) || [],
       // Parent job for child
       parentJob: job.parentJob ? {
@@ -1555,7 +1679,26 @@ router.get('/:id', async (req, res) => {
         subject: job.parentJob.subject,
         status: job.parentJob.status
       } : null,
-      items: job.jobItems || [],
+      items: (job.jobItems || []).map(item => {
+        // ดึง defaultSize จาก jobTypeItem (ถ้ามี link ตรง)
+        let defaultSize = item.jobTypeItem?.defaultSize || null;
+
+        // Fallback: ถ้าไม่มี jobTypeItemId (งานเก่า) ให้ match ชื่อจาก jobType.jobTypeItems
+        if (!defaultSize && job.jobType?.jobTypeItems) {
+          const matched = job.jobType.jobTypeItems.find(jti => jti.name === item.name);
+          if (matched) {
+            defaultSize = matched.defaultSize || null;
+          }
+        }
+
+        return {
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          status: item.status,
+          defaultSize
+        };
+      }),
       attachments: job.attachments || [],
 
       // Draft Review Details
@@ -1997,6 +2140,7 @@ router.post('/:id/request-rejection', async (req, res) => {
       select: {
         id: true,
         djId: true,
+        subject: true,
         status: true,
         assigneeId: true,
         projectId: true,
@@ -2004,6 +2148,9 @@ router.post('/:id/request-rejection', async (req, res) => {
         requesterId: true,
         priority: true,
         flowSnapshot: true,
+        assignee: {
+          select: { id: true, firstName: true, lastName: true }
+        },
         approvals: {
           where: { status: 'approved' },
           select: { id: true, approverId: true, stepNumber: true },
@@ -2137,7 +2284,7 @@ router.post('/:id/request-rejection', async (req, res) => {
     });
 
     // Log activity
-    await prisma.jobActivity.create({
+    await prisma.activityLog.create({
       data: {
         jobId: parseInt(id),
         userId,
@@ -2147,12 +2294,52 @@ router.post('/:id/request-rejection', async (req, res) => {
           reason: reason.trim(),
           rejectionRequestId: rejectionRequest.id,
           autoCloseAt: autoCloseAt.toISOString()
-        },
-        tenantId
+        }
       }
     }).catch(err => console.error('[Jobs] Failed to log activity:', err));
 
-    // TODO: Send notification to approvers (via Socket.io or email)
+    // Notify Approver(s)
+    try {
+      for (const approverId of approverIds) {
+        await notificationService.createNotification({
+          tenantId,
+          userId: approverId,
+          type: 'rejection_requested',
+          title: `⚠️ Assignee ขอปฏิเสธงาน: ${job.djId}`,
+          message: `ผู้รับงานขอปฏิเสธงาน "${job.subject || ''}" เหตุผล: ${reason.trim()}`,
+          link: `/jobs/${id}`
+        }).catch(err => console.warn('[RequestRejection] Noti failed:', err.message));
+      }
+
+      // Email Approver(s) with Magic Link
+      const approverUsers = await prisma.user.findMany({
+        where: { id: { in: approverIds } },
+        select: { id: true, email: true, firstName: true, lastName: true }
+      });
+      const emailService = new EmailService();
+      await Promise.allSettled(
+        approverUsers.filter(a => a.email).map(async (a) => {
+          const magicLink = await magicLinkService.createJobActionLink({
+            userId: a.id,
+            jobId: Number(id),
+            action: 'view',
+            djId: job.djId
+          });
+          const emailHtml = createRejectionRequestEmail({
+            djId: job.djId,
+            subject: job.subject || '',
+            assigneeName: `${job.assignee?.firstName || 'ผู้รับงาน'} ${job.assignee?.lastName || ''}`,
+            reason: reason.trim(),
+            magicLink,
+            approverName: `${a.firstName} ${a.lastName}`
+          });
+          return emailService.sendEmail(a.email, `⚠️ Assignee ขอปฏิเสธงาน: ${job.djId}`, emailHtml)
+            .catch(err => console.warn('[RequestRejection] Email failed:', err.message));
+        })
+      );
+    } catch (notiErr) {
+      console.warn('[RequestRejection] Notification failed (non-blocking):', notiErr.message);
+    }
 
     res.json({
       success: true,
@@ -2165,11 +2352,13 @@ router.post('/:id/request-rejection', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[Jobs] Request rejection error:', error);
+    console.error('[Jobs] Request rejection error:', error.message);
+    console.error('[Jobs] Request rejection stack:', error.stack?.split('\n').slice(0, 5).join('\n'));
     res.status(500).json({
       success: false,
       error: 'REQUEST_REJECTION_FAILED',
-      message: 'ไม่สามารถส่งคำขอปฏิเสธงานได้'
+      message: 'ไม่สามารถส่งคำขอปฏิเสธงานได้',
+      debug: process.env.NODE_ENV !== 'production' ? error.message : undefined
     });
   }
 });
@@ -2276,7 +2465,7 @@ router.post('/rejection-requests/:id/approve', async (req, res) => {
     });
 
     // Log activity
-    await prisma.jobActivity.create({
+    await prisma.activityLog.create({
       data: {
         jobId: rejectionRequest.jobId,
         userId,
@@ -2285,8 +2474,7 @@ router.post('/rejection-requests/:id/approve', async (req, res) => {
         detail: {
           rejectionRequestId: rejectionRequest.id,
           comment: comment || null
-        },
-        tenantId
+        }
       }
     }).catch(err => console.error('[Jobs] Failed to log activity:', err));
 
@@ -2343,7 +2531,7 @@ router.post('/rejection-requests/:id/approve', async (req, res) => {
           });
 
           // Log activity on parent job
-          await prisma.jobActivity.create({
+          await prisma.activityLog.create({
             data: {
               jobId: rejectionRequest.job.parentJobId,
               userId,
@@ -2355,8 +2543,7 @@ router.post('/rejection-requests/:id/approve', async (req, res) => {
                 closureReason: closureCheck.reason,
                 stats: closureCheck.stats,
                 triggeredByRejection: true
-              },
-              tenantId
+              }
             }
           }).catch(err => console.error('[Jobs] Failed to log parent closure:', err));
 
@@ -2371,7 +2558,54 @@ router.post('/rejection-requests/:id/approve', async (req, res) => {
       // Don't fail the request
     }
 
-    // TODO: Send notification to requester and assignee
+    // Notify Requester + Assignee
+    try {
+      const jobDetail = await prisma.job.findUnique({
+        where: { id: rejectionRequest.jobId },
+        select: { djId: true, subject: true, requesterId: true, assigneeId: true, tenantId: true }
+      });
+      if (jobDetail) {
+        const notiTargets = [jobDetail.requesterId, rejectionRequest.requestedBy].filter(Boolean);
+        const uniqueTargets = [...new Set(notiTargets)];
+        for (const targetId of uniqueTargets) {
+          await notificationService.createNotification({
+            tenantId,
+            userId: targetId,
+            type: 'rejection_approved',
+            title: `✅ คำขอปฏิเสธงาน ${jobDetail.djId} ได้รับอนุมัติ`,
+            message: `คำขอปฏิเสธงาน "${jobDetail.subject || ''}" ได้รับการอนุมัติแล้ว งานถูกยกเลิก`,
+            link: `/jobs/${rejectionRequest.jobId}`
+          }).catch(err => console.warn('[ApproveRejReq] Noti failed:', err.message));
+        }
+
+        // Email with Magic Link
+        const emailService = new EmailService();
+        const targetUsers = await prisma.user.findMany({
+          where: { id: { in: uniqueTargets } },
+          select: { id: true, email: true, firstName: true, lastName: true }
+        });
+        await Promise.allSettled(
+          targetUsers.filter(u => u.email).map(async (u) => {
+            const magicLink = await magicLinkService.createJobActionLink({
+              userId: u.id,
+              jobId: rejectionRequest.jobId,
+              action: 'view',
+              djId: jobDetail.djId
+            });
+            const emailHtml = createRejectionApprovedEmail({
+              djId: jobDetail.djId,
+              subject: jobDetail.subject || '',
+              magicLink,
+              userName: `${u.firstName} ${u.lastName}`
+            });
+            return emailService.sendEmail(u.email, `✅ คำขอปฏิเสธงาน ${jobDetail.djId} ได้รับอนุมัติ`, emailHtml)
+              .catch(err => console.warn('[ApproveRejReq] Email failed:', err.message));
+          })
+        );
+      }
+    } catch (notiErr) {
+      console.warn('[ApproveRejReq] Notification failed (non-blocking):', notiErr.message);
+    }
 
     res.json({
       success: true,
@@ -2501,7 +2735,7 @@ router.post('/rejection-requests/:id/deny', async (req, res) => {
     });
 
     // Log activity
-    await prisma.jobActivity.create({
+    await prisma.activityLog.create({
       data: {
         jobId: rejectionRequest.jobId,
         userId,
@@ -2510,8 +2744,7 @@ router.post('/rejection-requests/:id/deny', async (req, res) => {
         detail: {
           rejectionRequestId: rejectionRequest.id,
           reason: reason.trim()
-        },
-        tenantId
+        }
       }
     }).catch(err => console.error('[Jobs] Failed to log activity:', err));
 
@@ -2525,7 +2758,45 @@ router.post('/rejection-requests/:id/deny', async (req, res) => {
       }
     }).catch(err => console.error('[Jobs] Failed to create comment:', err));
 
-    // TODO: Send notification to assignee
+    // Notify Assignee
+    try {
+      const jobDetail = await prisma.job.findUnique({
+        where: { id: rejectionRequest.jobId },
+        select: { djId: true, subject: true, assigneeId: true, tenantId: true, assignee: { select: { email: true } } }
+      });
+      if (jobDetail?.assigneeId) {
+        await notificationService.createNotification({
+          tenantId,
+          userId: jobDetail.assigneeId,
+          type: 'rejection_denied',
+          title: `❌ คำขอปฏิเสธงาน ${jobDetail.djId} ไม่ได้รับอนุมัติ`,
+          message: `กรุณาทำงาน "${jobDetail.subject || ''}" ต่อ เหตุผล: ${reason.trim()}\n💡 หากต้องการเวลาเพิ่ม กรุณาขอ Extend Deadline`,
+          link: `/jobs/${rejectionRequest.jobId}`
+        }).catch(err => console.warn('[DenyRejReq] Noti failed:', err.message));
+
+        // Email Assignee with Magic Link
+        if (jobDetail.assignee?.email) {
+          const emailService = new EmailService();
+          const magicLink = await magicLinkService.createJobActionLink({
+            userId: jobDetail.assigneeId,
+            jobId: rejectionRequest.jobId,
+            action: 'view',
+            djId: jobDetail.djId
+          });
+          const emailHtml = createRejectionDeniedEmail({
+            djId: jobDetail.djId,
+            subject: jobDetail.subject || '',
+            reason: reason.trim(),
+            magicLink,
+            userName: `${jobDetail.assignee?.firstName || 'ผู้รับงาน'} ${jobDetail.assignee?.lastName || ''}`
+          });
+          await emailService.sendEmail(jobDetail.assignee.email, `❌ คำขอปฏิเสธงาน ${jobDetail.djId} ไม่ได้รับอนุมัติ`, emailHtml)
+            .catch(err => console.warn('[DenyRejReq] Email failed:', err.message));
+        }
+      }
+    } catch (notiErr) {
+      console.warn('[DenyRejReq] Notification failed (non-blocking):', notiErr.message);
+    }
 
     res.json({
       success: true,
@@ -2755,7 +3026,7 @@ router.post('/parent-child', async (req, res) => {
       // ----------------------------------------
       // 2.3: Validate and Adjust Parent Deadline
       // ----------------------------------------
-  
+
       let parentDueDate = deadline ? new Date(deadline) : null;
       let parentDueDateAdjustmentReasons = [];
 
@@ -2972,6 +3243,7 @@ router.post('/parent-child', async (req, res) => {
           await tx.designJobItem.createMany({
             data: childItems.map(item => ({
               jobId: childJob.id,
+              jobTypeItemId: item.jobTypeItemId ? parseInt(item.jobTypeItemId) : null,
               name: item.name,
               quantity: item.quantity || 1,
               status: 'pending'
@@ -3307,12 +3579,16 @@ async function calculateNextWorkingDay(startDate, tenantId) {
 
   let holidaySet = new Set();
   try {
-    const holidays = await prisma.$queryRaw`
-      SELECT date FROM holidays
-      WHERE tenant_id = ${tenantId}
-        AND date >= ${rangeStart}
-        AND date <= ${rangeEnd}
-    `;
+    const holidays = await prisma.holiday.findMany({
+      where: {
+        tenantId,
+        date: {
+          gte: rangeStart,
+          lte: rangeEnd
+        }
+      },
+      select: { date: true }
+    });
     holidays.forEach(h => {
       // เก็บเป็น YYYY-MM-DD string เพื่อเทียบง่าย
       const d = new Date(h.date);
@@ -3386,11 +3662,20 @@ router.post('/:id/reassign', async (req, res) => {
     }
 
     // 3. Update Job
+    const updateData = {
+      assignee: { connect: { id: Number(newAssigneeId) } },
+    };
+
+    // ถ้า status เป็น approved (ยังไม่มอบหมาย) → เปลี่ยนเป็น in_progress
+    if (job.status === 'approved') {
+      updateData.status = 'in_progress';
+      updateData.assignedAt = new Date();
+      updateData.startedAt = new Date();
+    }
+
     await prisma.job.update({
       where: { id: Number(id) },
-      data: {
-        assignee: { connect: { id: Number(newAssigneeId) } },
-      }
+      data: updateData
     });
 
     // 4. Log Activity
@@ -3402,6 +3687,54 @@ router.post('/:id/reassign', async (req, res) => {
         message: `ย้ายผู้รับผิดชอบงานไปที่ ${newAssignee.firstName} ${newAssignee.lastName}. เหตุผล: ${reason || '-'}`
       }
     });
+
+    // 5. Notifications
+    try {
+      // แจ้ง Assignee ใหม่
+      await notificationService.createNotification({
+        tenantId,
+        userId: Number(newAssigneeId),
+        type: 'job_assigned',
+        title: `👤 คุณได้รับมอบหมายงาน: ${job.djId}`,
+        message: `งาน "${job.subject}" ถูกมอบหมายให้คุณ${reason ? ' เหตุผล: ' + reason : ''}`,
+        link: `/jobs/${id}`
+      }).catch(err => console.warn('[Reassign] Noti to new assignee failed:', err.message));
+
+      // แจ้ง Assignee เก่า (ถ้ามีและไม่ใช่คนเดียวกัน)
+      if (job.assigneeId && job.assigneeId !== Number(newAssigneeId)) {
+        await notificationService.createNotification({
+          tenantId,
+          userId: job.assigneeId,
+          type: 'job_reassigned',
+          title: `🔄 งาน ${job.djId} ถูกโอนไปให้คนอื่น`,
+          message: `งาน "${job.subject}" ถูกโอนไปให้ ${newAssignee.firstName} ${newAssignee.lastName}`,
+          link: `/jobs/${id}`
+        }).catch(err => console.warn('[Reassign] Noti to old assignee failed:', err.message));
+      }
+
+      // Email Assignee ใหม่ with Magic Link
+      if (newAssignee.email) {
+        const emailService = new EmailService();
+        const magicLink = await magicLinkService.createJobActionLink({
+          userId: Number(newAssigneeId),
+          jobId: Number(id),
+          action: 'view',
+          djId: job.djId
+        });
+        const emailHtml = createJobAssignmentEmail({
+          djId: job.djId,
+          subject: job.subject,
+          priority: job.priority || 'normal',
+          dueDate: job.dueDate ? new Date(job.dueDate).toLocaleDateString('th-TH') : null,
+          magicLink,
+          assigneeName: `${newAssignee.firstName} ${newAssignee.lastName}`
+        });
+        await emailService.sendEmail(newAssignee.email, `👤 คุณได้รับมอบหมายงาน: ${job.djId}`, emailHtml)
+          .catch(err => console.warn('[Reassign] Email failed:', err.message));
+      }
+    } catch (notiErr) {
+      console.warn('[Reassign] Notification failed (non-blocking):', notiErr.message);
+    }
 
     res.json({
       success: true,
@@ -3418,6 +3751,126 @@ router.post('/:id/reassign', async (req, res) => {
   } catch (error) {
     console.error('[Jobs] Reassign error:', error);
     res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการย้ายงาน' });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/assign
+ * มอบหมายงานครั้งแรก (First-time assignment) เมื่อ assigneeId = null
+ * เรียกโดย Admin หรือ Manager เท่านั้น
+ */
+router.post('/:id/assign', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { assigneeId } = req.body;
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
+
+    if (!assigneeId) {
+      return res.status(400).json({ success: false, message: 'กรุณาระบุ assigneeId' });
+    }
+
+    const prisma = getDatabase();
+
+    // 1. ตรวจสอบงาน
+    const job = await prisma.job.findUnique({
+      where: { id: Number(id), tenantId },
+      include: { assignee: true }
+    });
+
+    if (!job) {
+      return res.status(404).json({ success: false, message: 'ไม่พบงานที่ระบุ' });
+    }
+
+    // 2. Permission: Admin หรือ Manager เท่านั้น
+    const { hasRole } = await import('../helpers/roleHelper.js');
+    const isAdminOrManager = hasRole(req.user.roles, 'admin') || hasRole(req.user.roles, 'manager');
+    if (!isAdminOrManager) {
+      return res.status(403).json({ success: false, message: 'ไม่มีสิทธิ์มอบหมายงาน: เฉพาะ Admin และ Manager เท่านั้น' });
+    }
+
+    // 3. ตรวจสอบ assignee ใหม่
+    const newAssignee = await prisma.user.findUnique({ where: { id: Number(assigneeId) } });
+    if (!newAssignee) {
+      return res.status(404).json({ success: false, message: 'ไม่พบผู้รับงานที่ระบุ' });
+    }
+
+    // 4. Update job
+    const updateData = {
+      assignee: { connect: { id: Number(assigneeId) } },
+      assignedAt: new Date(),
+    };
+    // ถ้า job ผ่านการอนุมัติแล้ว (approved/pending_approval) → เปลี่ยนเป็น assigned
+    if (['approved', 'pending_approval'].includes(job.status)) {
+      updateData.status = 'assigned';
+      updateData.startedAt = new Date();
+    }
+
+    await prisma.job.update({ where: { id: Number(id) }, data: updateData });
+
+    // 5. Log activity
+    await prisma.activityLog.create({
+      data: {
+        jobId: Number(id),
+        userId,
+        action: 'assigned',
+        message: `มอบหมายงานให้ ${newAssignee.firstName} ${newAssignee.lastName}`
+      }
+    });
+
+    // 6. Notifications (non-blocking)
+    try {
+      await notificationService.createNotification({
+        tenantId,
+        userId: Number(assigneeId),
+        type: 'job_assigned',
+        title: `👤 คุณได้รับมอบหมายงาน: ${job.djId}`,
+        message: `งาน "${job.subject}" ถูกมอบหมายให้คุณ`,
+        link: `/jobs/${id}`
+      });
+
+      if (newAssignee.email) {
+        const emailService = new EmailService();
+        const magicLink = await magicLinkService.createJobActionLink({
+          userId: Number(assigneeId),
+          jobId: Number(id),
+          action: 'view',
+          djId: job.djId
+        });
+        const emailHtml = createJobAssignmentEmail({
+          djId: job.djId,
+          subject: job.subject,
+          priority: job.priority || 'normal',
+          dueDate: job.dueDate ? new Date(job.dueDate).toLocaleDateString('th-TH') : null,
+          magicLink,
+          assigneeName: `${newAssignee.firstName} ${newAssignee.lastName}`
+        });
+        await emailService.sendEmail(
+          newAssignee.email,
+          `👤 คุณได้รับมอบหมายงาน: ${job.djId}`,
+          emailHtml
+        ).catch(err => console.warn('[Assign] Email failed:', err.message));
+      }
+    } catch (notiErr) {
+      console.warn('[Assign] Notification failed (non-blocking):', notiErr.message);
+    }
+
+    res.json({
+      success: true,
+      message: 'มอบหมายงานสำเร็จ',
+      data: {
+        assignee: {
+          id: newAssignee.id,
+          name: `${newAssignee.firstName} ${newAssignee.lastName}`,
+          email: newAssignee.email,
+          avatar: newAssignee.avatarUrl
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('[Jobs] Assign error:', error);
+    res.status(500).json({ success: false, message: 'เกิดข้อผิดพลาดในการมอบหมายงาน' });
   }
 });
 
@@ -3472,6 +3925,18 @@ router.post('/:id/start', async (req, res) => {
         message: `เริ่มดำเนินการงาน (${triggerType})`,
       }
     });
+
+    // 4. Notify Requester
+    if (job.requesterId && job.requesterId !== userId) {
+      await notificationService.createNotification({
+        tenantId: job.tenantId,
+        userId: job.requesterId,
+        type: 'job_started',
+        title: `▶️ งาน ${job.djId} เริ่มดำเนินการแล้ว`,
+        message: `ผู้รับงานเริ่มดำเนินการงาน "${job.subject}" แล้ว`,
+        link: `/jobs/${jobId}`
+      }).catch(err => console.warn('[StartJob] Noti failed:', err.message));
+    }
 
     res.json({
       success: true,
@@ -3551,7 +4016,7 @@ router.post('/:id/complete', async (req, res) => {
             });
 
             // Log activity on parent job
-            await prisma.jobActivity.create({
+            await prisma.activityLog.create({
               data: {
                 jobId: completedJob.parentJobId,
                 userId,
@@ -3562,8 +4027,7 @@ router.post('/:id/complete', async (req, res) => {
                 detail: {
                   closureReason: closureCheck.reason,
                   stats: closureCheck.stats
-                },
-                tenantId
+                }
               }
             }).catch(err => console.error('[Jobs] Failed to log parent closure:', err));
 
@@ -3628,6 +4092,54 @@ router.post('/:id/extend', async (req, res) => {
       extensionDays,
       reason
     );
+
+    // Notify Requester
+    try {
+      const prisma = getDatabase();
+      const job = await prisma.job.findUnique({
+        where: { id: jobId },
+        select: { requesterId: true, djId: true, subject: true, tenantId: true, assignee: { select: { firstName: true, lastName: true } } }
+      });
+      if (job?.requesterId && job.requesterId !== userId) {
+        await notificationService.createNotification({
+          tenantId: job.tenantId,
+          userId: job.requesterId,
+          type: 'job_extended',
+          title: `⏰ งาน ${job.djId} ขอขยายเวลา ${extensionDays} วัน`,
+          message: `${job.assignee?.firstName || 'ผู้รับงาน'} ขอขยายเวลางาน "${job.subject}" เหตุผล: ${reason}`,
+          link: `/jobs/${jobId}`
+        }).catch(err => console.warn('[Extend] Noti failed:', err.message));
+
+        // Email Requester with Magic Link
+        const requester = await prisma.user.findUnique({
+          where: { id: job.requesterId },
+          select: { email: true, firstName: true, lastName: true }
+        });
+        if (requester?.email) {
+          const emailService = new EmailService();
+          const magicLink = await magicLinkService.createJobActionLink({
+            userId: job.requesterId,
+            jobId: jobId,
+            action: 'view',
+            djId: job.djId
+          });
+          const emailHtml = createJobExtensionEmail({
+            djId: job.djId,
+            subject: job.subject,
+            assigneeName: `${job.assignee?.firstName || 'ผู้รับงาน'} ${job.assignee?.lastName || ''}`,
+            extensionDays,
+            newDueDate: updatedJob.dueDate ? new Date(updatedJob.dueDate).toLocaleDateString('th-TH') : '-',
+            reason,
+            magicLink,
+            requesterName: `${requester.firstName} ${requester.lastName}`
+          });
+          await emailService.sendEmail(requester.email, `⏰ งาน ${job.djId} ขอขยายเวลา`, emailHtml)
+            .catch(err => console.warn('[Extend] Email failed:', err.message));
+        }
+      }
+    } catch (notiErr) {
+      console.warn('[Extend] Notification failed (non-blocking):', notiErr.message);
+    }
 
     res.json({
       success: true,
@@ -3754,14 +4266,13 @@ router.post('/:id/submit-draft', async (req, res) => {
     });
 
     // Log activity
-    await prisma.jobActivity.create({
+    await prisma.activityLog.create({
       data: {
-        tenantId,
         jobId,
         userId,
-        activityType: 'draft_submitted',
-        description: `ส่ง Draft ครั้งที่ ${updatedJob.draftCount}${note ? ': ' + note : ''}`,
-        metadata: { link, note, draftCount: updatedJob.draftCount }
+        action: 'draft_submitted',
+        message: `ส่ง Draft ครั้งที่ ${updatedJob.draftCount}${note ? ': ' + note : ''}`,
+        detail: { link, note, draftCount: updatedJob.draftCount }
       }
     });
 
@@ -3964,14 +4475,13 @@ router.post('/:id/approve-draft', async (req, res) => {
     });
 
     // Log activity
-    await prisma.jobActivity.create({
+    await prisma.activityLog.create({
       data: {
-        tenantId,
         jobId,
         userId,
-        activityType: action === 'approve' ? 'draft_approved' : 'draft_rejected',
-        description: `${action === 'approve' ? 'อนุมัติ' : 'ปฏิเสธ'} Draft: ${reason.trim()}`,
-        metadata: { action, reason: reason.trim() }
+        action: action === 'approve' ? 'draft_approved' : 'draft_rejected',
+        message: `${action === 'approve' ? 'อนุมัติ' : 'ปฏิเสธ'} Draft: ${reason.trim()}`,
+        detail: { action, reason: reason.trim() }
       }
     });
 
@@ -4174,14 +4684,13 @@ router.post('/:id/rebrief', async (req, res) => {
     });
 
     // Log activity
-    await prisma.jobActivity.create({
+    await prisma.activityLog.create({
       data: {
-        tenantId,
         jobId,
         userId,
-        activityType: 'rebrief_requested',
-        description: `ขอ Rebrief ครั้งที่ ${updatedJob.rebriefCount}: ${reason.trim()}`,
-        metadata: { reason: reason.trim(), rebriefCount: updatedJob.rebriefCount }
+        action: 'rebrief_requested',
+        message: `ขอ Rebrief ครั้งที่ ${updatedJob.rebriefCount}: ${reason.trim()}`,
+        detail: { reason: reason.trim(), rebriefCount: updatedJob.rebriefCount }
       }
     });
 
@@ -4306,9 +4815,8 @@ router.post('/:id/submit-rebrief', async (req, res) => {
     });
 
     // Log activity
-    await prisma.jobActivity.create({
+    await prisma.activityLog.create({
       data: {
-        tenantId,
         jobId,
         userId,
         action: 'rebrief_submitted',
@@ -4430,9 +4938,8 @@ router.post('/:id/accept-rebrief', async (req, res) => {
     });
 
     // Log activity
-    await prisma.jobActivity.create({
+    await prisma.activityLog.create({
       data: {
-        tenantId,
         jobId,
         userId,
         action: 'rebrief_accepted',

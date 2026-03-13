@@ -141,6 +141,8 @@ model User {
   // ✅ NEW: Rejection requests
   rejectionRequestsCreated  RejectionRequest[] @relation("RejectionRequester")
   rejectionRequestsApproved RejectionRequest[] @relation("RejectionApprover")
+  // Magic link tokens
+  magicLinkTokens           MagicLinkToken[]
 
   @@unique([tenantId, email])
   @@index([departmentId])
@@ -750,17 +752,20 @@ model SlaShiftLog {
 }
 
 model PasswordResetRequest {
-  id        Int      @id @default(autoincrement())
-  userId    Int      @map("user_id")
-  token     String   @unique @db.VarChar(255)
-  expiresAt DateTime @map("expires_at") @db.Timestamptz
-  isUsed    Boolean  @default(false) @map("is_used")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id           Int       @id @default(autoincrement())
+  userId       Int       @map("user_id")
+  otpCode      String?   @map("otp_code") @db.VarChar(255)
+  otpExpiresAt DateTime? @map("otp_expires_at") @db.Timestamptz
+  status       String?   @default("pending") @db.VarChar(50)
+  token        String?   @unique @db.VarChar(255)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([token])
+  @@index([otpCode])
   @@map("password_reset_requests")
 }
 
@@ -861,4 +866,26 @@ model RejectionRequest {
   @@index([tenantId])
   @@index([autoCloseAt, status], name: "idx_auto_close")
   @@map("rejection_requests")
+}
+
+model MagicLinkToken {
+  id        Int      @id @default(autoincrement())
+  tokenId   String   @unique @map("token_id") @db.VarChar(255)
+  userId    Int      @map("user_id")
+  targetUrl String   @map("target_url") @db.VarChar(500)
+  action    String   @db.VarChar(50)
+  metadata  String?  @db.Text
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+  used      Boolean  @default(false)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenId])
+  @@index([expiresAt])
+  @@index([used])
+  @@map("magic_link_tokens")
 }
