@@ -159,4 +159,82 @@ router.put('/rejection-cc-emails', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/tenant-settings/portal-settings
+ * ดึง portal settings (ทุก user เข้าถึงได้ เพื่อให้ UserPortal โหลดข้อความ)
+ */
+router.get('/portal-settings', async (req, res) => {
+  try {
+    const prisma = getDatabase();
+    const tenantId = req.user.tenantId;
+
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { portalSettings: true }
+    });
+
+    const defaults = {
+      heroTitle: 'ยื่นคำร้องออนไลน์',
+      heroSubtitle: 'กรอกข้อมูลและส่งคำร้องได้ที่นี่ ทีมงานจะดำเนินการให้เร็วที่สุด',
+      announcementText: '',
+      announcementVisible: false
+    };
+
+    const settings = { ...defaults, ...(tenant?.portalSettings || {}) };
+
+    res.json({ success: true, data: settings });
+  } catch (error) {
+    console.error('[TenantSettings] GET portal-settings error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch portal settings' });
+  }
+});
+
+/**
+ * PUT /api/tenant-settings/portal-settings
+ * อัปเดต portal settings (Admin only)
+ *
+ * Body: { heroTitle, heroSubtitle, announcementText, announcementVisible }
+ */
+router.put('/portal-settings', async (req, res) => {
+  try {
+    const prisma = getDatabase();
+    const tenantId = req.user.tenantId;
+
+    if (!isAdmin(req.user)) {
+      return res.status(403).json({
+        success: false,
+        error: 'ADMIN_ONLY',
+        message: 'เฉพาะ Admin เท่านั้นที่สามารถแก้ไขการตั้งค่านี้ได้'
+      });
+    }
+
+    const { heroTitle, heroSubtitle, announcementText, announcementVisible } = req.body;
+
+    // Get existing settings first, then merge
+    const existing = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { portalSettings: true }
+    });
+
+    const merged = {
+      ...(existing?.portalSettings || {}),
+      ...(heroTitle !== undefined && { heroTitle }),
+      ...(heroSubtitle !== undefined && { heroSubtitle }),
+      ...(announcementText !== undefined && { announcementText }),
+      ...(announcementVisible !== undefined && { announcementVisible: Boolean(announcementVisible) })
+    };
+
+    await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { portalSettings: merged }
+    });
+
+    console.log(`[TenantSettings] Updated portalSettings for tenant ${tenantId}`);
+    res.json({ success: true, message: 'อัปเดต Portal Settings เรียบร้อยแล้ว', data: merged });
+  } catch (error) {
+    console.error('[TenantSettings] PUT portal-settings error:', error);
+    res.status(500).json({ success: false, message: 'ไม่สามารถอัปเดต Portal Settings ได้' });
+  }
+});
+
 export default router;

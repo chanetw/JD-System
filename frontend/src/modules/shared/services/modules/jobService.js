@@ -4,6 +4,19 @@ import { handleResponse } from '../utils';
 import { notificationService } from './notificationService';
 import httpClient from '../httpClient';
 
+function _extractRoleParam(user) {
+    if (!user) return 'requester';
+    let roles = [];
+    if (user.roles && Array.isArray(user.roles) && user.roles.length > 0) {
+        roles = user.roles.map(r => (typeof r === 'string' ? r : r?.name || '')).filter(Boolean);
+    }
+    if (roles.length === 0) {
+        const single = user.roleName || user.role?.name || (typeof user.role === 'string' ? user.role : '') || 'requester';
+        roles = [single];
+    }
+    return roles.map(r => r.toLowerCase()).join(',') || 'requester';
+}
+
 export const jobService = {
     // --- Jobs CRUD ---
 
@@ -566,9 +579,10 @@ export const jobService = {
     // --- Dashboard Stats ---
 
     // ⚡ Performance: ใช้ Backend API ที่ใช้ COUNT() แทน Supabase ที่ดึงทุก row
-    getDashboardStats: async () => {
+    getDashboardStats: async (user) => {
         try {
-            const response = await httpClient.get('/jobs/dashboard-stats');
+            const role = _extractRoleParam(user);
+            const response = await httpClient.get('/jobs/dashboard-stats', { params: { role } });
             if (!response.data.success) {
                 console.warn('getDashboardStats API failed:', response.data.message);
                 return { newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, pending: 0, myJobs: 0 };
@@ -588,10 +602,11 @@ export const jobService = {
      * @param {number} limit - จำนวนต่อหน้า (default: 20)
      * @returns {{ jobs: Array, total: number, page: number, hasMore: boolean }}
      */
-    getDashboardJobs: async (type, page = 1, limit = 20) => {
+    getDashboardJobs: async (type, page = 1, limit = 20, user = null) => {
         try {
+            const role = _extractRoleParam(user);
             const response = await httpClient.get('/jobs/dashboard-jobs', {
-                params: { type, page, limit }
+                params: { type, page, limit, role }
             });
             if (!response.data.success) {
                 console.warn('getDashboardJobs API failed:', response.data.message);

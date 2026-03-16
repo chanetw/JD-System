@@ -1,9 +1,17 @@
 /**
  * @file fileUploadService.js
- * @description File Upload Service using Supabase Storage
+ * @description File Upload Service using Supabase Storage or Backend API
+ * 
+ * Dual-Mode Support:
+ * - VITE_FRONTEND_MODE=supabase  → Supabase Storage (default)
+ * - VITE_FRONTEND_MODE=api_only  → Backend API /api/storage/*
  */
 
 import { supabase } from '../supabaseClient';
+import httpClient from '../httpClient';
+
+/** FRONTEND_MODE: 'supabase' (default) | 'api_only' */
+const FRONTEND_MODE = import.meta.env.VITE_FRONTEND_MODE || 'supabase';
 
 // Configuration
 const STORAGE_BUCKET = 'job-attachments';
@@ -53,6 +61,27 @@ export const fileUploadService = {
                 return { success: false, error: validation.error };
             }
 
+            // === API_ONLY MODE: ใช้ Backend API /api/storage/upload ===
+            if (FRONTEND_MODE === 'api_only') {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('folder', `tenant_${tenantId}/job_${jobId}`);
+                if (jobId) formData.append('jobId', jobId);
+
+                const response = await httpClient.post('/storage/upload', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                    onUploadProgress: (progressEvent) => {
+                        if (onProgress && progressEvent.total) {
+                            onProgress(Math.round((progressEvent.loaded / progressEvent.total) * 100));
+                        }
+                    }
+                });
+
+                if (onProgress) onProgress(100);
+                return response.data;
+            }
+
+            // === SUPABASE MODE (default) ===
             // Generate unique file path
             const fileExt = file.name.split('.').pop();
             const timestamp = Date.now();
@@ -65,8 +94,6 @@ export const fileUploadService = {
                 .upload(filePath, file, {
                     cacheControl: '3600',
                     upsert: false,
-                    // Note: Supabase JS client doesn't support progress natively
-                    // We'll need to use XMLHttpRequest for progress tracking
                 });
 
             if (uploadError) throw uploadError;
@@ -177,6 +204,13 @@ export const fileUploadService = {
      */
     deleteFile: async (attachmentId, userId) => {
         try {
+            // === API_ONLY MODE ===
+            if (FRONTEND_MODE === 'api_only') {
+                const response = await httpClient.delete(`/storage/files/${attachmentId}`);
+                return response.data;
+            }
+
+            // === SUPABASE MODE (default) ===
             // Get attachment info
             const { data: attachment, error: fetchError } = await supabase
                 .from('job_attachments')
@@ -193,7 +227,6 @@ export const fileUploadService = {
 
             if (storageError) {
                 console.warn('Storage delete warning:', storageError);
-                // Continue anyway - file might already be deleted
             }
 
             // Soft delete from database (or hard delete if preferred)
@@ -237,6 +270,13 @@ export const fileUploadService = {
      */
     getJobAttachments: async (jobId) => {
         try {
+            // === API_ONLY MODE ===
+            if (FRONTEND_MODE === 'api_only') {
+                const response = await httpClient.get(`/storage/files?jobId=${jobId}`);
+                return response.data?.data || [];
+            }
+
+            // === SUPABASE MODE (default) ===
             const { data, error } = await supabase
                 .from('job_attachments')
                 .select(`
@@ -276,6 +316,14 @@ export const fileUploadService = {
      */
     getDownloadUrl: async (filePath, expiresIn = 3600) => {
         try {
+            // === API_ONLY MODE ===
+            if (FRONTEND_MODE === 'api_only') {
+                // Backend ใช้ /api/storage/files/:id สำหรับดาวน์โหลด
+                // filePath ที่นี่อาจเป็น ID หรือ path — คืน URL ตรงๆ
+                return `${httpClient.defaults.baseURL}/storage/files/${filePath}`;
+            }
+
+            // === SUPABASE MODE (default) ===
             const { data, error } = await supabase.storage
                 .from(STORAGE_BUCKET)
                 .createSignedUrl(filePath, expiresIn);

@@ -170,6 +170,7 @@ export default function DraftCard({ job, currentUser, onSuccess }) {
                 onClose={() => setShowApprovalModal(false)}
                 job={job}
                 onSuccess={onSuccess}
+                currentUser={currentUser}
             />
         </div>
     );

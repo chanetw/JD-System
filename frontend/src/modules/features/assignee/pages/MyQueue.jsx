@@ -673,6 +673,7 @@ export default function MyQueue() {
                 onClose={() => { setShowDraftModal(false); setSelectedJob(null); }}
                 job={selectedJob}
                 onSuccess={fetchJobs}
+                currentUser={user}
             />
 
             {/* Rebrief Modal */}

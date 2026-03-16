@@ -641,10 +641,51 @@ router.get('/counts', async (req, res) => {
 });
 
 /**
+ * Helper: สร้าง Prisma where clause ตาม role ของ user
+ * ใช้กับ dashboard-stats และ dashboard-jobs
+ */
+function buildDashboardRoleFilter(roles, userId) {
+  const roleList = (roles || 'requester').split(',').map(r => r.trim().toLowerCase()).filter(Boolean);
+  const conditions = [];
+
+  for (const role of roleList) {
+    switch (role) {
+      case 'requester':
+        conditions.push({ requesterId: userId });
+        break;
+      case 'assignee':
+        conditions.push({ assigneeId: userId });
+        break;
+      case 'approver':
+        conditions.push({
+          OR: [
+            { status: 'pending_approval' },
+            { status: { startsWith: 'pending_level_' } },
+            { status: 'pending_rejection' },
+            { status: 'rejected' },
+            { status: 'returned' }
+          ]
+        });
+        break;
+      case 'admin':
+      case 'superadmin':
+        return null; // null = no filter (see all)
+      default:
+        conditions.push({ requesterId: userId });
+    }
+  }
+
+  if (conditions.length === 0) return null;
+  if (conditions.length === 1) return conditions[0];
+  return { OR: conditions };
+}
+
+/**
  * GET /api/jobs/dashboard-stats
  * ดึง stats สำหรับ Dashboard ด้วย aggregate COUNT (ไม่ดึงทุก row)
  * แทน getDashboardStats ที่ดึงผ่าน Supabase ตรง
  *
+ * @query {string} role - comma-separated roles (e.g. 'requester,approver')
  * @returns {Object} { newToday, dueToday, overdue, totalJobs, pending, myJobs }
  */
 router.get('/dashboard-stats', async (req, res) => {
@@ -652,12 +693,21 @@ router.get('/dashboard-stats', async (req, res) => {
     const prisma = getDatabase();
     const userId = req.user.userId;
     const tenantId = req.user.tenantId;
+    const roleParam = req.query.role || 'requester';
 
     const now = new Date();
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date(now);
     todayEnd.setHours(23, 59, 59, 999);
+
+    // สร้าง role filter
+    const roleFilter = buildDashboardRoleFilter(roleParam, userId);
+    const baseWhere = roleFilter
+      ? { tenantId, isParent: false, ...roleFilter }
+      : { tenantId, isParent: false };
+
+    const EXCLUDED_STATUSES = ['completed', 'closed', 'cancelled'];
 
     // ดึงทุก count ด้วย Promise.all ใน parallel
     const [
@@ -668,39 +718,36 @@ router.get('/dashboard-stats', async (req, res) => {
       pending,
       myJobs
     ] = await Promise.all([
-      // งานสร้างวันนี้ (ไม่นับ Parent Jobs)
+      // งานสร้างวันนี้
       prisma.job.count({
-        where: { tenantId, isParent: false, createdAt: { gte: todayStart, lte: todayEnd } }
+        where: { ...baseWhere, createdAt: { gte: todayStart, lte: todayEnd } }
       }),
-      // งานถึงกำหนดวันนี้ (ไม่นับ Parent Jobs)
+      // งานถึงกำหนดวันนี้
       prisma.job.count({
         where: {
-          tenantId,
-          isParent: false,
+          ...baseWhere,
           dueDate: { gte: todayStart, lte: todayEnd },
-          status: { notIn: ['completed', 'closed', 'cancelled'] }
+          status: { notIn: EXCLUDED_STATUSES }
         }
       }),
-      // งาน overdue (ไม่นับ Parent Jobs)
+      // งาน overdue
       prisma.job.count({
         where: {
-          tenantId,
-          isParent: false,
+          ...baseWhere,
           dueDate: { lt: todayStart },
-          status: { notIn: ['completed', 'closed', 'cancelled'] }
+          status: { notIn: EXCLUDED_STATUSES }
         }
       }),
-      // งานทั้งหมด (ไม่นับ Parent Jobs)
-      prisma.job.count({ where: { tenantId, isParent: false } }),
-      // งานรออนุมัติ (ไม่นับ Parent Jobs)
+      // งานทั้งหมด
+      prisma.job.count({ where: baseWhere }),
+      // งานรออนุมัติ
       prisma.job.count({
         where: {
-          tenantId,
-          isParent: false,
+          ...baseWhere,
           status: { in: ['pending_approval', 'pending_rejection'] }
         }
       }),
-      // งานของฉัน requester (ไม่นับ Parent Jobs)
+      // myJobs = งานที่ requesterId = userId เสมอ (ใช้เป็น KPI ส่วนตัว)
       prisma.job.count({
         where: { tenantId, isParent: false, requesterId: userId }
       })
@@ -730,9 +777,11 @@ router.get('/dashboard-jobs', async (req, res) => {
   try {
     const prisma = getDatabase();
     const tenantId = req.user.tenantId;
+    const userId = req.user.userId;
 
     // ดึง query params และ validate
     const type = req.query.type || 'newToday'; // newToday | dueToday | overdue
+    const roleParam = req.query.role || 'requester';
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
     const skip = (page - 1) * limit;
@@ -744,9 +793,14 @@ router.get('/dashboard-jobs', async (req, res) => {
     const todayEnd = new Date(now);
     todayEnd.setHours(23, 59, 59, 999);
 
+    // สร้าง role filter
+    const roleFilter = buildDashboardRoleFilter(roleParam, userId);
+
     // สร้าง where clause ตามประเภท (ไม่รวม Parent Jobs ให้ตัวเลขตรงกับ stats)
     const EXCLUDED_STATUSES = ['completed', 'closed', 'cancelled'];
-    let where = { tenantId, isParent: false };
+    let where = roleFilter
+      ? { tenantId, isParent: false, ...roleFilter }
+      : { tenantId, isParent: false };
     switch (type) {
       case 'newToday':
         // งานที่สร้างในวันนี้

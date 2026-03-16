@@ -27,6 +27,7 @@ const OrganizationManagement = React.lazy(() => import('./pages/OrganizationMana
 const HolidayCalendar = React.lazy(() => import('./pages/HolidayCalendar'));
 const NotificationSettings = React.lazy(() => import('./pages/NotificationSettings'));
 const EmailSettings = React.lazy(() => import('./pages/EmailSettings'));
+const PortalSettings = React.lazy(() => import('./pages/PortalSettings'));
 // V2 ApprovalFlowTemplates REMOVED - Using V1 Extended instead
 
 
@@ -110,6 +111,12 @@ export const routes = [
         element: withSuspense(EmailSettings),
         roles: ['Admin'],
         title: 'ตั้งค่าอีเมล'
+    },
+    {
+        path: 'admin/portal-settings',
+        element: withSuspense(PortalSettings),
+        roles: ['Admin'],
+        title: 'ตั้งค่า User Portal'
     },
     // V2 Approval Flow Templates route REMOVED - Using V1 Extended instead
 ];

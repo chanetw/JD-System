@@ -1,0 +1,13 @@
+node_modules
+npm-debug.log
+.env
+.env.local
+.env.*.local
+uploads/*
+!uploads/.gitkeep
+.git
+.gitignore
+*.md
+test-*.js
+check-*.js
+fix-*.js

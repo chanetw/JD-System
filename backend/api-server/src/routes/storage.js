@@ -19,6 +19,7 @@ import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import { SupabaseStorageService, isUsingSupabase } from '../config/supabase.js';
 import { hasRole } from '../helpers/roleHelper.js';
 import { getDatabase } from '../config/database.js';
+import { getStorageService, getStorageMode } from '../services/storageService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -85,20 +86,10 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
     let uploadResult;
 
-    if (isUsingSupabase()) {
-      // ใช้ Supabase Storage
-      const supabaseStorage = new SupabaseStorageService();
-
-      // สร้างชื่อไฟล์ที่ไม่ซ้ำกัน
-      const timestamp = Date.now();
-      const fileName = `${timestamp}_${file.originalname}`;
-      const folderPath = folder || `tenant_${req.user.tenantId}`;
-
-      uploadResult = await supabaseStorage.uploadFile(file.buffer, fileName, folderPath);
-    } else {
-      // ใช้ Local/NAS (fallback)
-      uploadResult = await uploadToLocalFile(file, folder, req.user.tenantId);
-    }
+    // ใช้ StorageService abstraction (เลือก provider จาก STORAGE_PROVIDER env)
+    const storageService = getStorageService();
+    const folderPath = folder || `tenant_${req.user.tenantId}`;
+    uploadResult = await storageService.uploadFile(file.buffer, file.originalname, folderPath);
 
     if (!uploadResult.success) {
       return res.status(500).json(uploadResult);
@@ -254,10 +245,10 @@ router.get('/files', async (req, res) => {
           if (publicUrl && !publicUrl.startsWith('http://') && !publicUrl.startsWith('https://')) {
             publicUrl = 'https://' + publicUrl;
           }
-        } else if (isUsingSupabase()) {
-          publicUrl = `https://${process.env.SUPABASE_URL?.replace('https://', '')}/storage/v1/object/public/${process.env.SUPABASE_STORAGE_BUCKET || 'dj-system-files'}/${file.filePath}`;
         } else {
-          publicUrl = `/uploads/${file.filePath}`;
+          // ใช้ StorageService abstraction สำหรับ publicUrl
+          const storageService = getStorageService();
+          publicUrl = storageService.getPublicUrl(file.filePath);
         }
 
         return {
@@ -315,14 +306,9 @@ router.get('/files/:id', async (req, res) => {
 
     let downloadResult;
 
-    if (isUsingSupabase()) {
-      // ดาวน์โหลดจาก Supabase
-      const supabaseStorage = new SupabaseStorageService();
-      downloadResult = await supabaseStorage.downloadFile(file.filePath);
-    } else {
-      // ดาวน์โหลดจาก Local/NAS
-      downloadResult = await downloadFromLocalFile(file.filePath);
-    }
+    // ใช้ StorageService abstraction
+    const storageService = getStorageService();
+    downloadResult = await storageService.downloadFile(file.filePath);
 
     if (!downloadResult.success) {
       return res.status(500).json(downloadResult);
@@ -391,14 +377,9 @@ router.delete('/files/:id', async (req, res) => {
 
     let deleteResult;
 
-    if (isUsingSupabase()) {
-      // ลบจาก Supabase
-      const supabaseStorage = new SupabaseStorageService();
-      deleteResult = await supabaseStorage.deleteFile(file.filePath);
-    } else {
-      // ลบจาก Local/NAS
-      deleteResult = await deleteFromLocalFile(file.filePath);
-    }
+    // ใช้ StorageService abstraction
+    const storageService = getStorageService();
+    deleteResult = await storageService.deleteFile(file.filePath);
 
     if (!deleteResult.success) {
       return res.status(500).json(deleteResult);
@@ -431,6 +412,7 @@ router.delete('/files/:id', async (req, res) => {
 router.get('/config', async (req, res) => {
   try {
     const config = {
+      storageProvider: getStorageMode(),
       usingSupabase: isUsingSupabase(),
       supabaseConfig: isUsingSupabase() ? {
         bucketName: process.env.SUPABASE_STORAGE_BUCKET || 'dj-system-files',

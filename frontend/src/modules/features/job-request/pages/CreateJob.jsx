@@ -10,12 +10,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@shared/services/supabaseClient';
+import httpClient from '@shared/services/httpClient';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
 import { addWorkDays } from '@shared/utils/slaCalculator';
 import { assignJobFromMatrix } from '@shared/services/modules/autoAssignService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { retry } from '@shared/utils/retry';
 import AcceptanceDatePicker from '../components/AcceptanceDatePicker';
+
+/** FRONTEND_MODE: 'supabase' (default) | 'api_only' */
+const FRONTEND_MODE = import.meta.env.VITE_FRONTEND_MODE || 'supabase';
 
 // Holidays cache configuration
 const HOLIDAYS_CACHE_KEY = 'dj_holidays_cache';
@@ -287,6 +291,17 @@ const CreateJob = () => {
             // 3. Call PostgreSQL function (Transaction) with retry logic
             console.log('🔄 Creating job with transaction...');
             const result = await retry(async () => {
+                // === API_ONLY MODE: ใช้ Backend API ===
+                if (FRONTEND_MODE === 'api_only') {
+                    const response = await httpClient.post('/jobs', {
+                        jobData,
+                        itemsData
+                    });
+                    if (!response.data.success) throw new Error(response.data.message);
+                    return response.data.data;
+                }
+
+                // === SUPABASE MODE (default) ===
                 const { data, error } = await supabase.rpc('create_job_with_items', {
                     p_job_data: jobData,
                     p_items_data: itemsData

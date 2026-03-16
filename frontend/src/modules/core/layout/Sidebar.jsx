@@ -138,6 +138,10 @@ export default function Sidebar() {
                             ตั้งค่าอีเมล (Email)
                         </SidebarLink>
 
+                        <SidebarLink to="/admin/portal-settings" icon={Cog6ToothIcon}>
+                            ตั้งค่า User Portal
+                        </SidebarLink>
+
                     </>
                 )}
 

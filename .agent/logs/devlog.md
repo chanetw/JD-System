@@ -4,6 +4,187 @@
 
 ---
 
+## 📅 2026-03-16
+
+### 100. Dashboard SLA Enhancement - คำนวณจากวันนี้ถึงวันรับงาน
+<details>
+<summary>ปรับปรุงการแสดงสถานะ SLA ให้คำนวณจากวันนี้ถึง dueDate และแสดง "อยู่ใน SLA" หรือ "เกิน SLA"</summary>
+
+**User Request:** ปรับ dashboard แก้ไขสถานะ sla เป็น กำหนดส่ง เหมือนของ overdue banner และ หาก ส่งตรงกำหนดให้เป็น ส่งตรงเวลา
+
+**Actions Taken:**
+- เพิ่ม `calculateDaysFromToday()` helper function สำหรับคำนวณจำนวนวันจากวันนี้ถึง dueDate
+- ปรับ `getSLABadge()` ให้แสดงสถานะใหม่:
+  - 🟢 **อยู่ใน SLA (X วัน)** — ยังไม่ถึง deadline
+  - 🔴 **เกิน SLA (X วัน)** — ผ่าน deadline มาแล้ว
+  - 🟠 **ครบ SLA วันนี้** — deadline วันนี้
+  - 🟡 **อยู่ใน SLA (1 วัน)** — deadline พรุ่งนี้
+  - ⚪ **ไม่กำหนด** — ไม่มี dueDate
+  - 🟢 **เสร็จแล้ว** — งาน completed
+- **Parent Jobs**: แสดง SLA ของงานย่อยที่นานที่สุด (deadline ไกลสุด)
+- **Child Jobs**: แสดง SLA ปกติตาม dueDate ของตัวเอง
+
+**Files Modified:**
+- `frontend/src/modules/features/dashboard/pages/Dashboard.jsx` - ปรับ getSLABadge() และเพิ่ม calculateDaysFromToday()
+
+**Key Changes:**
+- คำนวณจาก "วันนี้ → dueDate" แทนที่จะใช้ slaWorkingDays จาก JobType
+- แสดงข้อความภาษาไทยที่เข้าใจง่าย
+- สี badge สอดคล้องกับสถานะ
+
+</details>
+
+---
+
+## 📅 2026-05-14
+
+### 99. Dashboard Stats + Role Filter (Frontend)
+<details>
+<summary>เชื่อม Frontend ให้ส่ง role param เมื่อเรียก dashboard stats/jobs</summary>
+
+**User Request:** ต่อจาก session ก่อน — integrate frontend ให้ส่ง role param
+
+**Actions Taken:**
+- เพิ่ม `_extractRoleParam(user)` helper function ใน `jobService.js`
+- อัปเดต `getDashboardStats(user)` ให้ส่ง `role` param ไป backend
+- อัปเดต `getDashboardJobs(type, page, limit, user)` ให้ส่ง `role` param
+- อัปเดต `fetchPanelJobs` ใน `Dashboard.jsx` ให้ส่ง `role: getRoleParam()` ด้วย
+
+**Files Modified:**
+- `frontend/src/modules/shared/services/modules/jobService.js`
+- `frontend/src/modules/features/dashboard/pages/Dashboard.jsx`
+</details>
+
+### 100. SLA Reminder Cron — เตือน 1 วันก่อน dueDate
+<details>
+<summary>เพิ่ม checkUpcomingSLA ใน jobReminderCron เตือน Assignee + Requester</summary>
+
+**User Request:** SLA Reminder — เพิ่ม cron เตือน 1 วันก่อน dueDate
+
+**Actions Taken:**
+- เพิ่ม method `checkUpcomingSLA()` ใน `JobReminderCron` class
+  - หางานที่ `dueDate` ตรงกับพรุ่งนี้ (00:00-23:59) และสถานะไม่ใช่ completed/closed/cancelled
+  - ส่ง notification + email ให้ทั้ง **Assignee** และ **Requester**
+  - ป้องกัน spam: ตรวจสอบ notification type `sla_reminder` ภายใน 24 ชม.
+- เรียก `checkUpcomingSLA()` ทั้งตอน start และใน setInterval
+
+**Files Modified:**
+- `backend/api-server/src/services/jobReminderCron.js`
+</details>
+
+### 101. Configurable Text + Admin UI — Portal Settings
+<details>
+<summary>สร้างระบบตั้งค่า Portal Text สำหรับ Admin และแสดงใน UserPortal</summary>
+
+**User Request:** Configurable Text + Admin UI — portalSettings + PortalSettings.jsx + Sidebar
+
+**Actions Taken:**
+
+**Backend:**
+- เพิ่ม `portalSettings Json?` field ใน `Tenant` model (schema.prisma)
+- เพิ่ม `GET /api/tenant-settings/portal-settings` — ดึงค่า (ทุก user)
+- เพิ่ม `PUT /api/tenant-settings/portal-settings` — บันทึก (Admin only)
+  - Fields: `heroTitle`, `heroSubtitle`, `announcementText`, `announcementVisible`
+  - Merge กับค่าเดิม (ไม่ overwrite ทั้งหมด)
+  - Default values fallback ถ้า tenant ยังไม่มีค่า
+
+**Frontend:**
+- สร้าง `PortalSettings.jsx` — admin page มี:
+  - Form แก้ไข heroTitle, heroSubtitle
+  - Announcement section พร้อม toggle show/hide
+  - Live preview ของ hero card และ announcement banner
+  - Toast notification เมื่อบันทึกสำเร็จ/ล้มเหลว
+- ลง route `admin/portal-settings` ใน `admin/index.jsx`
+- เพิ่ม menu "ตั้งค่า User Portal" ใน `Sidebar.jsx`
+- อัปเดต `UserPortal.jsx`:
+  - Load `portalSettings` จาก API on mount
+  - ใช้ `heroTitle` และ `heroSubtitle` แทน hardcoded text
+  - แสดง Announcement Banner (amber) เมื่อ `announcementVisible = true`
+
+**⚠️ Pending Action (ต้องทำเอง):**
+- รัน `npx prisma db push` ใน `backend/` เพื่อ apply schema `portalSettings` column
+
+**Files Modified:**
+- `backend/prisma/schema.prisma`
+- `backend/api-server/src/routes/tenant-settings.js`
+- `frontend/src/modules/features/admin/pages/PortalSettings.jsx` (NEW)
+- `frontend/src/modules/features/admin/index.jsx`
+- `frontend/src/modules/core/layout/Sidebar.jsx`
+- `frontend/src/modules/features/portals/pages/UserPortal.jsx`
+</details>
+
+---
+
+## 📅 2026-03-14
+
+### 95. Dual-Mode Migration Infrastructure (Supabase ↔ Local/Docker)
+<details>
+<summary>เตรียมระบบให้สลับระหว่าง Supabase และ Local/Docker ได้ด้วย environment variables</summary>
+
+**User Request:** เตรียมระบบ migration แบบ dual-mode — เก็บไว้ทั้ง Supabase และ Local ให้สลับได้
+
+**Actions Taken:**
+
+**Phase 0 — Docker Setup:**
+- สร้าง `docker-compose.yml` (dev) — PostgreSQL container
+- สร้าง `docker-compose.prod.yml` (production) — PostgreSQL + Backend + Nginx
+- สร้าง `backend/api-server/Dockerfile` + `.dockerignore`
+- สร้าง `scripts/sync-supabase-to-docker.sh` — Sync ข้อมูลจาก Supabase → Docker
+- สร้าง `scripts/backup-docker.sh` — Backup database + files
+
+**Phase 1 — Database Feature Flag:**
+- เพิ่ม `DATABASE_MODE` env var + `getDatabaseMode()` ใน `backend/api-server/src/config/database.js`
+- Log แสดง mode ที่ใช้งาน (mask password)
+
+**Phase 2 — StorageService Abstraction:**
+- สร้าง `backend/api-server/src/services/storageService.js` — Abstract interface + factory
+- สร้าง `backend/api-server/src/services/providers/localStorageProvider.js`
+- สร้าง `backend/api-server/src/services/providers/googleDriveProvider.js`
+- สร้าง `backend/api-server/src/services/providers/supabaseStorageProvider.js`
+- แก้ `backend/api-server/src/routes/storage.js` — upload/download/delete/list ใช้ StorageService
+- เพิ่ม `express.static('/uploads')` ใน `backend/api-server/src/index.js`
+
+**Phase 3 — Auth Feature Flag:**
+- เพิ่ม `AUTH_MODE` (`supabase`/`jwt_only`) ใน `frontend/src/modules/core/stores/authStore.js`
+- ครอบ Supabase auth calls ทั้งหมดด้วย `if (AUTH_MODE === 'supabase')`
+- เพิ่ม `jwt_only` mode ใน `refreshUser` ใช้ Backend API แทน
+
+**Phase 4 — Frontend Feature Flag:**
+- เพิ่ม `FRONTEND_MODE` (`supabase`/`api_only`) ใน `fileUploadService.js`
+- เพิ่ม `api_only` mode: upload, delete, getJobAttachments, getDownloadUrl → Backend API
+- เพิ่ม `FRONTEND_MODE` ใน `CreateJob.jsx` — `supabase.rpc` → `httpClient.post('/jobs')`
+
+**Environment Variables เพิ่มใหม่:**
+```
+DATABASE_MODE=supabase|local
+STORAGE_PROVIDER=supabase|local|google_drive
+VITE_AUTH_MODE=supabase|jwt_only
+VITE_FRONTEND_MODE=supabase|api_only
+```
+
+**ไฟล์ที่สร้างใหม่:**
+- `docker-compose.yml`, `docker-compose.prod.yml`
+- `backend/api-server/Dockerfile`, `.dockerignore`
+- `scripts/sync-supabase-to-docker.sh`, `scripts/backup-docker.sh`
+- `backend/api-server/src/services/storageService.js`
+- `backend/api-server/src/services/providers/localStorageProvider.js`
+- `backend/api-server/src/services/providers/googleDriveProvider.js`
+- `backend/api-server/src/services/providers/supabaseStorageProvider.js`
+- `uploads/.gitkeep`
+
+**ไฟล์ที่แก้ไข:**
+- `backend/api-server/src/config/database.js` — เพิ่ม DATABASE_MODE
+- `backend/api-server/src/routes/storage.js` — ใช้ StorageService
+- `backend/api-server/src/index.js` — เพิ่ม express.static
+- `frontend/src/modules/core/stores/authStore.js` — เพิ่ม AUTH_MODE
+- `frontend/src/modules/shared/services/modules/fileUploadService.js` — เพิ่ม FRONTEND_MODE
+- `frontend/src/modules/features/job-request/pages/CreateJob.jsx` — เพิ่ม FRONTEND_MODE
+- `.gitignore` — เพิ่ม Docker, uploads
+
+</details>
+
+---
+
 ## 📅 2026-03-13
 
 ### 94. Bug Fixes — Rebrief Flow, MyQueue, jobReminderCron, Error Boundary

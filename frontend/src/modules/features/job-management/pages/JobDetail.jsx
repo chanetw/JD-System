@@ -1149,6 +1149,7 @@ export default function JobDetail() {
                 onClose={() => setShowDraftModal(false)}
                 job={job}
                 onSuccess={loadJob}
+                currentUser={user}
             />
 
             {/* Rebrief Modal */}

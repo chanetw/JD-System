@@ -67,6 +67,19 @@ export default function UserPortal() {
         totalDownloads: 0
     });
     const [jobTypesList, setJobTypesList] = useState([]);
+    const [portalSettings, setPortalSettings] = useState({
+        heroTitle: 'ต้องการงาน Design อะไรวันนี้?',
+        heroSubtitle: 'ค้นหางานเดิมหรือสร้าง Design Job ใหม่',
+        announcementText: '',
+        announcementVisible: false
+    });
+
+    // โหลด Portal Settings
+    useEffect(() => {
+        httpClient.get('/tenant-settings/portal-settings')
+            .then(res => { if (res.data.success) setPortalSettings(prev => ({ ...prev, ...res.data.data })); })
+            .catch(() => {});
+    }, []);
 
     // Helper: Toggle row expansion
     const toggleRowExpansion = (jobId) => {
@@ -349,11 +362,21 @@ export default function UserPortal() {
           ============================================ */}
             <main className="pt-16 pb-12">
 
+                {/* Announcement Banner */}
+                {portalSettings.announcementVisible && portalSettings.announcementText && (
+                    <div className="bg-amber-50 border-b border-amber-200 px-6 py-3">
+                        <div className="max-w-6xl mx-auto flex items-start gap-2 text-sm text-amber-800">
+                            <span className="flex-shrink-0 mt-0.5">📢</span>
+                            <span>{portalSettings.announcementText}</span>
+                        </div>
+                    </div>
+                )}
+
                 {/* Hero Section */}
                 <div className="bg-gradient-to-r from-rose-600 to-rose-800 py-16">
                     <div className="max-w-6xl mx-auto px-6 text-center">
-                        <h2 className="text-3xl font-bold text-white mb-4">ต้องการงาน Design อะไรวันนี้?</h2>
-                        <p className="text-rose-100 mb-8">ค้นหางานเดิมหรือสร้าง Design Job ใหม่</p>
+                        <h2 className="text-3xl font-bold text-white mb-4">{portalSettings.heroTitle}</h2>
+                        <p className="text-rose-100 mb-8">{portalSettings.heroSubtitle}</p>
 
                         <div className="max-w-2xl mx-auto relative">
                             <MagnifyingGlassIcon className="w-6 h-6 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />

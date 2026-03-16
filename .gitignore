@@ -59,5 +59,13 @@ docs/DEBUG_*.md
 docs/sessions/
 docs/reference/
 
+# Docker
+*.sql
+docker-compose.override.yml
+
+# Uploads (local storage)
+uploads/
+!uploads/.gitkeep
+
 # Agent devlog exception (allow direct editing)
 !.agent/logs/devlog.md

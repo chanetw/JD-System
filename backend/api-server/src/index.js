@@ -108,6 +108,9 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+// Static File Serving
+// Serve uploaded files จาก /uploads/ (ใช้เมื่อ STORAGE_PROVIDER=local)
+app.use('/uploads', express.static('uploads'));
 
 // ==========================================
 // ขั้นตอนที่ 4: สร้าง HTTP Server สำหรับ Socket.io

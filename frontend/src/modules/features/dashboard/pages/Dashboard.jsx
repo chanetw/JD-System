@@ -17,6 +17,7 @@ import LoadingSpinner from '@shared/components/LoadingSpinner';
 import { hasAnyRole } from '@shared/utils/permission.utils';
 import DraftSubmitModal from '@features/job-management/components/DraftSubmitModal';
 import { WORK_STATUS_LABEL, STATUS_COLOR, matchesStatusFilter } from '@shared/constants/jobStatus';
+import { getWorkingDays } from '@shared/utils/slaCalculator';
 
 // ============================================
 // Constants
@@ -83,7 +84,10 @@ function Dashboard() {
     const [showParent, setShowParent] = useState(false);       // เปิด/ปิดการแสดง Parent Jobs (Flat View)
     const [viewMode, setViewMode] = useState('flat');          // 'flat' | 'parent' — View Mode Toggle
     const [expandedRows, setExpandedRows] = useState(new Set()); // Parent IDs ที่กางอยู่ (Parent View)
-    const [sortMode, setSortMode] = useState('updatedAt');     // 'sla' | 'createdAt' | 'updatedAt'
+    const [sortMode, setSortMode] = useState('sla');     // 'sla' | 'createdAt' | 'updatedAt' — default: SLA น้อยไปมาก
+
+    // Holidays สำหรับคำนวณ working days
+    const [holidays, setHolidays] = useState([]);
 
     // Draft Submit Modal state
     const [showDraftModal, setShowDraftModal] = useState(false);
@@ -116,6 +120,24 @@ function Dashboard() {
     }, [user]);
 
     // ============================================
+    // Load Holidays (สำหรับคำนวณ working days SLA)
+    // ============================================
+    useEffect(() => {
+        if (!user) return;
+        const loadHolidays = async () => {
+            try {
+                const response = await httpClient.get('/holidays');
+                if (response.data.success) {
+                    setHolidays(response.data.data || []);
+                }
+            } catch (err) {
+                console.warn('[Dashboard] Could not load holidays:', err.message);
+            }
+        };
+        loadHolidays();
+    }, [user]);
+
+    // ============================================
     // Load Dashboard Stats on mount
     // ============================================
     useEffect(() => {
@@ -135,7 +157,8 @@ function Dashboard() {
     // Load My Queue (ครั้งแรก และเมื่อ filter เปลี่ยน)
     // ============================================
     const fetchQueueJobs = useCallback(async (pageNum, append = false) => {
-        if (!user || queueLoading) return;
+        if (!user) return;
+        if (append && queueLoading) return; // ป้องกันโหลดซ้ำเฉพาะ infinite scroll
         setQueueLoading(true);
         if (!append) setIsLoading(true);
         try {
@@ -147,6 +170,9 @@ function Dashboard() {
                 const newJobs = Array.isArray(response.data.data) ? response.data.data : [];
                 const total = response.data.pagination?.total || 0;
                 const totalPages = response.data.pagination?.totalPages || 1;
+                
+                // Console log: แสดงจำนวนรายการที่ดึงมา
+                console.log(`[Dashboard] Page ${pageNum}: ดึงมา ${newJobs.length} รายการ (จาก API) | ทั้งหมด ${total} รายการ | หน้าทั้งหมด ${totalPages} หน้า`);
                 setJobs(prev => {
                     if (!append) return newJobs;
                     // Deduplicate: ใช้ Map เพื่อป้องกัน duplicate key จาก pagination shift
@@ -184,7 +210,7 @@ function Dashboard() {
         setPanelLoading(true);
         try {
             const response = await httpClient.get('/jobs/dashboard-jobs', {
-                params: { type, page, limit: 20 }
+                params: { type, page, limit: 20, role: getRoleParam() }
             });
             if (response.data.success) {
                 const { jobs: newJobs, total, hasMore } = response.data.data;
@@ -490,17 +516,9 @@ function Dashboard() {
     const filteredJobs = useMemo(() => {
         let result = [...jobs];
 
-        // 1. Apply View Mode Logic + Filter
+        // 1. Apply View Mode Logic (แสดงทุก jobs เพื่อให้ครบ 20 รายการ)
         if (viewMode === 'flat') {
-            result = result.filter(job => !job.isParent);
-
-            if (statusFilter && result.length > 0) {
-                result = result.filter(j => matchesStatusFilter(j.status, statusFilter));
-            }
-            if (assigneeFilter && result.length > 0) {
-                result = result.filter(j => getAssigneeName(j) === assigneeFilter);
-            }
-
+            // ไม่กรองอะไรเลย — แสดงทั้ง Parent และ Child Jobs
         } else if (viewMode === 'parent') {
             result = buildParentViewJobs(result);
         }
@@ -530,8 +548,11 @@ function Dashboard() {
             });
         }
 
+        // Console log: แสดงจำนวนที่แสดงผล
+        console.log(`[Dashboard] แสดงผล ${result.length} รายการ (หน้า ${queuePage}) | View Mode: ${viewMode} | Sort: ${sortMode}`);
+        
         return result;
-    }, [jobs, statusFilter, assigneeFilter, viewMode, sortMode, buildParentViewJobs, getAssigneeName]);
+    }, [jobs, viewMode, sortMode, buildParentViewJobs, queuePage]);
 
     const filterableJobs = useMemo(() => {
         if (viewMode === 'parent') {
@@ -709,7 +730,7 @@ function Dashboard() {
                             <h2 className="text-lg font-semibold text-gray-900">รายการงานของฉัน</h2>
                             {queueTotal > 0 && (
                                 <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                                    {jobs.length} / {queueTotal} รายการ
+                                    {Math.min((queuePage - 1) * 20 + 1, queueTotal)}-{Math.min(queuePage * 20, queueTotal)} / {queueTotal} รายการ
                                 </span>
                             )}
                         </div>
@@ -749,33 +770,6 @@ function Dashboard() {
                                 <option value="createdAt">เรียงตาม: งานสร้างล่าสุด</option>
                                 <option value="sla">เรียงตาม: SLA น้อยไปมาก</option>
                             </select>
-                            
-                            {/* Status Dropdown Filter */}
-                            {statusOptions.length > 0 && (
-                                <select
-                                    value={statusFilter}
-                                    onChange={e => setStatusFilter(e.target.value)}
-                                    className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
-                                >
-                                    <option value="">สถานะ</option>
-                                    {statusOptions.map(s => (
-                                        <option key={s} value={s}>{WORK_STATUS_LABEL[s] || s}</option>
-                                    ))}
-                                </select>
-                            )}
-                            {/* Assignee Dropdown Filter */}
-                            {assigneeOptions.length > 0 && (
-                                <select
-                                    value={assigneeFilter}
-                                    onChange={e => setAssigneeFilter(e.target.value)}
-                                    className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
-                                >
-                                    <option value="">Assignee</option>
-                                    {assigneeOptions.map(name => (
-                                        <option key={name} value={name}>{name}</option>
-                                    ))}
-                                </select>
-                            )}
                         </div>
                     </div>
                 </div>
@@ -784,16 +778,16 @@ function Dashboard() {
                     <table className="w-full">
                         <thead>
                             <tr className="bg-gray-50 border-b border-gray-400">
+                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase w-12">#</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">DJ ID</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Project</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Job Type</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deadline</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">SLA</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">สถานะ SLA</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assignee</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Update</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-400">
@@ -804,10 +798,11 @@ function Dashboard() {
                                     </td>
                                 </tr>
                             ) : (
-                                filteredJobs.map(job => {
+                                filteredJobs.map((job, idx) => {
+                                    const rowNum = (queuePage - 1) * 20 + idx + 1;
                                     // === FLAT VIEW: แสดงแบบธรรมดา (เดิม) ===
                                     if (viewMode === 'flat') {
-                                        return <JobRow key={job.id} job={job} onOpenDraftModal={handleOpenDraftModal} />;
+                                        return <JobRow key={job.id} job={job} rowIndex={rowNum} holidays={holidays} onOpenDraftModal={handleOpenDraftModal} />;
                                     }
                                     
                                     // === PARENT VIEW: แสดงแบบ Accordion (ใหม่) ===
@@ -815,10 +810,12 @@ function Dashboard() {
                                         <React.Fragment key={job.id}>
                                             <JobRow 
                                                 job={job}
+                                                rowIndex={rowNum}
                                                 isParent={job.isParent}
                                                 hasChildren={job.children && job.children.length > 0}
                                                 isExpanded={expandedRows.has(job.id)}
                                                 onToggleExpand={() => toggleRowExpansion(job.id)}
+                                                holidays={holidays}
                                                 onOpenDraftModal={handleOpenDraftModal}
                                             />
                                             
@@ -857,6 +854,7 @@ function Dashboard() {
                                                             job={child}
                                                             isChild={true}
                                                             childInfo={jobChains.get(child.id)}
+                                                            holidays={holidays}
                                                             onOpenDraftModal={handleOpenDraftModal}
                                                         />
                                                     ));
@@ -869,19 +867,43 @@ function Dashboard() {
                         </tbody>
                     </table>
 
-                    {/* Sentinel div — IntersectionObserver จับตรงนี้เพื่อโหลดเพิ่ม */}
-                    <div ref={queueSentinelRef} className="py-3 flex justify-center">
-                        {queueLoading && jobs.length > 0 && (
+                    {/* Pagination Bar */}
+                    {queueTotal > 0 && (
+                        <div className="py-3 px-4 flex items-center justify-between border-t border-gray-200">
+                            <span className="text-sm text-gray-500">
+                                แสดง {Math.min((queuePage - 1) * 20 + 1, queueTotal)}-{Math.min(queuePage * 20, queueTotal)} จาก {queueTotal} รายการ
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => { if (queuePage > 1) fetchQueueJobs(queuePage - 1, false); }}
+                                    disabled={queuePage <= 1 || queueLoading}
+                                    className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${queuePage <= 1 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-gray-300 text-gray-600 hover:bg-gray-50 cursor-pointer'}`}
+                                >
+                                    ← ก่อนหน้า
+                                </button>
+                                <span className="text-sm text-gray-600 font-medium">
+                                    หน้า {queuePage} / {Math.ceil(queueTotal / 20)}
+                                </span>
+                                <button
+                                    onClick={() => { 
+                                        const totalPages = Math.ceil(queueTotal / 20);
+                                        if (queuePage < totalPages) fetchQueueJobs(queuePage + 1, false); 
+                                    }}
+                                    disabled={queuePage >= Math.ceil(queueTotal / 20) || queueLoading}
+                                    className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${queuePage >= Math.ceil(queueTotal / 20) ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-gray-300 text-gray-600 hover:bg-gray-50 cursor-pointer'}`}
+                                >
+                                    ถัดไป →
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                    {queueLoading && (
+                        <div className="py-3 flex justify-center">
                             <span className="flex items-center gap-2 text-xs text-gray-400">
-                                <LoadingIcon /> กำลังโหลดเพิ่มเติม...
+                                <LoadingIcon /> กำลังโหลด...
                             </span>
-                        )}
-                        {!queueLoading && !queueHasMore && jobs.length > 0 && (
-                            <span className="text-xs text-gray-400">
-                                แสดงครบทั้งหมด {queueTotal} รายการ ✓
-                            </span>
-                        )}
-                    </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -891,6 +913,7 @@ function Dashboard() {
                 onClose={() => setShowDraftModal(false)}
                 job={selectedJobForDraft}
                 onSuccess={handleDraftSuccess}
+                currentUser={user}
             />
         </div>
     );
@@ -990,9 +1013,9 @@ function PanelJobRow({ job }) {
     return (
         <tr className={`hover:bg-gray-50 transition-colors ${job.isOverdue ? 'bg-red-50/40' : ''}`}>
             <td className="px-4 py-3 whitespace-nowrap">
-                <Link to={`/jobs/${job.id}`} className="text-rose-600 font-semibold hover:underline">
+                <a href={`/jobs/${job.id}`} target="_blank" rel="noopener noreferrer" className="text-rose-600 font-semibold hover:underline">
                     {job.djId}
-                </Link>
+                </a>
             </td>
             <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{job.project || '-'}</td>
             <td className="px-4 py-3 max-w-[200px]">
@@ -1050,12 +1073,14 @@ function PanelJobRow({ job }) {
  */
 function JobRow({ 
     job,
+    rowIndex = null,
     isParent = false,
     hasChildren = false,
     isExpanded = false,
     onToggleExpand = null,
     isChild = false,
     childInfo = null,
+    holidays = [],
     onOpenDraftModal = null
 }) {
     const statusColors = {
@@ -1071,52 +1096,127 @@ function JobRow({
         completed: 'bg-green-100 text-green-700',
     };
 
-    const getSLABadge = () => {
-        // ถ้าเป็น Parent ให้ใช้ derived SLA
-        if (isParent && hasChildren && job.derivedSlaText) {
-            const text = job.derivedSlaText;
-            if (text.includes('Overdue')) {
+    // Helper function: คำนวณวันทำการจากวันนี้ถึง dueDate
+    const calculateDaysFromToday = useCallback((deadline) => {
+        if (!deadline) return null;
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // เริ่มต้นวันนี้
+        
+        const dueDate = new Date(deadline);
+        dueDate.setHours(0, 0, 0, 0); // เริ่มต้นวัน due date
+        
+        const diffTime = dueDate - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        return diffDays;
+    }, []);
+
+    const getSLABadge = useCallback(() => {
+        // ถ้าเป็น Parent ให้ใช้ derived SLA (แต่ต้องคำนวณใหม่จากงานย่อยที่นานที่สุด)
+        if (isParent && hasChildren && job.children && job.children.length > 0) {
+            // หางานย่อยที่มี dueDate ไกลสุด (นานที่สุด)
+            const childWithLatestDeadline = job.children.reduce((latest, child) => {
+                if (!child.deadline) return latest;
+                if (!latest.deadline) return child;
+                return new Date(child.deadline) > new Date(latest.deadline) ? child : latest;
+            }, {});
+            
+            if (childWithLatestDeadline.deadline) {
+                const daysFromToday = calculateDaysFromToday(childWithLatestDeadline.deadline);
+                
+                if (daysFromToday < 0) {
+                    return (
+                        <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700 font-medium">
+                            เกิน SLA ({Math.abs(daysFromToday)} วัน)
+                        </span>
+                    );
+                }
+                if (daysFromToday === 0) {
+                    return (
+                        <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700 font-medium">
+                            ครบ SLA วันนี้
+                        </span>
+                    );
+                }
+                if (daysFromToday === 1) {
+                    return (
+                        <span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700 font-medium">
+                            อยู่ใน SLA (1 วัน)
+                        </span>
+                    );
+                }
                 return (
-                    <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700 font-medium">
-                        {text}
+                    <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">
+                        อยู่ใน SLA
                     </span>
                 );
             }
-            if (text === 'Completed') {
-                return (
-                    <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700 font-medium">
-                        {text}
-                    </span>
-                );
-            }
-            if (text === 'Due today') {
-                return (
-                    <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700 font-medium">
-                        {text}
-                    </span>
-                );
-            }
+        }
+        
+        // งานปกติและงานย่อย
+        if (!job.deadline) {
             return (
                 <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-700">
-                    {text}
+                    ไม่กำหนด
                 </span>
             );
         }
         
-        // งานปกติ
-        if (job.isOverdue) {
+        if (job.status === 'completed') {
+            // ตรวจสอบว่าเสร็จเกิน SLA หรือไม่ โดยใช้ working days
+            if (job.deadline && job.completedAt) {
+                const dueDate = new Date(job.deadline);
+                const completedAt = new Date(job.completedAt);
+                dueDate.setHours(0, 0, 0, 0);
+                completedAt.setHours(0, 0, 0, 0);
+                
+                if (completedAt > dueDate) {
+                    // เสร็จหลัง deadline — คำนวณจำนวน working days ที่เกิน
+                    const overdueDays = getWorkingDays(dueDate, completedAt, holidays) - 1;
+                    return (
+                        <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700 font-medium">
+                            เสร็จแล้ว เกิน SLA ({Math.max(1, overdueDays)} วันทำงาน)
+                        </span>
+                    );
+                }
+            }
+            return (
+                <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700 font-medium">
+                    เสร็จแล้ว
+                </span>
+            );
+        }
+        
+        const daysFromToday = calculateDaysFromToday(job.deadline);
+        
+        if (daysFromToday < 0) {
             return (
                 <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700 font-medium">
-                    Overdue +{job.overdueDays}d
+                    เกิน SLA ({Math.abs(daysFromToday)} วัน)
+                </span>
+            );
+        }
+        if (daysFromToday === 0) {
+            return (
+                <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700 font-medium">
+                    ครบ SLA วันนี้
+                </span>
+            );
+        }
+        if (daysFromToday === 1) {
+            return (
+                <span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700 font-medium">
+                    อยู่ใน SLA (1 วัน)
                 </span>
             );
         }
         return (
-            <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-700">
-                {job.slaWorkingDays} days
+            <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">
+                อยู่ใน SLA
             </span>
         );
-    };
+    }, [calculateDaysFromToday, isParent, hasChildren, job.children, job.deadline, job.status, job.completedAt, holidays]);
 
     const fmtDate = (d) => d
         ? new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
@@ -1129,6 +1229,9 @@ function JobRow({
 
     return (
         <tr className={`hover:bg-gray-50 ${job.status === 'scheduled' ? 'bg-violet-50' : ''} ${isChild ? 'bg-gray-50/80' : ''}`}>
+            <td className="px-4 py-3 text-center text-sm text-gray-400 w-12">
+                {isChild ? '' : (rowIndex || '')}
+            </td>
             <td className="px-4 py-3">
                 <div className={`flex items-center ${isChild ? 'pl-6 border-l-2 border-gray-300' : ''}`}>
                     {isParent && hasChildren && (
@@ -1142,9 +1245,9 @@ function JobRow({
                     )}
                     <div className="flex flex-col">
                         <div className="flex items-center gap-2">
-                            <Link to={`/jobs/${job.id}`} className="text-rose-600 font-medium hover:underline">
+                            <a href={`/jobs/${job.id}`} target="_blank" rel="noopener noreferrer" className="text-rose-600 font-medium hover:underline">
                                 {job.djId}
-                            </Link>
+                            </a>
                         </div>
                         {isParent && hasChildren && (
                             <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded inline-block w-fit mt-1">
@@ -1176,13 +1279,6 @@ function JobRow({
                     + ' '
                     + new Date(job.updatedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
                     : '-'}
-            </td>
-            <td className="px-4 py-3">
-                <div className="flex items-center gap-2">
-                    <Link to={`/jobs/${job.id}`} className="text-sm text-rose-600 hover:text-rose-700 font-medium">
-                        View
-                    </Link>
-                </div>
             </td>
         </tr>
     );
