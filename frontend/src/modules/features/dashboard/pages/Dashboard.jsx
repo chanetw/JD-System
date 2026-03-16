@@ -138,34 +138,39 @@ function Dashboard() {
     }, [user]);
 
     // ============================================
-    // Load Dashboard Stats on mount
+    // Load Dashboard Stats on mount and filter change
     // ============================================
     useEffect(() => {
         if (!user) return;
         const loadStats = async () => {
             try {
-                const statsData = await api.getDashboardStats(user);
+                const statsData = await api.getDashboardStats(user, statusFilter, assigneeFilter);
                 setStats(statsData);
             } catch (err) {
                 console.error('Error loading stats:', err);
             }
         };
         loadStats();
-    }, [user]);
+    }, [user, statusFilter, assigneeFilter]);
 
     // ============================================
     // Load My Queue (ครั้งแรก และเมื่อ filter เปลี่ยน)
     // ============================================
-    const fetchQueueJobs = useCallback(async (pageNum, append = false) => {
+    const fetchQueueJobs = useCallback(async (pageNum, append = false, overrideStatus, overrideAssignee) => {
         if (!user) return;
         if (append && queueLoading) return; // ป้องกันโหลดซ้ำเฉพาะ infinite scroll
         setQueueLoading(true);
         if (!append) setIsLoading(true);
         try {
             const roleParam = getRoleParam();
-            const response = await httpClient.get('/jobs', {
-                params: { role: roleParam, page: pageNum, limit: 20 }
-            });
+            // ใช้ override ถ้ามี (จาก useEffect filter change) มิฉะนั้นใช้ค่าจาก closure
+            const activeStatus = overrideStatus !== undefined ? overrideStatus : statusFilter;
+            const activeAssignee = overrideAssignee !== undefined ? overrideAssignee : assigneeFilter;
+            const params = { role: roleParam, page: pageNum, limit: 20 };
+            if (activeStatus) params.status = activeStatus;
+            if (activeAssignee) params.assignee = activeAssignee;
+            console.log(`[Dashboard] Fetch params:`, params);
+            const response = await httpClient.get('/jobs', { params });
             if (response.data.success) {
                 const newJobs = Array.isArray(response.data.data) ? response.data.data : [];
                 const total = response.data.pagination?.total || 0;
@@ -191,7 +196,7 @@ function Dashboard() {
             setQueueLoading(false);
             if (!append) setIsLoading(false);
         }
-    }, [user, queueLoading, getRoleParam]);
+    }, [user, queueLoading, getRoleParam, statusFilter, assigneeFilter]);
 
     // โหลดครั้งแรกเมื่อ user หรือ filter เปลี่ยน
     useEffect(() => {
@@ -202,16 +207,27 @@ function Dashboard() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user, filter]);
 
+    // Reset หน้า 1 เมื่อ statusFilter หรือ assigneeFilter เปลี่ยน
+    useEffect(() => {
+        if (!user) return;
+        setJobs([]);
+        setQueuePage(1);
+        fetchQueueJobs(1, false, statusFilter, assigneeFilter);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [statusFilter, assigneeFilter]);
+
     // ============================================
     // Fetch Page of Drill-down Jobs
     // ============================================
-    const fetchPanelJobs = useCallback(async (type, page, append = false) => {
+    const fetchPanelJobs = useCallback(async (type, page, append = false, statusFilter, assigneeFilter) => {
         if (!type || panelLoading) return;
         setPanelLoading(true);
         try {
-            const response = await httpClient.get('/jobs/dashboard-jobs', {
-                params: { type, page, limit: 20, role: getRoleParam() }
-            });
+            const params = { type, page, limit: 20, role: getRoleParam() };
+            if (statusFilter && statusFilter.trim()) params.status = statusFilter.trim();
+            if (assigneeFilter && assigneeFilter.trim()) params.assignee = assigneeFilter.trim();
+            
+            const response = await httpClient.get('/jobs/dashboard-jobs', { params });
             if (response.data.success) {
                 const { jobs: newJobs, total, hasMore } = response.data.data;
                 setPanelJobs(prev => {
@@ -246,9 +262,9 @@ function Dashboard() {
             setPanelJobs([]);
             setPanelPage(1);
             setPanelHasMore(false);
-            fetchPanelJobs(type, 1, false);
+            fetchPanelJobs(type, 1, false, statusFilter, assigneeFilter);
         }
-    }, [activePanel, fetchPanelJobs]);
+    }, [activePanel, fetchPanelJobs, statusFilter, assigneeFilter]);
 
     // ============================================
     // IntersectionObserver: โหลดเพิ่ม เมื่อ scroll ถึง sentinel
@@ -259,14 +275,14 @@ function Dashboard() {
             (entries) => {
                 const entry = entries[0];
                 if (entry.isIntersecting && panelHasMore && !panelLoading && activePanel) {
-                    fetchPanelJobs(activePanel, panelPage + 1, true);
+                    fetchPanelJobs(activePanel, panelPage + 1, true, statusFilter, assigneeFilter);
                 }
             },
             { threshold: 0.1 }
         );
         observer.observe(sentinelRef.current);
         return () => observer.disconnect();
-    }, [sentinelRef, panelHasMore, panelLoading, activePanel, panelPage, fetchPanelJobs]);
+    }, [sentinelRef, panelHasMore, panelLoading, activePanel, panelPage, fetchPanelJobs, statusFilter, assigneeFilter]);
 
     // ============================================
     // IntersectionObserver: My Queue infinite scroll
@@ -759,6 +775,50 @@ function Dashboard() {
                                 </button>
                             </div>
 
+
+                            {/* Status Filter */}
+                            <select
+                                value={statusFilter}
+                                onChange={e => setStatusFilter(e.target.value)}
+                                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
+                            >
+                                <option value="">All Status</option>
+                                <option value="draft">draft</option>
+                                <option value="scheduled">scheduled</option>
+                                <option value="submitted">submitted</option>
+                                <option value="pending_approval">pending approval</option>
+                                <option value="approved">approved</option>
+                                <option value="assigned">assigned</option>
+                                <option value="in_progress">in progress</option>
+                                <option value="pending_review">pending review</option>
+                                <option value="pending_rework">pending rework</option>
+                                <option value="completed">completed</option>
+                                <option value="rejected">rejected</option>
+                                <option value="cancelled">cancelled</option>
+                                <option value="on_hold">on hold</option>
+                            </select>
+
+                            {/* Assignee Filter */}
+                            <select
+                                value={assigneeFilter}
+                                onChange={e => setAssigneeFilter(e.target.value)}
+                                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
+                            >
+                                <option value="">All Assignee</option>
+                                {assigneeOptions.map(name => (
+                                    <option key={name} value={name}>{name}</option>
+                                ))}
+                            </select>
+
+                            {/* Clear Filters */}
+                            {(statusFilter || assigneeFilter) && (
+                                <button
+                                    onClick={() => { setStatusFilter(''); setAssigneeFilter(''); }}
+                                    className="px-3 py-1.5 text-sm rounded-lg border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors cursor-pointer"
+                                >
+                                    ✕ ล้าง filter
+                                </button>
+                            )}
 
                             {/* Sort Dropdown */}
                             <select

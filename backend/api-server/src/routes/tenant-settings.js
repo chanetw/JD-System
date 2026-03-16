@@ -15,7 +15,39 @@ import { getDatabase } from '../config/database.js';
 
 const router = express.Router();
 
-// Apply authentication middleware
+/**
+ * GET /api/tenant-settings/public/portal-settings
+ * Public endpoint - ไม่ต้อง authentication สำหรับ UserPortal
+ */
+router.get('/public/portal-settings', async (req, res) => {
+  console.log('[Public Portal Settings] Called - NO AUTH REQUIRED');
+  try {
+    const prisma = getDatabase();
+    // Default tenant ถ้าไม่มี auth (สำหรับ public access)
+    const tenantId = 1; // Fixed tenant ID for public access
+    
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { portalSettings: true }
+    });
+
+    const defaults = {
+      heroTitle: 'ยื่นคำร้องออนไลน์',
+      heroSubtitle: 'กรอกข้อมูลและส่งคำร้องได้ที่นี่ ทีมงานจะดำเนินการให้เร็วที่สุด',
+      announcementText: '',
+      announcementVisible: false
+    };
+
+    const settings = { ...defaults, ...(tenant?.portalSettings || {}) };
+    console.log('[Public Portal Settings] Returning:', settings);
+    res.json({ success: true, data: settings });
+  } catch (error) {
+    console.error('[Public Portal Settings] error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch portal settings' });
+  }
+});
+
+// Apply authentication middleware for other routes
 router.use(authenticateToken);
 router.use(setRLSContextMiddleware);
 

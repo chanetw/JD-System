@@ -6,6 +6,106 @@
 
 ## 📅 2026-03-16
 
+### 105. KPI Drill-down Filter Sync - แสดงตาม Filter + KPI Type
+<details>
+<summary>ทำให้ KPI Drill-down Panel แสดงรายการตาม filter (Status + Assignee) และกรองตามประเภท KPI ให้ตรงกับตัวเลขใน KPI Cards</summary>
+
+**User Request:** เกือบดีแล้ว แต่ว่า ในการด์เปลี่ยนเลขแล้วแต่ว่า เวลาโหลดงานจากการ์ดแสดงเป็นของทุกคนไม่ได้มี filter
+
+**Actions Taken:**
+- **Backend** (`jobs.js`): เพิ่ม `status` และ `assignee` params ใน `/dashboard-jobs` endpoint
+  - Copy filter logic จาก `/dashboard-stats` (status mapping + assignee relation filter)
+  - ใช้ filter logic เดียวกับ stats API เพื่อความสม่ำเสมอ
+- **Frontend** (`Dashboard.jsx`):
+  - แก้ `fetchPanelJobs` ให้รับ `statusFilter` และ `assigneeFilter` params
+  - แก้ `handleKpiClick` ให้ส่ง filter ปัจจุบันตอนเปิด panel
+  - แก้ IntersectionObserver ให้ส่ง filter ตอน infinite scroll
+  - เพิ่ม filter deps ใน useCallback และ useEffect
+- **Backend**: Restart ให้ changes มีผล
+
+**Files Modified:**
+- `backend/api-server/src/routes/jobs.js` — เพิ่ม filter ใน dashboard-jobs
+- `frontend/src/modules/features/dashboard/pages/Dashboard.jsx` — ส่ง filter params ไป drill-down
+
+**Key Changes:**
+- KPI Drill-down ตอนนี้แสดงรายการตาม filter + KPI type
+- KPI Cards กับ Drill-down ตรงกันเสมอ
+- Infinite scroll ยังคง filter ตามปัจจุบัน
+
+</details>
+
+### 104. KPI Cards Filter Sync - แสดงตัวเลขตาม Filter
+<details>
+<summary>ทำให้ KPI Cards ด้านบนแสดงตัวเลขตามผลลัพธ์ของ filter (Status + Assignee) ที่เลือกด้านล่าง</summary>
+
+**User Request:** filter ด้านล่างแล้วด้านบน แสดงตัวเลขตามผลที่ filter ได้ไหม
+
+**Actions Taken:**
+- **Backend** (`jobs.js`): เพิ่ม `status` และ `assignee` params ใน `/dashboard-stats` endpoint
+  - Copy filter logic จาก `/jobs` (status mapping + assignee relation filter)
+  - เพิ่ม console log สำหรับ debug params
+- **Frontend** (`jobService.js`): แก้ `getDashboardStats` ให้รับ `statusFilter` และ `assigneeFilter` params
+- **Frontend** (`Dashboard.jsx`): แก้ useEffect ที่เรียก stats ให้ส่ง filter params และเพิ่ม deps
+- **Backend**: Restart ให้ changes มีผล
+
+**Files Modified:**
+- `backend/api-server/src/routes/jobs.js` — เพิ่ม filter ใน dashboard-stats
+- `frontend/src/modules/shared/services/modules/jobService.js` — ส่ง filter params
+- `frontend/src/modules/features/dashboard/pages/Dashboard.jsx` — เรียก stats พร้อม filter
+
+**Key Changes:**
+- KPI Cards ตอนนี้แสดงจำนวนงานตาม filter ที่เลือก
+- เมื่อ filter เปลี่ยน → reload stats + jobs พร้อมกัน
+- Backend stats API ใช้ filter logic เดียวกับ jobs API
+
+</details>
+
+### 103. Dashboard Filter Status + Assignee (Server-side)
+<details>
+<summary>เพิ่ม Filter Status และ Assignee แบบ Server-side เพื่อให้แต่ละหน้าแสดงครบ 20 รายการ</summary>
+
+**User Request:** dashboard เพิ่ม filter Status และ Assignee
+
+**Actions Taken:**
+- **Backend** (`jobs.js`): เพิ่ม `assignee` query param ใน `GET /jobs` — search by displayName/firstName/lastName (case-insensitive)
+- **Frontend** (`Dashboard.jsx`):
+  - แก้ `fetchQueueJobs` ให้ส่ง `status` และ `assignee` params ไปที่ API
+  - เพิ่ม `useEffect` สำหรับ reset หน้า 1 เมื่อ filter เปลี่ยน
+  - คืน Status dropdown (options แบบ hardcode ครบทุก status)
+  - คืน Assignee dropdown (options จาก assigneeOptions ในหน้าปัจจุบัน)
+  - เพิ่มปุ่ม "✕ ล้าง filter" เมื่อมี filter active
+
+**Files Modified:**
+- `backend/api-server/src/routes/jobs.js` — เพิ่ม assignee filter ใน where clause
+- `frontend/src/modules/features/dashboard/pages/Dashboard.jsx` — คืน dropdowns + เชื่อม API params
+
+**Key Changes:**
+- Filter ทำงาน Server-side → แต่ละหน้าแสดงครบ 20 รายการเสมอ
+- เปลี่ยน filter → reset หน้า 1 อัตโนมัติ
+- ปุ่ม "ล้าง filter" แสดงเฉพาะเมื่อมี filter active
+
+</details>
+
+### 102. Dashboard SLA Completed - Working Days Calculation
+<details>
+<summary>แก้ SLA badge งาน completed ให้ใช้ working days + holidays จาก database</summary>
+
+**User Request:** ต้องการแก้ไขส่วนนี้ว่าวันส่งงานอยู่ใน sla ไหม เสร็จแล้วอยู่ใน sla ก็แสดงผลว่าเสร็จแล้ว ถ้าเสร็จแต่เกิน sla ก็แสดงวัน และเป็นสีเขียว — คำนวณ working days
+
+**Actions Taken:**
+- โหลด holidays จาก `GET /api/holidays` เมื่อ Dashboard mount
+- นำเข้า `getWorkingDays` จาก `slaCalculator.js`
+- ส่ง `holidays` prop ไปยังทุก `JobRow` (Flat + Parent + Child)
+- แก้ `getSLABadge()` สำหรับ completed:
+  - `completedAt ≤ dueDate` → "เสร็จแล้ว" (สีเขียว)
+  - `completedAt > dueDate` → "เสร็จแล้ว เกิน SLA (X วันทำงาน)" (สีเขียว)
+- แก้ "อยู่ใน SLA" ไม่แสดงจำนวนวัน
+
+**Files Modified:**
+- `frontend/src/modules/features/dashboard/pages/Dashboard.jsx`
+
+</details>
+
 ### 100. Dashboard SLA Enhancement - คำนวณจากวันนี้ถึงวันรับงาน
 <details>
 <summary>ปรับปรุงการแสดงสถานะ SLA ให้คำนวณจากวันนี้ถึง dueDate และแสดง "อยู่ใน SLA" หรือ "เกิน SLA"</summary>

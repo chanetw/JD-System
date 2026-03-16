@@ -76,7 +76,7 @@ export default function UserPortal() {
 
     // โหลด Portal Settings
     useEffect(() => {
-        httpClient.get('/tenant-settings/portal-settings')
+        httpClient.get('/tenant-settings/public/portal-settings')
             .then(res => { if (res.data.success) setPortalSettings(prev => ({ ...prev, ...res.data.data })); })
             .catch(() => {});
     }, []);

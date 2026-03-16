@@ -53,7 +53,7 @@ router.use(setRLSContextMiddleware);
  */
 router.get('/', async (req, res) => {
   try {
-    const { role = 'requester', status, page = 1, limit = 50 } = req.query;
+    const { role = 'requester', status, page = 1, limit = 50, assignee } = req.query;
     const prisma = getDatabase();
     const userId = req.user.userId;
     const tenantId = req.user.tenantId;
@@ -439,6 +439,19 @@ router.get('/', async (req, res) => {
       }
     }
 
+    // Assignee filtering (search by display name)
+    if (assignee) {
+      where.assignee = {
+        is: {
+          OR: [
+            { displayName: { contains: assignee, mode: 'insensitive' } },
+            { firstName: { contains: assignee, mode: 'insensitive' } },
+            { lastName: { contains: assignee, mode: 'insensitive' } }
+          ]
+        }
+      };
+    }
+
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const take = parseInt(limit);
 
@@ -694,6 +707,8 @@ router.get('/dashboard-stats', async (req, res) => {
     const userId = req.user.userId;
     const tenantId = req.user.tenantId;
     const roleParam = req.query.role || 'requester';
+    const { status, assignee } = req.query;
+    console.log(`[Dashboard Stats] Params: role=${roleParam}, status=${status}, assignee=${assignee}`);
 
     const now = new Date();
     const todayStart = new Date(now);
@@ -703,9 +718,43 @@ router.get('/dashboard-stats', async (req, res) => {
 
     // สร้าง role filter
     const roleFilter = buildDashboardRoleFilter(roleParam, userId);
-    const baseWhere = roleFilter
+    let baseWhere = roleFilter
       ? { tenantId, isParent: false, ...roleFilter }
       : { tenantId, isParent: false };
+
+    // Status filtering (copy จาก /jobs)
+    if (status) {
+      if (status === 'todo') {
+        baseWhere.status = { in: ['assigned'] };
+      } else if (status === 'in_progress') {
+        baseWhere.status = { in: ['approved', 'assigned', 'in_progress', 'correction', 'rework', 'returned', 'pending_dependency'] };
+      } else if (status === 'completed') {
+        baseWhere.status = { in: ['completed', 'closed'] };
+      } else if (status === 'rejected') {
+        baseWhere.status = { in: ['rejected', 'rejected_by_assignee'] };
+      } else if (status === 'waiting') {
+        baseWhere.status = { in: ['correction', 'pending_approval'] };
+      } else if (status === 'done') {
+        baseWhere.status = { in: ['completed', 'closed'] };
+      } else if (status === 'all') {
+        // No status filter - return all jobs
+      } else {
+        baseWhere.status = status;
+      }
+    }
+
+    // Assignee filtering (copy จาก /jobs)
+    if (assignee) {
+      baseWhere.assignee = {
+        is: {
+          OR: [
+            { displayName: { contains: assignee, mode: 'insensitive' } },
+            { firstName: { contains: assignee, mode: 'insensitive' } },
+            { lastName: { contains: assignee, mode: 'insensitive' } }
+          ]
+        }
+      };
+    }
 
     const EXCLUDED_STATUSES = ['completed', 'closed', 'cancelled'];
 
@@ -782,6 +831,7 @@ router.get('/dashboard-jobs', async (req, res) => {
     // ดึง query params และ validate
     const type = req.query.type || 'newToday'; // newToday | dueToday | overdue
     const roleParam = req.query.role || 'requester';
+    const { status, assignee } = req.query;
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
     const skip = (page - 1) * limit;
@@ -824,6 +874,40 @@ router.get('/dashboard-jobs', async (req, res) => {
         break;
       default:
         return res.status(400).json({ success: false, error: 'INVALID_TYPE', message: 'type ต้องเป็น newToday, dueToday หรือ overdue' });
+    }
+
+    // Status filtering (copy จาก dashboard-stats)
+    if (status) {
+      if (status === 'todo') {
+        where.status = { in: ['assigned'] };
+      } else if (status === 'in_progress') {
+        where.status = { in: ['approved', 'assigned', 'in_progress', 'correction', 'rework', 'returned', 'pending_dependency'] };
+      } else if (status === 'completed') {
+        where.status = { in: ['completed', 'closed'] };
+      } else if (status === 'rejected') {
+        where.status = { in: ['rejected', 'rejected_by_assignee'] };
+      } else if (status === 'waiting') {
+        where.status = { in: ['correction', 'pending_approval'] };
+      } else if (status === 'done') {
+        where.status = { in: ['completed', 'closed'] };
+      } else if (status === 'all') {
+        // No status filter - return all jobs
+      } else {
+        where.status = status;
+      }
+    }
+
+    // Assignee filtering (copy จาก dashboard-stats)
+    if (assignee) {
+      where.assignee = {
+        is: {
+          OR: [
+            { displayName: { contains: assignee, mode: 'insensitive' } },
+            { firstName: { contains: assignee, mode: 'insensitive' } },
+            { lastName: { contains: assignee, mode: 'insensitive' } }
+          ]
+        }
+      };
     }
 
     // ดึงข้อมูลและนับ total พร้อมกัน

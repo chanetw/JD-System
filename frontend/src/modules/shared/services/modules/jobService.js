@@ -579,10 +579,14 @@ export const jobService = {
     // --- Dashboard Stats ---
 
     // ⚡ Performance: ใช้ Backend API ที่ใช้ COUNT() แทน Supabase ที่ดึงทุก row
-    getDashboardStats: async (user) => {
+    getDashboardStats: async (user, statusFilter, assigneeFilter) => {
         try {
             const role = _extractRoleParam(user);
-            const response = await httpClient.get('/jobs/dashboard-stats', { params: { role } });
+            const params = { role };
+            if (statusFilter && statusFilter.trim()) params.status = statusFilter.trim();
+            if (assigneeFilter && assigneeFilter.trim()) params.assignee = assigneeFilter.trim();
+            
+            const response = await httpClient.get('/jobs/dashboard-stats', { params });
             if (!response.data.success) {
                 console.warn('getDashboardStats API failed:', response.data.message);
                 return { newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, pending: 0, myJobs: 0 };

@@ -263,6 +263,34 @@ app.get('/api/version', (req, res) => {
   res.json({ version: '1.0.0', name: 'DJ System API' });
 });
 
+// Public tenant-settings endpoints (no auth required) - MUST BE FIRST
+app.get('/api/tenant-settings/public/portal-settings', async (req, res) => {
+  console.log('[Public Portal Settings] Called - NO AUTH REQUIRED');
+  try {
+    const { getDatabase } = await import('./config/database.js');
+    const prisma = getDatabase();
+    
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: 1 },
+      select: { portalSettings: true }
+    });
+
+    const defaults = {
+      heroTitle: 'ยื่นคำร้องออนไลน์',
+      heroSubtitle: 'กรอกข้อมูลและส่งคำร้องได้ที่นี่ ทีมงานจะดำเนินการให้เร็วที่สุด',
+      announcementText: '',
+      announcementVisible: false
+    };
+
+    const settings = { ...defaults, ...(tenant?.portalSettings || {}) };
+    console.log('[Public Portal Settings] Returning:', settings);
+    res.json({ success: true, data: settings });
+  } catch (error) {
+    console.error('[Public Portal Settings] error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch portal settings' });
+  }
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
@@ -290,6 +318,7 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/storage', storageRoutes);
 app.use('/api/analytics', analyticsRoutes); // ✓ NEW: Analytics API (routes: /api/analytics/track-click, /api/analytics/stats)
 app.use('/api/master-data-combined', masterDataCombinedRoutes); // ⚡ Performance: Combined endpoint (6-7 calls → 1 call)
+
 app.use('/api/tenant-settings', tenantSettingsRoutes); // ✓ NEW: Tenant Settings API (routes: /api/tenant-settings, /api/tenant-settings/rejection-cc-emails)
 app.use('/api/email-settings', emailSettingsRoutes); // ✓ NEW: Email Settings API (routes: /api/email-settings, /api/email-settings/:type)
 app.use('/api/draft-read-logs', draftReadLogsRoutes); // ✓ NEW: Draft Read Logs API (routes: /api/draft-read-logs/:jobId)
