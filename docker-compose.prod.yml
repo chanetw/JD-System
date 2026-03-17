@@ -2,8 +2,6 @@
 # ใช้สำหรับ production server
 # รวม PostgreSQL + Backend + Nginx
 
-version: '3.8'
-
 services:
   # ==========================================
   # PostgreSQL Database
@@ -30,7 +28,9 @@ services:
   # Backend API + Socket.io
   # ==========================================
   backend:
-    build: ./backend/api-server
+    build:
+      context: ./backend
+      dockerfile: api-server/Dockerfile
     container_name: dj-backend-prod
     ports:
       - "3000:3000"
@@ -52,22 +52,26 @@ services:
       - dj-network
 
   # ==========================================
-  # Nginx Reverse Proxy (Optional)
+  # Frontend (React + Nginx)
   # ==========================================
-  # nginx:
-  #   image: nginx:alpine
-  #   container_name: dj-nginx
-  #   ports:
-  #     - "80:80"
-  #     - "443:443"
-  #   volumes:
-  #     - ./nginx.conf:/etc/nginx/nginx.conf
-  #     - ./ssl:/etc/nginx/ssl
-  #   depends_on:
-  #     - backend
-  #   restart: always
-  #   networks:
-  #     - dj-network
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-https://yourdomain.com}
+        VITE_FRONTEND_MODE: api_only
+        VITE_AUTH_MODE: jwt_only
+    container_name: dj-frontend-prod
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    volumes:
+      - dj-files-prod:/app/uploads:ro
+    restart: always
+    networks:
+      - dj-network
 
 volumes:
   dj-data-prod:
