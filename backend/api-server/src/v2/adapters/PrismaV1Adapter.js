@@ -653,6 +653,153 @@ class PrismaV1Adapter {
   }
 
   /**
+   * Register a new user and auto-activate with Requester role + default HO project scope
+   * @param {Object} userData - User registration data
+   * @returns {Object} Created active user
+   */
+  static async registerRequesterWithDefaultScope(userData) {
+    const prisma = getDatabase();
+    const {
+      tenantId,
+      departmentId,
+      email,
+      password,
+      firstName,
+      lastName,
+      displayName,
+      phone,
+      position,
+      title
+    } = userData;
+
+    if (!tenantId || !email || !password || !firstName || !lastName) {
+      throw new Error('MISSING_FIELDS');
+    }
+
+    if (password.length < 8) {
+      throw new Error('PASSWORD_TOO_SHORT');
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        email: normalizedEmail,
+        tenantId
+      }
+    });
+
+    if (existingUser) {
+      throw new Error('EMAIL_EXISTS');
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    return prisma.$transaction(async (tx) => {
+      const defaultProjectCode = process.env.DEFAULT_REQUESTER_PROJECT_CODE || 'HO';
+      const defaultProjectId = process.env.DEFAULT_REQUESTER_PROJECT_ID
+        ? parseInt(process.env.DEFAULT_REQUESTER_PROJECT_ID, 10)
+        : null;
+
+      let defaultProject = await tx.project.findFirst({
+        where: {
+          tenantId,
+          code: {
+            equals: defaultProjectCode,
+            mode: 'insensitive'
+          },
+          isActive: true
+        },
+        select: {
+          id: true,
+          name: true,
+          code: true
+        }
+      });
+
+      if (!defaultProject && defaultProjectId) {
+        defaultProject = await tx.project.findFirst({
+          where: {
+            id: defaultProjectId,
+            tenantId,
+            isActive: true
+          },
+          select: {
+            id: true,
+            name: true,
+            code: true
+          }
+        });
+      }
+
+      if (!defaultProject) {
+        throw new Error('DEFAULT_PROJECT_NOT_FOUND');
+      }
+
+      const newUser = await tx.user.create({
+        data: {
+          tenantId,
+          email: normalizedEmail,
+          passwordHash,
+          firstName,
+          lastName,
+          displayName: displayName || (title ? `${title}${firstName} ${lastName}` : `${firstName} ${lastName}`).trim(),
+          departmentId: departmentId || null,
+          phone: phone || null,
+          title: title || null,
+          isActive: true,
+          status: 'APPROVED',
+          registeredAt: new Date(),
+          approvedAt: new Date(),
+          mustChangePassword: false
+        }
+      });
+
+      await tx.userRole.create({
+        data: {
+          tenantId,
+          userId: newUser.id,
+          roleName: 'Requester',
+          isActive: true,
+          assignedAt: new Date()
+        }
+      });
+
+      await tx.userScopeAssignment.create({
+        data: {
+          tenantId,
+          userId: newUser.id,
+          roleType: 'Requester',
+          scopeLevel: 'project',
+          scopeId: defaultProject.id,
+          scopeName: defaultProject.name,
+          isActive: true
+        }
+      });
+
+      return {
+        id: newUser.id,
+        tenantId: newUser.tenantId,
+        email: newUser.email,
+        firstName: newUser.firstName,
+        lastName: newUser.lastName,
+        displayName: newUser.displayName,
+        departmentId: newUser.departmentId,
+        roleName: 'Requester',
+        status: newUser.status,
+        isActive: newUser.isActive,
+        registeredAt: newUser.registeredAt,
+        defaultScope: {
+          level: 'project',
+          projectId: defaultProject.id,
+          projectCode: defaultProject.code.toUpperCase(),
+          projectName: defaultProject.name
+        }
+      };
+    });
+  }
+
+  /**
    * Get all pending registration requests for a tenant
    * @param {number} tenantId - Tenant ID
    * @returns {Array} List of pending users
@@ -660,109 +807,161 @@ class PrismaV1Adapter {
   static async getPendingRegistrations(tenantId) {
     const prisma = getDatabase();
 
-    const pendingUsers = await prisma.user.findMany({
+    // Query from user_registration_requests table where status is 'pending'
+    const pendingRequests = await prisma.userRegistrationRequest.findMany({
       where: {
         tenantId,
-        // status: 'PENDING'  // TEMP: Use isActive: false instead
-        isActive: false
-      },
-      include: {
-        department: true
+        status: 'pending'  // ✅ Use the correct status field
       },
       orderBy: {
-        registeredAt: 'desc'
+        createdAt: 'desc'
       }
     });
 
-    return pendingUsers.map(user => ({
-      id: user.id,
-      tenantId: user.tenantId,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      displayName: user.displayName,
-      departmentId: user.departmentId,
-      departmentName: user.department?.name || null,
-      // status: user.status,  // TEMP: Field doesn't exist in DB yet
-      registeredAt: user.registeredAt,
-      createdAt: user.createdAt
+    return pendingRequests.map(req => ({
+      id: req.id,
+      tenantId: req.tenantId,
+      email: req.email,
+      firstName: req.firstName,
+      lastName: req.lastName,
+      displayName: `${req.firstName} ${req.lastName}`,
+      title: req.title,
+      phone: req.phone,
+      department: req.department,
+      position: req.position,
+      status: req.status,
+      approvedBy: req.approvedBy,
+      rejectedReason: req.rejectedReason,
+      createdAt: req.createdAt,
+      updatedAt: req.updatedAt
     }));
   }
 
   /**
    * Approve a pending user registration
-   * Generates a temporary password and sets mustChangePassword = true
-   * @param {number} userId - User ID to approve
+   * Generates a temporary password and creates a new user account
+   * @param {number} registrationRequestId - Registration request ID to approve
    * @param {number} approvedById - Admin user ID who approves
-   * @param {string} roleName - Role to assign (default: 'Member')
-   * @returns {Object} Approved user with temporary password
+   * @param {string} roleName - Role to assign (default: 'Assignee')
+   * @returns {Object} Newly created user with temporary password
    */
-  static async approveRegistration(userId, approvedById, roleName = 'Assignee') {
+  static async approveRegistration(registrationRequestId, approvedById, roleName = 'Assignee') {
     const prisma = getDatabase();
 
-    // Get the user
-    const user = await prisma.user.findUnique({
-      where: { id: userId }
+    // 1. Get the registration request
+    const regRequest = await prisma.userRegistrationRequest.findUnique({
+      where: { id: registrationRequestId }
     });
 
-    if (!user) {
-      throw new Error('USER_NOT_FOUND');
+    if (!regRequest) {
+      throw new Error('REGISTRATION_REQUEST_NOT_FOUND');
     }
 
-    // TEMP: Status check disabled - field doesn't exist in DB
-    // if (user.status !== 'PENDING') {
-    //   throw new Error('USER_NOT_PENDING');
-    // }
+    // 2. Check if not already approved/rejected
+    if (regRequest.status !== 'pending') {
+      throw new Error(`REGISTRATION_ALREADY_${regRequest.status.toUpperCase()}`);
+    }
 
-    // Generate temporary password
+    // 3. Generate temporary password
     const temporaryPassword = this.generateRandomPassword(12);
     const passwordHash = await bcrypt.hash(temporaryPassword, 10);
 
-    // Update user to APPROVED with generated password
-    const approvedUser = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        // status: 'APPROVED',  // TEMP: Field doesn't exist in DB yet
-        isActive: true,
-        approvedAt: new Date(),
-        approvedById,
-        passwordHash,
-        mustChangePassword: true // Force password change on first login
-      },
-      include: {
-        department: true,
-        userRoles: true
+    // 4. Check if user already exists with this email
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        email: regRequest.email.toLowerCase(),
+        tenantId: regRequest.tenantId
       }
     });
 
-    // Create user role if not exists
-    const existingRole = await prisma.userRole.findFirst({
-      where: { userId }
-    });
+    let newUser;
+    if (!existingUser) {
+      // 5a. Create new user
+      newUser = await prisma.user.create({
+        data: {
+          tenantId: regRequest.tenantId,
+          email: regRequest.email.toLowerCase(),
+          firstName: regRequest.firstName,
+          lastName: regRequest.lastName,
+          displayName: `${regRequest.firstName} ${regRequest.lastName}`,
+          title: regRequest.title,
+          phone: regRequest.phone,
+          passwordHash,
+          isActive: true,
+          mustChangePassword: true, // Force password change at first login
+          approvedAt: new Date(),
+          approvedById
+        },
+        include: {
+          department: true,
+          userRoles: true
+        }
+      });
 
-    if (!existingRole) {
+      // 5b. Create user role
       await prisma.userRole.create({
         data: {
-          tenantId: user.tenantId,
-          userId,
+          tenantId: regRequest.tenantId,
+          userId: newUser.id,
           roleName,
           isActive: true
         }
       });
+    } else {
+      // 5c. User already exists - just update password and role
+      newUser = await prisma.user.update({
+        where: { id: existingUser.id },
+        data: {
+          passwordHash,
+          isActive: true,
+          mustChangePassword: true,
+          approvedAt: new Date(),
+          approvedById
+        },
+        include: {
+          department: true,
+          userRoles: true
+        }
+      });
+
+      // Check if user has this role
+      const existingRole = await prisma.userRole.findFirst({
+        where: { userId: newUser.id, roleName }
+      });
+
+      if (!existingRole) {
+        await prisma.userRole.create({
+          data: {
+            tenantId: regRequest.tenantId,
+            userId: newUser.id,
+            roleName,
+            isActive: true
+          }
+        });
+      }
     }
 
+    // 6. Update registration request status
+    await prisma.userRegistrationRequest.update({
+      where: { id: registrationRequestId },
+      data: {
+        status: 'approved',
+        approvedBy: approvedById,
+        updatedAt: new Date()
+      }
+    });
+
     return {
-      id: approvedUser.id,
-      email: approvedUser.email,
-      firstName: approvedUser.firstName,
-      lastName: approvedUser.lastName,
-      displayName: approvedUser.displayName,
-      departmentId: approvedUser.departmentId,
-      departmentName: approvedUser.department?.name || null,
-      // status: approvedUser.status,  // TEMP: Field doesn't exist in DB yet
-      isActive: approvedUser.isActive,
+      id: newUser.id,
+      email: newUser.email,
+      firstName: newUser.firstName,
+      lastName: newUser.lastName,
+      displayName: newUser.displayName,
+      departmentId: newUser.departmentId,
+      departmentName: newUser.department?.name || null,
+      isActive: newUser.isActive,
       roleName,
-      approvedAt: approvedUser.approvedAt,
+      approvedAt: newUser.approvedAt,
       approvedById,
       temporaryPassword // Return the generated password (for admin to share with user)
     };
@@ -770,45 +969,46 @@ class PrismaV1Adapter {
 
   /**
    * Reject a pending user registration
-   * @param {number} userId - User ID to reject
+   * @param {number} registrationRequestId - Registration request ID to reject
    * @param {number} rejectedById - Admin user ID who rejects
    * @param {string} reason - Rejection reason
-   * @returns {Object} Rejected user
+   * @returns {Object} Rejected registration request
    */
-  static async rejectRegistration(userId, rejectedById, reason) {
+  static async rejectRegistration(registrationRequestId, rejectedById, reason) {
     const prisma = getDatabase();
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId }
+    // 1. Get the registration request
+    const regRequest = await prisma.userRegistrationRequest.findUnique({
+      where: { id: registrationRequestId }
     });
 
-    if (!user) {
-      throw new Error('USER_NOT_FOUND');
+    if (!regRequest) {
+      throw new Error('REGISTRATION_REQUEST_NOT_FOUND');
     }
 
-    // TEMP: Status check disabled - field doesn't exist in DB
-    // if (user.status !== 'PENDING') {
-    //   throw new Error('USER_NOT_PENDING');
-    // }
+    // 2. Check if not already approved/rejected
+    if (regRequest.status !== 'pending') {
+      throw new Error(`REGISTRATION_ALREADY_${regRequest.status.toUpperCase()}`);
+    }
 
-    const rejectedUser = await prisma.user.update({
-      where: { id: userId },
+    // 3. Update registration request status to rejected
+    const rejectedRequest = await prisma.userRegistrationRequest.update({
+      where: { id: registrationRequestId },
       data: {
-        // status: 'REJECTED',  // TEMP: Field doesn't exist in DB yet
-        isActive: false,
-        approvedAt: new Date(), // Use approvedAt as the decision timestamp
-        approvedById: rejectedById,
-        rejectionReason: reason
+        status: 'rejected',
+        approvedBy: rejectedById,
+        rejectedReason: reason,
+        updatedAt: new Date()
       }
     });
 
     return {
-      id: rejectedUser.id,
-      email: rejectedUser.email,
-      firstName: rejectedUser.firstName,
-      lastName: rejectedUser.lastName,
-      // status: rejectedUser.status,  // TEMP: Field doesn't exist in DB yet
-      rejectionReason: rejectedUser.rejectionReason
+      id: rejectedRequest.id,
+      email: rejectedRequest.email,
+      firstName: rejectedRequest.firstName,
+      lastName: rejectedRequest.lastName,
+      status: rejectedRequest.status,
+      rejectedReason: rejectedRequest.rejectedReason
     };
   }
 
@@ -900,25 +1100,25 @@ class PrismaV1Adapter {
   static async getRegistrationCounts(tenantId) {
     const prisma = getDatabase();
 
-    const counts = await prisma.user.groupBy({
-      by: ['status'],
-      where: { tenantId },
-      _count: { id: true }
+    // Count registration requests by status
+    const pendingCount = await prisma.userRegistrationRequest.count({
+      where: { tenantId, status: 'pending' }
+    });
+
+    const approvedCount = await prisma.userRegistrationRequest.count({
+      where: { tenantId, status: 'approved' }
+    });
+
+    const rejectedCount = await prisma.userRegistrationRequest.count({
+      where: { tenantId, status: 'rejected' }
     });
 
     const result = {
-      PENDING: 0,
-      APPROVED: 0,
-      REJECTED: 0,
-      INACTIVE: 0,
-      total: 0
+      pending: pendingCount,
+      approved: approvedCount,
+      rejected: rejectedCount,
+      total: pendingCount + approvedCount + rejectedCount
     };
-
-    counts.forEach(item => {
-      const status = item.status || 'APPROVED'; // Legacy users without status
-      result[status] = item._count.id;
-      result.total += item._count.id;
-    });
 
     return result;
   }

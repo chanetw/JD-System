@@ -51,6 +51,8 @@ import notificationsRoutes from './routes/notifications.js'; // ✓ NEW: In-App 
 import emailSettingsRoutes from './routes/email-settings.js'; // ✓ NEW: Email Settings (CC emails per notification type)
 import draftReadLogsRoutes from './routes/draft-read-logs.js'; // ✓ NEW: Draft Read Logs (Track when Requester reads draft)
 import magicLinkRoutes from './routes/magic-link.js'; // ✓ NEW: Magic Link Authentication
+import contactRoutes from './routes/contact.js'; // ✓ NEW: Contact Admin
+import userRequestsRoutes from './routes/user-requests.js'; // ✓ NEW: User Requests inbox for admins
 
 // V2 Flow Templates REMOVED - Using V1 Extended instead
 
@@ -60,6 +62,7 @@ import v2Routes from './v2/index.js';
 // Cron Services
 import rejectionAutoCloseCron from './services/rejectionAutoCloseCron.js';
 import jobReminderCron from './services/jobReminderCron.js';
+import fileCleanupCron from './services/fileCleanupCron.js';
 
 // ==========================================
 // ขั้นตอนที่ 1: ตั้งค่า Environment Variables
@@ -149,6 +152,8 @@ const io = new SocketIOServer(server, {
   // Rate Limiting (optional)
   perMessageDeflate: false   // ปิด compression เพื่อให้เร็ว
 });
+
+app.set('io', io);
 
 // ==========================================
 // ขั้นตอนที่ 5: ตั้งค่า Socket.io Authentication Middleware
@@ -276,8 +281,8 @@ app.get('/api/tenant-settings/public/portal-settings', async (req, res) => {
     });
 
     const defaults = {
-      heroTitle: 'ยื่นคำร้องออนไลน์',
-      heroSubtitle: 'กรอกข้อมูลและส่งคำร้องได้ที่นี่ ทีมงานจะดำเนินการให้เร็วที่สุด',
+      heroTitle: 'ต้องการงาน Design อะไรวันนี้?',
+      heroSubtitle: 'ค้นหางานเดิมหรือสร้าง Design Job ใหม่',
       announcementText: '',
       announcementVisible: false
     };
@@ -326,6 +331,12 @@ app.use('/api/magic-link', magicLinkRoutes); // ✓ NEW: Magic Link Authenticati
 
 // ✓ Notifications API
 app.use('/api/notifications', notificationsRoutes);
+
+// ✓ Contact Admin API
+app.use('/api/contact-admin', contactRoutes);
+
+// ✓ User Requests API
+app.use('/api/user-requests', userRequestsRoutes);
 
 // ==========================================
 // ขั้นตอนที่ 8: Error Handling Middleware
@@ -378,6 +389,12 @@ server.listen(PORT, () => {
   } catch (cronErr) {
     console.error('✗ Failed to start job reminder cron:', cronErr);
   }
+  try {
+    fileCleanupCron.start();
+    console.log('✓ File cleanup cron started');
+  } catch (cronErr) {
+    console.error('✗ Failed to start file cleanup cron:', cronErr);
+  }
 });
 
 // ==========================================
@@ -403,6 +420,12 @@ process.on('SIGTERM', async () => {
     console.log('✓ Job reminder cron stopped');
   } catch (cronErr) {
     console.error('✗ Failed to stop job reminder cron:', cronErr);
+  }
+  try {
+    fileCleanupCron.stop();
+    console.log('✓ File cleanup cron stopped');
+  } catch (cronErr) {
+    console.error('✗ Failed to stop file cleanup cron:', cronErr);
   }
 
   // ปิด database connection
@@ -432,6 +455,12 @@ process.on('SIGINT', async () => {
     console.log('✓ Job reminder cron stopped');
   } catch (cronErr) {
     console.error('✗ Failed to stop job reminder cron:', cronErr);
+  }
+  try {
+    fileCleanupCron.stop();
+    console.log('✓ File cleanup cron stopped');
+  } catch (cronErr) {
+    console.error('✗ Failed to stop file cleanup cron:', cronErr);
   }
 
   // ปิด database connection

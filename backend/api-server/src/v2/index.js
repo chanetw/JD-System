@@ -14,6 +14,7 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import PrismaV1Adapter from './adapters/PrismaV1Adapter.js';
 import EmailService from '../services/emailService.js';
+import { notifyUserSessionUpdate } from '../helpers/userSessionNotification.js';
 
 // Email service instance
 const emailService = new EmailService();
@@ -99,7 +100,7 @@ const requireRoles = (...allowedRoles) => (req, res, next) => {
   next();
 };
 
-const requireOrgAdmin = requireRoles('Admin', 'Requester');
+const requireOrgAdmin = requireRoles('Admin');
 const requireTeamLead = requireRoles('Admin', 'Requester', 'Approver');
 
 const scopeToOrganization = (req, res, next) => {
@@ -283,15 +284,14 @@ router.post('/auth/login', async (req, res, next) => {
 // ============================================================================
 
 // POST /api/v2/auth/register-request
-// Submit a registration request (status = PENDING, requires admin approval)
-// NO PASSWORD REQUIRED - Admin generates password on approval
+// Register and auto-activate user as Requester with default HO project scope
 router.post('/auth/register-request', async (req, res, next) => {
   try {
-    const { email, firstName, lastName, departmentId, tenantId, phone, position, title } = req.body;
+    const { email, password, firstName, lastName, departmentId, tenantId, phone, position, title } = req.body;
 
     // Validation
-    if (!email || !firstName || !lastName || !tenantId) {
-      return res.status(400).json(errorResponse('MISSING_FIELDS', 'Email, firstName, lastName, and tenantId are required'));
+    if (!email || !password || !firstName || !lastName || !tenantId) {
+      return res.status(400).json(errorResponse('MISSING_FIELDS', 'Email, password, firstName, lastName, and tenantId are required'));
     }
 
     // Validate email format
@@ -300,11 +300,16 @@ router.post('/auth/register-request', async (req, res, next) => {
       return res.status(400).json(errorResponse('INVALID_EMAIL', 'Invalid email format'));
     }
 
-    // Register user with PENDING status (NO password - will be generated on approval)
-    const newUser = await PrismaV1Adapter.registerPendingUser({
+    if (String(password).length < 8) {
+      return res.status(400).json(errorResponse('WEAK_PASSWORD', 'Password must be at least 8 characters'));
+    }
+
+    // Register active Requester user and assign default HO project scope
+    const newUser = await PrismaV1Adapter.registerRequesterWithDefaultScope({
       tenantId: parseInt(tenantId),
       departmentId: departmentId ? parseInt(departmentId) : null,
       email,
+      password,
       firstName,
       lastName,
       displayName: (title ? `${title}${firstName} ${lastName}` : `${firstName} ${lastName}`).trim(),
@@ -313,23 +318,33 @@ router.post('/auth/register-request', async (req, res, next) => {
       title: title || null
     });
 
-    // TODO: Send notification to admin (email + in-app)
-    console.log(`[V2 Auth] New registration request: ${email} (ID: ${newUser.id})`);
+    console.log(`[V2 Auth] New user auto-registered: ${email} (ID: ${newUser.id}) as Requester`);
 
     res.status(201).json(successResponse({
       id: newUser.id,
       email: newUser.email,
       firstName: newUser.firstName,
       lastName: newUser.lastName,
+      roleName: newUser.roleName,
       status: newUser.status,
-      registeredAt: newUser.registeredAt
-    }, 'Registration request submitted successfully. Please wait for admin approval.'));
+      registeredAt: newUser.registeredAt,
+      defaultScope: newUser.defaultScope
+    }, 'Registration successful. Your account is active with default Requester access (HO project).'));
 
   } catch (error) {
     console.error('[V2 Auth] Register request error:', error);
 
     if (error.message === 'EMAIL_EXISTS') {
       return res.status(409).json(errorResponse('EMAIL_EXISTS', 'This email is already registered'));
+    }
+    if (error.message === 'PASSWORD_TOO_SHORT') {
+      return res.status(400).json(errorResponse('WEAK_PASSWORD', 'Password must be at least 8 characters'));
+    }
+    if (error.message === 'DEFAULT_PROJECT_NOT_FOUND') {
+      return res.status(500).json(errorResponse('DEFAULT_PROJECT_NOT_FOUND', 'Default HO project is not configured. Please contact administrator'));
+    }
+    if (error.message === 'MISSING_FIELDS') {
+      return res.status(400).json(errorResponse('MISSING_FIELDS', 'Email, password, firstName, lastName, and tenantId are required'));
     }
 
     next(error);
@@ -369,19 +384,19 @@ router.get('/admin/registration-counts', authenticateToken, requireOrgAdmin, asy
 // Generates a temporary password that admin must share with user
 router.post('/admin/approve-registration', authenticateToken, requireOrgAdmin, async (req, res, next) => {
   try {
-    const { userId, roleName } = req.body;
+    const { registrationRequestId, roleName } = req.body;
 
-    if (!userId) {
-      return res.status(400).json(errorResponse('MISSING_FIELDS', 'userId is required'));
+    if (!registrationRequestId) {
+      return res.status(400).json(errorResponse('MISSING_FIELDS', 'registrationRequestId is required'));
     }
 
     const approvedUser = await PrismaV1Adapter.approveRegistration(
-      parseInt(userId),
+      parseInt(registrationRequestId),
       req.user.userId,
       roleName || 'Assignee'
     );
 
-    console.log(`[V2 Admin] User approved: ${approvedUser.email} by Admin ID: ${req.user.userId}`);
+    console.log(`[V2 Admin] Registration approved: ${approvedUser.email} by Admin ID: ${req.user.userId}`);
 
     // Send approval email with temporary password
     const loginUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/login` : null;
@@ -435,19 +450,19 @@ router.post('/admin/approve-registration', authenticateToken, requireOrgAdmin, a
 // Reject a pending registration (Admin only)
 router.post('/admin/reject-registration', authenticateToken, requireOrgAdmin, async (req, res, next) => {
   try {
-    const { userId, reason } = req.body;
+    const { registrationRequestId, reason } = req.body;
 
-    if (!userId) {
-      return res.status(400).json(errorResponse('MISSING_FIELDS', 'userId is required'));
+    if (!registrationRequestId) {
+      return res.status(400).json(errorResponse('MISSING_FIELDS', 'registrationRequestId is required'));
     }
 
     const rejectedUser = await PrismaV1Adapter.rejectRegistration(
-      parseInt(userId),
+      parseInt(registrationRequestId),
       req.user.userId,
       reason || 'Registration rejected by admin'
     );
 
-    console.log(`[V2 Admin] User rejected: ${rejectedUser.email} by Admin ID: ${req.user.userId}`);
+    console.log(`[V2 Admin] Registration rejected: ${rejectedUser.email} by Admin ID: ${req.user.userId}`);
 
     // Send rejection email
     const emailResult = await emailService.notifyRegistrationRejected({
@@ -462,7 +477,7 @@ router.post('/admin/reject-registration', authenticateToken, requireOrgAdmin, as
       console.error(`[V2 Admin] Failed to send rejection email:`, emailResult.error);
     }
 
-    res.json(successResponse(rejectedUser, 'User registration rejected'));
+    res.json(successResponse(rejectedUser, 'Registration request rejected'));
 
   } catch (error) {
     console.error('[V2 Admin] Reject registration error:', error);
@@ -757,6 +772,24 @@ router.put('/users/:id', authenticateToken, requireOrgAdmin, async (req, res, ne
     if (req.body.isActive !== undefined) updateData.isActive = req.body.isActive;
 
     const updatedUser = await PrismaV1Adapter.updateUser(userId, updateData);
+
+    const requiresLogout =
+      (req.body.isActive !== undefined && Boolean(user.isActive) !== Boolean(req.body.isActive)) ||
+      req.body.roleId !== undefined ||
+      req.body.organizationId !== undefined;
+
+    if (req.user.userId !== userId) {
+      await notifyUserSessionUpdate({
+        req,
+        tenantId: updatedUser.tenantId,
+        userId,
+        requiresLogout,
+        title: 'บัญชีของคุณถูกอัปเดตโดยผู้ดูแลระบบ',
+        message: requiresLogout
+          ? 'ผู้ดูแลระบบได้ปรับสิทธิ์หรือสถานะบัญชีของคุณ กรุณาออกจากระบบและเข้าสู่ระบบใหม่อีกครั้ง'
+          : 'ผู้ดูแลระบบได้อัปเดตข้อมูลบัญชีของคุณแล้ว'
+      });
+    }
 
     res.json(successResponse(formatUserResponse(updatedUser), 'User updated successfully'));
   } catch (error) {

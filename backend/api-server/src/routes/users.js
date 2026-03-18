@@ -12,6 +12,8 @@ import express from 'express';
 import { UserService } from '../services/userService.js';
 import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import { getSupabaseClient } from '../config/supabase.js';
+import { getDatabase } from '../config/database.js';
+import { notifyUserSessionUpdate } from '../helpers/userSessionNotification.js';
 
 const router = express.Router();
 const userService = new UserService();
@@ -324,6 +326,30 @@ router.put('/:id', async (req, res) => {
       });
     }
 
+    const prisma = getDatabase();
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        id: userId,
+        tenantId: req.user.tenantId
+      },
+      select: {
+        id: true,
+        tenantId: true,
+        isActive: true,
+        firstName: true,
+        lastName: true,
+        displayName: true
+      }
+    });
+
+    if (!existingUser) {
+      return res.status(404).json({
+        success: false,
+        error: 'USER_NOT_FOUND',
+        message: 'ไม่พบข้อมูลผู้ใช้นี้'
+      });
+    }
+
     const updateData = { ...req.body };
 
     // ถ้าไม่ใช่ admin ไม่สามารถเปลี่ยน isActive ได้
@@ -334,6 +360,22 @@ router.put('/:id', async (req, res) => {
     const result = await userService.updateUser(userId, updateData);
 
     if (result.success) {
+      const adminEditedOtherUser = hasAdminRole(req.user.roles) && req.user.userId !== userId;
+      const statusChanged = updateData.isActive !== undefined && existingUser.isActive !== updateData.isActive;
+
+      if (adminEditedOtherUser) {
+        await notifyUserSessionUpdate({
+          req,
+          tenantId: existingUser.tenantId,
+          userId,
+          requiresLogout: statusChanged,
+          title: 'บัญชีของคุณถูกอัปเดตโดยผู้ดูแลระบบ',
+          message: statusChanged
+            ? 'ผู้ดูแลระบบได้ปรับสถานะบัญชีของคุณ กรุณาออกจากระบบและเข้าสู่ระบบใหม่อีกครั้ง'
+            : 'ผู้ดูแลระบบได้อัปเดตข้อมูลบัญชีของคุณแล้ว'
+        });
+      }
+
       res.json(result);
     } else {
       res.status(400).json(result);
@@ -466,6 +508,15 @@ router.post('/:id/roles', async (req, res) => {
     });
 
     if (result.success) {
+      await notifyUserSessionUpdate({
+        req,
+        tenantId: req.user.tenantId,
+        userId,
+        requiresLogout: true,
+        title: 'สิทธิ์การใช้งานของคุณถูกปรับโดยผู้ดูแลระบบ',
+        message: 'ผู้ดูแลระบบได้ปรับบทบาทการใช้งานของคุณ กรุณาออกจากระบบและเข้าสู่ระบบใหม่เพื่อใช้งานสิทธิ์ล่าสุด'
+      });
+
       res.json(result);
     } else {
       res.status(400).json(result);
@@ -477,6 +528,67 @@ router.post('/:id/roles', async (req, res) => {
       success: false,
       error: 'UPDATE_ROLES_FAILED',
       message: 'ไม่สามารถบันทึกบทบาทได้'
+    });
+  }
+});
+
+/**
+ * POST /api/users/registrations
+ * ส่งคำขอสมัครใช้งาน (Self-Service Registration) — Public endpoint ไม่ต้อง auth
+ */
+router.post('/registrations', async (req, res) => {
+  try {
+    const prisma = getDatabase();
+    const { title, firstName, lastName, email, phone, department, position, tenantId = 1 } = req.body;
+
+    if (!firstName || !lastName || !email) {
+      return res.status(400).json({
+        success: false,
+        error: 'MISSING_REQUIRED_FIELDS',
+        message: 'กรุณาระบุชื่อ นามสกุล และอีเมล'
+      });
+    }
+
+    // ตรวจสอบอีเมลซ้ำ
+    const existing = await prisma.userRegistrationRequest.findFirst({
+      where: { email, tenantId: parseInt(tenantId), status: { not: 'rejected' } }
+    });
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        error: 'EMAIL_ALREADY_REGISTERED',
+        message: 'อีเมลนี้มีการลงทะเบียนแล้ว'
+      });
+    }
+
+    const registration = await prisma.userRegistrationRequest.create({
+      data: {
+        tenantId: parseInt(tenantId),
+        email,
+        title: title || null,
+        firstName,
+        lastName,
+        phone: phone || null,
+        department: department || null,
+        position: position || null,
+        status: 'pending'
+      }
+    });
+
+    console.log('[Users] New registration created:', registration.id, email);
+
+    res.status(201).json({
+      success: true,
+      data: { id: registration.id, email: registration.email },
+      message: 'ส่งคำขอสมัครสำเร็จ รอการอนุมัติจากผู้ดูแลระบบ'
+    });
+
+  } catch (error) {
+    console.error('[Users] Submit registration error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'SUBMIT_REGISTRATION_FAILED',
+      message: 'ไม่สามารถส่งคำขอสมัครได้'
     });
   }
 });
@@ -517,25 +629,14 @@ router.post('/registrations/:id/approve', async (req, res) => {
 
     console.log('[Users] Approving registration:', registrationId);
 
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      return res.status(500).json({
-        success: false,
-        error: 'SUPABASE_NOT_CONFIGURED',
-        message: 'ฐานข้อมูลไม่ได้กำหนดค่า'
-      });
-    }
+    const prisma = getDatabase();
 
     // 1. Fetch registration data
-    const { data: regData, error: regError } = await supabase
-      .from('user_registration_requests')
-      .select('*')
-      .eq('id', registrationId)
-      .eq('tenant_id', tenantId)
-      .single();
+    const regData = await prisma.userRegistrationRequest.findFirst({
+      where: { id: parseInt(registrationId), tenantId }
+    });
 
-    if (regError || !regData) {
-      console.error('[Users] Registration not found:', regError);
+    if (!regData) {
       return res.status(404).json({
         success: false,
         error: 'NOT_FOUND',
@@ -544,28 +645,20 @@ router.post('/registrations/:id/approve', async (req, res) => {
     }
 
     // 2. Create new user in users table
-    const { data: newUser, error: createError } = await supabase
-      .from('users')
-      .insert([{
-        tenant_id: tenantId,
+    const newUser = await prisma.user.create({
+      data: {
+        tenantId,
         email: regData.email,
-        password_hash: tempPassword,
-        first_name: regData.first_name,
-        last_name: regData.last_name,
-        display_name: `${regData.first_name} ${regData.last_name}`,
+        passwordHash: tempPassword,
+        firstName: regData.firstName,
+        lastName: regData.lastName,
+        displayName: `${regData.firstName} ${regData.lastName}`,
         title: regData.title,
-        phone_number: regData.phone,
-        department: regData.department,
-        role: roles[0]?.name || 'requester',
-        is_active: true
-      }])
-      .select()
-      .single();
-
-    if (createError) {
-      console.error('[Users] Failed to create user:', createError);
-      throw createError;
-    }
+        phone: regData.phone,
+        isActive: true,
+        status: 'APPROVED'
+      }
+    });
 
     console.log('[Users] New user created:', newUser.id);
 
@@ -586,19 +679,13 @@ router.post('/registrations/:id/approve', async (req, res) => {
     }
 
     // 4. Update registration status
-    const { error: updateError } = await supabase
-      .from('user_registration_requests')
-      .update({
+    await prisma.userRegistrationRequest.update({
+      where: { id: parseInt(registrationId) },
+      data: {
         status: 'approved',
-        approved_by: currentUserId,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', registrationId);
-
-    if (updateError) {
-      console.error('[Users] Failed to update registration:', updateError);
-      throw updateError;
-    }
+        approvedBy: currentUserId
+      }
+    });
 
     res.json({
       success: true,
@@ -640,46 +727,31 @@ router.get('/registrations/pending', async (req, res) => {
 
     console.log('[Users] Fetching pending registrations for tenant:', tenantId);
 
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      return res.status(500).json({
-        success: false,
-        error: 'SUPABASE_NOT_CONFIGURED',
-        message: 'ฐานข้อมูลไม่ได้กำหนดค่า'
-      });
-    }
+    const prisma = getDatabase();
 
-    let query = supabase
-      .from('user_registration_requests')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false });
+    const where = status !== 'all'
+      ? { tenantId, status }
+      : { tenantId };
 
-    if (status !== 'all') {
-      query = query.eq('status', status);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('[Users] Error fetching registrations:', error);
-      throw error;
-    }
+    const data = await prisma.userRegistrationRequest.findMany({
+      where,
+      orderBy: { createdAt: 'desc' }
+    });
 
     // Map database fields to frontend format
     const mappedData = (data || []).map(reg => ({
       id: reg.id,
       email: reg.email,
       title: reg.title,
-      firstName: reg.first_name,
-      lastName: reg.last_name,
+      firstName: reg.firstName,
+      lastName: reg.lastName,
       phone: reg.phone,
       department: reg.department,
       position: reg.position,
       status: reg.status,
-      createdAt: reg.created_at,
-      approvedBy: reg.approved_by,
-      rejectionReason: reg.rejected_reason
+      createdAt: reg.createdAt,
+      approvedBy: reg.approvedBy,
+      rejectionReason: reg.rejectedReason
     }));
 
     res.json({
@@ -769,6 +841,17 @@ router.post('/:id/assignments', async (req, res) => {
         tenantId: req.user.tenantId
       }
     );
+
+    if (result.success) {
+      await notifyUserSessionUpdate({
+        req,
+        tenantId: req.user.tenantId,
+        userId,
+        requiresLogout: false,
+        title: 'ขอบเขตงานของคุณถูกอัปเดตโดยผู้ดูแลระบบ',
+        message: 'ผู้ดูแลระบบได้ปรับโครงการหรือขอบเขตงานของคุณแล้ว ระบบจะอัปเดตข้อมูลล่าสุดให้อัตโนมัติ'
+      });
+    }
 
     res.json(result);
   } catch (error) {

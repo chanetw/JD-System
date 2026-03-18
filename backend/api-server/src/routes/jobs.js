@@ -1776,7 +1776,11 @@ router.get('/:id', async (req, res) => {
       project: job.project?.name,
       projectCode: job.project?.code,
       deadline: job.dueDate,
+      dueDate: job.dueDate,
       createdAt: job.createdAt,
+      assignedAt: job.assignedAt,
+      acceptanceDate: job.acceptanceDate,
+      startedAt: job.startedAt,
       requesterId: job.requesterId,
       requester: {
         id: job.requester?.id,

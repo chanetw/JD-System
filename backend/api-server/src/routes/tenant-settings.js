@@ -32,8 +32,8 @@ router.get('/public/portal-settings', async (req, res) => {
     });
 
     const defaults = {
-      heroTitle: 'ยื่นคำร้องออนไลน์',
-      heroSubtitle: 'กรอกข้อมูลและส่งคำร้องได้ที่นี่ ทีมงานจะดำเนินการให้เร็วที่สุด',
+      heroTitle: 'ต้องการงาน Design อะไรวันนี้?',
+      heroSubtitle: 'ค้นหางานเดิมหรือสร้าง Design Job ใหม่',
       announcementText: '',
       announcementVisible: false
     };
@@ -206,8 +206,8 @@ router.get('/portal-settings', async (req, res) => {
     });
 
     const defaults = {
-      heroTitle: 'ยื่นคำร้องออนไลน์',
-      heroSubtitle: 'กรอกข้อมูลและส่งคำร้องได้ที่นี่ ทีมงานจะดำเนินการให้เร็วที่สุด',
+      heroTitle: 'ต้องการงาน Design อะไรวันนี้?',
+      heroSubtitle: 'ค้นหางานเดิมหรือสร้าง Design Job ใหม่',
       announcementText: '',
       announcementVisible: false
     };
