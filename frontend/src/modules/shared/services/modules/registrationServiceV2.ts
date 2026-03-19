@@ -9,8 +9,8 @@ import type {
   IPaginatedResponse,
 } from '../../../../types/auth.types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-const API_V2_ADMIN = `${API_URL}/api/v2/admin`;
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_V2_ADMIN = `${API_URL}/v2/admin`;
 
 /**
  * Get authorization header with token

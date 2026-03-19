@@ -1,5 +1,5 @@
 # DJ System Backend - Dockerfile
-# สำหรับ production deployment
+# สำหรับ production deployment (multi-platform: AMD64 + ARM64)
 # Build context: ./backend (ไม่ใช่ ./backend/api-server)
 
 FROM node:18-alpine
@@ -15,11 +15,17 @@ COPY api-server/package*.json ./
 # Copy Prisma schema จาก backend/prisma/
 COPY prisma ./prisma/
 
-# ติดตั้ง dependencies
-RUN npm ci --only=production
+# ติดตั้ง dependencies (ทั้ง prod + dev เพื่อ Prisma generate)
+RUN npm ci
 
-# Generate Prisma Client
+# Generate Prisma Client (จะสร้างไปยัง ../api-server/node_modules/.prisma/client)
 RUN npx prisma generate --schema ./prisma/schema.prisma
+
+# Copy generated Prisma files ไปยังตำแหน่ง runtime expect
+RUN mkdir -p ./node_modules/.prisma/client && \
+    if [ -d ./api-server/node_modules/.prisma/client ]; then \
+      cp -r ./api-server/node_modules/.prisma/client/* ./node_modules/.prisma/client/; \
+    fi
 
 # Copy source code
 COPY api-server/src ./src/

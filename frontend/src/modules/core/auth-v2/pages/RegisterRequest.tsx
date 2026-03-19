@@ -26,7 +26,7 @@ interface Department {
 
 const RegisterRequest: React.FC = () => {
   const navigate = useNavigate();
-  const { registerRequest, isAuthenticated, isLoading, error, clearError, registrationPending } = useAuthStoreV2();
+  const { registerRequest, isAuthenticated, isLoading, error, clearError } = useAuthStoreV2();
 
   // Form state
   const [formData, setFormData] = useState<FormData>({
@@ -49,13 +49,6 @@ const RegisterRequest: React.FC = () => {
     }
   }, [isAuthenticated, navigate]);
 
-  // Redirect to pending page after successful registration
-  useEffect(() => {
-    if (registrationPending) {
-      navigate('/registration-pending', { replace: true });
-    }
-  }, [registrationPending, navigate]);
-
   // Clear error on mount
   useEffect(() => {
     clearError();
@@ -65,8 +58,8 @@ const RegisterRequest: React.FC = () => {
   useEffect(() => {
     const fetchDepartments = async () => {
       try {
-        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-        const response = await fetch(`${API_URL}/api/departments`);
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+        const response = await fetch(`${API_URL}/departments`);
         const data = await response.json();
         if (data.success && data.data) {
           setDepartments(data.data);
@@ -124,14 +117,20 @@ const RegisterRequest: React.FC = () => {
 
     try {
       await registerRequest({
-        email: formData.email,
+        email: formData.email.toLowerCase(),
         password: formData.password,
         firstName: formData.firstName,
         lastName: formData.lastName,
         departmentId: formData.departmentId || undefined,
         tenantId: formData.tenantId,
       });
-      // Navigation to pending page is handled by useEffect
+      navigate('/login', {
+        replace: true,
+        state: {
+          registrationSuccess: true,
+          message: 'สมัครสำเร็จแล้ว สามารถเข้าสู่ระบบได้ทันที (สิทธิ์เริ่มต้น: Requester - โครงการ HO)'
+        }
+      });
     } catch (err) {
       console.error('Registration request failed:', err);
     }
@@ -163,7 +162,7 @@ const RegisterRequest: React.FC = () => {
           <h1 className="text-4xl font-bold text-indigo-600">DJ System</h1>
           <h2 className="mt-4 text-2xl font-semibold text-gray-900">Request Access</h2>
           <p className="mt-2 text-sm text-gray-600">
-            Submit your registration for admin approval
+            Create your account to start using DJ System
           </p>
         </div>
 
@@ -171,8 +170,8 @@ const RegisterRequest: React.FC = () => {
         <form className="mt-8 space-y-6 bg-white p-8 rounded-xl shadow-lg" onSubmit={handleSubmit}>
           {/* Info Banner */}
           <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg text-sm">
-            <p className="font-medium">Approval Required</p>
-            <p className="mt-1 text-xs">Your registration will be reviewed by an administrator before you can access the system.</p>
+            <p className="font-medium">สมัครแล้วเข้าใช้งานได้ทันที</p>
+            <p className="mt-1 text-xs">ระบบจะกำหนดสิทธิ์เริ่มต้นเป็น Requester และจำกัดโครงการ HO ก่อน จากนั้น Admin สามารถขยายสิทธิ์ได้ภายหลัง</p>
           </div>
 
           {/* Error Message */}

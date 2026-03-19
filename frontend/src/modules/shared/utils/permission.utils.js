@@ -557,6 +557,30 @@ export const isAssignee = (user) => hasRole(user, ROLES.ASSIGNEE);
  */
 export const isViewer = (user) => hasRole(user, ROLES.VIEWER);
 
+/**
+ * กำหนดหน้า Home เริ่มต้นตาม Role ของผู้ใช้
+ *
+ * Priority:
+ * 1) Admin -> /
+ * 2) Requester (รวมกรณี Requester + Approver) -> /user-portal
+ * 3) Approver only -> /approvals
+ * 4) Assignee -> /assignee/my-queue
+ * 5) Fallback -> /
+ *
+ * @param {Object} user - User object
+ * @returns {string} default route path
+ */
+export const getDefaultHomeRoute = (user) => {
+    if (!user) return '/';
+
+    if (hasRole(user, ROLES.ADMIN)) return '/';
+    if (hasRole(user, ROLES.REQUESTER)) return '/user-portal';
+    if (hasRole(user, ROLES.APPROVER)) return '/approvals';
+    if (hasRole(user, ROLES.ASSIGNEE)) return '/assignee/my-queue';
+
+    return '/';
+};
+
 // ============================================
 // Scope Summary for UI
 // ============================================

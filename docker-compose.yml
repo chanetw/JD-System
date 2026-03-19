@@ -2,8 +2,6 @@
 # ใช้สำหรับ development environment
 # สลับระหว่าง Supabase และ Local ได้ด้วย environment variables
 
-version: '3.8'
-
 services:
   # ==========================================
   # PostgreSQL Database

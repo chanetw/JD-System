@@ -32,6 +32,8 @@ export default function Register() {
         firstName: '',
         lastName: '',
         email: '',
+        password: '',
+        confirmPassword: '',
         phone: '',
         department: '',
         position: ''
@@ -79,6 +81,20 @@ export default function Register() {
             setError('รูปแบบอีเมลไม่ถูกต้อง');
             return false;
         }
+        if (!formData.password.trim()) {
+            setError('กรุณากรอกรหัสผ่าน');
+            return false;
+        }
+        // Password strength validation: at least 8 chars, number, uppercase, lowercase, special char
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+        if (!passwordRegex.test(formData.password)) {
+            setError('รหัสผ่านต้องมีอย่างน้อย 8 อักษร มีตัวใหญ่ ตัวเล็ก ตัวเลข และอักขระพิเศษ');
+            return false;
+        }
+        if (formData.password !== formData.confirmPassword) {
+            setError('รหัสผ่านไม่ตรงกัน');
+            return false;
+        }
         if (!formData.department.trim()) {
             setError('กรุณาระบุหน่วยงาน/แผนก');
             return false;
@@ -97,11 +113,12 @@ export default function Register() {
 
         try {
             const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-            const response = await fetch(`${API_URL}/api/v2/auth/register-request`, {
+            const response = await fetch(`${API_URL}/v2/auth/register-request`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    email: formData.email,
+                    email: formData.email.toLowerCase(),
+                    password: formData.password,
                     firstName: formData.firstName,
                     lastName: formData.lastName,
                     title: formData.title,
@@ -228,6 +245,37 @@ export default function Register() {
                                 </div>
                             </div>
 
+                            {/* Password */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    รหัสผ่าน <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="password"
+                                    name="password"
+                                    value={formData.password}
+                                    onChange={handleChange}
+                                    placeholder="ต้องมีตัวใหญ่ ตัวเล็ก ตัวเลข อักษรพิเศษ อย่างน้อย 8 ตัว"
+                                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">ตัวอย่าง: MyPass@123</p>
+                            </div>
+
+                            {/* Confirm Password */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    ยืนยันรหัสผ่าน <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="password"
+                                    name="confirmPassword"
+                                    value={formData.confirmPassword}
+                                    onChange={handleChange}
+                                    placeholder="ยืนยันรหัสผ่านอีกครั้ง"
+                                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                                />
+                            </div>
+
                             {/* Phone */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -298,10 +346,10 @@ export default function Register() {
                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                         </svg>
-                                        กำลังส่งคำขอ...
+                                        กำลังสมัคร...
                                     </>
                                 ) : (
-                                    'ส่งคำขอสมัครใช้งาน'
+                                    'สมัครใช้งาน'
                                 )}
                             </Button>
 
@@ -312,7 +360,7 @@ export default function Register() {
                                     className="inline-flex items-center text-sm text-gray-500 hover:text-rose-600"
                                 >
                                     <ArrowLeftIcon className="w-4 h-4 mr-1" />
-                                    กลับไปหน้า Login
+                                    ไปที่หน้า Login
                                 </Link>
                             </div>
                         </form>
@@ -323,18 +371,18 @@ export default function Register() {
                                 <CheckCircleIcon className="w-12 h-12 text-green-600" />
                             </div>
                             <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                                ส่งคำขอสำเร็จ!
+                                สมัครสำเร็จ!
                             </h2>
                             <p className="text-gray-600 mb-4">
-                                คำขอสมัครใช้งานของคุณถูกส่งไปยัง Admin เรียบร้อยแล้ว
+                                บัญชีของคุณ Active แล้ว พร้อมเข้าใช้งานระบบทันที
                             </p>
-                            <div className="bg-blue-50 rounded-xl p-4 mb-4 text-left border border-blue-200">
-                                <p className="text-sm font-medium text-blue-800 mb-2">ขั้นตอนถัดไป:</p>
-                                <ol className="text-sm text-blue-700 list-decimal list-inside space-y-1">
-                                    <li>รอการอนุมัติจาก Admin</li>
-                                    <li>เมื่อได้รับอนุมัติ Admin จะส่งรหัสผ่านให้คุณ</li>
-                                    <li>ใช้รหัสผ่านที่ได้รับเพื่อเข้าสู่ระบบครั้งแรก</li>
-                                    <li>ระบบจะให้คุณตั้งรหัสผ่านใหม่ของตัวเอง</li>
+                            <div className="bg-green-50 rounded-xl p-4 mb-4 text-left border border-green-200">
+                                <p className="text-sm font-medium text-green-800 mb-2">สิ่งที่คุณได้รับ:</p>
+                                <ol className="text-sm text-green-700 list-decimal list-inside space-y-1">
+                                    <li>บัญชี Active ทันทีหลังจากสมัคร</li>
+                                    <li>สิทธิ์ Requester สำหรับโครงการ Sena Head Office (HO)</li>
+                                    <li>สามารถ Login ด้วย Email และรหัสผ่านที่สมัครไป</li>
+                                    <li>ติดต่อ Admin หากต้องการปรับเปลี่ยนสิทธิ์การใช้งาน</li>
                                 </ol>
                             </div>
                             <div className="bg-gray-50 rounded-xl p-4 mb-6 text-left">
@@ -343,7 +391,7 @@ export default function Register() {
                             </div>
                             <Link to="/login">
                                 <Button className="bg-rose-600 hover:bg-rose-700">
-                                    กลับไปหน้า Login
+                                    ไปที่หน้า Login
                                 </Button>
                             </Link>
                         </div>

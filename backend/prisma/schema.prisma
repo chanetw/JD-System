@@ -2,8 +2,9 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
-  output   = "../api-server/node_modules/.prisma/client"
+  provider      = "prisma-client-js"
+  output        = "../api-server/node_modules/.prisma/client"
+  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
 }
 
 datasource db {
@@ -75,9 +76,11 @@ model Tenant {
   holidays             Holiday[]
   mediaFiles           MediaFile[]
   auditLogs            AuditLog[]
+  userRequests         UserRequest[]
   userScopeAssignments UserScopeAssignment[]
   budJobAssignments    BudJobAssignment[]
-  rejectionRequests    RejectionRequest[] // ✅ NEW
+  rejectionRequests         RejectionRequest[] // ✅ NEW
+  userRegistrationRequests  UserRegistrationRequest[]
 
   @@map("tenants")
 }
@@ -135,6 +138,7 @@ model User {
   mediaFiles           MediaFile[]
   passwordResets       PasswordResetRequest[]
   jobActivities        JobActivity[]
+  userRequests         UserRequest[]
   // V1 Extended: Auto-assign relation
   autoAssignFlows      ApprovalFlow[]         @relation("FlowAutoAssign")
   // Scope assignments (project/bud level access)
@@ -571,6 +575,31 @@ model Notification {
   @@map("notifications")
 }
 
+model UserRequest {
+  id             Int       @id @default(autoincrement())
+  tenantId       Int       @map("tenant_id")
+  userId         Int       @map("user_id")
+  category       String    @db.VarChar(50)
+  subject        String    @db.VarChar(255)
+  message        String    @db.Text
+  status         String    @default("pending") @db.VarChar(20)
+  resolvedBy     Int?      @map("resolved_by")
+  resolvedAt     DateTime? @map("resolved_at") @db.Timestamptz
+  adminNote      String?   @map("admin_note") @db.Text
+  rejectedReason String?   @map("rejected_reason") @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([status])
+  @@index([tenantId, status])
+  @@map("user_requests")
+}
+
 // ========================================
 // Missing Models (Newly Added)
 // ========================================
@@ -867,6 +896,31 @@ model RejectionRequest {
   @@index([tenantId])
   @@index([autoCloseAt, status], name: "idx_auto_close")
   @@map("rejection_requests")
+}
+
+model UserRegistrationRequest {
+  id               Int       @id @default(autoincrement())
+  tenantId         Int       @map("tenant_id")
+  email            String    @db.VarChar(255)
+  title            String?   @db.VarChar(50)
+  firstName        String    @map("first_name") @db.VarChar(100)
+  lastName         String    @map("last_name") @db.VarChar(100)
+  phone            String?   @db.VarChar(20)
+  department       String?   @db.VarChar(100)
+  position         String?   @db.VarChar(100)
+  status           String    @default("pending") @db.VarChar(20) // pending, approved, rejected
+  approvedBy       Int?      @map("approved_by")
+  rejectedReason   String?   @map("rejected_reason") @db.Text
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([email])
+  @@map("user_registration_requests")
 }
 
 model MagicLinkToken {

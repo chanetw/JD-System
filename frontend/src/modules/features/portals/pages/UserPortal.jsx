@@ -12,7 +12,7 @@
  * - เคล็ดลับ (Dark Background)
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Badge from '@shared/components/Badge';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
@@ -21,6 +21,7 @@ import { api } from '@shared/services/apiService';
 import { adminService } from '@shared/services/modules/adminService';
 import httpClient from '@shared/services/httpClient';
 import { JOB_ICONS } from '@shared/constants/jobIcons';
+import UserProfileMenu from '@shared/components/UserProfileMenu';
 
 // Icons
 import {
@@ -31,7 +32,6 @@ import {
     PhotoIcon,
     QuestionMarkCircleIcon,
     PhoneIcon,
-    EnvelopeIcon,
     ArrowDownTrayIcon,
     EyeIcon,
     ChevronRightIcon,
@@ -77,7 +77,18 @@ export default function UserPortal() {
     // โหลด Portal Settings
     useEffect(() => {
         httpClient.get('/tenant-settings/public/portal-settings')
-            .then(res => { if (res.data.success) setPortalSettings(prev => ({ ...prev, ...res.data.data })); })
+            .then(res => {
+                if (res.data.success) {
+                    // Filter out empty values to keep default values
+                    const filtered = Object.entries(res.data.data).reduce((acc, [key, value]) => {
+                        if (value !== '' && value !== null && value !== undefined) {
+                            acc[key] = value;
+                        }
+                        return acc;
+                    }, {});
+                    setPortalSettings(prev => ({ ...prev, ...filtered }));
+                }
+            })
             .catch(() => {});
     }, []);
 
@@ -344,13 +355,9 @@ export default function UserPortal() {
                         <div className="flex items-center gap-6">
                             <Link to="/jobs" className="text-slate-600 hover:text-rose-600 text-sm font-medium">My Jobs</Link>
                             <Link to="/media-portal" className="text-slate-600 hover:text-rose-600 text-sm font-medium">Media Portal</Link>
-                            <div className="flex items-center gap-2 pl-4 border-l border-slate-200">
-                                <div className="w-8 h-8 bg-rose-100 rounded-full flex items-center justify-center text-rose-700 text-sm font-medium">
-                                    {user?.displayName?.[0] || user?.email?.[0] || 'U'}
-                                </div>
-                                <span className="text-sm text-slate-700 hidden sm:inline">
-                                    {user?.firstName || user?.email} ({user?.roleName || 'Requester'})
-                                </span>
+                            {/* Profile Menu Dropdown (Shared Component) */}
+                            <div className="relative pl-4 border-l border-slate-200">
+                                <UserProfileMenu showName />
                             </div>
                         </div>
                     </div>
@@ -362,12 +369,35 @@ export default function UserPortal() {
           ============================================ */}
             <main className="pt-16 pb-12">
 
-                {/* Announcement Banner */}
+                {/* Announcement Banner - Marquee Scrolling */}
                 {portalSettings.announcementVisible && portalSettings.announcementText && (
-                    <div className="bg-amber-50 border-b border-amber-200 px-6 py-3">
-                        <div className="max-w-6xl mx-auto flex items-start gap-2 text-sm text-amber-800">
-                            <span className="flex-shrink-0 mt-0.5">📢</span>
-                            <span>{portalSettings.announcementText}</span>
+                    <div className="bg-amber-50 border-b border-amber-200 overflow-hidden">
+                        <style>{`
+                            @keyframes news-ticker {
+                                0%   { transform: translateX(100vw); }
+                                100% { transform: translateX(-100%); }
+                            }
+                            .news-ticker-text {
+                                display: inline-block;
+                                animation: news-ticker 25s linear infinite;
+                                white-space: nowrap;
+                            }
+                            .news-ticker-text:hover {
+                                animation-play-state: paused;
+                            }
+                        `}</style>
+                        <div className="flex items-center">
+                            {/* Left badge */}
+                            <div className="flex-shrink-0 flex items-center gap-1.5 bg-amber-100 text-amber-700 px-4 py-2.5 text-xs font-semibold border-r border-amber-200">
+                                <span>📢</span>
+                                <span>ประกาศ</span>
+                            </div>
+                            {/* Scrolling text */}
+                            <div className="flex-1 overflow-hidden py-2.5">
+                                <span className="news-ticker-text text-sm text-amber-700 px-8">
+                                    {portalSettings.announcementText}
+                                </span>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -849,3 +879,5 @@ function TipItem({ num, title, desc }) {
         </div>
     );
 }
+
+

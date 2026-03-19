@@ -8,13 +8,14 @@ services:
   # ==========================================
   postgres:
     image: postgres:15
+    platform: linux/arm64
     container_name: dj-postgres-prod
-    environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-dj_system}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+    env_file:
+      - ./backend/api-server/.env.production
     volumes:
       - dj-data-prod:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -31,6 +32,7 @@ services:
     build:
       context: ./backend
       dockerfile: api-server/Dockerfile
+    platform: linux/arm64
     container_name: dj-backend-prod
     ports:
       - "3000:3000"
@@ -41,10 +43,10 @@ services:
       - ./backend/api-server/.env.production
     environment:
       DATABASE_MODE: local
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-dj_system}
-      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      STORAGE_PROVIDER: local
       AUTH_MODE: jwt_only
       NODE_ENV: production
+      PRISMA_QUERY_ENGINE_LIBRARY: /app/node_modules/.prisma/client/libquery_engine-linux-musl-arm64-openssl-3.0.x.so.node
     volumes:
       - dj-files-prod:/app/uploads
     restart: always
@@ -59,9 +61,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-https://yourdomain.com}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost/api}
         VITE_FRONTEND_MODE: api_only
         VITE_AUTH_MODE: jwt_only
+    platform: linux/arm64
     container_name: dj-frontend-prod
     ports:
       - "80:80"

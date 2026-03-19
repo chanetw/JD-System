@@ -7,11 +7,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuthStoreV2 } from '../../stores/authStoreV2';
+import { getDefaultHomeRoute } from '@shared/utils/permission.utils';
+import { consumeSessionUpdateNotice } from '@shared/services/socketService';
 
 const LoginV2: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, isAuthenticated, isLoading, error, clearError } = useAuthStoreV2();
+  const { login, user, isAuthenticated, isLoading, error, clearError } = useAuthStoreV2();
 
   // Form state
   const [email, setEmail] = useState('');
@@ -24,15 +26,17 @@ const LoginV2: React.FC = () => {
 
   // Redirect if already authenticated
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate(from, { replace: true });
+    if (isAuthenticated && user) {
+      const destination = from === '/' ? getDefaultHomeRoute(user) : from;
+      navigate(destination, { replace: true });
     }
-  }, [isAuthenticated, navigate, from]);
+  }, [isAuthenticated, user, navigate, from]);
 
   // Clear error on mount
   useEffect(() => {
     clearError();
-    setLoginError(null);
+    const sessionNotice = consumeSessionUpdateNotice();
+    setLoginError(sessionNotice);
   }, [clearError]);
 
   // Handle form submission
@@ -51,7 +55,8 @@ const LoginV2: React.FC = () => {
       if (user?.mustChangePassword) {
         navigate('/force-change-password', { replace: true });
       } else {
-        navigate(from, { replace: true });
+        const destination = from === '/' ? getDefaultHomeRoute(user) : from;
+        navigate(destination, { replace: true });
       }
     } catch (err) {
       // Set local error state for guaranteed display

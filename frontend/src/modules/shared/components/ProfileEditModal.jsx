@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { api } from '@shared/services/apiService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
@@ -61,8 +62,10 @@ export default function ProfileEditModal({ isOpen, onClose }) {
     const userRoles = user?.roles || [];
     const roleNames = userRoles.map(r => typeof r === 'string' ? r : r.name).filter(Boolean);
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+    if (typeof document === 'undefined') return null;
+
+    return createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
                 {/* Header */}
                 <div className="bg-gradient-to-r from-rose-600 to-rose-700 px-6 py-4 flex items-center justify-between">
@@ -149,6 +152,7 @@ export default function ProfileEditModal({ isOpen, onClose }) {
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

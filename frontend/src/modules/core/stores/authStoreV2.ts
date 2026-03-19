@@ -184,8 +184,8 @@ export const useAuthStoreV2 = create<AuthStore>()(
       },
 
       /**
-       * Submit registration request (approval workflow)
-       * User will be created with PENDING status
+       * Submit registration request
+       * User will be auto-activated with default Requester access
        */
       registerRequest: async (data: IRegisterRequestData) => {
         set({ isLoading: true, error: null, registrationPending: false, registrationResult: null });
@@ -207,7 +207,7 @@ export const useAuthStoreV2 = create<AuthStore>()(
           };
 
           set({
-            registrationPending: true,
+            registrationPending: false,
             registrationResult: result,
             isLoading: false,
             error: null,

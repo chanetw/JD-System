@@ -10,9 +10,10 @@
  * - UserPortal แยกออกมาอยู่นอก Layout หลัก เพื่อให้มี Design หน้าบ้านของตัวเอง
  */
 
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import React, { useEffect, Suspense, lazy } from 'react';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
+import { getDefaultHomeRoute } from '@shared/utils/permission.utils';
 
 // Core Modules (loaded immediately)
 import { Layout } from '@core/layout';
@@ -87,6 +88,24 @@ class PageErrorBoundary extends React.Component {
 }
 
 /**
+ * Redirect หน้า index (/) ไปหน้า Home ตาม Role
+ */
+const RoleHomeIndex = () => {
+  const user = useAuthStoreV2((state) => state.user);
+  const homeRoute = getDefaultHomeRoute(user);
+
+  if (homeRoute === '/') {
+    return (
+      <Suspense fallback={<PageLoadingFallback />}>
+        <Dashboard />
+      </Suspense>
+    );
+  }
+
+  return <Navigate to={homeRoute} replace />;
+};
+
+/**
  * @component App
  * @description Root Component ของแอป
  */
@@ -156,11 +175,7 @@ function App() {
           </ProtectedRoute>
         }>
           {/* index = default child route (เมื่อเข้า /) */}
-          <Route index element={
-            <Suspense fallback={<PageLoadingFallback />}>
-              <Dashboard />
-            </Suspense>
-          } />
+          <Route index element={<RoleHomeIndex />} />
 
           {/* === Dynamic Routes from Module Registry === */}
           {dynamicRoutes.map((route, index) => (

@@ -261,30 +261,20 @@ export const userService = {
      * ส่งคำขอสมัครใช้งาน (Self-Service Registration)
      */
     submitRegistration: async (registrationData) => {
-        const { data, error } = await supabase
-            .from('user_registration_requests')
-            .insert({
-                title: registrationData.title,
-                first_name: registrationData.firstName,
-                last_name: registrationData.lastName,
-                email: registrationData.email,
-                phone: registrationData.phone,
-                department: registrationData.department,
-                position: registrationData.position,
-                reason: registrationData.reason,
-                status: 'pending',
-                tenant_id: 1 // Default tenant
-            })
-            .select()
-            .single();
-
-        if (error) {
-            if (error.code === '23505') { // Unique violation
-                throw new Error('อีเมลนี้มีการลงทะเบียนแล้ว');
-            }
-            throw error;
+        const response = await httpClient.post('/users/registrations', {
+            title: registrationData.title,
+            firstName: registrationData.firstName,
+            lastName: registrationData.lastName,
+            email: registrationData.email,
+            phone: registrationData.phone,
+            department: registrationData.department,
+            position: registrationData.position,
+            tenantId: registrationData.tenantId || 1
+        });
+        if (!response.data.success) {
+            throw new Error(response.data.message || 'ไม่สามารถส่งคำขอสมัครได้');
         }
-        return data;
+        return response.data.data;
     },
 
     /**
@@ -385,36 +375,23 @@ export const userService = {
      */
     rejectRegistration: async (registrationId, reason, adminUserId) => {
         try {
-            // 1. ดึงข้อมูลคำขอสมัคร
-            const { data: registrationData, error: fetchError } = await supabase
-                .from('user_registration_requests')
-                .select('*')
-                .eq('id', registrationId)
-                .single();
+            console.log('[userService] Calling POST /v2/admin/reject-registration');
+            
+            // Use Backend API to reject registration
+            const response = await httpClient.post(`/v2/admin/reject-registration`, {
+                registrationRequestId: registrationId,
+                reason: reason || 'Registration rejected by admin'
+            });
 
-            if (fetchError) throw fetchError;
+            if (!response.data.success) {
+                console.error('[userService] Reject failed:', response.data.message);
+                throw new Error(response.data.message || 'Failed to reject registration');
+            }
 
-            // 2. อัปเดตสถานะเป็น rejected
-            const { error: updateError } = await supabase
-                .from('user_registration_requests')
-                .update({
-                    status: 'rejected',
-                    rejected_reason: reason,
-                    approved_by: adminUserId, // ใช้ approved_by เพื่อบันทึกใครปฏิเสธ
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', registrationId);
-
-            if (updateError) throw updateError;
-
-            // 3. ส่ง Email แจ้งการปฏิเสธ
-            await userService.sendRejectionEmail(
-                registrationData.email,
-                registrationData.first_name,
-                reason
-            );
+            console.log('[userService] Registration rejected:', response.data.data);
+            return response.data;
         } catch (error) {
-            console.error('Error rejecting registration:', error);
+            console.error('[userService] rejectRegistration error:', error);
             throw error;
         }
     },

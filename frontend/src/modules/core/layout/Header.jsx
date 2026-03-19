@@ -14,8 +14,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { useNotificationStore } from '@core/stores/notificationStore';
 import api from '@shared/services/apiService';
-import ProfileEditModal from '@shared/components/ProfileEditModal';
-import { ROLE_LABELS, ROLE_V2_BADGE_COLORS } from '@shared/utils/permission.utils';
+import UserProfileMenu from '@shared/components/UserProfileMenu';
 
 /**
  * @component Header
@@ -23,14 +22,12 @@ import { ROLE_LABELS, ROLE_V2_BADGE_COLORS } from '@shared/utils/permission.util
  */
 export default function Header() {
     // ดึงสถานะและฟังก์ชันการจัดการจาก Store (Auth และ Notifications)
-    const { user, logout } = useAuthStoreV2();
+    const { user } = useAuthStoreV2();
     const { notifications, unreadCount, fetchNotifications, markAsRead, markAllAsRead, isLoading } = useNotificationStore();
     const navigate = useNavigate();
 
     // === สถานะการแสดงผลเมนู Dropdown (UI States) ===
-    const [showProfileMenu, setShowProfileMenu] = useState(false); // เมนูโปรไฟล์
     const [showNoti, setShowNoti] = useState(false);               // เมนูแจ้งเตือน
-    const [showEditProfile, setShowEditProfile] = useState(false); // modal แก้โปรไฟล์
 
     // โหลดข้อมูลแจ้งเตือนเมื่อคอมโพเน็นต์ถูกแสดง หรือเมื่อผู้ใช้เปลี่ยนไป
     useEffect(() => {
@@ -67,15 +64,6 @@ export default function Header() {
             return () => clearTimeout(timer);
         }
     }, [toast.show]);
-
-    /**
-     * Handle logout
-     */
-    const handleLogout = () => {
-        logout();
-        navigate('/login', { replace: true });
-    };
-
 
     return (
         // ============================================
@@ -174,64 +162,10 @@ export default function Header() {
                 </div>
 
                 {/* ============================================
-            Profile Menu - เมนูผู้ใช้
+            Profile Menu - เมนูผู้ใช้ (Shared Component)
             ============================================ */}
-                <div className="relative">
-                    <button
-                        onClick={() => setShowProfileMenu(!showProfileMenu)}
-                        className="flex items-center gap-2 p-1 hover:bg-gray-100 rounded-lg"
-                    >
-                        <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center">
-                            <span className="text-rose-600 font-medium text-sm">
-                                {user?.firstName?.[0]}{user?.lastName?.[0]}
-                            </span>
-                        </div>
-                    </button>
-
-                    {showProfileMenu && (
-                        <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-lg border border-gray-200 py-1 z-20">
-                            <div className="px-4 py-3 border-b border-gray-100">
-                                <p className="text-sm font-semibold text-gray-900">{user?.displayName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim()}</p>
-                                <p className="text-xs text-gray-500 mt-0.5">{user?.email}</p>
-                                {/* Role Badges */}
-                                <div className="flex flex-wrap gap-1 mt-2">
-                                    {(user?.roles || []).map(r => {
-                                        const roleName = typeof r === 'string' ? r : r.name;
-                                        return roleName ? (
-                                            <span
-                                                key={roleName}
-                                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${ROLE_V2_BADGE_COLORS[roleName] || 'bg-gray-100 text-gray-700'}`}
-                                            >
-                                                {ROLE_LABELS[roleName] || roleName}
-                                            </span>
-                                        ) : null;
-                                    })}
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => { setShowEditProfile(true); setShowProfileMenu(false); }}
-                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                            >
-                                <PencilIcon className="w-4 h-4 text-gray-400" />
-                                แก้ไขโปรไฟล์
-                            </button>
-                            <button
-                                onClick={handleLogout}
-                                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                            >
-                                <LogoutIcon className="w-4 h-4 text-red-400" />
-                                ออกจากระบบ
-                            </button>
-                        </div>
-                    )}
-                </div>
+                <UserProfileMenu />
             </div>
-
-            {/* Profile Edit Modal */}
-            <ProfileEditModal
-                isOpen={showEditProfile}
-                onClose={() => setShowEditProfile(false)}
-            />
 
             {/* Toast Popup */}
             {toast.show && (
@@ -293,20 +227,4 @@ function BellIcon({ className }) {
     );
 }
 
-function PencilIcon({ className }) {
-    return (
-        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-        </svg>
-    );
-}
 
-function LogoutIcon({ className }) {
-    return (
-        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-        </svg>
-    );
-}

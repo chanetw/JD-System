@@ -11,8 +11,8 @@ import httpClient from '@shared/services/httpClient';
 export default function PortalSettings() {
     const { user } = useAuthStoreV2();
     const [form, setForm] = useState({
-        heroTitle: '',
-        heroSubtitle: '',
+        heroTitle: 'ต้องการงาน Design อะไรวันนี้?',
+        heroSubtitle: 'ค้นหางานเดิมหรือสร้าง Design Job ใหม่',
         announcementText: '',
         announcementVisible: false
     });
@@ -40,7 +40,14 @@ export default function PortalSettings() {
             setLoading(true);
             const res = await httpClient.get('/tenant-settings/portal-settings');
             if (res.data.success) {
-                setForm(prev => ({ ...prev, ...res.data.data }));
+                // Keep defaults for display if values are empty
+                const filtered = Object.entries(res.data.data).reduce((acc, [key, value]) => {
+                    if (value !== '' && value !== null && value !== undefined) {
+                        acc[key] = value;
+                    }
+                    return acc;
+                }, {});
+                setForm(prev => ({ ...prev, ...filtered }));
             }
         } catch (err) {
             console.error('[PortalSettings] fetch error:', err);
@@ -110,7 +117,7 @@ export default function PortalSettings() {
                                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-rose-500 focus:border-transparent"
                                 value={form.heroTitle}
                                 onChange={e => setForm(p => ({ ...p, heroTitle: e.target.value }))}
-                                placeholder="เช่น ยื่นคำร้องออนไลน์"
+                                placeholder="เช่น ต้องการงาน Design อะไรวันนี้?"
                                 disabled={saving}
                             />
                         </div>
@@ -124,7 +131,7 @@ export default function PortalSettings() {
                                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-rose-500 focus:border-transparent"
                                 value={form.heroSubtitle}
                                 onChange={e => setForm(p => ({ ...p, heroSubtitle: e.target.value }))}
-                                placeholder="เช่น กรอกข้อมูลและส่งคำร้องได้ที่นี่..."
+                                placeholder="เช่น ค้นหางานเดิมหรือสร้าง Design Job ใหม่"
                                 disabled={saving}
                             />
                         </div>
@@ -177,13 +184,33 @@ export default function PortalSettings() {
                             👁️ ตัวอย่างการแสดงผล
                         </h2>
                         <div className="rounded-xl bg-gradient-to-r from-rose-600 to-rose-800 p-6 text-white">
-                            <h3 className="text-2xl font-bold">{form.heroTitle || '(หัวข้อหลัก)'}</h3>
-                            <p className="mt-2 text-rose-100 text-sm">{form.heroSubtitle || '(ข้อความรอง)'}</p>
+                            <h3 className="text-2xl font-bold">{form.heroTitle || 'ต้องการงาน Design อะไรวันนี้?'}</h3>
+                            <p className="mt-2 text-rose-100 text-sm">{form.heroSubtitle || 'ค้นหางานเดิมหรือสร้าง Design Job ใหม่'}</p>
                         </div>
                         {form.announcementVisible && form.announcementText && (
-                            <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
-                                <span className="flex-shrink-0">📢</span>
-                                <span>{form.announcementText}</span>
+                            <div className="rounded-lg overflow-hidden border border-amber-200 bg-amber-50">
+                                <style>{`
+                                    @keyframes ticker-preview {
+                                        0%   { transform: translateX(100%); }
+                                        100% { transform: translateX(-100%); }
+                                    }
+                                    .ticker-preview-text {
+                                        display: inline-block;
+                                        animation: ticker-preview 18s linear infinite;
+                                        white-space: nowrap;
+                                    }
+                                `}</style>
+                                <div className="flex items-center">
+                                    <div className="flex-shrink-0 flex items-center gap-1 bg-amber-100 text-amber-700 px-3 py-2 text-xs font-semibold border-r border-amber-200">
+                                        <span>📢</span>
+                                        <span>ประกาศ</span>
+                                    </div>
+                                    <div className="flex-1 overflow-hidden py-2">
+                                        <span className="ticker-preview-text text-xs text-amber-700 px-4">
+                                            {form.announcementText}
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </div>

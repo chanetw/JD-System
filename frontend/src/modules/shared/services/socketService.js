@@ -11,6 +11,8 @@
  */
 
 import { io } from 'socket.io-client';
+import Swal from 'sweetalert2';
+import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 
 /**
  * Socket.io Client Instance
@@ -23,6 +25,8 @@ let socket = null;
  * @type {boolean}
  */
 let isConnected = false;
+
+const SESSION_UPDATE_NOTICE_KEY = 'dj_session_update_notice';
 
 /**
  * @function initializeSocket
@@ -122,7 +126,40 @@ export const initializeSocket = (authToken, tenantId) => {
     console.log('[socketService] Reconnected to server');
   });
 
+  socket.on('user:session-updated', async (payload = {}) => {
+    const { refreshUser } = useAuthStoreV2.getState();
+    const message = payload.message || 'บัญชีของคุณถูกอัปเดตโดยผู้ดูแลระบบ';
+
+    if (payload.requiresLogout) {
+      localStorage.setItem(SESSION_UPDATE_NOTICE_KEY, message);
+
+      await Swal.fire({
+        icon: 'info',
+        title: payload.title || 'บัญชีของคุณถูกอัปเดต',
+        text: message,
+        confirmButtonColor: '#e11d48',
+        confirmButtonText: 'รับทราบ'
+      });
+
+      return;
+    }
+
+    try {
+      await refreshUser();
+    } catch (error) {
+      console.error('[socketService] Failed to refresh user after session update:', error);
+    }
+  });
+
   return socket;
+};
+
+export const consumeSessionUpdateNotice = () => {
+  const notice = localStorage.getItem(SESSION_UPDATE_NOTICE_KEY);
+  if (notice) {
+    localStorage.removeItem(SESSION_UPDATE_NOTICE_KEY);
+  }
+  return notice;
 };
 
 /**

@@ -3,17 +3,16 @@
  * @description User Management + Registration Approval with Role Selection Modal
  * 
  * Features:
- * - Tab 1: Active Users (placeholder)
- * - Tab 2: Pending Registrations
- *   - Click [อนุมัติ] → Popup Modal to select Role + Scope
- *   - Create User → Move to Active Users
- *   - Click [ปฏิเสธ] → Modal for Reason + Auto-Email
+ * - Tab 1: Active Users (จัดการผู้ใช้)
+ * - Tab 2: Pending Registrations (อนุมัติ/ปฏิเสธ คำขอสมัคร)
+ * - Tab 3: User Requests (คำขอจากผู้ใช้ — resolve/reject + notify user)
+ *   - URL params: ?tab=requests&id={id} → เปิด tab + popup อัตโนมัติ
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import apiDatabase from '@shared/services/apiDatabase';
-import { supabase } from '@shared/services/supabaseClient';
 import { adminService } from '@shared/services/modules/adminService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { generateTempPassword } from '@shared/utils/passwordGenerator';
@@ -55,6 +54,22 @@ export default function UserManagementNew() {
     const [isLoading, setIsLoading] = useState(false);
     const [registrations, setRegistrations] = useState([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // --- User Requests Tab ---
+    /** รายการ User Requests (pending) */
+    const [userRequests, setUserRequests] = useState([]);
+    /** จำนวน pending requests สำหรับแสดงใน badge */
+    const [pendingCount, setPendingCount] = useState(0);
+    /** User Request ที่เลือกดูรายละเอียด (popup) */
+    const [selectedRequest, setSelectedRequest] = useState(null);
+    /** ควบคุมการแสดง request detail popup */
+    const [requestDetailOpen, setRequestDetailOpen] = useState(false);
+    /** กำลัง resolve/reject อยู่หรือไม่ (เพื่อ disable ปุ่ม) */
+    const [isRequestSubmitting, setIsRequestSubmitting] = useState(false);
+    /** admin note สำหรับ resolve */
+    const [adminNote, setAdminNote] = useState('');
+    /** URL search params (ใช้ deep link ?tab=requests&id={id}) */
+    const [searchParams] = useSearchParams();
 
     // Helper: Check if current user is admin
     const isAdmin = user?.role === 'Admin' || user?.roles?.includes('Admin');
@@ -159,7 +174,32 @@ export default function UserManagementNew() {
     // ⚡ Performance: Load master data once on mount
     useEffect(() => {
         loadMasterData();
+        // โหลด pending count ครั้งแรก (สำหรับ badge)
+        loadPendingCount();
     }, []);
+
+    // ✨ Deep Link Handler: อ่าน URL params ?tab=requests&id={id}
+    // เมื่อ Admin คลิก notification → navigate มาพร้อม params → เปิด tab + popup อัตโนมัติ
+    useEffect(() => {
+        const tabParam = searchParams.get('tab');
+        const idParam = searchParams.get('id');
+
+        if (tabParam === 'requests') {
+            setActiveTab('requests');
+            // ถ้ามี id → โหลด requests แล้วเปิด popup
+            if (idParam) {
+                adminService.getUserRequests('pending').then(data => {
+                    setUserRequests(data);
+                    const found = data.find(r => String(r.id) === String(idParam));
+                    if (found) {
+                        setSelectedRequest(found);
+                        setAdminNote('');
+                        setRequestDetailOpen(true);
+                    }
+                }).catch(err => console.error('[UserManagement] Deep link load error:', err));
+            }
+        }
+    }, [searchParams]);
 
     // Load tab-specific data when tab changes
     useEffect(() => {
@@ -167,6 +207,8 @@ export default function UserManagementNew() {
             loadRegistrations();
         } else if (activeTab === 'active') {
             loadUsers();
+        } else if (activeTab === 'requests') {
+            loadUserRequests();
         }
     }, [activeTab]);
 
@@ -402,6 +444,108 @@ export default function UserManagementNew() {
             setIsLoading(false);
         }
     };
+
+    /**
+     * โหลดรายการ User Requests (pending) จาก API
+     * เรียกเมื่อ activeTab เปลี่ยนเป็น 'requests'
+     */
+    const loadUserRequests = async () => {
+        try {
+            setIsLoading(true);
+            const data = await adminService.getUserRequests('pending');
+            setUserRequests(data);
+        } catch (error) {
+            console.error('[UserManagement] loadUserRequests error:', error);
+            showAlert('error', 'ไม่สามารถโหลดรายการ User Requests ได้');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    /**
+     * โหลดจำนวน pending User Requests สำหรับแสดง badge
+     * เรียกตอน component mount (ครั้งเดียว)
+     */
+    const loadPendingCount = async () => {
+        try {
+            const data = await adminService.getUserRequestCount();
+            setPendingCount(data?.pending || 0);
+        } catch (error) {
+            console.error('[UserManagement] loadPendingCount error:', error);
+        }
+    };
+
+    /**
+     * Resolve User Request: Admin ยืนยันว่าแก้ไขแล้ว + ส่ง notification กลับหา user
+     * @param {Object} request - User Request object ที่ต้องการ resolve
+     * @param {string} note - admin note (หมายเหตุการดำเนินการ)
+     */
+    const handleResolveRequest = async (request, note) => {
+        if (!note?.trim()) {
+            showAlert('warning', 'กรุณาระบุหมายเหตุการดำเนินการ');
+            return;
+        }
+        try {
+            setIsRequestSubmitting(true);
+            await adminService.resolveUserRequest(request.id, note.trim());
+            // ลบรายการออกจาก list (รายการที่ resolve แล้วไม่แสดงในหน้า pending)
+            setUserRequests(prev => prev.filter(r => r.id !== request.id));
+            setPendingCount(prev => Math.max(0, prev - 1));
+            setRequestDetailOpen(false);
+            setSelectedRequest(null);
+            setAdminNote('');
+            showAlert('success', 'ยืนยันการแก้ไขเรียบร้อยแล้ว ผู้ส่งได้รับการแจ้งเตือนแล้ว');
+        } catch (error) {
+            console.error('[UserManagement] handleResolveRequest error:', error);
+            showAlert('error', 'เกิดข้อผิดพลาด: ' + (error.message || 'ไม่สามารถ resolve ได้'));
+        } finally {
+            setIsRequestSubmitting(false);
+        }
+    };
+
+    /**
+     * Reject User Request: Admin ปฏิเสธและระบุเหตุผล + ส่ง notification กลับหา user
+     * @param {Object} request - User Request object ที่ต้องการ reject
+     */
+    const handleRejectRequest = async (request) => {
+        // ใช้ SweetAlert2 เพื่อรับเหตุผลจาก Admin
+        const { value: reason, isConfirmed } = await Swal.fire({
+            title: 'ระบุเหตุผลที่ไม่สามารถดำเนินการได้',
+            input: 'textarea',
+            inputLabel: 'เหตุผล',
+            inputPlaceholder: 'เช่น ไม่เป็นไปตามนโยบาย, อยู่นอกขอบเขตความรับผิดชอบ...',
+            inputAttributes: { rows: 3 },
+            showCancelButton: true,
+            confirmButtonColor: '#dc2626',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: 'ยืนยัน ปฏิเสธ',
+            cancelButtonText: 'ยกเลิก',
+            inputValidator: (value) => {
+                if (!value || !value.trim()) return 'กรุณาระบุเหตุผล';
+            }
+        });
+
+        if (!isConfirmed || !reason?.trim()) return;
+
+        try {
+            setIsRequestSubmitting(true);
+            await adminService.rejectUserRequest(request.id, reason.trim());
+            // ลบรายการออกจาก list
+            setUserRequests(prev => prev.filter(r => r.id !== request.id));
+            setPendingCount(prev => Math.max(0, prev - 1));
+            setRequestDetailOpen(false);
+            setSelectedRequest(null);
+            setAdminNote('');
+            showAlert('success', 'ปฏิเสธคำขอเรียบร้อยแล้ว ผู้ส่งได้รับการแจ้งเตือนพร้อมเหตุผลแล้ว');
+        } catch (error) {
+            console.error('[UserManagement] handleRejectRequest error:', error);
+            showAlert('error', 'เกิดข้อผิดพลาด: ' + (error.message || 'ไม่สามารถ reject ได้'));
+        } finally {
+            setIsRequestSubmitting(false);
+        }
+    };
+
+
 
     const showAlert = (type, message) => {
         const Toast = Swal.mixin({
@@ -1017,8 +1161,24 @@ export default function UserManagementNew() {
                             </span>
                         )}
                     </button>
+                    {/* Tab ที่ 3: User Requests — แสดง badge จำนวน pending */}
+                    <button
+                        onClick={() => setActiveTab('requests')}
+                        className={`py-3 px-1 font-medium text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'requests'
+                            ? 'text-rose-600 border-rose-600'
+                            : 'text-gray-600 border-transparent hover:text-gray-900'
+                            }`}
+                    >
+                        📩 User Requests
+                        {pendingCount > 0 && (
+                            <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-[1.25rem] h-5 flex items-center justify-center px-1">
+                                {pendingCount}
+                            </span>
+                        )}
+                    </button>
                 </div>
             </div>
+
 
             {/* Filters */}
             {activeTab === 'active' && (
@@ -1096,7 +1256,7 @@ export default function UserManagementNew() {
             {/* Alert Toast - Removed (Using SweetAlert2) */}
 
             {/* Content based on active tab */}
-            {activeTab === 'active' ? (
+            {activeTab === 'active' && (
                 <div className="bg-white border border-gray-400 rounded-xl shadow-sm overflow-hidden">
                     {isLoading ? (
                         <div className="p-12 text-center text-gray-500">
@@ -1404,7 +1564,9 @@ export default function UserManagementNew() {
                         </div>
                     )}
                 </div>
-            ) : (
+            )}
+
+            {activeTab === 'registrations' && (
                 <div className="bg-white border border-gray-400 rounded-xl shadow-sm overflow-hidden">
                     {isLoading ? (
                         <div className="p-12 text-center text-gray-500">
@@ -1498,11 +1660,216 @@ export default function UserManagementNew() {
                         </div>
                     )}
                 </div>
-            )
-            }
+            )}
+
+            {/* ==========================================
+                Tab 3: User Requests Content Area
+                แสดงตารางรายการ + popup รายละเอียดเมื่อกดแถว
+               ========================================== */}
+            {activeTab === 'requests' && (
+                <div className="bg-white border border-gray-400 rounded-xl shadow-sm overflow-hidden">
+                    {isLoading ? (
+                        <div className="p-12 text-center text-gray-500">
+                            <LoadingSpinner size="md" color="rose" className="mb-3" label="" />
+                            กำลังโหลดรายการ...
+                        </div>
+                    ) : userRequests.length === 0 ? (
+                        <div className="p-12 text-center">
+                            <div className="text-gray-300 mb-4">
+                                <EnvelopeIcon className="w-16 h-16 mx-auto opacity-30" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-gray-600">ไม่มีคำขอที่รอดำเนินการ</h3>
+                            <p className="text-gray-500 text-sm mt-2">คำขอทั้งหมดได้รับการจัดการแล้ว ✅</p>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-gray-300">
+                                <thead className="bg-gray-100 border-b border-gray-300">
+                                    <tr>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ผู้ส่ง</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ประเภท</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">หัวข้อ</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">วันที่ส่ง</th>
+                                        <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">สถานะ</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                    {userRequests.map((req) => (
+                                        <tr
+                                            key={req.id}
+                                            className="hover:bg-rose-50 cursor-pointer transition-colors"
+                                            onClick={() => {
+                                                setSelectedRequest(req);
+                                                setAdminNote('');
+                                                setRequestDetailOpen(true);
+                                            }}
+                                        >
+                                            {/* ชื่อผู้ส่ง */}
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="h-9 w-9 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 font-bold text-sm flex-shrink-0">
+                                                        {(req.senderName || req.senderEmail || '?').charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-sm font-medium text-gray-900">{req.senderName || '-'}</div>
+                                                        <div className="text-xs text-gray-500 flex items-center gap-1">
+                                                            <EnvelopeIcon className="w-3 h-3" />
+                                                            {req.senderEmail}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            {/* ประเภท */}
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                                    ${req.category === 'bug' ? 'bg-red-100 text-red-700' :
+                                                      req.category === 'access' ? 'bg-blue-100 text-blue-700' :
+                                                      'bg-purple-100 text-purple-700'}`}>
+                                                    {req.category === 'bug' ? '🐛 แจ้งบัก' :
+                                                     req.category === 'access' ? '🔑 ขอสิทธิ์' :
+                                                     '📝 คำขออื่น'}
+                                                </span>
+                                            </td>
+                                            {/* หัวข้อ */}
+                                            <td className="px-6 py-4">
+                                                <div className="text-sm font-medium text-gray-900 max-w-xs truncate">{req.subject}</div>
+                                                <div className="text-xs text-gray-400 mt-0.5 max-w-xs truncate">{req.message}</div>
+                                            </td>
+                                            {/* วันที่ */}
+                                            <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
+                                                {new Date(req.createdAt).toLocaleDateString('th-TH', {
+                                                    year: 'numeric', month: 'short', day: 'numeric'
+                                                })}
+                                            </td>
+                                            {/* สถานะ */}
+                                            <td className="px-6 py-4 text-center">
+                                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                                                    ⏳ รอดำเนินการ
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ==========================================
+                User Request Detail Popup (Modal)
+                เปิดเมื่อ Admin กดแถว หรือคลิก notification
+               ========================================== */}
+            {requestDetailOpen && selectedRequest && (
+                <div className="fixed inset-0 flex items-center justify-center z-50 p-4 bg-black/40">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full">
+                        {/* Header */}
+                        <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-rose-50 to-rose-100 rounded-t-2xl">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-lg bg-rose-100 flex items-center justify-center">
+                                        <EnvelopeIcon className="w-6 h-6 text-rose-600" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-bold text-gray-900">รายละเอียดคำขอ</h3>
+                                        <p className="text-sm text-rose-700">#{selectedRequest.id} — {
+                                            selectedRequest.category === 'bug' ? '🐛 แจ้งบัก' :
+                                            selectedRequest.category === 'access' ? '🔑 ขอสิทธิ์' :
+                                            '📝 คำขออื่น'
+                                        }</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => { setRequestDetailOpen(false); setSelectedRequest(null); setAdminNote(''); }}
+                                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                                    disabled={isRequestSubmitting}
+                                >
+                                    <XMarkIcon className="w-6 h-6" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Body */}
+                        <div className="p-6 space-y-4">
+                            {/* ข้อมูลผู้ส่ง */}
+                            <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                                <div className="flex items-center gap-2 text-sm">
+                                    <UserIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                    <span className="font-medium text-gray-700">ผู้ส่ง:</span>
+                                    <span className="text-gray-900">{selectedRequest.senderName || '-'}</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm">
+                                    <EnvelopeIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                    <span className="font-medium text-gray-700">อีเมล:</span>
+                                    <span className="text-gray-900">{selectedRequest.senderEmail}</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm">
+                                    <span className="font-medium text-gray-700 ml-6">วันที่ส่ง:</span>
+                                    <span className="text-gray-900">{new Date(selectedRequest.createdAt).toLocaleString('th-TH')}</span>
+                                </div>
+                            </div>
+
+                            {/* หัวข้อ + ข้อความ */}
+                            <div>
+                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">หัวข้อ</p>
+                                <p className="text-sm font-medium text-gray-900">{selectedRequest.subject}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">รายละเอียด</p>
+                                <p className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 rounded-lg p-3 border border-gray-200 max-h-40 overflow-y-auto">
+                                    {selectedRequest.message}
+                                </p>
+                            </div>
+
+                            {/* Admin Note Input สำหรับ Resolve */}
+                            <div>
+                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 block">
+                                    หมายเหตุการดำเนินการ <span className="text-rose-500 normal-case">(จำเป็นเมื่อยืนยันแก้ไข)</span>
+                                </label>
+                                <textarea
+                                    value={adminNote}
+                                    onChange={(e) => setAdminNote(e.target.value)}
+                                    placeholder="ระบุสิ่งที่ดำเนินการแล้ว เช่น เพิ่มสิทธิ์ให้แล้ว, แก้ไข bug แล้ว..."
+                                    rows={3}
+                                    disabled={isRequestSubmitting}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none disabled:opacity-60"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Footer Buttons */}
+                        <div className="p-6 border-t border-gray-200 bg-gray-50 rounded-b-2xl flex gap-3 justify-end">
+                            <button
+                                onClick={() => { setRequestDetailOpen(false); setSelectedRequest(null); setAdminNote(''); }}
+                                disabled={isRequestSubmitting}
+                                className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-sm disabled:opacity-60"
+                            >
+                                ปิด
+                            </button>
+                            <button
+                                onClick={() => handleRejectRequest(selectedRequest)}
+                                disabled={isRequestSubmitting}
+                                className="min-w-[120px] px-4 py-2 text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 font-medium text-sm disabled:opacity-60 flex items-center justify-center gap-2"
+                            >
+                                <XMarkIcon className="w-4 h-4" />
+                                {isRequestSubmitting ? 'กำลังดำเนินการ...' : 'ไม่แก้ไข'}
+                            </button>
+                            <button
+                                onClick={() => handleResolveRequest(selectedRequest, adminNote)}
+                                disabled={isRequestSubmitting || !adminNote.trim()}
+                                className="min-w-[140px] px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 font-medium text-sm disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                <CheckIcon className="w-4 h-4" />
+                                {isRequestSubmitting ? 'กำลังดำเนินการ...' : 'ยืนยันแก้ไข'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Edit User Modal */}
             {
+
                 editModal.show && editModal.user && (
                     <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
                         <div className="bg-white rounded-2xl shadow-2xl border border-gray-300 p-6 max-w-4xl w-full">

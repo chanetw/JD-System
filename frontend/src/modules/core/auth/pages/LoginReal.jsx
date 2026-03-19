@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
+import { consumeSessionUpdateNotice } from '@shared/services/socketService';
 
 export default function LoginReal() {
     const navigate = useNavigate();
@@ -17,6 +18,13 @@ export default function LoginReal() {
     });
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
+
+    useEffect(() => {
+        const sessionNotice = consumeSessionUpdateNotice();
+        if (sessionNotice) {
+            setError(sessionNotice);
+        }
+    }, []);
 
     // ถ้า login แล้ว redirect ตาม Role
     useEffect(() => {

@@ -8,16 +8,21 @@
  * - มอบประสบการณ์การนำทางที่รวดเร็วด้วย NavLink พร้อมสถานะ Active
  */
 
-import { NavLink } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
+
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { FolderIcon, Cog6ToothIcon, UserGroupIcon, BuildingOfficeIcon } from '@heroicons/react/24/outline';
-import { isAdmin as checkIsAdmin, isApprover as checkIsApprover, isViewer as checkIsViewer, hasAnyRole } from '@shared/utils/permission.utils';
+import { isAdmin as checkIsAdmin, isApprover as checkIsApprover, isViewer as checkIsViewer, hasAnyRole, getDefaultHomeRoute } from '@shared/utils/permission.utils';
+import { adminService } from '@shared/services/modules/adminService';
 
 /**
  * @component Sidebar
  * @description แถบเมนูด้านซ้าย
  */
 export default function Sidebar() {
+    const navigate = useNavigate();
+
     /** ข้อมูลผู้ใช้งานปัจจุบันจาก store */
     const { user } = useAuthStoreV2();
 
@@ -28,6 +33,20 @@ export default function Sidebar() {
     const canCreateJob = hasAnyRole(user, ['Admin', 'Requester', 'Approver']);
     const canAccessAnalytics = isAdmin || isViewer;
     const isApprover = checkIsApprover(user) || isAdmin;
+
+    /**
+     * จำนวน User Requests ที่รอ Admin ดำเนินการ (pending)
+     * ใช้แสดง badge บนเมนู "จัดการผู้ใช้งาน"
+     * โหลดครั้งเดียวตอน mount (Admin only)
+     */
+    const [pendingRequestCount, setPendingRequestCount] = useState(0);
+
+    useEffect(() => {
+        if (!isAdmin) return;
+        adminService.getUserRequestCount()
+            .then(data => setPendingRequestCount(data?.pending || 0))
+            .catch(() => setPendingRequestCount(0));
+    }, [isAdmin]);
 
     return (
         // ============================================
@@ -118,7 +137,12 @@ export default function Sidebar() {
 
                         {/* V2 Templates link REMOVED - Using V1 Extended instead */}
 
-                        <SidebarLink to="/admin/users" icon={UserGroupIcon}>
+                        <SidebarLink
+                            to="/admin/users"
+                            icon={UserGroupIcon}
+                            badge={pendingRequestCount > 0 ? pendingRequestCount : undefined}
+                            badgeColor="bg-red-500"
+                        >
                             จัดการผู้ใช้งาน
                         </SidebarLink>
 
@@ -171,7 +195,10 @@ export default function Sidebar() {
           Bottom Action
           ============================================ */}
             <div className="p-4 border-t border-rose-800/30 bg-[#881337]">
-                <button className="flex items-center gap-3 px-3 py-2 w-full text-rose-100 hover:text-white hover:bg-white/10 rounded-lg transition-colors">
+                <button
+                    onClick={() => navigate(getDefaultHomeRoute(user))}
+                    className="flex items-center gap-3 px-3 py-2 w-full text-rose-100 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                >
                     <ArrowLeftOnRectangleIcon className="w-5 h-5" />
                     <span className="text-sm font-medium">กลับหน้าหลัก (Home)</span>
                 </button>

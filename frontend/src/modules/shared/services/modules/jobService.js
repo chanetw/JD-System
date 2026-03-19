@@ -323,7 +323,7 @@ export const jobService = {
                 jobTypeId: parseInt(jobData.jobTypeId),
                 subject: jobData.subject,
                 priority: jobData.priority?.toLowerCase() || 'normal',
-                dueDate: jobData.deadline,
+                dueDate: jobData.dueDate || jobData.deadline,
                 objective: jobData.brief?.objective || null,
                 headline: jobData.brief?.headline || null,
                 subHeadline: jobData.brief?.subHeadline || null,
@@ -413,7 +413,7 @@ export const jobService = {
                 projectId: jobData.projectId,
                 subject: jobData.subject,
                 priority: jobData.priority,
-                deadline: jobData.deadline || new Date().toISOString(),
+                deadline: jobData.dueDate || jobData.deadline || new Date().toISOString(),
                 brief: jobData.brief,
                 jobTypes: jobData.jobTypes, // [{ jobTypeId, assigneeId }]
                 items: jobData.items || [] // ส่งรายการชิ้นงานไปด้วย

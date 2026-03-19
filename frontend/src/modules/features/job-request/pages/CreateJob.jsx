@@ -276,7 +276,7 @@ const CreateJob = () => {
                 priority: formData.priority,
                 status: 'pending_approval',
                 requester_id: user.id,
-                due_date: calculatedDueDate?.toISOString(),
+                dueDate: calculatedDueDate?.toISOString(),
                 acceptanceDate: formData.acceptanceDate || null, // เพิ่ม acceptance date
             };
 

@@ -79,15 +79,15 @@ async function main() {
             where: { tenantId_email: { tenantId: tenant.id, email: u.email } },
             update: {},
             create: {
-                tenantId: tenant.id,
-                email: u.email,
-                passwordHash: defaultPassword,
-                firstName: u.firstName,
-                lastName: u.lastName,
-                displayName: u.displayName,
-                isActive: true,
-                status: 'APPROVED'
-            }
+                    tenantId: tenant.id,
+                    email: u.email,
+                    passwordHash: defaultPassword,
+                    firstName: u.firstName,
+                    lastName: u.lastName,
+                    displayName: u.displayName || `${u.firstName} ${u.lastName}`,
+                    isActive: true,
+                    status: 'APPROVED'
+                }
         });
         createdUsers[u.role] = user;
 

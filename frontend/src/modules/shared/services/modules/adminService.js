@@ -731,26 +731,25 @@ export const adminService = {
     },
 
     getAssigneeByProjectAndJobType: async (projectId, jobTypeId) => {
-        let query = supabase
-            .from('project_job_assignments')
-            .select(`assignee_id, users:assignee_id ( id, first_name, last_name )`)
-            .eq('project_id', projectId);
+        try {
+            const response = await httpClient.get(`/projects/${projectId}/job-assignments`);
+            if (!response.data.success) return null;
 
-        if (jobTypeId) {
-            query = query.eq('job_type_id', jobTypeId);
-        } else {
-            query = query.is('job_type_id', null);
+            const assignments = response.data.data || [];
+            const match = jobTypeId
+                ? assignments.find(a => a.jobTypeId === parseInt(jobTypeId))
+                : assignments[0];
+
+            if (!match || !match.assigneeId) return null;
+
+            return {
+                id: match.assigneeId,
+                name: match.assigneeName || null
+            };
+        } catch (error) {
+            console.error('[adminService] getAssigneeByProjectAndJobType error:', error.message);
+            return null;
         }
-
-        const { data, error } = await query.single();
-        if (error || !data) return null;
-
-        return {
-            id: data.assignee_id,
-            name: data.users ?
-                [data.users.first_name, data.users.last_name].filter(Boolean).join(' ') :
-                null
-        };
     },
 
     saveAssignmentMatrix: async (projectId, assignments) => {
@@ -1342,6 +1341,72 @@ export const adminService = {
         }
     },
 
+    getUserRequests: async (status = 'pending') => {
+        try {
+            const response = await httpClient.get('/user-requests', {
+                params: { status }
+            });
+
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Failed to fetch user requests');
+            }
+
+            return response.data.data || [];
+        } catch (error) {
+            console.error('[adminService] getUserRequests error:', error);
+            throw error;
+        }
+    },
+
+    getUserRequestCount: async () => {
+        try {
+            const response = await httpClient.get('/user-requests/count');
+
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Failed to fetch user request count');
+            }
+
+            return response.data.data?.pending || 0;
+        } catch (error) {
+            console.error('[adminService] getUserRequestCount error:', error);
+            return 0;
+        }
+    },
+
+    resolveUserRequest: async (requestId, adminNote) => {
+        try {
+            const response = await httpClient.put(`/user-requests/${requestId}/resolve`, {
+                adminNote
+            });
+
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Failed to resolve user request');
+            }
+
+            return response.data.data;
+        } catch (error) {
+            console.error('[adminService] resolveUserRequest error:', error);
+            throw error;
+        }
+    },
+
+    rejectUserRequest: async (requestId, rejectedReason) => {
+        try {
+            const response = await httpClient.put(`/user-requests/${requestId}/reject`, {
+                rejectedReason
+            });
+
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Failed to reject user request');
+            }
+
+            return response.data.data;
+        } catch (error) {
+            console.error('[adminService] rejectUserRequest error:', error);
+            throw error;
+        }
+    },
+
     /**
      * อนุมัติคำขอสมัครและสร้างผู้ใช้ใหม่
      * @param {number} registrationId - ID ของคำขอสมัคร
@@ -1349,13 +1414,15 @@ export const adminService = {
      * @param {string} tempPassword - Temporary password (hashed)
      * @returns {Promise<Object>} - Result from backend
      */
-    approveRegistration: async (registrationId, roles, tempPassword) => {
+    approveRegistration: async (registrationRequestId, roles, tempPassword) => {
         try {
-            console.log('[adminService] Calling POST /users/registrations/:id/approve');
+            console.log('[adminService] Calling POST /api/v2/admin/approve-registration');
 
-            const response = await httpClient.post(`/users/registrations/${registrationId}/approve`, {
-                roles,
-                tempPassword
+            const response = await httpClient.post(`/v2/admin/approve-registration`, {
+                registrationRequestId,
+                roleName: (Array.isArray(roles) && roles.length > 0) 
+                    ? roles[0].name || roles[0]
+                    : 'Assignee'
             });
 
             if (!response.data.success) {
@@ -1507,5 +1574,78 @@ export const adminService = {
             console.error('[adminService] getUserEditDetails error:', error);
             throw error;
         }
+    },
+
+    // ============================================================
+    // User Requests — คำขอจากผู้ใช้ที่รอ Admin ดำเนินการ
+    // ============================================================
+
+    /**
+     * ดึงรายการ User Requests (Admin only)
+     * @param {string} status - สถานะที่ต้องการกรอง: 'pending' | 'resolved' | 'rejected' | 'all'
+     * @returns {Promise<Array>} รายการ User Requests
+     */
+    getUserRequests: async (status = 'pending') => {
+        try {
+            const response = await httpClient.get('/user-requests', {
+                params: { status }
+            });
+            if (!response.data.success) throw new Error(response.data.message);
+            return response.data.data || [];
+        } catch (error) {
+            console.error('[adminService] getUserRequests error:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * ดึงจำนวน User Requests ที่ยังรอดำเนินการ (pending)
+     * ใช้สำหรับแสดง badge ใน Sidebar
+     * @returns {Promise<{pending: number}>} object ที่มี field pending
+     */
+    getUserRequestCount: async () => {
+        try {
+            const response = await httpClient.get('/user-requests/count');
+            if (!response.data.success) throw new Error(response.data.message);
+            return response.data.data || { pending: 0 };
+        } catch (error) {
+            console.error('[adminService] getUserRequestCount error:', error);
+            return { pending: 0 };
+        }
+    },
+
+    /**
+     * Resolve (ยืนยันแก้ไข) User Request พร้อมส่ง notification กลับหาผู้ส่ง
+     * @param {number} id - ID ของ User Request
+     * @param {string} adminNote - หมายเหตุการดำเนินการจาก Admin (จำเป็น)
+     * @returns {Promise<Object>} ข้อมูล User Request ที่อัปเดตแล้ว
+     */
+    resolveUserRequest: async (id, adminNote) => {
+        try {
+            const response = await httpClient.put(`/user-requests/${id}/resolve`, { adminNote });
+            if (!response.data.success) throw new Error(response.data.message);
+            return response.data.data;
+        } catch (error) {
+            console.error('[adminService] resolveUserRequest error:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Reject (ปฏิเสธ) User Request พร้อมส่ง notification กลับหาผู้ส่งพร้อมเหตุผล
+     * @param {number} id - ID ของ User Request
+     * @param {string} rejectedReason - เหตุผลที่ปฏิเสธ (จำเป็น)
+     * @returns {Promise<Object>} ข้อมูล User Request ที่อัปเดตแล้ว
+     */
+    rejectUserRequest: async (id, rejectedReason) => {
+        try {
+            const response = await httpClient.put(`/user-requests/${id}/reject`, { rejectedReason });
+            if (!response.data.success) throw new Error(response.data.message);
+            return response.data.data;
+        } catch (error) {
+            console.error('[adminService] rejectUserRequest error:', error);
+            throw error;
+        }
     }
 };
+

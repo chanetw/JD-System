@@ -7,18 +7,12 @@
 import React, { useEffect, useState } from 'react';
 import { useAuthStoreV2, usePendingUsers, useRegistrationCounts, useIsOrgAdmin } from '../../../core/stores/authStoreV2';
 
-// Role options for assignment during approval (V1 naming)
-const ROLE_OPTIONS = [
-  { value: 'Assignee', label: 'Assignee (Basic access)' },
-  { value: 'Approver', label: 'Approver (Approval access)' },
-  { value: 'Requester', label: 'Requester (Full access)' },
-];
+
 
 const PendingApprovals: React.FC = () => {
   const {
     fetchPendingUsers,
     fetchRegistrationCounts,
-    approveUser,
     rejectUser,
     isLoading,
     error,
@@ -29,26 +23,13 @@ const PendingApprovals: React.FC = () => {
   const registrationCounts = useRegistrationCounts();
   const isOrgAdmin = useIsOrgAdmin();
 
-  // Local state for approval modal
-  const [selectedUser, setSelectedUser] = useState<number | null>(null);
-  const [selectedRole, setSelectedRole] = useState('Member');
-  const [showApproveModal, setShowApproveModal] = useState(false);
-
   // Local state for rejection modal
+  const [selectedUser, setSelectedUser] = useState<number | null>(null);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
 
   // Local state for action feedback
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  // Local state for password display modal
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [approvedUserInfo, setApprovedUserInfo] = useState<{
-    email: string;
-    temporaryPassword: string;
-    name: string;
-    emailSent: boolean;
-  } | null>(null);
 
   // Fetch data on mount
   useEffect(() => {
@@ -71,65 +52,11 @@ const PendingApprovals: React.FC = () => {
     }
   }, [actionMessage]);
 
-  // Handle approve button click
-  const handleApproveClick = (userId: number) => {
-    setSelectedUser(userId);
-    setSelectedRole('Member');
-    setShowApproveModal(true);
-  };
-
   // Handle reject button click
   const handleRejectClick = (userId: number) => {
     setSelectedUser(userId);
     setRejectionReason('');
     setShowRejectModal(true);
-  };
-
-  // Confirm approval
-  const handleConfirmApprove = async () => {
-    if (!selectedUser) return;
-
-    try {
-      // Get user info before approval
-      const userToApprove = pendingUsers.find(u => u.id === selectedUser);
-
-      // Call approve API - this returns the temporary password
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-      const token = localStorage.getItem('auth_token_v2');
-      const response = await fetch(`${API_URL}/api/v2/admin/approve-registration`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ userId: selectedUser, roleName: selectedRole })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Failed to approve');
-      }
-
-      // Store the result to show in modal
-      setApprovedUserInfo({
-        email: data.data.email,
-        temporaryPassword: data.data.temporaryPassword,
-        name: `${userToApprove?.firstName} ${userToApprove?.lastName}`,
-        emailSent: data.data.emailSent || false
-      });
-
-      setShowApproveModal(false);
-      setSelectedUser(null);
-      setShowPasswordModal(true);
-
-      // Refresh the list
-      fetchPendingUsers();
-      fetchRegistrationCounts();
-
-    } catch (err) {
-      setActionMessage({ type: 'error', text: 'Failed to approve user' });
-    }
   };
 
   // Confirm rejection
@@ -173,8 +100,8 @@ const PendingApprovals: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Pending Approvals</h1>
-          <p className="text-gray-500">Review and approve user registration requests</p>
+          <h1 className="text-2xl font-bold text-gray-900">Registration Monitor</h1>
+          <p className="text-gray-500">ติดตามการสมัครใหม่ — ผู้ใช้จะ Active เป็น Requester (HO) ทันที</p>
         </div>
         <button
           onClick={() => {
@@ -188,6 +115,20 @@ const PendingApprovals: React.FC = () => {
           </svg>
           Refresh
         </button>
+      </div>
+
+      {/* Info Banner */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-start gap-3">
+        <svg className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div className="text-sm text-blue-800">
+          <p className="font-semibold">ระบบสมัครสมาชิกใหม่ (Auto-Activate)</p>
+          <p className="mt-0.5">ผู้สมัครใหม่จะได้รับสิทธิ์ <strong>Requester</strong> พร้อม Scope <strong>โครงการ HO</strong> ทันทีโดยอัตโนมัติ ไม่ต้องรออนุมัติ<br />
+          หากต้องการเปลี่ยนบทบาทหรือขอบเขต ไปที่{' '}
+          <a href="/admin/users" className="underline font-medium hover:text-blue-900">User Management</a>
+          </p>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -229,12 +170,21 @@ const PendingApprovals: React.FC = () => {
         </div>
       )}
 
-      {/* Pending Users Table */}
+      {/* Registrations Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-400 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-400">
+        <div className="px-6 py-4 border-b border-gray-400 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">
-            Pending Registration Requests ({pendingUsers.length})
+            Recent Registrations ({pendingUsers.length})
           </h2>
+          <a
+            href="/admin/users"
+            className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200"
+          >
+            <svg className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            จัดการสิทธิ์ใน User Management
+          </a>
         </div>
 
         {isLoading ? (
@@ -250,7 +200,7 @@ const PendingApprovals: React.FC = () => {
             <svg className="h-12 w-12 text-gray-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p className="text-gray-500">No pending registration requests</p>
+            <p className="text-gray-500">ยังไม่มีผู้สมัครใหม่</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -261,7 +211,8 @@ const PendingApprovals: React.FC = () => {
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Email</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Department</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Registered</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Actions</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Role (Default)</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Manage</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-400">
@@ -290,24 +241,29 @@ const PendingApprovals: React.FC = () => {
                       {formatDate(user.registeredAt)}
                     </td>
                     <td className="px-6 py-4 text-center">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        Requester · HO
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => handleApproveClick(user.id)}
-                          className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg text-white bg-green-600 hover:bg-green-700 transition-colors"
+                        <a
+                          href="/admin/users"
+                          className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors"
                         >
                           <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
-                          Approve
-                        </button>
+                          จัดการสิทธิ์
+                        </a>
                         <button
                           onClick={() => handleRejectClick(user.id)}
-                          className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg text-white bg-red-600 hover:bg-red-700 transition-colors"
+                          className="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-lg text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors"
                         >
                           <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
                           </svg>
-                          Reject
+                          ปิดใช้งาน
                         </button>
                       </div>
                     </td>
@@ -318,51 +274,6 @@ const PendingApprovals: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Approve Modal */}
-      {showApproveModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
-            <div className="p-6 border-b border-gray-400">
-              <h3 className="text-lg font-semibold text-gray-900">Approve Registration</h3>
-            </div>
-            <div className="p-6 space-y-4">
-              <p className="text-gray-600">
-                Assign a role to this user before approving:
-              </p>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                <select
-                  value={selectedRole}
-                  onChange={(e) => setSelectedRole(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                >
-                  {ROLE_OPTIONS.map((role) => (
-                    <option key={role.value} value={role.value}>
-                      {role.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3 rounded-b-xl">
-              <button
-                onClick={() => setShowApproveModal(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmApprove}
-                disabled={isLoading}
-                className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
-              >
-                {isLoading ? 'Approving...' : 'Confirm Approval'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Reject Modal */}
       {showRejectModal && (
@@ -405,93 +316,6 @@ const PendingApprovals: React.FC = () => {
         </div>
       )}
 
-      {/* Approval Success Modal */}
-      {showPasswordModal && approvedUserInfo && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
-            <div className="p-6 border-b border-gray-400 bg-green-50">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                  <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900">อนุมัติสำเร็จ!</h3>
-              </div>
-            </div>
-            <div className="p-6 space-y-4">
-              <p className="text-gray-600">
-                ผู้ใช้ <span className="font-semibold">{approvedUserInfo.name}</span> ได้รับการอนุมัติแล้ว
-              </p>
-
-              {approvedUserInfo.emailSent ? (
-                // Email sent successfully
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <svg className="h-5 w-5 text-green-600 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                    <div>
-                      <p className="text-sm font-medium text-green-800">
-                        ส่งอีเมลแจ้งเตือนแล้ว!
-                      </p>
-                      <p className="text-sm text-green-700 mt-1">
-                        ระบบได้ส่งรหัสผ่านชั่วคราวไปที่ <strong>{approvedUserInfo.email}</strong> เรียบร้อยแล้ว
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                // Email failed - show password for manual sharing
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <p className="text-sm font-medium text-yellow-800 mb-2">
-                    ⚠️ ส่งอีเมลไม่สำเร็จ - กรุณาส่งข้อมูลด้านล่างให้ผู้ใช้
-                  </p>
-                  <div className="space-y-2">
-                    <div>
-                      <p className="text-xs text-yellow-700">อีเมล:</p>
-                      <p className="font-mono text-sm bg-white px-2 py-1 rounded border">{approvedUserInfo.email}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-yellow-700">รหัสผ่านชั่วคราว:</p>
-                      <div className="flex items-center gap-2">
-                        <p className="font-mono text-sm bg-white px-2 py-1 rounded border flex-1 select-all">
-                          {approvedUserInfo.temporaryPassword}
-                        </p>
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(approvedUserInfo.temporaryPassword);
-                            setActionMessage({ type: 'success', text: 'คัดลอกรหัสผ่านแล้ว!' });
-                          }}
-                          className="px-2 py-1 text-xs bg-yellow-100 hover:bg-yellow-200 rounded"
-                        >
-                          คัดลอก
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
-                <p>ผู้ใช้จะต้องเปลี่ยนรหัสผ่านเมื่อเข้าสู่ระบบครั้งแรก</p>
-              </div>
-            </div>
-            <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end rounded-b-xl">
-              <button
-                onClick={() => {
-                  setShowPasswordModal(false);
-                  setApprovedUserInfo(null);
-                  setActionMessage({ type: 'success', text: 'User approved successfully!' });
-                }}
-                className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
-              >
-                เสร็จสิ้น
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

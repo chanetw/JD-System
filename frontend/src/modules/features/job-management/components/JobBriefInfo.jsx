@@ -1,5 +1,5 @@
 import React from 'react';
-import { PaperClipIcon, LinkIcon } from '@heroicons/react/24/outline';
+import { PaperClipIcon, LinkIcon, CalendarDaysIcon, UserIcon, CheckCircleIcon, ClockIcon } from '@heroicons/react/24/outline';
 import DraftReadStatus from './DraftReadStatus';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 
@@ -16,6 +16,13 @@ const JobBriefInfo = ({ job }) => {
     };
     const hasFiles = job.briefFiles && job.briefFiles.length > 0;
 
+    const formatDate = (dateStr) => {
+        if (!dateStr) return null;
+        return new Date(dateStr).toLocaleDateString('th-TH', {
+            day: 'numeric', month: 'short', year: '2-digit'
+        });
+    };
+
     return (
         <div className="space-y-6">
             {/* Headlines */}
@@ -23,6 +30,39 @@ const JobBriefInfo = ({ job }) => {
                 <h3 className="text-lg leading-6 font-medium text-gray-900">
                     ข้อมูลงาน (Brief Info)
                 </h3>
+
+                {/* Date Badges */}
+                <div className="mt-3 flex flex-wrap gap-2">
+                    {job.createdAt && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            <CalendarDaysIcon className="w-3.5 h-3.5" />
+                            <span className="font-medium">สร้างเมื่อ:</span>
+                            <span>{formatDate(job.createdAt)}</span>
+                        </span>
+                    )}
+                    {job.assignedAt && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                            <UserIcon className="w-3.5 h-3.5" />
+                            <span className="font-medium">มอบหมาย:</span>
+                            <span>{formatDate(job.assignedAt)}</span>
+                        </span>
+                    )}
+                    {job.acceptanceDate && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            <CheckCircleIcon className="w-3.5 h-3.5" />
+                            <span className="font-medium">รับงาน:</span>
+                            <span>{formatDate(job.acceptanceDate)}</span>
+                        </span>
+                    )}
+                    {(job.dueDate || job.deadline) && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            <ClockIcon className="w-3.5 h-3.5" />
+                            <span className="font-medium">กำหนด:</span>
+                            <span>{formatDate(job.dueDate || job.deadline)}</span>
+                        </span>
+                    )}
+                </div>
+
                 <div className="mt-5 border-t border-gray-400">
                     <dl className="sm:divide-y sm:divide-gray-400">
                         {brief.headline && (

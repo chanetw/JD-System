@@ -4,7 +4,76 @@
 
 ---
 
+## 📅 2026-03-17
+
+### 108. Docker Migration - ย้ายระบบออกจาก Supabase Dependency
+<details>
+<summary>คลิกเพื่อดูรายละเอียด</summary>
+
+**คำสั่ง:** อ่านแผน Docker Migration และดำเนินการตามแผนทั้ง 5 ขั้นตอน
+
+**เป้าหมาย:** ย้ายระบบจาก Supabase cloud ไปใช้ PostgreSQL บน Docker (fresh start) + Dockerize ทั้งระบบสำหรับ deploy server
+
+**สิ่งที่ทำ:**
+
+| ขั้น | งาน | ไฟล์ |
+|------|-----|------|
+| 1 | สร้าง ENV template สำหรับ local dev และ production | `backend/api-server/.env.local.example`, `backend/api-server/.env.production.example` |
+| 2 | เพิ่ม `UserRegistrationRequest` model ใน Prisma schema | `backend/prisma/schema.prisma` |
+| 2 | แก้ `GET /registrations/pending` + `POST /registrations/:id/approve` ให้ใช้ Prisma | `backend/.../routes/users.js` |
+| 2 | เพิ่ม `POST /registrations` endpoint (public) สำหรับรับคำขอสมัครใหม่ | `backend/.../routes/users.js` |
+| 3 | สร้าง `fileCleanupCron.js` — ลบไฟล์อัตโนมัติหลัง 30 วัน | `backend/.../services/fileCleanupCron.js` |
+| 3 | ลงทะเบียน fileCleanupCron ใน server startup + graceful shutdown | `backend/.../src/index.js` |
+| 4 | แก้ `adminService.getAssigneeByProjectAndJobType` ให้ใช้ Backend API | `frontend/.../modules/adminService.js` |
+| 4 | แก้ `userService.submitRegistration` ให้ใช้ Backend API | `frontend/.../modules/userService.js` |
+| 4 | ลบ unused `import supabase` ใน `UserManagement.jsx` | `frontend/.../admin/pages/UserManagement.jsx` |
+| 5 | สร้าง `frontend/Dockerfile` (multi-stage build + nginx) | `frontend/Dockerfile` |
+| 5 | สร้าง `frontend/nginx.conf` (proxy /api/, /socket.io/, /uploads/) | `frontend/nginx.conf` |
+| 5 | อัปเดต `docker-compose.prod.yml` เพิ่ม frontend service + shared volumes | `docker-compose.prod.yml` |
+| 5 | สร้าง `scripts/deploy-docker.sh` สำหรับ deploy บน server | `scripts/deploy-docker.sh` |
+
+**ขั้นตอนที่เหลือ (manual):**
+- Copy `.env.local.example` → `.env.local` และแก้ค่า
+- รัน `docker compose up -d postgres`
+- รัน `npx prisma migrate dev --name add_user_registration_requests`
+- ทดสอบ Backend เชื่อม Docker DB
+
+**หมายเหตุ:**
+- Supabase config เดิมยังอยู่ (rollback ได้)
+- `realtimeService.js`, `notificationService.js` ยังใช้ Supabase แต่ไม่ block การทำงาน (legacy)
+- `authStore.js` มี `AUTH_MODE` guard แล้ว — ใช้ `jwt_only` ได้โดยไม่ต้องแก้
+
+</details>
+
+---
+
 ## 📅 2026-03-16
+
+### 107. JobBriefInfo Date Badges - เพิ่มวันที่รับงาน + แก้ dueDate ไม่แสดง
+<details>
+<summary>คลิกเพื่อดูรายละเอียด</summary>
+
+**คำสั่ง:** เพิ่มส่วนวันที่รับงานใน Brief Info และแก้ปัญหา dueDate ไม่แสดงผล
+
+**ปัญหาที่พบ:**
+1. `CreateJob.jsx` ส่ง `due_date` (snake_case) แต่ Backend รับ `dueDate` (camelCase)
+2. `jobService.js` `createJob()` ใช้ `jobData.deadline` แต่ `CreateJobPage.jsx` ส่ง `jobData.dueDate`
+3. `jobService.js` `createParentWithChildren()` มีปัญหาเดียวกัน
+4. Backend `GET /jobs/:id` transform ไม่ส่ง `dueDate`, `assignedAt`, `acceptanceDate`, `startedAt`
+5. Backend ส่ง `deadline` แต่ `JobBriefInfo.jsx` อ่าน `dueDate`
+
+**ไฟล์ที่แก้:**
+| ไฟล์ | การแก้ไข |
+|------|----------|
+| `backend/.../routes/jobs.js` (GET /:id) | เพิ่ม `dueDate`, `assignedAt`, `acceptanceDate`, `startedAt` ใน transform |
+| `frontend/.../job-request/pages/CreateJob.jsx` | แก้ `due_date` → `dueDate` |
+| `frontend/.../shared/services/modules/jobService.js` | แก้ `createJob`: `dueDate: jobData.dueDate \|\| jobData.deadline` |
+| `frontend/.../shared/services/modules/jobService.js` | แก้ `createParentWithChildren`: `deadline: jobData.dueDate \|\| jobData.deadline` |
+| `frontend/.../job-management/components/JobBriefInfo.jsx` | เพิ่ม Date Badges (สร้าง/มอบหมาย/รับงาน/กำหนด) + fallback `dueDate \|\| deadline` |
+
+</details>
+
+---
 
 ### 105. KPI Drill-down Filter Sync - แสดงตาม Filter + KPI Type
 <details>
