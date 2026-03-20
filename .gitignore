@@ -70,3 +70,4 @@ uploads/
 
 # Agent devlog exception (allow direct editing)
 !.agent/logs/devlog.md
+backend/api-server/envprod.txt

@@ -1,0 +1,52 @@
+# Backend Docker Build Context (.dockerignore)
+# Build context = ./backend (ไม่ใช่ ./backend/api-server)
+
+# Node modules (จะ npm ci ใน Dockerfile)
+**/node_modules
+**/npm-debug.log
+
+# Environment files (ห้าม bake เข้า image)
+**/.env
+**/.env.local
+**/.env.*.local
+**/.env.production
+
+# Uploads (ใช้ Docker volume แทน)
+api-server/uploads/*
+
+# Git
+.git
+.gitignore
+
+# Docs & scripts ที่ไม่ต้องการ
+docs/
+scripts/
+database/
+api-server/logs/
+
+# Debug/test scripts
+api-server/test-*.js
+api-server/check-*.js
+api-server/fix-*.js
+api-server/debug_*.js
+api-server/debug_*.cjs
+api-server/apply_*.js
+api-server/clean_data.js
+api-server/clear-cache.js
+api-server/inspect_*.js
+api-server/verify_*.js
+api-server/sync_media.mjs
+api-server/check_*.cjs
+api-server/check_*.js
+api-server/check_*.mjs
+api-server/*.json
+!api-server/package.json
+!api-server/package-lock.json
+api-server/tsconfig*.json
+
+# Markdown
+**/*.md
+
+# Docker files (ไม่ต้อง copy ตัวเอง)
+api-server/Dockerfile
+docker-compose*.yml

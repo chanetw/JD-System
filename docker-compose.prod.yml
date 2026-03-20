@@ -1,6 +1,10 @@
 # DJ System - Docker Compose (Production)
-# ใช้สำหรับ production server
+# ใช้สำหรับ production server (รองรับทั้ง ARM64 และ AMD64)
 # รวม PostgreSQL + Backend + Nginx
+#
+# วิธีใช้:
+#   Build เอง:   docker compose -f docker-compose.prod.yml up -d --build
+#   Pull จาก Hub: docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d
 
 services:
   # ==========================================
@@ -8,20 +12,20 @@ services:
   # ==========================================
   postgres:
     image: postgres:15
-    platform: linux/arm64
     container_name: dj-postgres-prod
     env_file:
       - ./backend/api-server/.env.production
     volumes:
       - dj-data-prod:/var/lib/postgresql/data
     ports:
-      - "5434:5432"
+      - "${POSTGRES_PORT:-5434}:5432"
     restart: always
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dj_system"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
       - dj-network
 
@@ -29,10 +33,10 @@ services:
   # Backend API + Socket.io
   # ==========================================
   backend:
+    image: chanetw/dj-system-backend:latest
     build:
       context: ./backend
       dockerfile: api-server/Dockerfile
-    platform: linux/arm64
     container_name: dj-backend-prod
     ports:
       - "3000:3000"
@@ -46,10 +50,15 @@ services:
       STORAGE_PROVIDER: local
       AUTH_MODE: jwt_only
       NODE_ENV: production
-      PRISMA_QUERY_ENGINE_LIBRARY: /app/node_modules/.prisma/client/libquery_engine-linux-musl-arm64-openssl-3.0.x.so.node
     volumes:
       - dj-files-prod:/app/uploads
     restart: always
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     networks:
       - dj-network
 
@@ -57,19 +66,20 @@ services:
   # Frontend (React + Nginx)
   # ==========================================
   frontend:
+    image: chanetw/dj-system-frontend:latest
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost/api}
+        VITE_API_URL: /api
         VITE_FRONTEND_MODE: api_only
         VITE_AUTH_MODE: jwt_only
-    platform: linux/arm64
     container_name: dj-frontend-prod
     ports:
       - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     volumes:
       - dj-files-prod:/app/uploads:ro
     restart: always

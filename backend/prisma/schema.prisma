@@ -4,7 +4,7 @@
 generator client {
   provider      = "prisma-client-js"
   output        = "../api-server/node_modules/.prisma/client"
-  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -804,6 +804,7 @@ model Holiday {
   tenantId    Int      @map("tenant_id")
   name        String   @db.VarChar(200)
   date        DateTime @db.Date
+  type        String   @default("government") @db.VarChar(50)
   isRecurring Boolean  @default(false) @map("is_recurring")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")

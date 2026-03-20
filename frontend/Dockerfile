@@ -1,6 +1,6 @@
 # DJ System Frontend - Dockerfile
 # Multi-stage build: Build React + Serve ด้วย Nginx
-# สำหรับ production deployment
+# สำหรับ production deployment (multi-platform: AMD64 + ARM64)
 
 # ==========================================
 # Stage 1: Build
@@ -19,7 +19,7 @@ RUN npm ci
 COPY . .
 
 # Build args สำหรับ ENV ที่ต้อง inject ตอน build
-ARG VITE_API_URL=http://localhost:3000
+ARG VITE_API_URL=/api
 ARG VITE_FRONTEND_MODE=api_only
 ARG VITE_AUTH_MODE=jwt_only
 

@@ -3,9 +3,21 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_KEY;
+const isSupabaseEnabled = !!(supabaseUrl && supabaseAnonKey);
+
+// Dummy client สำหรับ jwt_only mode (ไม่ใช้ Supabase)
+const createDummyClient = () => ({
+    from: () => ({ select: () => Promise.resolve({ data: null, error: { message: 'Supabase not configured' } }) }),
+    auth: { getSession: () => Promise.resolve({ data: null }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }) },
+    storage: { from: () => ({ upload: () => Promise.resolve({ error: { message: 'Supabase not configured' } }) }) },
+    channel: () => ({ on: () => ({ subscribe: () => ({}) }), subscribe: () => ({}) }),
+    removeChannel: () => {},
+});
 
 // Create a single supabase client for interacting with your database
-let _supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+let _supabaseClient = isSupabaseEnabled
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : createDummyClient();
 
 // Proxy to allow hot-swapping the client instance (for Header injection)
 export const supabase = new Proxy({}, {
@@ -14,7 +26,7 @@ export const supabase = new Proxy({}, {
 
 // Function to inject custom Auth Header (Bypassing standard Auth/GoTrue)
 export const setSupabaseToken = (token) => {
-    if (!token) return;
+    if (!token || !isSupabaseEnabled) return;
     console.log('[SupabaseClient] Injecting Custom Token Header...');
     _supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
         global: {
@@ -26,6 +38,7 @@ export const setSupabaseToken = (token) => {
 };
 
 export const clearSupabaseToken = () => {
+    if (!isSupabaseEnabled) return;
     console.log('[SupabaseClient] Clearing Custom Token...');
     _supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 };
