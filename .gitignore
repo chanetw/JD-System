@@ -71,3 +71,29 @@ uploads/
 # Agent devlog exception (allow direct editing)
 !.agent/logs/devlog.md
 backend/api-server/envprod.txt
+
+# AI tool config folders
+.agent/
+.agents/
+.claude/
+.opencode/
+.windsurf/
+CLAUDE.md
+skills-lock.json
+
+# Screenshots
+screenshots/
+
+# More debug/one-off scripts
+backend/api-server/debug_*.js
+backend/api-server/debug_*.cjs
+backend/api-server/apply_*.js
+backend/api-server/verify_*.js
+backend/api-server/inspect_*.js
+backend/api-server/sync_*.mjs
+backend/api-server/clean_*.js
+backend/api-server/job39.json
+
+# Temp Office files
+docs/~$*.xlsx
+docs/~$*.docx
