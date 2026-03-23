@@ -11,20 +11,28 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Button from '@shared/components/Button';
+import { authServiceV2 } from '@shared/services/modules/authServiceV2';
 import { 
     UserIcon, 
     EnvelopeIcon, 
     PhoneIcon, 
     BuildingOfficeIcon,
     CheckCircleIcon,
-    ArrowLeftIcon
+    ArrowLeftIcon,
+    LockClosedIcon,
+    ShieldCheckIcon,
+    EyeIcon,
+    EyeSlashIcon
 } from '@heroicons/react/24/outline';
+import { CheckCircleIcon as CheckCircleSolidIcon } from '@heroicons/react/20/solid';
 
 export default function Register() {
     const navigate = useNavigate();
     const [step, setStep] = useState(1); // 1 = Form, 2 = Success
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     
     // Form data
     const [formData, setFormData] = useState({
@@ -44,11 +52,7 @@ export default function Register() {
         { value: '', label: 'เลือกคำนำหน้า' },
         { value: 'นาย', label: 'นาย' },
         { value: 'นาง', label: 'นาง' },
-        { value: 'นางสาว', label: 'นางสาว' },
-        { value: 'Mr.', label: 'Mr.' },
-        { value: 'Mrs.', label: 'Mrs.' },
-        { value: 'Ms.', label: 'Ms.' },
-        { value: 'Dr.', label: 'Dr.' }
+        { value: 'นางสาว', label: 'นางสาว' }
     ];
 
     // Handle input change
@@ -59,6 +63,33 @@ export default function Register() {
             [name]: value
         }));
         setError('');
+    };
+
+    const getPasswordValidation = (password) => {
+        const checks = {
+            minLength: String(password || '').length >= 8,
+            hasUppercase: /[A-Z]/.test(password || ''),
+            hasLowercase: /[a-z]/.test(password || ''),
+            hasNumber: /\d/.test(password || ''),
+            hasSpecialChar: /[^A-Za-z0-9]/.test(password || '')
+        };
+
+        const score = Object.values(checks).filter(Boolean).length;
+        const isMediumOrBetter = checks.minLength && score >= 4;
+        const missingMessages = [];
+
+        if (!checks.minLength) missingMessages.push('เพิ่มความยาวอย่างน้อย 8 ตัวอักษร');
+        if (!checks.hasUppercase) missingMessages.push('เพิ่มตัวพิมพ์ใหญ่อย่างน้อย 1 ตัว');
+        if (!checks.hasLowercase) missingMessages.push('เพิ่มตัวพิมพ์เล็กอย่างน้อย 1 ตัว');
+        if (!checks.hasNumber) missingMessages.push('เพิ่มตัวเลขอย่างน้อย 1 ตัว');
+        if (!checks.hasSpecialChar) missingMessages.push('เพิ่มอักขระพิเศษอย่างน้อย 1 ตัว เช่น !@#%');
+
+        return {
+            checks,
+            score,
+            isMediumOrBetter,
+            missingMessages
+        };
     };
 
     // Validate form
@@ -85,10 +116,13 @@ export default function Register() {
             setError('กรุณากรอกรหัสผ่าน');
             return false;
         }
-        // Password strength validation: at least 8 chars, number, uppercase, lowercase, special char
-        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-        if (!passwordRegex.test(formData.password)) {
-            setError('รหัสผ่านต้องมีอย่างน้อย 8 อักษร มีตัวใหญ่ ตัวเล็ก ตัวเลข และอักขระพิเศษ');
+        const passwordValidation = getPasswordValidation(formData.password);
+        if (!passwordValidation.isMediumOrBetter) {
+            if (passwordValidation.missingMessages.length > 0) {
+                setError(`รหัสผ่านยังไม่ผ่านเกณฑ์ กรุณา${passwordValidation.missingMessages.join(' และ ')}`);
+            } else {
+                setError('รหัสผ่านยังไม่ผ่านเกณฑ์');
+            }
             return false;
         }
         if (formData.password !== formData.confirmPassword) {
@@ -102,6 +136,8 @@ export default function Register() {
         return true;
     };
 
+    const passwordValidation = getPasswordValidation(formData.password);
+
     // Handle submit - calls V2 registration request API
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -112,37 +148,32 @@ export default function Register() {
         setError('');
 
         try {
-            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-            const response = await fetch(`${API_URL}/v2/auth/register-request`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    email: formData.email.toLowerCase(),
-                    password: formData.password,
-                    firstName: formData.firstName,
-                    lastName: formData.lastName,
-                    title: formData.title,
-                    phone: formData.phone,
-                    position: formData.position,
-                    departmentId: null, // Will be assigned by admin
-                    tenantId: 1 // Default tenant
-                })
+            const data = await authServiceV2.registerRequest({
+                email: formData.email.toLowerCase(),
+                password: formData.password,
+                firstName: formData.firstName,
+                lastName: formData.lastName,
+                title: formData.title,
+                phone: formData.phone,
+                position: formData.position,
+                departmentId: null,
+                tenantId: 1
             });
 
-            const data = await response.json();
-
-            if (!response.ok || !data.success) {
-                throw new Error(data.error || data.message || 'Registration failed');
+            if (!data.success) {
+                const errCode = data.error || '';
+                if (errCode === 'EMAIL_EXISTS') {
+                    setError('อีเมลนี้ถูกใช้งานแล้ว กรุณาใช้อีเมลอื่น');
+                } else {
+                    setError(data.message || errCode || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง');
+                }
+                return;
             }
 
             setStep(2); // Success
         } catch (err) {
             console.error('Registration error:', err);
-            if (err.message === 'EMAIL_EXISTS') {
-                setError('อีเมลนี้ถูกใช้งานแล้ว กรุณาใช้อีเมลอื่น');
-            } else {
-                setError(err.message || 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง');
-            }
+            setError('เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่อีกครั้ง');
         } finally {
             setIsLoading(false);
         }
@@ -250,15 +281,70 @@ export default function Register() {
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
                                     รหัสผ่าน <span className="text-red-500">*</span>
                                 </label>
-                                <input
-                                    type="password"
-                                    name="password"
-                                    value={formData.password}
-                                    onChange={handleChange}
-                                    placeholder="ต้องมีตัวใหญ่ ตัวเล็ก ตัวเลข อักษรพิเศษ อย่างน้อย 8 ตัว"
-                                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-                                />
-                                <p className="text-xs text-gray-500 mt-1">ตัวอย่าง: MyPass@123</p>
+                                <div className="relative">
+                                    <LockClosedIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                    <input
+                                        type={showPassword ? 'text' : 'password'}
+                                        name="password"
+                                        value={formData.password}
+                                        onChange={handleChange}
+                                        placeholder="อย่างน้อย 8 ตัวอักษร"
+                                        autoComplete="new-password"
+                                        className={`w-full pl-10 pr-12 py-2.5 rounded-lg border focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent transition-colors ${
+                                            !formData.password ? 'border-gray-300' :
+                                            passwordValidation.isMediumOrBetter ? 'border-green-400' : 'border-amber-300'
+                                        }`}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-rose-500 transition-colors"
+                                        aria-label={showPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                                    >
+                                        {showPassword ? (
+                                            <EyeSlashIcon className="w-5 h-5" />
+                                        ) : (
+                                            <EyeIcon className="w-5 h-5" />
+                                        )}
+                                    </button>
+                                </div>
+                                {/* Password checklist validation */}
+                                <div className="mt-2 space-y-0.5">
+                                    {!formData.password ? (
+                                        <p className="text-xs text-gray-400">ตัวอย่าง: MyPass@123</p>
+                                    ) : (
+                                        <>
+                                            {[
+                                                { key: 'minLength', label: 'อย่างน้อย 8 ตัวอักษร' },
+                                                { key: 'hasUppercase', label: 'ตัวพิมพ์ใหญ่ (A-Z)' },
+                                                { key: 'hasLowercase', label: 'ตัวพิมพ์เล็ก (a-z)' },
+                                                { key: 'hasNumber', label: 'ตัวเลข (0-9)' },
+                                                { key: 'hasSpecialChar', label: 'อักขระพิเศษ (!@#$%)' }
+                                            ].map(({ key, label }) => (
+                                                <div key={key} className={`flex items-center gap-1.5 transition-colors ${
+                                                    passwordValidation.checks[key] ? 'text-green-600' : 'text-gray-400'
+                                                }`}>
+                                                    {passwordValidation.checks[key] ? (
+                                                        <CheckCircleSolidIcon className="w-3.5 h-3.5 shrink-0" />
+                                                    ) : (
+                                                        <div className="w-3.5 h-3.5 shrink-0 rounded-full border-[1.5px] border-current" />
+                                                    )}
+                                                    <span className="text-xs">{label}</span>
+                                                </div>
+                                            ))}
+                                            <div className="mt-1.5 pt-1.5 border-t border-gray-100">
+                                                <p className={`text-xs font-medium ${
+                                                    passwordValidation.isMediumOrBetter ? 'text-green-600' : 'text-amber-600'
+                                                }`}>
+                                                    {passwordValidation.isMediumOrBetter
+                                                        ? 'รหัสผ่านสามารถใช้ได้'
+                                                        : `รหัสผ่านยังไม่ผ่านเกณฑ์ (${passwordValidation.score}/4)`
+                                                    }
+                                                </p>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Confirm Password */}
@@ -266,14 +352,40 @@ export default function Register() {
                                 <label className="block text-sm font-medium text-gray-700 mb-1">
                                     ยืนยันรหัสผ่าน <span className="text-red-500">*</span>
                                 </label>
-                                <input
-                                    type="password"
-                                    name="confirmPassword"
-                                    value={formData.confirmPassword}
-                                    onChange={handleChange}
-                                    placeholder="ยืนยันรหัสผ่านอีกครั้ง"
-                                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-                                />
+                                <div className="relative">
+                                    <ShieldCheckIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                                    <input
+                                        type={showConfirmPassword ? 'text' : 'password'}
+                                        name="confirmPassword"
+                                        value={formData.confirmPassword}
+                                        onChange={handleChange}
+                                        placeholder="ยืนยันรหัสผ่านอีกครั้ง"
+                                        autoComplete="new-password"
+                                        className={`w-full pl-10 pr-12 py-2.5 rounded-lg border focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent transition-colors ${
+                                            !formData.confirmPassword ? 'border-gray-300' :
+                                            formData.password === formData.confirmPassword ? 'border-green-400' : 'border-red-400'
+                                        }`}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-rose-500 transition-colors"
+                                        aria-label={showConfirmPassword ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                                    >
+                                        {showConfirmPassword ? (
+                                            <EyeSlashIcon className="w-5 h-5" />
+                                        ) : (
+                                            <EyeIcon className="w-5 h-5" />
+                                        )}
+                                    </button>
+                                </div>
+                                {formData.confirmPassword && (
+                                    <p className={`text-xs mt-1 ${
+                                        formData.password === formData.confirmPassword ? 'text-green-600' : 'text-red-500'
+                                    }`}>
+                                        {formData.password === formData.confirmPassword ? 'รหัสผ่านตรงกัน' : 'รหัสผ่านไม่ตรงกัน'}
+                                    </p>
+                                )}
                             </div>
 
                             {/* Phone */}
