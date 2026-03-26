@@ -30,6 +30,34 @@ const SALT_ROUNDS = 10;
 const hashPassword = (password) => bcrypt.hash(password, SALT_ROUNDS);
 const verifyPassword = (plain, hash) => bcrypt.compare(plain, hash);
 
+const evaluatePasswordPolicy = (password) => {
+  const normalized = String(password || '');
+  const checks = {
+    minLength: normalized.length >= 8,
+    hasUppercase: /[A-Z]/.test(normalized),
+    hasLowercase: /[a-z]/.test(normalized),
+    hasNumber: /\d/.test(normalized),
+    hasSpecialChar: /[^A-Za-z0-9]/.test(normalized)
+  };
+
+  const score = Object.values(checks).filter(Boolean).length;
+  const isMediumOrBetter = checks.minLength && score >= 4;
+  const missing = [];
+
+  if (!checks.minLength) missing.push('at least 8 characters');
+  if (!checks.hasUppercase) missing.push('at least 1 uppercase letter');
+  if (!checks.hasLowercase) missing.push('at least 1 lowercase letter');
+  if (!checks.hasNumber) missing.push('at least 1 number');
+  if (!checks.hasSpecialChar) missing.push('at least 1 special character (e.g. !@#%)');
+
+  return { checks, score, isMediumOrBetter, missing };
+};
+
+const formatPasswordPolicyMessage = (missing = []) => {
+  if (!missing.length) return 'Password does not meet minimum policy';
+  return `Password does not meet minimum policy. Please add ${missing.join(' and ')}`;
+};
+
 const generateToken = (userId, tenantId, organizationId, email, roleId, roleName) => {
   return jwt.sign({
     sub: crypto.randomUUID(),
@@ -132,6 +160,11 @@ router.post('/auth/register', async (req, res, next) => {
     const { email, password, firstName, lastName, organizationId, tenantId, roleId } = req.body;
     if (!email || !password || !firstName || !lastName) {
       return res.status(400).json(errorResponse('MISSING_FIELDS', 'Email, password, firstName, and lastName are required'));
+    }
+
+    const passwordPolicy = evaluatePasswordPolicy(password);
+    if (!passwordPolicy.isMediumOrBetter) {
+      return res.status(400).json(errorResponse('WEAK_PASSWORD', formatPasswordPolicyMessage(passwordPolicy.missing)));
     }
 
     // Check if email already exists in V1 tables
@@ -300,8 +333,9 @@ router.post('/auth/register-request', async (req, res, next) => {
       return res.status(400).json(errorResponse('INVALID_EMAIL', 'Invalid email format'));
     }
 
-    if (String(password).length < 8) {
-      return res.status(400).json(errorResponse('WEAK_PASSWORD', 'Password must be at least 8 characters'));
+    const passwordPolicy = evaluatePasswordPolicy(password);
+    if (!passwordPolicy.isMediumOrBetter) {
+      return res.status(400).json(errorResponse('WEAK_PASSWORD', formatPasswordPolicyMessage(passwordPolicy.missing)));
     }
 
     // Register active Requester user and assign default HO project scope
@@ -337,8 +371,8 @@ router.post('/auth/register-request', async (req, res, next) => {
     if (error.message === 'EMAIL_EXISTS') {
       return res.status(409).json(errorResponse('EMAIL_EXISTS', 'This email is already registered'));
     }
-    if (error.message === 'PASSWORD_TOO_SHORT') {
-      return res.status(400).json(errorResponse('WEAK_PASSWORD', 'Password must be at least 8 characters'));
+    if (error.message === 'PASSWORD_TOO_SHORT' || error.message === 'PASSWORD_POLICY_FAILED') {
+      return res.status(400).json(errorResponse('WEAK_PASSWORD', 'Password does not meet minimum policy'));
     }
     if (error.message === 'DEFAULT_PROJECT_NOT_FOUND') {
       return res.status(500).json(errorResponse('DEFAULT_PROJECT_NOT_FOUND', 'Default HO project is not configured. Please contact administrator'));
@@ -503,8 +537,9 @@ router.post('/auth/change-password', authenticateToken, async (req, res, next) =
       return res.status(400).json(errorResponse('MISSING_FIELDS', 'New password is required'));
     }
 
-    if (newPassword.length < 8) {
-      return res.status(400).json(errorResponse('WEAK_PASSWORD', 'Password must be at least 8 characters'));
+    const passwordPolicy = evaluatePasswordPolicy(newPassword);
+    if (!passwordPolicy.isMediumOrBetter) {
+      return res.status(400).json(errorResponse('WEAK_PASSWORD', formatPasswordPolicyMessage(passwordPolicy.missing)));
     }
 
     // Get user with password for verification (if currentPassword provided)
@@ -532,8 +567,8 @@ router.post('/auth/change-password', authenticateToken, async (req, res, next) =
   } catch (error) {
     console.error('[V2 Auth] Change password error:', error);
 
-    if (error.message === 'PASSWORD_TOO_SHORT') {
-      return res.status(400).json(errorResponse('WEAK_PASSWORD', 'Password must be at least 8 characters'));
+    if (error.message === 'PASSWORD_TOO_SHORT' || error.message === 'PASSWORD_POLICY_FAILED') {
+      return res.status(400).json(errorResponse('WEAK_PASSWORD', 'Password does not meet minimum policy'));
     }
 
     next(error);

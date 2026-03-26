@@ -18,6 +18,22 @@ import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 
 class PrismaV1Adapter {
+  static evaluatePasswordPolicy(password) {
+    const normalized = String(password || '');
+    const checks = {
+      minLength: normalized.length >= 8,
+      hasUppercase: /[A-Z]/.test(normalized),
+      hasLowercase: /[a-z]/.test(normalized),
+      hasNumber: /\d/.test(normalized),
+      hasSpecialChar: /[^A-Za-z0-9]/.test(normalized)
+    };
+
+    const score = Object.values(checks).filter(Boolean).length;
+    const isMediumOrBetter = checks.minLength && score >= 4;
+
+    return { checks, score, isMediumOrBetter };
+  }
+
   /**
    * Convert V1 Prisma User to V2 format
    * @param {Object} prismaUser - User object from Prisma (users table)
@@ -676,8 +692,9 @@ class PrismaV1Adapter {
       throw new Error('MISSING_FIELDS');
     }
 
-    if (password.length < 8) {
-      throw new Error('PASSWORD_TOO_SHORT');
+    const passwordPolicy = PrismaV1Adapter.evaluatePasswordPolicy(password);
+    if (!passwordPolicy.isMediumOrBetter) {
+      throw new Error('PASSWORD_POLICY_FAILED');
     }
 
     const normalizedEmail = email.toLowerCase();
@@ -1075,8 +1092,9 @@ class PrismaV1Adapter {
       throw new Error('USER_NOT_FOUND');
     }
 
-    if (!newPassword || newPassword.length < 8) {
-      throw new Error('PASSWORD_TOO_SHORT');
+      const passwordPolicy = PrismaV1Adapter.evaluatePasswordPolicy(newPassword);
+      if (!passwordPolicy.isMediumOrBetter) {
+        throw new Error('PASSWORD_POLICY_FAILED');
     }
 
     const passwordHash = await bcrypt.hash(newPassword, 10);

@@ -4,14 +4,75 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_KEY;
 const isSupabaseEnabled = !!(supabaseUrl && supabaseAnonKey);
+export const isSupabaseConfigured = isSupabaseEnabled;
 
 // Dummy client สำหรับ jwt_only mode (ไม่ใช้ Supabase)
+const createDummyQueryBuilder = () => {
+    const result = { data: [], error: null };
+    const singleResult = { data: null, error: null };
+
+    const builder = {
+        select: () => builder,
+        eq: () => builder,
+        in: () => builder,
+        neq: () => builder,
+        not: () => builder,
+        gte: () => builder,
+        lte: () => builder,
+        ilike: () => builder,
+        is: () => builder,
+        order: () => builder,
+        range: () => builder,
+        limit: () => builder,
+        maybeSingle: async () => singleResult,
+        single: async () => singleResult,
+        insert: async () => result,
+        update: async () => result,
+        upsert: async () => result,
+        delete: async () => result,
+        then: (resolve) => Promise.resolve(result).then(resolve),
+        catch: (reject) => Promise.resolve(result).catch(reject),
+        finally: (handler) => Promise.resolve(result).finally(handler)
+    };
+
+    return builder;
+};
+
+const createDummyChannel = () => {
+    const channel = {
+        on: () => channel,
+        subscribe: (callback) => {
+            if (typeof callback === 'function') {
+                callback('SUBSCRIBED');
+            }
+            return channel;
+        },
+        presenceState: () => ({}),
+        track: async () => ({ error: null }),
+        untrack: async () => ({ error: null }),
+        unsubscribe: async () => ({ error: null })
+    };
+
+    return channel;
+};
+
 const createDummyClient = () => ({
-    from: () => ({ select: () => Promise.resolve({ data: null, error: { message: 'Supabase not configured' } }) }),
-    auth: { getSession: () => Promise.resolve({ data: null }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }) },
-    storage: { from: () => ({ upload: () => Promise.resolve({ error: { message: 'Supabase not configured' } }) }) },
-    channel: () => ({ on: () => ({ subscribe: () => ({}) }), subscribe: () => ({}) }),
+    from: () => createDummyQueryBuilder(),
+    auth: {
+        getSession: () => Promise.resolve({ data: null }),
+        onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } })
+    },
+    storage: {
+        from: () => ({
+            upload: () => Promise.resolve({ data: null, error: null }),
+            download: () => Promise.resolve({ data: null, error: null }),
+            remove: () => Promise.resolve({ data: null, error: null }),
+            getPublicUrl: () => ({ data: { publicUrl: '' } })
+        })
+    },
+    channel: () => createDummyChannel(),
     removeChannel: () => {},
+    removeAllChannels: () => {}
 });
 
 // Create a single supabase client for interacting with your database

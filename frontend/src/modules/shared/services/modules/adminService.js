@@ -184,7 +184,16 @@ export const adminService = {
     },
 
     createProject: async (projectData) => {
-        const response = await httpClient.post('/projects', projectData);
+        const payload = {
+            ...projectData,
+            name: projectData.name?.trim?.() ?? projectData.name,
+            code: projectData.code?.trim?.() ?? projectData.code,
+            isActive: typeof projectData.isActive === 'boolean'
+                ? projectData.isActive
+                : projectData.status === 'Active'
+        };
+
+        const response = await httpClient.post('/projects', payload);
         if (!response.data.success) throw new Error(response.data.message);
 
         // ⚡ Performance: Invalidate projects cache
@@ -194,7 +203,14 @@ export const adminService = {
     },
 
     updateProject: async (id, projectData) => {
-        const payload = { ...projectData, isActive: projectData.status === 'Active' };
+        const payload = {
+            ...projectData,
+            name: projectData.name?.trim?.() ?? projectData.name,
+            code: projectData.code?.trim?.() ?? projectData.code,
+            isActive: typeof projectData.isActive === 'boolean'
+                ? projectData.isActive
+                : projectData.status === 'Active'
+        };
         const response = await httpClient.put(`/projects/${id}`, payload);
         if (!response.data.success) throw new Error(response.data.message);
 

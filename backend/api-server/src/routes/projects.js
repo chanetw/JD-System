@@ -16,6 +16,69 @@ const router = express.Router();
 router.use(authenticateToken);
 router.use(setRLSContextMiddleware);
 
+function normalizeProjectPayload(body, fallbackTenantId = null, fallbackIsActive = true) {
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    const code = typeof body.code === 'string' ? body.code.trim() : '';
+    const parsedTenantId = body.tenantId !== undefined && body.tenantId !== null && body.tenantId !== ''
+        ? parseInt(body.tenantId, 10)
+        : fallbackTenantId;
+    const parsedBudId = body.budId !== undefined && body.budId !== null && body.budId !== ''
+        ? parseInt(body.budId, 10)
+        : null;
+    const parsedDepartmentId = body.departmentId !== undefined && body.departmentId !== null && body.departmentId !== ''
+        ? parseInt(body.departmentId, 10)
+        : null;
+
+    let isActive = fallbackIsActive;
+    if (typeof body.isActive === 'boolean') {
+        isActive = body.isActive;
+    } else if (typeof body.status === 'string') {
+        isActive = body.status === 'Active';
+    }
+
+    return {
+        name,
+        code,
+        tenantId: parsedTenantId,
+        budId: parsedBudId,
+        departmentId: parsedDepartmentId,
+        isActive
+    };
+}
+
+function validateProjectPayload(payload) {
+    if (!payload.name) return 'กรุณาระบุชื่อโครงการ';
+    if (!payload.code) return 'กรุณาระบุรหัสโครงการ';
+    if (!payload.tenantId || isNaN(payload.tenantId)) return 'กรุณาระบุบริษัท (Tenant)';
+    if (!payload.budId || isNaN(payload.budId)) return 'กรุณาระบุสายงาน (BUD)';
+    if (payload.departmentId !== null && isNaN(payload.departmentId)) return 'ข้อมูลแผนกไม่ถูกต้อง';
+    return null;
+}
+
+function handleProjectMutationError(res, error, action) {
+    console.error(`[Projects] ${action} error:`, error);
+
+    let status = 500;
+    let message = action === 'create'
+        ? 'Failed to create project'
+        : 'Failed to update project';
+
+    if (error.code === 'P2002') {
+        status = 409;
+        message = 'รหัสโครงการนี้ซ้ำในบริษัทเดียวกัน';
+    } else if (error.code === 'P2003') {
+        status = 400;
+        message = 'ข้อมูลบริษัท, สายงาน หรือแผนกไม่ถูกต้อง';
+    }
+
+    res.status(status).json({
+        success: false,
+        message,
+        detail: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        code: error.code
+    });
+}
+
 /**
  * GET /api/projects
  * List all projects for the tenant
@@ -137,26 +200,27 @@ router.post('/', async (req, res) => {
     try {
         const prisma = getDatabase();
         const tenantId = req.user.tenantId;
-        const { name, code, budId, departmentId, isActive, tenantId: bodyTenantId } = req.body;
+        const payload = normalizeProjectPayload(req.body, tenantId, true);
+        const validationError = validateProjectPayload(payload);
 
-        // Use body tenantId if provided (for Multi-Tenant Admins), else fallback to user's tenant
-        const finalTenantId = bodyTenantId ? parseInt(bodyTenantId) : tenantId;
+        if (validationError) {
+            return res.status(400).json({ success: false, message: validationError });
+        }
 
         const project = await prisma.project.create({
             data: {
-                tenantId: finalTenantId,
-                name,
-                code,
-                budId: budId ? parseInt(budId) : null,
-                departmentId: departmentId ? parseInt(departmentId) : null,
-                isActive: isActive !== undefined ? isActive : true
+                tenantId: payload.tenantId,
+                name: payload.name,
+                code: payload.code,
+                budId: payload.budId,
+                departmentId: payload.departmentId,
+                isActive: payload.isActive
             }
         });
 
         res.json({ success: true, data: project });
     } catch (error) {
-        console.error('[Projects] Create error:', error);
-        res.status(500).json({ success: false, message: 'Failed to create project' });
+        handleProjectMutationError(res, error, 'create');
     }
 });
 
@@ -167,8 +231,6 @@ router.put('/:id', async (req, res) => {
     try {
         const prisma = getDatabase();
         const id = parseInt(req.params.id);
-        const tenantId = req.user.tenantId;
-        const { name, code, budId, departmentId, isActive, tenantId: bodyTenantId } = req.body;
 
         // Note: We search by ID only (ignoring tenantId) or we need to relax the check if switching tenants
         // But for safety, we first check if it exists in current user's scope or if we are admin.
@@ -176,25 +238,28 @@ router.put('/:id', async (req, res) => {
         const existing = await prisma.project.findUnique({ where: { id } });
         if (!existing) return res.status(404).json({ success: false, message: 'Project not found' });
 
-        // Use body tenantId if provided, else keep existing
-        const finalTenantId = bodyTenantId ? parseInt(bodyTenantId) : existing.tenantId;
+        const payload = normalizeProjectPayload(req.body, existing.tenantId, existing.isActive);
+        const validationError = validateProjectPayload(payload);
+
+        if (validationError) {
+            return res.status(400).json({ success: false, message: validationError });
+        }
 
         const updated = await prisma.project.update({
             where: { id },
             data: {
-                tenantId: finalTenantId,
-                name,
-                code,
-                budId: budId ? parseInt(budId) : null,
-                departmentId: departmentId ? parseInt(departmentId) : null,
-                isActive
+                tenantId: payload.tenantId,
+                name: payload.name,
+                code: payload.code,
+                budId: payload.budId,
+                departmentId: payload.departmentId,
+                isActive: payload.isActive
             }
         });
 
         res.json({ success: true, data: updated });
     } catch (error) {
-        console.error('[Projects] Update error:', error);
-        res.status(500).json({ success: false, message: 'Failed to update project' });
+        handleProjectMutationError(res, error, 'update');
     }
 });
 

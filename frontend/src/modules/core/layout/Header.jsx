@@ -29,13 +29,10 @@ export default function Header() {
     // === สถานะการแสดงผลเมนู Dropdown (UI States) ===
     const [showNoti, setShowNoti] = useState(false);               // เมนูแจ้งเตือน
 
-    // โหลดข้อมูลแจ้งเตือนเมื่อคอมโพเน็นต์ถูกแสดง หรือเมื่อผู้ใช้เปลี่ยนไป
-    useEffect(() => {
-        fetchNotifications();
-    }, [user, fetchNotifications]);
-
     // Auto-refresh notifications ทุก 2 นาที (120,000 ms) - เฉพาะ icon กระดิ่ง ไม่ reload ทั้งหน้า
     useEffect(() => {
+        if (!user?.id) return;
+
         // Initial fetch
         fetchNotifications();
 

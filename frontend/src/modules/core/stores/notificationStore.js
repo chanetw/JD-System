@@ -14,12 +14,30 @@ export const useNotificationStore = create((set, get) => ({
     notifications: [],
     unreadCount: 0,
     isLoading: false,
+    lastFetchAt: 0,
+    disabledUntil: 0,
+    consecutiveErrors: 0,
 
     /**
      * ดึงรายการ Notification จาก Database
      */
     fetchNotifications: async () => {
-        set({ isLoading: true });
+        const now = Date.now();
+        const state = get();
+
+        if (state.isLoading) {
+            return;
+        }
+
+        if (state.disabledUntil && now < state.disabledUntil) {
+            return;
+        }
+
+        if (state.lastFetchAt && (now - state.lastFetchAt) < 5000) {
+            return;
+        }
+
+        set({ isLoading: true, lastFetchAt: now });
 
         try {
             const currentUser = useAuthStoreV2.getState().user;
@@ -44,11 +62,27 @@ export const useNotificationStore = create((set, get) => ({
             set({
                 notifications: userNotifications,
                 unreadCount: unread,
-                isLoading: false
+                isLoading: false,
+                consecutiveErrors: 0,
+                disabledUntil: 0
             });
         } catch (error) {
             console.error('[notificationStore] fetchNotifications error:', error);
-            set({ notifications: [], unreadCount: 0, isLoading: false });
+
+            const status = error?.response?.status;
+            const nextConsecutiveErrors = (get().consecutiveErrors || 0) + 1;
+            const shouldBackoff = status === 401 || status === 403 || error?.code === 'ECONNABORTED';
+            const backoffMs = shouldBackoff
+                ? Math.min(120000, Math.max(15000, nextConsecutiveErrors * 15000))
+                : 0;
+
+            set({
+                notifications: [],
+                unreadCount: 0,
+                isLoading: false,
+                consecutiveErrors: nextConsecutiveErrors,
+                disabledUntil: backoffMs ? Date.now() + backoffMs : 0
+            });
         }
     },
 

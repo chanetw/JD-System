@@ -405,6 +405,15 @@ router.post('/:type/test', async (req, res) => {
       </div>
     `;
 
+    // ตรวจสอบ SMTP config ก่อนส่ง
+    if (!emailService.smtpHost || !emailService.smtpUser) {
+      return res.status(503).json({
+        success: false,
+        error: 'SMTP_NOT_CONFIGURED',
+        message: 'ยังไม่ได้ตั้งค่า SMTP บน server กรุณาเพิ่ม SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS ใน .env แล้ว restart backend'
+      });
+    }
+
     // ส่ง email ไปยัง CC emails ทั้งหมด
     const emailResults = await Promise.allSettled(
       typeSetting.ccEmails.map(email => 
@@ -419,10 +428,16 @@ router.post('/:type/test', async (req, res) => {
     console.log(`[Email Settings] Test email results: ${successCount} success, ${failCount} failed`);
 
     if (successCount === 0) {
-      return res.status(500).json({ 
+      // ตรวจสอบว่า error แรกมีสาเหตุจาก SMTP config หรือไม่
+      const firstResult = emailResults[0];
+      const firstError = firstResult?.status === 'fulfilled' ? firstResult.value?.error : firstResult?.reason?.message;
+      const isConfigError = firstError === 'SMTP_NOT_CONFIGURED';
+      return res.status(isConfigError ? 503 : 500).json({ 
         success: false, 
-        error: 'EMAIL_SEND_FAILED', 
-        message: 'ไม่สามารถส่ง test email ได้ กรุณาตรวจสอบการตั้งค่า SMTP' 
+        error: isConfigError ? 'SMTP_NOT_CONFIGURED' : 'EMAIL_SEND_FAILED', 
+        message: isConfigError
+          ? 'ยังไม่ได้ตั้งค่า SMTP บน server กรุณาเพิ่ม SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS ใน .env แล้ว restart backend'
+          : `ส่ง email ไม่สำเร็จ (${firstError || 'SMTP authentication หรือ connection ผิดพลาด'}) กรุณาตรวจสอบ SMTP credentials`
       });
     }
 

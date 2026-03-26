@@ -79,7 +79,12 @@ export const useAuthStoreV2 = create<AuthStore>()(
        * Initialize auth state from stored token
        */
       initialize: async () => {
-        const token = localStorage.getItem('auth_token_v2');
+        const legacyToken = localStorage.getItem('token');
+        const token = localStorage.getItem('auth_token_v2') || legacyToken;
+
+        if (!localStorage.getItem('auth_token_v2') && legacyToken) {
+          localStorage.setItem('auth_token_v2', legacyToken);
+        }
 
         if (!token) {
           set({ isLoading: false });
@@ -102,11 +107,13 @@ export const useAuthStoreV2 = create<AuthStore>()(
           } else {
             // Token invalid - clear everything
             localStorage.removeItem('auth_token_v2');
+            localStorage.removeItem('token');
             set({ ...initialState, isLoading: false });
           }
         } catch (error) {
           console.error('[AuthStoreV2] Initialize error:', error);
           localStorage.removeItem('auth_token_v2');
+          localStorage.removeItem('token');
           set({ ...initialState, isLoading: false });
         }
       },
@@ -130,6 +137,7 @@ export const useAuthStoreV2 = create<AuthStore>()(
 
           // Store token
           localStorage.setItem('auth_token_v2', token);
+          localStorage.setItem('token', token);
 
           set({
             user,
@@ -166,6 +174,7 @@ export const useAuthStoreV2 = create<AuthStore>()(
 
           // Store token
           localStorage.setItem('auth_token_v2', token);
+          localStorage.setItem('token', token);
 
           set({
             user,
@@ -230,6 +239,7 @@ export const useAuthStoreV2 = create<AuthStore>()(
 
         // Clear stored token
         localStorage.removeItem('auth_token_v2');
+        localStorage.removeItem('token');
 
         // Reset state
         set(initialState);

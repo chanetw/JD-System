@@ -24,7 +24,10 @@ export interface IRegisterRequestData {
   password: string;
   firstName: string;
   lastName: string;
-  departmentId?: number;
+  title?: string;
+  phone?: string;
+  position?: string;
+  departmentId?: number | null;
   tenantId: number;
 }
 

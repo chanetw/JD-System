@@ -112,6 +112,12 @@ export const notificationService = {
             return [];
         } catch (error) {
             console.error('[notificationService] getNotifications error:', error);
+
+            // Propagate critical errors so store can apply backoff/retry policy
+            if (error?.response?.status === 401 || error?.response?.status === 403 || error?.code === 'ECONNABORTED') {
+                throw error;
+            }
+
             return [];
         }
     },

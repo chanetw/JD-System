@@ -21,7 +21,7 @@ import { Login, LoginDemo, Register, ChangePassword, ProtectedRoute, RoleProtect
 import MagicLinkAuth from './modules/core/auth/pages/MagicLinkAuth';
 
 // V2 Auth Pages (TypeScript - Production-ready)
-import { LoginV2, RegisterV2, ForgotPasswordV2, ResetPasswordV2, ForceChangePassword } from '@core/auth-v2';
+import { LoginV2, ForgotPasswordV2, ResetPasswordV2, ForceChangePassword } from '@core/auth-v2';
 
 // Lazy-loaded Feature Modules (Code Splitting)
 const Dashboard = lazy(() => import('@features/dashboard/pages/Dashboard'));
