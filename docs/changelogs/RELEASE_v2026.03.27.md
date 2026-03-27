@@ -88,13 +88,26 @@
 
 ---
 
-## 4. คู่มือ Deploy บน Production Server (Step-by-Step)
+## 4. คู่มือ Deploy
 
-### ข้อกำหนดเบื้องต้น
-- Server มี Docker + Docker Compose ติดตั้งแล้ว
-- มี `docker-compose.prod.yml` อยู่บน server
-- PostgreSQL container (`dj-postgres-prod`) + volume (`dj-data-prod`) มีอยู่แล้ว
-- Server เข้าถึง Docker Hub ได้ (pull images)
+> 📖 ดูคู่มือฉบับเต็มได้ที่ **[docs/DOCKER_HUB_DEPLOY.md](../DOCKER_HUB_DEPLOY.md)**
+
+### สรุปย่อ (3 คำสั่ง)
+
+```bash
+# Option A: Script อัตโนมัติ (แนะนำ)
+./scripts/deploy-hub.sh
+```
+
+```bash
+# Option B: Manual
+docker compose -f docker-compose.prod.yml pull backend frontend
+docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate backend frontend
+docker compose -f docker-compose.prod.yml ps
+```
+
+> ⚠️ **`--no-deps`** = postgres container ไม่ถูกแตะ  
+> ⚠️ **`--force-recreate`** = บังคับสร้าง container ใหม่แม้ tag เป็น `latest`
 
 ### วิธีที่ 1: ใช้ Deploy Script (แนะนำ)
 
