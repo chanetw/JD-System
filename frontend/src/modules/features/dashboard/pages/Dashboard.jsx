@@ -81,7 +81,6 @@ function Dashboard() {
     const [filter, setFilter] = useState('all');
     const [assigneeFilter, setAssigneeFilter] = useState('');  // string ชื่อ assignee ที่กรอง
     const [statusFilter, setStatusFilter] = useState('');      // status ที่ต้องการกรอง
-    const [showParent, setShowParent] = useState(false);       // เปิด/ปิดการแสดง Parent Jobs (Flat View)
     const [viewMode, setViewMode] = useState('flat');          // 'flat' | 'parent' — View Mode Toggle
     const [expandedRows, setExpandedRows] = useState(new Set()); // Parent IDs ที่กางอยู่ (Parent View)
     const [sortMode, setSortMode] = useState('sla');     // 'sla' | 'createdAt' | 'updatedAt' — default: SLA น้อยไปมาก
@@ -534,7 +533,7 @@ function Dashboard() {
 
         // 1. Apply View Mode Logic (แสดงทุก jobs เพื่อให้ครบ 20 รายการ)
         if (viewMode === 'flat') {
-            // ไม่กรองอะไรเลย — แสดงทั้ง Parent และ Child Jobs
+            result = result.filter(job => !job.isParent);
         } else if (viewMode === 'parent') {
             result = buildParentViewJobs(result);
         }
@@ -571,11 +570,8 @@ function Dashboard() {
     }, [jobs, viewMode, sortMode, buildParentViewJobs, queuePage]);
 
     const filterableJobs = useMemo(() => {
-        if (viewMode === 'parent') {
-            return buildParentViewJobs(jobs);
-        }
         return jobs.filter(job => !job.isParent);
-    }, [jobs, viewMode, buildParentViewJobs]);
+    }, [jobs]);
 
     // รวบรวม assignee ที่มีในรายการงาน (unique)
     const assigneeOptions = [...new Set(filterableJobs.map(j => {

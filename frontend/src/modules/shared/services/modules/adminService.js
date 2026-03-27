@@ -364,7 +364,6 @@ export const adminService = {
             name: jobTypeData.name.trim(),
             description: jobTypeData.description || '',
             sla: parseInt(jobTypeData.sla) || 3,
-            sla: parseInt(jobTypeData.sla) || 3,
             isActive: jobTypeData.status === 'active', // Convert status to isActive
             icon: jobTypeData.icon || 'social',
             attachments: Array.isArray(jobTypeData.attachments)
@@ -372,14 +371,20 @@ export const adminService = {
                 : (jobTypeData.attachments ? [jobTypeData.attachments] : [])
         };
 
+        // Include nextJobTypeId for Auto-Chain
+        if (jobTypeData.nextJobTypeId) {
+            payload.nextJobTypeId = jobTypeData.nextJobTypeId;
+        }
+
         try {
             const response = await httpClient.post('/job-types', payload);
             if (!response.data.success) {
                 throw new Error(response.data.message || 'Failed to create job type');
             }
 
-            // ⚡ Performance: Invalidate job types cache
+            // ⚡ Performance: Invalidate job types cache + master data combined cache
             cacheService.invalidateByPrefix('jobTypes:');
+            cacheService.clear('masterData:combined');
 
             return response.data.data;
         } catch (error) {
@@ -435,8 +440,9 @@ export const adminService = {
                 throw new Error(response.data.message || 'Failed to update job type');
             }
 
-            // ⚡ Performance: Invalidate job types cache
+            // ⚡ Performance: Invalidate job types cache + master data combined cache
             cacheService.invalidateByPrefix('jobTypes:');
+            cacheService.clear('masterData:combined');
 
             return response.data.data;
         } catch (error) {
@@ -461,8 +467,9 @@ export const adminService = {
                 throw new Error(response.data.message || 'Failed to delete job type');
             }
 
-            // ⚡ Performance: Invalidate job types cache
+            // ⚡ Performance: Invalidate job types cache + master data combined cache
             cacheService.invalidateByPrefix('jobTypes:');
+            cacheService.clear('masterData:combined');
 
             return { success: true };
         } catch (error) {

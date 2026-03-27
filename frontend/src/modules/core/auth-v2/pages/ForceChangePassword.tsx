@@ -93,9 +93,9 @@ const ForceChangePassword: React.FC = () => {
       <div className="max-w-md w-full space-y-8">
         {/* Header */}
         <div className="text-center">
-          <h1 className="text-4xl font-bold text-rose-600">DJ System</h1>
-          <h2 className="mt-4 text-2xl font-semibold text-gray-900">เปลี่ยนรหัสผ่าน</h2>
-          <p className="mt-2 text-sm text-gray-600">
+          <h1 className="text-4xl font-bold text-white">DJ System</h1>
+          <h2 className="mt-4 text-2xl font-semibold text-white">เปลี่ยนรหัสผ่าน</h2>
+          <p className="mt-2 text-sm text-white/80">
             กรุณาตั้งรหัสผ่านใหม่ของคุณ
           </p>
         </div>

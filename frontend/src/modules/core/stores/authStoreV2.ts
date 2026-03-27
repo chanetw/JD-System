@@ -39,7 +39,7 @@ interface AuthActions {
   register: (data: IRegisterRequest) => Promise<IUser>;
   registerRequest: (data: IRegisterRequestData) => Promise<IRegisterRequestResult>;
   logout: () => void;
-  forgotPassword: (email: string) => Promise<void>;
+  forgotPassword: (email: string) => Promise<number>;
   resetPassword: (token: string, newPassword: string) => Promise<void>;
   clearError: () => void;
   setUser: (user: IUser | null) => void;
@@ -262,6 +262,7 @@ export const useAuthStoreV2 = create<AuthStore>()(
           }
 
           set({ isLoading: false });
+          return response.data?.cooldownRemainingSeconds || 0;
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Failed to send reset email';
           set({ error: errorMessage, isLoading: false });

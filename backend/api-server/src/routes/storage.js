@@ -27,6 +27,31 @@ const __dirname = path.dirname(__filename);
 const router = express.Router();
 const prisma = getDatabase();
 
+const MAX_UPLOAD_SIZE_MB = parseInt(process.env.MAX_UPLOAD_SIZE_MB || '50', 10);
+const MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024;
+const ALLOWED_UPLOAD_MIME_TYPES = [
+  // Images
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'image/svg+xml',
+  // Documents
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  // Archives
+  'application/zip',
+  'application/x-rar-compressed',
+  // Design files
+  'application/postscript',
+  'image/vnd.adobe.photoshop'
+];
+
 // ทุก routes ต้องมีการ authenticate และตั้งค่า RLS context
 router.use(authenticateToken);
 router.use(setRLSContextMiddleware);
@@ -36,31 +61,38 @@ const storage = multer.memoryStorage();
 const upload = multer({
   storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: MAX_UPLOAD_SIZE_BYTES,
   },
   fileFilter: (req, file, cb) => {
-    // อนุญาตไฟล์ประเภทต่างๆ
-    const allowedTypes = [
-      'image/jpeg',
-      'image/png',
-      'image/gif',
-      'image/webp',
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'text/plain',
-      'application/zip'
-    ];
-
-    if (allowedTypes.includes(file.mimetype)) {
+    if (ALLOWED_UPLOAD_MIME_TYPES.includes(file.mimetype)) {
       cb(null, true);
     } else {
       cb(new Error('ประเภทไฟล์ไม่ได้รับอนุญาต'), false);
     }
   }
 });
+
+function uploadSingleFile(req, res, next) {
+  upload.single('file')(req, res, (err) => {
+    if (!err) {
+      return next();
+    }
+
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        error: 'FILE_TOO_LARGE',
+        message: `ไฟล์ขนาดใหญ่เกินไป (สูงสุด ${MAX_UPLOAD_SIZE_MB}MB)`
+      });
+    }
+
+    return res.status(400).json({
+      success: false,
+      error: 'INVALID_FILE',
+      message: err.message || 'ไม่สามารถอัปโหลดไฟล์ได้'
+    });
+  });
+}
 
 /**
  * POST /api/storage/upload
@@ -71,7 +103,7 @@ const upload = multer({
  * @formdata {number} jobId - ID ของงาน (optional)
  * @formdata {number} projectId - ID ของโปรเจกต์ (optional)
  */
-router.post('/upload', upload.single('file'), async (req, res) => {
+router.post('/upload', uploadSingleFile, async (req, res) => {
   try {
     const { folder, jobId, projectId } = req.body;
     const file = req.file;

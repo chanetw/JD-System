@@ -55,6 +55,10 @@ export interface IRegistrationCounts {
   total: number;
 }
 
+export interface IForgotPasswordResponseData {
+  cooldownRemainingSeconds?: number;
+}
+
 /**
  * Get authorization header with token
  */
@@ -122,7 +126,7 @@ export const authServiceV2 = {
   /**
    * Forgot password - initiate reset
    */
-  async forgotPassword(email: string): Promise<IApiResponse<null>> {
+  async forgotPassword(email: string): Promise<IApiResponse<IForgotPasswordResponseData | null>> {
     const response = await fetch(`${API_V2_AUTH}/forgot-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

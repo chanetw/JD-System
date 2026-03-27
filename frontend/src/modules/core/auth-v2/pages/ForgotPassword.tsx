@@ -5,20 +5,48 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStoreV2 } from '../../stores/authStoreV2';
 
 const ForgotPasswordV2: React.FC = () => {
-  const { forgotPassword, isLoading, error, clearError } = useAuthStoreV2();
+  const { forgotPassword, logout, isLoading, error, clearError } = useAuthStoreV2();
+  const navigate = useNavigate();
 
   // Form state
   const [email, setEmail] = useState('');
-  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   // Clear error on mount
   useEffect(() => {
     clearError();
   }, [clearError]);
+
+  const getMaskedEmail = (value: string) => {
+    const normalized = String(value || '').trim();
+    if (!normalized.includes('@')) return normalized;
+
+    const [localPart, domain] = normalized.split('@');
+    if (!localPart || !domain) return normalized;
+
+    if (localPart.length <= 2) {
+      return `${localPart[0] || '*'}*@${domain}`;
+    }
+
+    return `${localPart.slice(0, 2)}${'*'.repeat(Math.max(localPart.length - 2, 2))}@${domain}`;
+  };
+
+  const sendForgotPasswordRequest = async () => {
+    if (!email) return;
+
+    try {
+      await forgotPassword(email);
+      setShowConfirmModal(false);
+      logout();
+      navigate('/login', { replace: true });
+    } catch (err) {
+      console.error('Forgot password failed:', err);
+    }
+  };
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
@@ -28,54 +56,8 @@ const ForgotPasswordV2: React.FC = () => {
       return;
     }
 
-    try {
-      await forgotPassword(email);
-      setIsSubmitted(true);
-    } catch (err) {
-      console.error('Forgot password failed:', err);
-    }
+    setShowConfirmModal(true);
   };
-
-  // Success state
-  if (isSubmitted) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-rose-600 via-rose-700 to-rose-900 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full space-y-8">
-          <div className="text-center">
-            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100">
-              <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <h2 className="mt-6 text-2xl font-semibold text-white">ตรวจสอบอีเมลของคุณ</h2>
-            <p className="mt-2 text-base text-white/80">
-              หากมีบัญชีใช้งานที่ตรงกับ <span className="font-medium text-white">{email}</span> ระบบได้ส่งลิงก์สำหรับเปลี่ยนรหัสผ่านไปเรียบร้อยแล้ว
-            </p>
-          </div>
-
-          <div className="bg-white p-8 rounded-xl shadow-lg space-y-4">
-            <p className="text-base text-gray-700 text-center">
-              ไม่ได้รับอีเมล? โปรดตรวจสอบกล่องข้อความขยะ (Spam) หรือลองอีกครั้ง
-            </p>
-
-            <button
-              onClick={() => setIsSubmitted(false)}
-              className="w-full py-3 px-4 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 transition-colors"
-            >
-              ลองอีกครั้ง
-            </button>
-
-            <Link
-              to="/"
-              className="block w-full py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-center text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 transition-colors"
-            >
-              กลับสู่หน้าเข้าสู่ระบบ
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-rose-600 via-rose-700 to-rose-900 py-12 px-4 sm:px-6 lg:px-8">
@@ -109,7 +91,10 @@ const ForgotPasswordV2: React.FC = () => {
               autoComplete="email"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                clearError();
+              }}
               className="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-indigo-500 sm:text-sm"
               placeholder="กรอกอีเมลของคุณ"
             />
@@ -137,13 +122,56 @@ const ForgotPasswordV2: React.FC = () => {
           {/* Back to Login */}
           <div className="text-center text-sm">
             <Link
-              to="/"
+              to="/login"
               className="font-medium text-rose-600 hover:text-indigo-500"
             >
               กลับสู่หน้าเข้าสู่ระบบ
             </Link>
           </div>
         </form>
+
+        {showConfirmModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+            <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border border-gray-200 overflow-hidden">
+              <div className="px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-slate-50 to-slate-100">
+                <h3 className="text-lg font-semibold text-gray-900">ยืนยันการส่งคำขอตั้งรหัสผ่านใหม่</h3>
+                <p className="mt-1 text-sm text-gray-700">
+                  กรุณาตรวจสอบข้อมูลก่อนดำเนินการ
+                </p>
+              </div>
+
+              <div className="px-6 py-5 space-y-4">
+                <p className="text-sm leading-6 text-gray-700">
+                  ระบบจะดำเนินการส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปยังอีเมลที่ท่านระบุ หากข้อมูลถูกต้องตามเงื่อนไขของระบบ
+                </p>
+
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                  <p className="text-xs text-gray-500">อีเมลที่ระบุ</p>
+                  <p className="mt-1 text-sm font-medium text-gray-800">{getMaskedEmail(email)}</p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmModal(false)}
+                    className="w-full py-3 px-4 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 transition-colors"
+                  >
+                    ยกเลิก
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={sendForgotPasswordRequest}
+                    disabled={isLoading}
+                    className="w-full py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-center text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isLoading ? 'กำลังดำเนินการ...' : 'ยืนยันการส่งคำขอ'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

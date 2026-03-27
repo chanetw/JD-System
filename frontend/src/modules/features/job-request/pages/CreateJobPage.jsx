@@ -31,6 +31,91 @@ export default function CreateDJ() {
     const navigate = useNavigate();
     const { user } = useAuthStoreV2();
 
+    const formatDateForInput = (date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const isNonWorkingDay = (date, holidayList = []) => {
+        const current = new Date(date);
+        current.setHours(0, 0, 0, 0);
+
+        if (current.getDay() === 0 || current.getDay() === 6) {
+            return true;
+        }
+
+        return holidayList.some((holiday) => {
+            const value = typeof holiday === 'string' ? holiday : (holiday.date || holiday.Day);
+            if (!value) return false;
+
+            const holidayDate = new Date(value);
+            holidayDate.setHours(0, 0, 0, 0);
+            return holidayDate.getTime() === current.getTime();
+        });
+    };
+
+    const getCriticalPathSla = (jobTypes = []) => {
+        if (!jobTypes.length) return 0;
+
+        const accumulatedSla = [];
+
+        jobTypes.forEach((jobType, index) => {
+            const ownSla = parseInt(jobType.sla, 10) || 7;
+            const predecessorIndex = jobType.predecessorIndex;
+            const predecessorSla = predecessorIndex !== null && predecessorIndex !== undefined && predecessorIndex < index
+                ? (accumulatedSla[predecessorIndex] || 0)
+                : 0;
+
+            accumulatedSla[index] = ownSla + predecessorSla;
+        });
+
+        return Math.max(...accumulatedSla);
+    };
+
+    const getEffectiveSla = (jobTypes = selectedJobTypes, singleJobTypeId = formData.jobTypeId) => {
+        if (jobTypes.length > 0) {
+            return getCriticalPathSla(jobTypes);
+        }
+
+        const singleJobType = masterData.jobTypes.find((jobType) => jobType.id === parseInt(singleJobTypeId, 10));
+        return parseInt(singleJobType?.sla, 10) || 0;
+    };
+
+    const getRecommendedDueDate = ({
+        jobTypes = selectedJobTypes,
+        singleJobTypeId = formData.jobTypeId,
+        priority = formData.priority,
+        holidayList = holidays
+    } = {}) => {
+        const effectiveSla = getEffectiveSla(jobTypes, singleJobTypeId);
+        if (!effectiveSla) {
+            return null;
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        let nextDate;
+
+        if (priority === 'Urgent') {
+            nextDate = new Date(today);
+            nextDate.setDate(nextDate.getDate() + 1);
+        } else {
+            nextDate = addWorkDays(today, effectiveSla, holidayList);
+            nextDate = new Date(nextDate);
+            nextDate.setDate(nextDate.getDate() + 1);
+
+            while (isNonWorkingDay(nextDate, holidayList)) {
+                nextDate.setDate(nextDate.getDate() + 1);
+            }
+        }
+
+        nextDate.setHours(0, 0, 0, 0);
+        return nextDate;
+    };
+
     // === สถานะการทำงาน (States: Status) ===
     /** สถานะกำลังโหลดข้อมูลตั้งต้น */
     const [isLoading, setIsLoading] = useState(false);
@@ -48,8 +133,6 @@ export default function CreateDJ() {
     // === สถานะวันหยุดและ SLA (States: SLA) ===
     /** รายการวันหยุดสำหรับคำนวณวันส่งงาน */
     const [holidays, setHolidays] = useState([]);
-    /** วันที่กำหนดส่งงานจริง (คำนวณจาก SLA) */
-    const [dueDate, setDueDate] = useState(null);
     /** ข้อมูลลำดับการอนุมัติที่ผูกกับโครงการที่เลือก */
     const [approvalFlow, setApprovalFlow] = useState(null);
 
@@ -211,32 +294,26 @@ export default function CreateDJ() {
         loadData();
     }, [user]); // ✅ FIX: Added user dependency
 
-    // === Auto-jump Calendar ไปเดือนที่มี Deadline ===
+    const jobTypeSelectionSignature = selectedJobTypes
+        .map((jobType) => `${jobType.jobTypeId}:${jobType.sla || 7}:${jobType.predecessorIndex ?? 'null'}`)
+        .join('|');
+
+    // === Auto reset Due Date เมื่อ Job Type / Chain เปลี่ยน ===
     useEffect(() => {
         if (!holidays.length) return; // รอจนกว่า holidays โหลดเสร็จ
 
-        // คำนวณ SLA และ Due Date
-        let sla = 7;
-        let calculatedDueDate = null;
+        const recommendedDueDate = getRecommendedDueDate();
 
-        if (selectedJobTypes.length > 0) {
-            sla = Math.max(...selectedJobTypes.map(jt => jt.sla || 7));
-            calculatedDueDate = calculateDueDate(new Date(), sla, holidays);
-        } else {
-            const singleJobType = masterData.jobTypes.find(t => t.id === parseInt(formData.jobTypeId));
-            if (singleJobType?.sla) {
-                sla = singleJobType.sla;
-                calculatedDueDate = calculateDueDate(new Date(), sla, holidays);
-            }
+        if (!recommendedDueDate) {
+            setFormData((prev) => (prev.dueDate ? { ...prev, dueDate: '' } : prev));
+            return;
         }
 
-        // ถ้ามี Due Date ให้ jump ไปเดือนที่มี Deadline
-        if (calculatedDueDate) {
-            const dueDate = new Date(calculatedDueDate);
-            setCalendarMonth(dueDate.getMonth());
-            setCalendarYear(dueDate.getFullYear());
-        }
-    }, [formData.jobTypeId, selectedJobTypes, masterData.jobTypes, holidays]);
+        const nextDueDate = formatDateForInput(recommendedDueDate);
+        setFormData((prev) => (prev.dueDate === nextDueDate ? prev : { ...prev, dueDate: nextDueDate }));
+        setCalendarMonth(recommendedDueDate.getMonth());
+        setCalendarYear(recommendedDueDate.getFullYear());
+    }, [formData.jobTypeId, formData.priority, holidays, masterData.jobTypes, jobTypeSelectionSignature]);
 
     // === ส่วนจัดการเหตุการณ์ (Event Handlers) ===
 
@@ -284,12 +361,8 @@ export default function CreateDJ() {
         if (name === 'jobType') {
             const selectedJobType = masterData.jobTypes.find(t => t.name === value);
             if (selectedJobType && selectedJobType.sla) {
-                const slaDays = parseInt(selectedJobType.sla) || 7;
-                const calculatedDate = calculateDueDate(new Date(), slaDays, holidays);
-                setDueDate(calculatedDate);
-
                 // โหลดรายการชิ้นงานย่อยของประเภทงานที่เลือก
-                setFormData(prev => ({ ...prev, jobTypeId: selectedJobType.id, subItems: [] }));
+                setFormData(prev => ({ ...prev, jobTypeId: selectedJobType.id, dueDate: '', subItems: [] }));
                 setSelectedSubItems([]);
                 api.getJobTypeItems(selectedJobType.id).then(items => {
                     setJobTypeItems(items || []);
@@ -413,13 +486,15 @@ export default function CreateDJ() {
         newJobs.push(mainJob);
 
         // 🔥 Auto-Chain Logic: Check for Next Job
+        console.log(`[Auto-Chain] Checking chain for ${jobTypeInfo?.name}: nextJobTypeId=${jobTypeInfo?.nextJobTypeId}`);
         if (jobTypeInfo?.nextJobTypeId) {
             const nextTypeInfo = masterData.jobTypes.find(t => t.id === jobTypeInfo.nextJobTypeId);
+            console.log(`[Auto-Chain] Next type lookup (id=${jobTypeInfo.nextJobTypeId}):`, nextTypeInfo ? nextTypeInfo.name : 'NOT FOUND');
             if (nextTypeInfo) {
                 // Check redundancy for the chained job
                 const nextExists = selectedJobTypes.some(jt => jt.jobTypeId === nextTypeInfo.id);
                 if (!nextExists) {
-                    console.log(`[Auto-Chain] Adding ${nextTypeInfo.name} after ${jobTypeInfo.name}`);
+                    console.log(`[Auto-Chain] ✅ Adding ${nextTypeInfo.name} after ${jobTypeInfo.name}`);
                     const chainedJob = {
                         jobTypeId: nextTypeInfo.id,
                         name: nextTypeInfo.name,
@@ -431,6 +506,8 @@ export default function CreateDJ() {
                         predecessorIndex: startIndex // ✅ Wait for Main Job (at startIndex)
                     };
                     newJobs.push(chainedJob);
+                } else {
+                    console.log(`[Auto-Chain] ⚠️ ${nextTypeInfo.name} already exists, skipping`);
                 }
             }
         }
@@ -512,7 +589,25 @@ export default function CreateDJ() {
      * @param {number} index - ตำแหน่งใน Array ที่ต้องการลบ
      */
     const removeJobType = (index) => {
-        setSelectedJobTypes(prev => prev.filter((_, i) => i !== index));
+        setSelectedJobTypes((prev) => prev
+            .filter((_, currentIndex) => currentIndex !== index)
+            .map((jobType) => {
+                const predecessorIndex = jobType.predecessorIndex;
+
+                if (predecessorIndex === null || predecessorIndex === undefined) {
+                    return jobType;
+                }
+
+                if (predecessorIndex === index) {
+                    return { ...jobType, predecessorIndex: null };
+                }
+
+                if (predecessorIndex > index) {
+                    return { ...jobType, predecessorIndex: predecessorIndex - 1 };
+                }
+
+                return jobType;
+            }));
     };
 
     /**
@@ -1235,7 +1330,7 @@ export default function CreateDJ() {
                                                     </span>
                                                 </div>
                                                 <p className="text-xs text-gray-500 mt-1">
-                                                    * คำนวณจาก SLA สูงสุด ({Math.max(...selectedJobTypes.map(jt => jt.sla || 7))} วันทำการ)
+                                                    * คำนวณจาก SLA ตามสายงานที่นานที่สุด ({getEffectiveSla()} วันทำการ)
                                                 </p>
                                             </div>
                                         </div>
@@ -1270,12 +1365,11 @@ export default function CreateDJ() {
                                         // ส่งข้อมูล Job Type พร้อม Total SLA สำหรับ Sequential Jobs
                                         jobType={(() => {
                                             if (selectedJobTypes.length > 0) {
-                                                // Multi-job: คำนวณ Total SLA จาก dependency chain
-                                                const totalSLA = selectedJobTypes.reduce((sum, jt) => sum + (jt.sla || 0), 0);
+                                                const totalSLA = getEffectiveSla();
                                                 return {
                                                     ...selectedJobTypes[0],
                                                     sla: totalSLA,
-                                                    name: `${selectedJobTypes.length} งานต่อเนื่อง (Total SLA: ${totalSLA} วัน)`
+                                                    name: `${selectedJobTypes.length} งานต่อเนื่อง (Critical Path SLA: ${totalSLA} วัน)`
                                                 };
                                             } else {
                                                 // Single job
@@ -1480,30 +1574,16 @@ export default function CreateDJ() {
                             <div className="bg-rose-50 rounded-xl p-6 text-center border border-rose-100 mb-4">
                                 <p className="text-gray-500 text-sm mb-1">Calculated Deadline</p>
                                 <h2 className="text-3xl font-bold text-rose-600 mb-1">
-                                    {/* คำนวณ Due Date แบบ Real-time รองรับ Multi-Job Type */}
                                     {(() => {
-                                        // กรณี Multi-Job: คำนวณตาม Timeline (Sequential)
-                                        if (selectedJobTypes.length > 0) {
-                                            const timeline = calculateTimeline();
-                                            if (timeline.length > 0) {
-                                                const maxDate = new Date(Math.max(...timeline.map(t => new Date(t.calculatedDueDate))));
-                                                return formatDateToThai(maxDate);
-                                            }
-                                        }
-
-                                        // กรณี Single-Job: แสดง Due Date ที่เลือก
                                         if (formData.dueDate) {
                                             return formatDateToThai(new Date(formData.dueDate));
                                         }
-                                        // ยังไม่ได้เลือก Due Date
+
                                         return '-';
                                     })()}
                                 </h2>
                                 <p className="text-gray-400 text-xs">
-                                    {selectedJobTypes.length > 0
-                                        ? Math.max(...selectedJobTypes.map(jt => jt.sla || 7))
-                                        : (masterData.jobTypes.find(t => t.id === parseInt(formData.jobTypeId))?.sla || 7)
-                                    } Working Days
+                                    {getEffectiveSla()} Working Days
                                 </p>
                             </div>
 
@@ -1519,10 +1599,7 @@ export default function CreateDJ() {
                                 <div className="flex justify-between">
                                     <span className="text-gray-500">SLA Days:</span>
                                     <span className="font-medium text-gray-900">
-                                        {selectedJobTypes.length > 0
-                                            ? Math.max(...selectedJobTypes.map(jt => jt.sla || 7))
-                                            : (masterData.jobTypes.find(t => t.id === parseInt(formData.jobTypeId))?.sla || 7)
-                                        } Working Days
+                                        {getEffectiveSla()} Working Days
                                     </span>
                                 </div>
                                 <div className="flex justify-between">
@@ -1570,24 +1647,8 @@ export default function CreateDJ() {
                             {/* Calendar Visualization - Mini Calendar with Navigation */}
                             <div className="mt-4 pt-4 border-t border-gray-100">
                                 {(() => {
-                                    // คำนวณ SLA และ Due Date
-                                    let sla = 7;
-                                    let calculatedDueDate = null;
-
-                                    if (selectedJobTypes.length > 0) {
-                                        const timeline = calculateTimeline();
-                                        if (timeline.length > 0) {
-                                            const maxDate = new Date(Math.max(...timeline.map(t => new Date(t.calculatedDueDate))));
-                                            calculatedDueDate = maxDate;
-                                            sla = Math.max(...selectedJobTypes.map(jt => jt.sla || 7));
-                                        }
-                                    } else {
-                                        const singleJobType = masterData.jobTypes.find(t => t.id === parseInt(formData.jobTypeId));
-                                        if (singleJobType?.sla) {
-                                            sla = singleJobType.sla;
-                                            calculatedDueDate = calculateDueDate(new Date(), sla, holidays);
-                                        }
-                                    }
+                                    const sla = getEffectiveSla();
+                                    const calculatedDueDate = formData.dueDate ? new Date(formData.dueDate) : null;
 
                                     if (!calculatedDueDate) {
                                         return (

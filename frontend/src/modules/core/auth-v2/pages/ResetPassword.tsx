@@ -5,12 +5,13 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { useAuthStoreV2 } from '../../stores/authStoreV2';
 
 const ResetPasswordV2: React.FC = () => {
   const [searchParams] = useSearchParams();
   const { resetPassword, isLoading, error, clearError } = useAuthStoreV2();
+  const navigate = useNavigate();
 
   // Get token from URL
   const token = searchParams.get('token');
@@ -83,8 +84,8 @@ const ResetPasswordV2: React.FC = () => {
       
       // Redirect after 2 seconds
       setTimeout(() => {
-        console.log('กำลัง Redirect ไปหน้าหลัก...');
-        window.location.href = '/';
+        console.log('กำลัง Redirect ไปหน้า Login...');
+        navigate('/login', { replace: true });
       }, 2000);
       
     } catch (err) {
@@ -168,7 +169,7 @@ const ResetPasswordV2: React.FC = () => {
             </div>
 
             <button
-              onClick={() => { window.location.href = '/'; }}
+              onClick={() => { navigate('/login', { replace: true }); }}
               className="block w-full py-3 px-4 border border-transparent text-base font-medium rounded-xl text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 transition-colors shadow-lg"
             >
               คลิกที่นี่หากระบบไม่เปลี่ยนหน้าอัตโนมัติ
@@ -296,7 +297,7 @@ const ResetPasswordV2: React.FC = () => {
           {/* Back to Login */}
           <div className="text-center text-sm">
             <Link
-              to="/"
+              to="/login"
               className="font-medium text-rose-600 hover:text-indigo-500"
             >
               กลับสู่หน้าเข้าสู่ระบบ

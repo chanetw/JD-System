@@ -26,6 +26,9 @@ const emailService = new EmailService();
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 const SALT_ROUNDS = 10;
+const FORGOT_PASSWORD_COOLDOWN_SECONDS = parseInt(process.env.FORGOT_PASSWORD_COOLDOWN_SECONDS || '30', 10);
+const FORGOT_PASSWORD_COOLDOWN_MS = FORGOT_PASSWORD_COOLDOWN_SECONDS * 1000;
+const forgotPasswordCooldownMap = new Map();
 
 const hashPassword = (password) => bcrypt.hash(password, SALT_ROUNDS);
 const verifyPassword = (plain, hash) => bcrypt.compare(plain, hash);
@@ -56,6 +59,44 @@ const evaluatePasswordPolicy = (password) => {
 const formatPasswordPolicyMessage = (missing = []) => {
   if (!missing.length) return 'Password does not meet minimum policy';
   return `Password does not meet minimum policy. Please add ${missing.join(' and ')}`;
+};
+
+const getClientIp = (req) => {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.length > 0) {
+    return forwarded.split(',')[0].trim();
+  }
+  return req.ip || req.socket?.remoteAddress || 'unknown';
+};
+
+const isForgotPasswordInCooldown = (req, email) => {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const key = `${getClientIp(req)}:${normalizedEmail}`;
+  const now = Date.now();
+  const expiresAt = forgotPasswordCooldownMap.get(key);
+
+  if (expiresAt && expiresAt > now) {
+    return {
+      inCooldown: true,
+      remainingSeconds: Math.ceil((expiresAt - now) / 1000)
+    };
+  }
+
+  forgotPasswordCooldownMap.set(key, now + FORGOT_PASSWORD_COOLDOWN_MS);
+
+  // Keep memory bounded for long-running processes.
+  if (forgotPasswordCooldownMap.size > 5000) {
+    for (const [mapKey, mapExpiresAt] of forgotPasswordCooldownMap.entries()) {
+      if (mapExpiresAt <= now) {
+        forgotPasswordCooldownMap.delete(mapKey);
+      }
+    }
+  }
+
+  return {
+    inCooldown: false,
+    remainingSeconds: 0
+  };
 };
 
 const generateToken = (userId, tenantId, organizationId, email, roleId, roleName) => {
@@ -584,6 +625,13 @@ router.post('/auth/forgot-password', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json(errorResponse('MISSING_FIELDS', 'Email is required'));
 
+  const cooldownState = isForgotPasswordInCooldown(req, email);
+  if (cooldownState.inCooldown) {
+    return res.json(successResponse({
+      cooldownRemainingSeconds: cooldownState.remainingSeconds
+    }, 'If the email exists, a password reset link will be sent'));
+  }
+
   try {
     // Use Adapter
     // Note: Defaulting tenantId to 1 (SENA) if not specified, as this is a public endpoint
@@ -858,7 +906,10 @@ router.put('/users/:id/reset-password', authenticateToken, requireOrgAdmin, asyn
       loginUrl: process.env.FRONTEND_URL || 'http://localhost:5173'
     });
 
-    res.json(successResponse(null, 'Password reset to random and email sent successfully'));
+    res.json(successResponse({
+      temporaryPassword: result.newPassword,
+      mustChangePassword: true
+    }, 'Password reset to random and email sent successfully'));
   } catch (error) {
     next(error);
   }

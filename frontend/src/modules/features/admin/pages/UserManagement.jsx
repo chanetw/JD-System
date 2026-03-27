@@ -26,6 +26,7 @@ import {
     UserIcon, EnvelopeIcon, BuildingOfficeIcon,
     ChevronLeftIcon, ChevronRightIcon,
     KeyIcon,
+    EyeIcon, EyeSlashIcon, ClipboardDocumentIcon,
     ExclamationTriangleIcon,
     MapIcon // For Responsibilities Icon
 } from '@heroicons/react/24/outline';
@@ -137,6 +138,12 @@ export default function UserManagementNew() {
         registrationEmail: null
     });
     const [rejectReason, setRejectReason] = useState('');
+    const [resetPasswordModal, setResetPasswordModal] = useState({
+        show: false,
+        userName: '',
+        temporaryPassword: '',
+        revealed: false
+    });
 
     // Alert - Using SweetAlert2 now, removing local state
     // const [alertState, setAlertState] = useState({ ... });
@@ -641,13 +648,51 @@ export default function UserManagementNew() {
 
         try {
             setIsSubmitting(true);
-            await adminService.resetPassword(userToReset.id);
-            showAlert('success', `รีเซ็ตรหัสผ่านและส่งอีเมลเรียบร้อยแล้ว`);
+            const response = await adminService.resetPassword(userToReset.id);
+            const temporaryPassword = response?.data?.temporaryPassword;
+
+            if (!temporaryPassword) {
+                showAlert('success', 'รีเซ็ตรหัสผ่านและส่งอีเมลเรียบร้อยแล้ว');
+                return;
+            }
+
+            setResetPasswordModal({
+                show: true,
+                userName: `${userToReset.firstName || ''} ${userToReset.lastName || ''}`.trim() || userToReset.email,
+                temporaryPassword,
+                revealed: false
+            });
         } catch (error) {
             console.error('Error resetting password:', error);
             showAlert('error', 'ไม่สามารถรีเซ็ตรหัสผ่านได้: ' + error.message);
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const closeResetPasswordModal = () => {
+        setResetPasswordModal({
+            show: false,
+            userName: '',
+            temporaryPassword: '',
+            revealed: false
+        });
+    };
+
+    const toggleResetPasswordVisibility = () => {
+        setResetPasswordModal(prev => ({
+            ...prev,
+            revealed: !prev.revealed
+        }));
+    };
+
+    const handleCopyTemporaryPassword = async () => {
+        try {
+            await navigator.clipboard.writeText(resetPasswordModal.temporaryPassword);
+            showAlert('success', 'คัดลอกรหัสผ่านชั่วคราวแล้ว');
+        } catch (error) {
+            console.error('Copy temporary password error:', error);
+            showAlert('error', 'ไม่สามารถคัดลอกรหัสผ่านได้');
         }
     };
 
@@ -1862,6 +1907,74 @@ export default function UserManagementNew() {
                                 <CheckIcon className="w-4 h-4" />
                                 {isRequestSubmitting ? 'กำลังดำเนินการ...' : 'ยืนยันแก้ไข'}
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {resetPasswordModal.show && (
+                <div className="fixed inset-0 flex items-center justify-center z-50 p-4 bg-black/40">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 max-w-md w-full overflow-hidden">
+                        <div className="p-6 border-b border-amber-100 bg-gradient-to-r from-amber-50 to-orange-50">
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-900">รีเซ็ตรหัสผ่านสำเร็จ</h3>
+                                    <p className="text-sm text-amber-700 mt-1">
+                                        รหัสชั่วคราวใหม่ของ {resetPasswordModal.userName || 'ผู้ใช้'}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={closeResetPasswordModal}
+                                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                                >
+                                    <XMarkIcon className="w-6 h-6" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Temporary Password</p>
+                                <div className="mt-2 flex items-center gap-2">
+                                    <div className="flex-1 rounded-lg border border-amber-200 bg-white px-3 py-2 font-mono text-sm text-gray-900">
+                                        {resetPasswordModal.revealed
+                                            ? resetPasswordModal.temporaryPassword
+                                            : '•'.repeat(Math.max(resetPasswordModal.temporaryPassword.length, 8))}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={toggleResetPasswordVisibility}
+                                        className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-amber-200 bg-white text-amber-700 hover:bg-amber-100 transition-colors"
+                                        title={resetPasswordModal.revealed ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                                    >
+                                        {resetPasswordModal.revealed ? (
+                                            <EyeSlashIcon className="w-5 h-5" />
+                                        ) : (
+                                            <EyeIcon className="w-5 h-5" />
+                                        )}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleCopyTemporaryPassword}
+                                        className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-amber-200 bg-white text-amber-700 hover:bg-amber-100 transition-colors"
+                                        title="คัดลอกรหัสผ่าน"
+                                    >
+                                        <ClipboardDocumentIcon className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 space-y-1">
+                                <p>ระบบได้ส่งรหัสชั่วคราวไปยังอีเมลผู้ใช้แล้ว</p>
+                                <p>ผู้ใช้จะต้องเปลี่ยนรหัสผ่านใหม่เมื่อเข้าสู่ระบบครั้งถัดไป</p>
+                                <p>ไม่สามารถดูรหัสผ่านเดิมได้ เพราะระบบเก็บเป็นรหัสแบบเข้ารหัส hash</p>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 border-t border-gray-100 bg-gray-50 px-6 py-4">
+                            <Button variant="secondary" onClick={closeResetPasswordModal}>
+                                ปิด
+                            </Button>
                         </div>
                     </div>
                 </div>
