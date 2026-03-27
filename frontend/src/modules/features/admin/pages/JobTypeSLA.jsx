@@ -89,7 +89,11 @@ export default function AdminJobTypeSLA() {
                 console.warn('[JobTypeSLA] No data received or empty array');
             }
 
-            setJobTypes((data || []).filter(t => t.name !== 'Project Group (Parent)'));
+            setJobTypes(
+                (data || []).filter(
+                    t => t.name !== 'Project Group (Parent)' && t.isActive !== false
+                )
+            );
         } catch (error) {
             console.error("[JobTypeSLA] Fetch error:", error);
         } finally {
@@ -269,12 +273,14 @@ export default function AdminJobTypeSLA() {
     const handleToggleStatus = async (id, item) => {
         // 1. Optimistic Update: Update UI Immediately
         const previousJobTypes = [...jobTypes]; // Backup for rollback
-        const newStatus = item.status === 'active' ? 'inactive' : 'active';
+        const currentIsActive = item.isActive !== false;
+        const nextIsActive = !currentIsActive;
+        const newStatus = nextIsActive ? 'active' : 'inactive';
 
         console.log(`[JobTypeSLA] Toggling status for ID ${id} to ${newStatus}`);
 
         setJobTypes(prev => prev.map(jt =>
-            jt.id === id ? { ...jt, status: newStatus } : jt
+            jt.id === id ? { ...jt, isActive: nextIsActive, status: newStatus } : jt
         ));
 
         // Optimistic Success Feedback (Toast)
@@ -293,7 +299,7 @@ export default function AdminJobTypeSLA() {
             // 2. Call API in Background
             // ✅ FIXED: Only send necessary fields to prevent Prisma schema conflicts
             const payload = {
-                isActive: newStatus === 'active'  // Convert status to isActive boolean
+                isActive: nextIsActive
             };
             console.log('[JobTypeSLA] Sending payload:', payload);
             await api.updateJobType(id, payload);
@@ -328,7 +334,7 @@ export default function AdminJobTypeSLA() {
 
     // Stats Calculation
     const filteredJobTypes = jobTypes.filter(j => j.name !== 'Project Group (Parent)');
-    const activeCount = filteredJobTypes.filter(j => j.status === 'active').length;
+    const activeCount = filteredJobTypes.filter(j => j.isActive !== false).length;
     const avgSLA = filteredJobTypes.length ? (filteredJobTypes.reduce((acc, curr) => acc + Number(curr.sla), 0) / filteredJobTypes.length).toFixed(1) : 0;
 
     return (
@@ -414,7 +420,7 @@ export default function AdminJobTypeSLA() {
                                         </td>
                                         <td className="px-6 py-4 text-center">
                                             <StatusBadge
-                                                isActive={item.status === 'active'}
+                                                isActive={item.isActive !== false}
                                                 onClick={() => handleToggleStatus(item.id, item)}
                                             />
                                         </td>

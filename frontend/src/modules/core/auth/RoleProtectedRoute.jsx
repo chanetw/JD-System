@@ -6,6 +6,7 @@
 
 import { Navigate } from 'react-router-dom';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
+import { hasAnyRole } from '@shared/utils/permission.utils';
 
 export default function RoleProtectedRoute({ children, allowedRoles }) {
     const { user, isAuthenticated } = useAuthStoreV2();
@@ -19,21 +20,11 @@ export default function RoleProtectedRoute({ children, allowedRoles }) {
         return children;
     }
 
-    // ตรวจสอบว่า User มี Role อย่างน้อยหนึ่งอย่างที่อยู่ในรายการที่อนุญาตหรือไม่
-    // รองรับทั้ง user.roleName (string) และ user.roles (array)
-    const userRole = user?.roleName;
-    const userRoles = user?.roles || [];
-
-    const allowedLower = allowedRoles.map(r => r.toLowerCase());
-    const hasRole = allowedLower.includes(userRole?.toLowerCase()) ||
-        userRoles.some(role => {
-            const name = (typeof role === 'string' ? role : role?.name) || '';
-            return allowedLower.includes(name.toLowerCase());
-        });
+    const hasRole = hasAnyRole(user, allowedRoles);
 
     if (!hasRole) {
         // ถ้าไม่มีสิทธิ์ ให้ส่งกลับไปหน้า Dashboard (หรือหน้าที่เหมาะสม)
-        console.warn(`[RoleGuard] Access denied for user ${user?.email}. Role: ${userRole}. Required: ${allowedRoles.join(', ')}`);
+        console.warn(`[RoleGuard] Access denied for user ${user?.email}. Roles: ${JSON.stringify(user?.roles || user?.roleName || [])}. Required: ${allowedRoles.join(', ')}`);
         return <Navigate to="/" replace />;
     }
 

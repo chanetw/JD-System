@@ -9,6 +9,7 @@ import { useTeamComparison } from '../hooks/useUserPerformance';
 import UserPerformanceCard from '../components/UserPerformanceCard';
 import UserDetailSidePanel from '../components/UserDetailSidePanel';
 import { Search, Filter, SortAsc, Calendar } from 'lucide-react';
+import { isAdmin as checkIsAdmin } from '@shared/utils/permission.utils';
 
 /**
  * @component ReportsPage
@@ -71,7 +72,7 @@ export default function ReportsPage() {
   const { data, isLoading, error } = useTeamComparison(startDate, endDate);
 
   // ตรวจสอบสิทธิ์
-  const isAdmin = ['admin', 'superadmin'].includes(user?.roleName?.toLowerCase());
+  const isAdmin = checkIsAdmin(user);
 
   // Filter และ Sort users
   const filteredAndSortedUsers = useMemo(() => {

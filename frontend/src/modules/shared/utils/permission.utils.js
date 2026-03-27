@@ -523,7 +523,7 @@ export const getPrimaryRole = (user) => {
  * @param {Object} user - User object
  * @returns {boolean} true ถ้าเป็น admin
  */
-export const isAdmin = (user) => hasRole(user, ROLES.ADMIN);
+export const isAdmin = (user) => hasRole(user, ROLES.ADMIN) || hasRole(user, 'SuperAdmin');
 
 /**
  * ตรวจสอบว่า user เป็น requester หรือไม่

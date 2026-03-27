@@ -232,6 +232,11 @@ router.put('/:id', async (req, res) => {
         const prisma = getDatabase();
         const id = parseInt(req.params.id);
 
+        // Validate ID
+        if (!id || isNaN(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid project ID' });
+        }
+
         // Note: We search by ID only (ignoring tenantId) or we need to relax the check if switching tenants
         // But for safety, we first check if it exists in current user's scope or if we are admin.
         // For simplicity now: Check existence by ID.
@@ -245,16 +250,30 @@ router.put('/:id', async (req, res) => {
             return res.status(400).json({ success: false, message: validationError });
         }
 
+        // Build update data safely, only include fields that changed or are valid
+        const updateData = {
+            tenantId: payload.tenantId,
+            name: payload.name,
+            code: payload.code,
+            isActive: payload.isActive
+        };
+        
+        // Only include optional fields if they are provided values
+        if (payload.budId !== null && payload.budId !== undefined) {
+            updateData.budId = payload.budId;
+        } else {
+            updateData.budId = null; // Allow clearing
+        }
+        
+        if (payload.departmentId !== null && payload.departmentId !== undefined) {
+            updateData.departmentId = payload.departmentId;
+        } else {
+            updateData.departmentId = null; // Allow clearing
+        }
+
         const updated = await prisma.project.update({
             where: { id },
-            data: {
-                tenantId: payload.tenantId,
-                name: payload.name,
-                code: payload.code,
-                budId: payload.budId,
-                departmentId: payload.departmentId,
-                isActive: payload.isActive
-            }
+            data: updateData
         });
 
         res.json({ success: true, data: updated });

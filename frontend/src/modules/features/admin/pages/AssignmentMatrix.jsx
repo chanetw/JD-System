@@ -220,9 +220,8 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
                                                     <option value="">-- ไม่ระบุ (ปล่อยว่าง) --</option>
                                                     {activeAssignees.map(u => (
                                                         <option key={u.id} value={u.id}>
-                                                            {u.firstName ||
+                                                            {[u.prefix, u.firstName || u.first_name, u.lastName || u.last_name].filter(Boolean).join(' ') ||
                                                                 u.name ||
-                                                                [u.prefix, u.first_name || u.firstName, u.last_name || u.lastName].filter(Boolean).join(' ') ||
                                                                 u.email ||
                                                                 `User #${u.id}`}
                                                         </option>

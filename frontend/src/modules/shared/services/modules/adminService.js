@@ -1461,7 +1461,7 @@ export const adminService = {
     resetPassword: async (userId) => {
         try {
             console.log(`[adminService] Resetting password for user: ${userId}`);
-            const response = await httpClient.put(`/users/${userId}/reset-password`);
+            const response = await httpClient.put(`/v2/users/${userId}/reset-password`);
 
             if (!response.data.success) {
                 throw new Error(response.data.message || 'Reset password failed');

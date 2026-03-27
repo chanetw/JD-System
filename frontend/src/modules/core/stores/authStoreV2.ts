@@ -8,6 +8,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { authServiceV2, type IRegisterRequestData, type IPendingUser, type IRegistrationCounts } from '../../shared/services/modules/authServiceV2';
 import type { IUser, IRegisterRequest } from '../../../types/auth.types';
+import { hasRole, hasAnyRole } from '../../shared/utils/permission.utils';
 
 // Registration request result type
 interface IRegisterRequestResult {
@@ -476,19 +477,17 @@ export const useHasPermission = (resource: string, action: string): boolean => {
 // Role check helpers (case-insensitive, V1 naming: Admin, Requester, Approver, Assignee)
 export const useIsSuperAdmin = (): boolean => {
   const user = useUser();
-  return user?.roleName?.toLowerCase() === 'admin';
+  return hasRole(user, 'Admin');
 };
 
 export const useIsOrgAdmin = (): boolean => {
   const user = useUser();
-  const role = user?.roleName?.toLowerCase() || '';
-  return role === 'admin' || role === 'requester';
+  return hasAnyRole(user, ['Admin', 'Requester']);
 };
 
 export const useIsTeamLead = (): boolean => {
   const user = useUser();
-  const role = user?.roleName?.toLowerCase() || '';
-  return role === 'admin' || role === 'requester' || role === 'approver';
+  return hasAnyRole(user, ['Admin', 'Requester', 'Approver']);
 };
 
 export default useAuthStoreV2;

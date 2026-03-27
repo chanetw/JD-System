@@ -167,6 +167,7 @@ export default function AdminApprovalFlow() {
 
             setProjects(projectsData);
             setAllApprovalFlows(allFlowsData); // ✅ เก็บ Flows ทั้งหมด
+            console.log('[ApprovalFlow] Raw usersData sample:', usersData.slice(0, 5));
             setAllUsers(usersData);
             setJobTypes((jobTypesData || []).filter(t => t.name !== 'Project Group (Parent)'));
 
@@ -899,7 +900,7 @@ export default function AdminApprovalFlow() {
                                             {responsibleTeam.requesters.length > 0 ? responsibleTeam.requesters.map(u => (
                                                 <div key={u.id} className="text-xs text-gray-700 flex items-center gap-2">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-green-400"></div>
-                                                    {[u.prefix, u.name, u.lastName].filter(Boolean).join(' ')}
+                                                    {[u.prefix, u.firstName, u.lastName].filter(Boolean).join(' ')}
                                                 </div>
                                             )) : <p className="text-xs text-gray-400 text-center py-2">- ไม่มีผู้รับผิดชอบ -</p>}
                                         </div>
@@ -915,7 +916,7 @@ export default function AdminApprovalFlow() {
                                             {responsibleTeam.approvers.length > 0 ? responsibleTeam.approvers.map(u => (
                                                 <div key={u.id} className="text-xs text-gray-700 flex items-center gap-2">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-purple-400"></div>
-                                                    {[u.prefix, u.name, u.lastName].filter(Boolean).join(' ')}
+                                                    {[u.prefix, u.firstName, u.lastName].filter(Boolean).join(' ')}
                                                     {hasRole(u, 'Admin') && <span className="text-[10px] text-gray-400">(Admin)</span>}
                                                 </div>
                                             )) : <p className="text-xs text-gray-400 text-center py-2">- ไม่มีผู้รับผิดชอบ -</p>}
@@ -932,7 +933,7 @@ export default function AdminApprovalFlow() {
                                             {responsibleTeam.assignees.length > 0 ? responsibleTeam.assignees.map(u => (
                                                 <div key={u.id} className="text-xs text-gray-700 flex items-center gap-2">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-orange-400"></div>
-                                                    {[u.prefix, u.name, u.lastName].filter(Boolean).join(' ')}
+                                                    {[u.prefix, u.firstName, u.lastName].filter(Boolean).join(' ')}
                                                 </div>
                                             )) : <p className="text-xs text-gray-400 text-center py-2">- ไม่มีผู้รับผิดชอบ -</p>}
                                         </div>
@@ -1053,9 +1054,9 @@ export default function AdminApprovalFlow() {
                                                                                 level.approvers.map(app => (
                                                                                     <div key={app.userId} className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border border-gray-400 shadow-sm animate-fadeIn">
                                                                                         <div className="w-5 h-5 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-600">
-                                                                                            {app.name.substring(0, 1)}
+                                                                                            {(app.firstName || app.name || '').substring(0, 1)}
                                                                                         </div>
-                                                                                        <span className="text-xs font-semibold text-gray-700">{app.name}</span>
+                                                                                        <span className="text-xs font-semibold text-gray-700">{app.firstName || app.name?.split(' ')[0] || app.name}</span>
                                                                                         <button onClick={() => handleRemoveApproverFromLevel(index, app.userId)} className="text-gray-400 hover:text-red-500">
                                                                                             <XMarkIcon className="w-3.5 h-3.5" />
                                                                                         </button>
@@ -1075,7 +1076,7 @@ export default function AdminApprovalFlow() {
                                                                                     <option value="">+ เพิ่มผู้อนุมัติในกลุ่มนี้ (Add Approver to Pool)...</option>
                                                                                     {responsibleTeam.approvers.map(u => (
                                                                                         <option key={u.id} value={u.id}>
-                                                                                            {[u.prefix, u.firstName || u.name, u.lastName].filter(Boolean).join(' ')}
+                                                                                            {[u.prefix, u.firstName, u.lastName].filter(Boolean).join(' ')}
                                                                                         </option>
                                                                                     ))}
                                                                                 </FormSelect>

@@ -13,6 +13,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import httpClient from '@shared/services/httpClient';
+import { isAdmin as checkIsAdmin } from '@shared/utils/permission.utils';
 
 export default function EmailSettings() {
   const { user } = useAuthStoreV2();
@@ -24,20 +25,7 @@ export default function EmailSettings() {
   const [expandedType, setExpandedType] = useState(null);
 
   // ตรวจสอบว่าเป็น Admin หรือไม่ (รองรับทั้ง V1: user.roles[] และ V2: user.roleName)
-  const isAdmin = (() => {
-    // V2: user.roleName (string)
-    if (user?.roleName) {
-      return user.roleName.toLowerCase() === 'admin' || user.roleName.toLowerCase() === 'superadmin';
-    }
-    // V1: user.roles (array)
-    if (user?.roles && Array.isArray(user.roles)) {
-      return user.roles.some(role => {
-        const name = (typeof role === 'string' ? role : role.name) || '';
-        return name.toLowerCase() === 'admin' || name.toLowerCase() === 'superadmin';
-      });
-    }
-    return false;
-  })();
+  const isAdmin = checkIsAdmin(user);
 
   // โหลดข้อมูล Email Settings
   useEffect(() => {

@@ -72,7 +72,7 @@ export default function UserManagementNew() {
     const [searchParams] = useSearchParams();
 
     // Helper: Check if current user is admin
-    const isAdmin = user?.role === 'Admin' || user?.roles?.includes('Admin');
+    const isAdmin = hasRole(user, ROLES.ADMIN) || hasRole(user, 'SuperAdmin');
 
     // Approve Modal (Select Role & Scope)
     const [approveModal, setApproveModal] = useState({

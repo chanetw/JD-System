@@ -60,12 +60,14 @@ class PrismaV1Adapter {
 
     // ✅ NEW: Collect ALL roles from userRoles array
     const allRoles = (prismaUser.userRoles || []).map(ur => normalizeRoleName(ur.roleName));
-    const primaryRole = allRoles[0] || 'Assignee';
 
     // Failsafe for specific admin user
     if (prismaUser.id === 10000 && !allRoles.includes('Admin')) {
       allRoles.unshift('Admin');
     }
+
+    const rolePriority = ['Admin', 'Approver', 'Requester', 'Assignee'];
+    const primaryRole = rolePriority.find(role => allRoles.includes(role)) || allRoles[0] || 'Assignee';
 
     // V1 Role Names: Admin, Requester, Approver, Assignee
     console.log('[PrismaV1Adapter] User:', prismaUser.email, 'All Roles:', allRoles);

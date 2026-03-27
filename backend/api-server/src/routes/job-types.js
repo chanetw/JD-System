@@ -18,6 +18,51 @@ const router = express.Router();
 router.use(authenticateToken);
 router.use(setRLSContextMiddleware);
 
+async function getJobTypeDependencyCounts(prisma, tenantId, jobTypeId) {
+    const [
+        jobsCount,
+        projectAssignmentsCount,
+        budAssignmentsCount,
+        approvalFlowsCount,
+        incomingChainsCount
+    ] = await Promise.all([
+        prisma.job.count({
+            where: { tenantId, jobTypeId }
+        }),
+        prisma.projectJobAssignment.count({
+            where: { project: { tenantId }, jobTypeId }
+        }),
+        prisma.budJobAssignment.count({
+            where: { tenantId, jobTypeId }
+        }),
+        prisma.approvalFlow.count({
+            where: {
+                tenantId,
+                jobTypeId,
+                isActive: true
+            }
+        }),
+        prisma.jobType.count({
+            where: {
+                tenantId,
+                nextJobTypeId: jobTypeId
+            }
+        })
+    ]);
+
+    return {
+        jobsCount,
+        projectAssignmentsCount,
+        budAssignmentsCount,
+        approvalFlowsCount,
+        incomingChainsCount
+    };
+}
+
+function hasJobTypeDependencies(counts) {
+    return Object.values(counts).some(value => Number(value) > 0);
+}
+
 // ==========================================
 // Job Types CRUD
 // ==========================================
@@ -64,6 +109,7 @@ router.get('/', async (req, res) => {
             description: jt.description,
             sla: jt.slaWorkingDays,
             isActive: jt.isActive,
+            status: jt.isActive ? 'active' : 'inactive',
             icon: jt.icon,
             attachments: jt.attachments || [],
             nextJobTypeId: jt.nextJobTypeId || null, // For sequential jobs
@@ -186,6 +232,7 @@ router.put('/:id', async (req, res) => {
     try {
         const prisma = getDatabase();
         const id = parseInt(req.params.id);
+        const tenantId = req.user.tenantId;
         const { name, description, sla, isActive, status, icon, attachments, nextJobTypeId } = req.body;
 
         // ✅ Validation: job type must exist
@@ -198,6 +245,13 @@ router.put('/:id', async (req, res) => {
             return res.status(404).json({
                 success: false,
                 message: `Job type with ID ${id} not found`
+            });
+        }
+
+        if (jobType.tenantId !== tenantId) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied for this job type'
             });
         }
 
@@ -234,6 +288,31 @@ router.put('/:id', async (req, res) => {
         let updateIsActive = isActive;
         if (status !== undefined) {
             updateIsActive = status === 'active';
+        }
+
+        if (updateIsActive === false) {
+            const dependencyCounts = await getJobTypeDependencyCounts(prisma, tenantId, id);
+            const hasDependencies = hasJobTypeDependencies(dependencyCounts);
+
+            if (!hasDependencies) {
+                await prisma.jobType.delete({
+                    where: { id }
+                });
+
+                invalidateMasterDataCache(req.user.tenantId);
+
+                return res.json({
+                    success: true,
+                    data: {
+                        id,
+                        isActive: false,
+                        status: 'deleted'
+                    },
+                    message: 'Job type deleted permanently'
+                });
+            }
+
+            updateIsActive = false;
         }
 
         // Build update data object - only include provided fields

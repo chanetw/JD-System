@@ -7,6 +7,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import httpClient from '@shared/services/httpClient';
+import { isAdmin as checkIsAdmin } from '@shared/utils/permission.utils';
 
 export default function PortalSettings() {
     const { user } = useAuthStoreV2();
@@ -20,16 +21,7 @@ export default function PortalSettings() {
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-    const isAdmin = (() => {
-        if (user?.roleName) return ['admin', 'superadmin'].includes(user.roleName.toLowerCase());
-        if (user?.roles && Array.isArray(user.roles)) {
-            return user.roles.some(r => {
-                const n = (typeof r === 'string' ? r : r.name) || '';
-                return ['admin', 'superadmin'].includes(n.toLowerCase());
-            });
-        }
-        return false;
-    })();
+    const isAdmin = checkIsAdmin(user);
 
     useEffect(() => {
         fetchSettings();

@@ -1073,13 +1073,14 @@ export default function CreateDJ() {
                                                                 <div className="flex items-center gap-2">
                                                                     <label className="text-xs text-gray-500">เริ่มงาน:</label>
                                                                     <select
-                                                                        className="text-xs border border-gray-400 rounded px-2 py-0.5 bg-white focus:outline-none focus:border-rose-300"
+                                                                        className="text-xs border border-gray-300 rounded px-2 py-0.5 bg-gray-100 text-gray-500 cursor-not-allowed opacity-70"
                                                                         value={jt.predecessorIndex === null ? '' : jt.predecessorIndex}
                                                                         onChange={(e) => {
                                                                             const val = e.target.value;
                                                                             updateJobDependency(index, val === '' ? null : parseInt(val));
                                                                         }}
                                                                         onClick={(e) => e.stopPropagation()} // Prevent accordion toggle
+                                                                        disabled
                                                                     >
                                                                         <option value="">🟢 พร้อมกัน (Parallel)</option>
                                                                         {selectedJobTypes.map((prevJt, prevIdx) => {
