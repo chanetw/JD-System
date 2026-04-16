@@ -188,7 +188,7 @@ export default function PortalSettings() {
                                     }
                                     .ticker-preview-text {
                                         display: inline-block;
-                                        animation: ticker-preview 18s linear infinite;
+                                        animation: ticker-preview 9s linear infinite;
                                         white-space: nowrap;
                                     }
                                 `}</style>

@@ -49,7 +49,6 @@ import RejectionRequestModal from '../components/RejectionRequestModal';
 import DraftSubmitModal from '../components/DraftSubmitModal';
 import DraftCard from '../components/DraftCard';
 import RejectionApprovalCard from '../components/RejectionApprovalCard';
-import JobItems from '../components/JobItems';
 import JobAssigneeInfo from '../components/JobAssigneeInfo';
 
 export default function JobDetail() {
@@ -774,9 +773,6 @@ export default function JobDetail() {
 
                                 {/* Brief Info */}
                                 <JobBriefInfo job={job} />
-
-                                {/* Job Items (Design Deliverables) */}
-                                <JobItems job={job} />
 
                                 {/* Job Chain Status (for sequential jobs A→B→C) */}
                                 <JobChainStatus job={job} />

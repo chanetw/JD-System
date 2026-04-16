@@ -17,12 +17,12 @@ export const routes = [
     {
         path: '/analytics',
         element: (
-            <ProtectedRoute allowedRoles={['admin', 'manager', 'supervisor']}>
+            <ProtectedRoute>
                 <AnalyticsDashboard />
             </ProtectedRoute>
         ),
         title: 'Analytics Dashboard',
-        roles: ['admin', 'manager', 'supervisor']
+        roles: ['admin', 'viewer']
     }
 ];
 

@@ -4,7 +4,7 @@
  * 
  * Features:
  * - เปลี่ยนรหัสผ่านโดยกรอกรหัสเดิม + รหัสใหม่
- * - รองรับกรณี must_change_password (บังคับเปลี่ยนครั้งแรก)
+ * - รองรับกรณี must_change_password (บังคับเปลี่ยนหลังใช้รหัสชั่วคราว)
  * - Validate ความแข็งแรงของรหัสผ่าน
  */
 
@@ -39,7 +39,7 @@ export default function ChangePassword() {
     const [showNew, setShowNew] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
 
-    // Check if user must change password (first login after admin create)
+    // Check if user must change password after logging in with a temporary password.
     const mustChangePassword = user?.mustChangePassword || user?.must_change_password;
 
     // Password strength checker
@@ -154,7 +154,7 @@ export default function ChangePassword() {
                             <h1 className="text-xl font-bold">เปลี่ยนรหัสผ่าน</h1>
                             <p className="text-rose-100 text-sm">
                                 {mustChangePassword
-                                    ? 'กรุณาตั้งรหัสผ่านใหม่ก่อนใช้งาน'
+                                    ? 'กรุณาตั้งรหัสผ่านใหม่หลังเข้าสู่ระบบด้วยรหัสชั่วคราว'
                                     : 'DJ System Security'
                                 }
                             </p>
@@ -167,7 +167,7 @@ export default function ChangePassword() {
                     <div className="mx-6 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
                         <ExclamationCircleIcon className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                         <p className="text-sm text-amber-700">
-                            นี่คือการเข้าสู่ระบบครั้งแรก กรุณาเปลี่ยนรหัสผ่านเพื่อความปลอดภัย
+                            คุณกำลังใช้รหัสผ่านชั่วคราว กรุณาเปลี่ยนรหัสผ่านเพื่อความปลอดภัยก่อนใช้งานต่อ
                         </p>
                     </div>
                 )}

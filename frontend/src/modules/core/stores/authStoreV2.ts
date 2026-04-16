@@ -42,6 +42,7 @@ interface AuthActions {
   forgotPassword: (email: string) => Promise<number>;
   resetPassword: (token: string, newPassword: string) => Promise<void>;
   clearError: () => void;
+  setSession: (user: IUser | null, token: string | null) => void;
   setUser: (user: IUser | null) => void;
   refreshUser: () => Promise<void>;
   // Registration approval workflow actions
@@ -80,6 +81,21 @@ export const useAuthStoreV2 = create<AuthStore>()(
        * Initialize auth state from stored token
        */
       initialize: async () => {
+        // "Remember me" check: if user chose not to remember and browser was restarted
+        // (sessionStorage clears on browser close, localStorage persists)
+        const rememberMe = localStorage.getItem('dj_remember');
+        const sessionActive = sessionStorage.getItem('dj_session_active');
+        if (rememberMe === 'false' && !sessionActive) {
+          // Browser was closed without "remember me" — auto-logout
+          localStorage.removeItem('auth_token_v2');
+          localStorage.removeItem('token');
+          localStorage.removeItem('dj_remember');
+          set({ ...initialState, isLoading: false });
+          return;
+        }
+        // Mark current session as active
+        sessionStorage.setItem('dj_session_active', '1');
+
         const legacyToken = localStorage.getItem('token');
         const token = localStorage.getItem('auth_token_v2') || legacyToken;
 
@@ -256,7 +272,7 @@ export const useAuthStoreV2 = create<AuthStore>()(
           const response = await authServiceV2.forgotPassword(email);
 
           if (!response.success) {
-            const errorMessage = response.error || response.message || 'Failed to send reset email';
+            const errorMessage = response.error || response.message || 'Failed to send temporary password email';
             set({ error: errorMessage, isLoading: false });
             throw new Error(errorMessage);
           }
@@ -264,7 +280,7 @@ export const useAuthStoreV2 = create<AuthStore>()(
           set({ isLoading: false });
           return response.data?.cooldownRemainingSeconds || 0;
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Failed to send reset email';
+          const errorMessage = error instanceof Error ? error.message : 'Failed to send temporary password email';
           set({ error: errorMessage, isLoading: false });
           throw error;
         }
@@ -297,6 +313,32 @@ export const useAuthStoreV2 = create<AuthStore>()(
        * Clear error message
        */
       clearError: () => set({ error: null }),
+
+      /**
+       * Set user and token together for external auth handoffs such as magic links.
+       */
+      setSession: (user: IUser | null, token: string | null) => {
+        if (token) {
+          localStorage.setItem('auth_token_v2', token);
+          localStorage.setItem('token', token);
+        } else {
+          localStorage.removeItem('auth_token_v2');
+          localStorage.removeItem('token');
+        }
+
+        if (user) {
+          localStorage.setItem('user', JSON.stringify(user));
+        } else {
+          localStorage.removeItem('user');
+        }
+
+        set({
+          user,
+          token,
+          isAuthenticated: !!user && !!token,
+          error: null,
+        });
+      },
 
       /**
        * Manually set user (for external updates)

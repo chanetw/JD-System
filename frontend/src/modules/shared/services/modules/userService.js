@@ -596,8 +596,26 @@ export const userService = {
     },
 
     changePassword: async (currentPassword, newPassword) => {
-        console.log('[DEV] Password changed');
-        return { success: true };
+        try {
+            const response = await httpClient.post('/v2/auth/change-password', {
+                currentPassword,
+                newPassword,
+            });
+
+            if (!response.data?.success) {
+                throw new Error(response.data?.message || 'Failed to change password');
+            }
+
+            return response.data;
+        } catch (error) {
+            console.error('[userService] changePassword error:', error);
+            throw new Error(
+                error?.response?.data?.message ||
+                error?.response?.data?.error ||
+                error?.message ||
+                'Failed to change password'
+            );
+        }
     },
 
     // --- Demo Mode Helper ---

@@ -6,7 +6,7 @@
  * - ให้ผู้ขอเพลง (Requester) หรือฝ่ายการตลาด ระบุรายละเอียดงานที่ต้องการ (Brief)
  * - ตรวจสอบกฎธุรกิจ (Business Rules) เช่น เวลาการส่งงาน, วันหยุด, และโควต้าต่อโครงการ
  * - คำนวณวันกำหนดส่งงาน (Due Date) ตาม SLA ของประเภทงานและข้ามวันหยุดราชการ
- * - บันทึกข้อมูลงานพร้อมรูปภาพ/ไฟล์แนบ และดึงลำดับการอนุมัติ (Approval Flow) ตามโครงการที่เลือก
+ * - บันทึกข้อมูลงานพร้อมลิงก์ Brief และดึงลำดับการอนุมัติ (Approval Flow) ตามโครงการที่เลือก
  */
 
 import React, { useState, useEffect } from 'react';
@@ -20,7 +20,7 @@ import LoadingSpinner from '@shared/components/LoadingSpinner';
 import Modal from '@shared/components/Modal';
 import { calculateDueDate, formatDateToThai, addWorkDays } from '@shared/utils/slaCalculator';
 import { getAccessibleProjects, hasRole, isAdmin } from '@shared/utils/permission.utils';
-import { XMarkIcon, ClockIcon, LinkIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline'; // Added TrashIcon
+import { XMarkIcon, ClockIcon, LinkIcon, TrashIcon } from '@heroicons/react/24/outline';
 import AcceptanceDatePicker from '../components/AcceptanceDatePicker'; // New Component
 
 /**
@@ -164,10 +164,8 @@ export default function CreateDJ() {
         headline: '',        // พาดหัวหลัก
         subHeadline: '',     // พาดหัวรอง
         briefLink: '',       // ลิงค์ Brief (เช่น Google Drive link)
-        briefFiles: [],      // ไฟล์ Brief attachments
         sellingPoints: [],   // จุดเด่นที่ต้องการเน้น (Tags)
         price: '',           // ราคา/โปรโมชั่น
-        attachments: [],     // รายการไฟล์แนบ
         subItems: [],        // ชิ้นงานย่อยที่เลือก (เช่น FB, IG)
         dueDate: ''          // วันส่งงาน (Due Date) - New Field
     });
@@ -702,32 +700,6 @@ export default function CreateDJ() {
         }));
     };
 
-    /**
-     * จำลองการอัปโหลดไฟล์ (Mock Upload)
-     */
-    const handleFileUpload = () => {
-        const mockFile = {
-            name: `ไฟล์แนบ_${Date.now()}.zip`,
-            size: '5.2 MB',
-            type: 'zip'
-        };
-        setFormData(prev => ({
-            ...prev,
-            attachments: [...prev.attachments, mockFile]
-        }));
-    };
-
-    /**
-     * ลบไฟล์แนบออกจากรายการ
-     * @param {number} idx - ลำดับของไฟล์ที่ต้องการลบ
-     */
-    const removeFile = (idx) => {
-        setFormData(prev => ({
-            ...prev,
-            attachments: prev.attachments.filter((_, i) => i !== idx)
-        }));
-    };
-
     // === การตรวจสอบกฎธุรกิจและฟอร์ม (Business Rules & Validation) ===
 
     /**
@@ -883,8 +855,7 @@ export default function CreateDJ() {
                     headline: formData.headline || '',
                     subHeadline: formData.subHeadline || '',
                     description: formData.description || formData.objective || '',
-                    briefLink: formData.briefLink || null,
-                    briefFiles: formData.briefFiles || []
+                    briefLink: formData.briefLink || null
                 },
                 requesterId: user?.id,
                 tenantId: user?.tenant_id || 1,
@@ -1417,7 +1388,7 @@ export default function CreateDJ() {
                             </div>
 
                             {/* ส่วน Headline, Sub-headline, Selling Points, Price ถูกลบออกตาม implementation plan */}
-                            {/* Brief Link ย้ายไปอยู่ส่วน Attachments แล้ว */}
+                            {/* Brief Link แยกเป็น section เฉพาะด้านล่าง */}
                         </CardBody>
                     </Card >
 
@@ -1494,6 +1465,7 @@ export default function CreateDJ() {
                                     </div>
                                 </div>
                             )}
+
                         </CardBody>
                     </Card >
                 </div >

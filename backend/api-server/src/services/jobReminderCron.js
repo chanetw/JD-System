@@ -14,12 +14,15 @@
 import { getDatabase } from '../config/database.js';
 import NotificationService from './notificationService.js';
 import EmailService from './emailService.js';
+import MagicLinkService from './magicLinkService.js';
+import { createEmailTemplate } from '../utils/emailTemplates.js';
 
 class JobReminderCron {
   constructor() {
     this.intervalId = null;
     this.isRunning = false;
     this.intervalMinutes = 60; // ทุก 60 นาที
+    this.magicLinkService = new MagicLinkService();
   }
 
   /**
@@ -122,15 +125,27 @@ class JobReminderCron {
             try {
               const emailSvc = new EmailService();
               const toName = `${job.assignee.firstName || ''} ${job.assignee.lastName || ''}`.trim();
+              const magicLink = await this.magicLinkService.createJobActionLink({
+                userId: job.assigneeId,
+                jobId: job.id,
+                action: 'view',
+                djId: job.djId
+              });
               await emailSvc.sendEmail(
                 job.assignee.email,
                 `⏰ เตือน: งาน ${job.djId} รอดำเนินการเกิน 1 วัน`,
-                `<h2>เตือนการดำเนินการ</h2>
-                <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
-                <p><strong>สถานะ:</strong> ${statusText} (เกิน 24 ชั่วโมง)</p>
-                <p><strong>ผู้รับงาน:</strong> ${toName}</p>
-                <p>กรุณาเข้าระบบและดำเนินการโดยเร็ว</p>
-                <p><a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/jobs/${job.id}">ดูรายละเอียดงาน</a></p>`
+                createEmailTemplate({
+                  title: `⏰ เตือน: งาน ${job.djId} รอดำเนินการเกิน 1 วัน`,
+                  heading: '⏰ เตือนการดำเนินการ',
+                  content: `
+                    <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
+                    <p><strong>สถานะ:</strong> ${statusText} (เกิน 24 ชั่วโมง)</p>
+                    <p><strong>ผู้รับงาน:</strong> ${toName}</p>
+                    <p>กรุณาเข้าระบบและดำเนินการโดยเร็ว</p>
+                  `,
+                  buttonText: '🔐 เปิดงานในระบบ',
+                  buttonUrl: magicLink
+                })
               );
             } catch (emailErr) {
               console.error(`[JobReminder] Email failed for job ${job.djId}:`, emailErr.message);
@@ -199,7 +214,6 @@ class JobReminderCron {
           ? new Date(job.dueDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })
           : '-';
         const jobLink = `/jobs/${job.id}`;
-        const frontendJobUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}${jobLink}`;
 
         // --- Assignee ---
         if (job.assigneeId) {
@@ -226,15 +240,27 @@ class JobReminderCron {
               if (job.assignee?.email) {
                 const emailSvc = new EmailService();
                 const assigneeName = `${job.assignee.firstName || ''} ${job.assignee.lastName || ''}`.trim();
+                const magicLink = await this.magicLinkService.createJobActionLink({
+                  userId: job.assigneeId,
+                  jobId: job.id,
+                  action: 'view',
+                  djId: job.djId
+                });
                 await emailSvc.sendEmail(
                   job.assignee.email,
                   `⏰ งาน ${job.djId} ครบกำหนดพรุ่งนี้`,
-                  `<h2>แจ้งเตือน SLA Deadline</h2>
-                  <p>เรียน ${assigneeName},</p>
-                  <p>งาน <strong>${job.djId} - ${job.subject}</strong> จะครบกำหนดในวันที่ <strong>${dueDateStr}</strong></p>
-                  <p>กรุณาดำเนินการให้เสร็จสิ้นตามกำหนด</p>
-                  <p><a href="${frontendJobUrl}">ดูรายละเอียดงาน</a></p>
-                  <br><p>ขอบคุณครับ,<br>DJ System</p>`
+                  createEmailTemplate({
+                    title: `⏰ งาน ${job.djId} ครบกำหนดพรุ่งนี้`,
+                    heading: '⏰ แจ้งเตือน SLA Deadline',
+                    content: `
+                      <p>เรียน ${assigneeName},</p>
+                      <p>งาน <strong>${job.djId} - ${job.subject}</strong> จะครบกำหนดในวันที่ <strong>${dueDateStr}</strong></p>
+                      <p>กรุณาดำเนินการให้เสร็จสิ้นตามกำหนด</p>
+                      <p>ขอบคุณครับ,<br>DJ System</p>
+                    `,
+                    buttonText: '🔐 ดูรายละเอียดงาน',
+                    buttonUrl: magicLink
+                  })
                 ).catch(err => console.error(`[JobReminder] Assignee email failed for ${job.djId}:`, err.message));
               }
 
@@ -270,15 +296,27 @@ class JobReminderCron {
               if (job.requester?.email) {
                 const emailSvc = new EmailService();
                 const requesterName = `${job.requester.firstName || ''} ${job.requester.lastName || ''}`.trim();
+                const magicLink = await this.magicLinkService.createJobActionLink({
+                  userId: job.requesterId,
+                  jobId: job.id,
+                  action: 'view',
+                  djId: job.djId
+                });
                 await emailSvc.sendEmail(
                   job.requester.email,
                   `⏰ งาน ${job.djId} ครบกำหนดพรุ่งนี้`,
-                  `<h2>แจ้งเตือน SLA Deadline</h2>
-                  <p>เรียน ${requesterName},</p>
-                  <p>งาน <strong>${job.djId} - ${job.subject}</strong> ที่คุณร้องขอจะครบกำหนดในวันที่ <strong>${dueDateStr}</strong></p>
-                  <p>ติดตามสถานะงานได้ที่ลิงก์ด้านล่าง</p>
-                  <p><a href="${frontendJobUrl}">ดูรายละเอียดงาน</a></p>
-                  <br><p>ขอบคุณครับ,<br>DJ System</p>`
+                  createEmailTemplate({
+                    title: `⏰ งาน ${job.djId} ครบกำหนดพรุ่งนี้`,
+                    heading: '⏰ แจ้งเตือน SLA Deadline',
+                    content: `
+                      <p>เรียน ${requesterName},</p>
+                      <p>งาน <strong>${job.djId} - ${job.subject}</strong> ที่คุณร้องขอจะครบกำหนดในวันที่ <strong>${dueDateStr}</strong></p>
+                      <p>ติดตามสถานะงานได้ที่ลิงก์ด้านล่าง</p>
+                      <p>ขอบคุณครับ,<br>DJ System</p>
+                    `,
+                    buttonText: '🔐 ดูรายละเอียดงาน',
+                    buttonUrl: magicLink
+                  })
                 ).catch(err => console.error(`[JobReminder] Requester email failed for ${job.djId}:`, err.message));
               }
 

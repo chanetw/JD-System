@@ -13,12 +13,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from "react-router-dom";
 import httpClient from "../../../shared/services/httpClient";
-import { useAuthStore } from "../../stores/authStore";
+import { useAuthStoreV2 } from '../../stores/authStoreV2';
 
 export default function MagicLinkAuth() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { setUser, setToken } = useAuthStore();
+  const setSession = useAuthStoreV2((state) => state.setSession);
   const [status, setStatus] = useState('verifying'); // verifying, success, error
   const [message, setMessage] = useState('กำลังตรวจสอบ Magic Link...');
 
@@ -35,16 +35,13 @@ export default function MagicLinkAuth() {
         }
 
         // Verify magic link with backend
-        const response = await httpClient.post('/api/magic-link/verify', { token });
+        const response = await httpClient.post('/magic-link/verify', { token });
 
         if (response.data.success) {
           const { user, accessToken, targetUrl, action } = response.data;
 
           // Save auth data
-          setUser(user);
-          setToken(accessToken);
-          localStorage.setItem('token', accessToken);
-          localStorage.setItem('user', JSON.stringify(user));
+          setSession(user, accessToken);
 
           setStatus('success');
           setMessage('เข้าสู่ระบบสำเร็จ กำลังนำคุณไปยังหน้าที่ต้องการ...');
@@ -79,7 +76,7 @@ export default function MagicLinkAuth() {
     };
 
     verifyMagicLink();
-  }, [searchParams, navigate, setUser, setToken]);
+  }, [searchParams, navigate, setSession]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50">

@@ -21,7 +21,7 @@ import { Login, LoginDemo, Register, ChangePassword, ProtectedRoute, RoleProtect
 import MagicLinkAuth from './modules/core/auth/pages/MagicLinkAuth';
 
 // V2 Auth Pages (TypeScript - Production-ready)
-import { LoginV2, ForgotPasswordV2, ResetPasswordV2, ForceChangePassword } from '@core/auth-v2';
+import { LoginV2, ForgotPasswordV2 } from '@core/auth-v2';
 
 // Lazy-loaded Feature Modules (Code Splitting)
 const Dashboard = lazy(() => import('@features/dashboard/pages/Dashboard'));
@@ -143,7 +143,10 @@ function App() {
 
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPasswordV2 />} />
-        <Route path="/reset-password" element={<ResetPasswordV2 />} />
+        <Route
+          path="/reset-password"
+          element={<Navigate to="/forgot-password" replace state={{ message: 'ลิงก์ตั้งรหัสผ่านแบบเดิมถูกยกเลิกแล้ว กรุณาขอรหัสผ่านชั่วคราวใหม่อีกครั้ง' }} />}
+        />
 
         {/* Change Password (Requires Login) */}
         <Route path="/change-password" element={
@@ -152,10 +155,10 @@ function App() {
           </ProtectedRoute>
         } />
 
-        {/* Force Change Password (After Admin Approval) */}
+        {/* Force Change Password (After temporary-password login) */}
         <Route path="/force-change-password" element={
           <ProtectedRoute>
-            <ForceChangePassword />
+            <ChangePassword />
           </ProtectedRoute>
         } />
 
@@ -202,7 +205,7 @@ function App() {
           {/* Admin routes migrated to modules/features/admin */}
 
           <Route path="media-portal" element={
-            <RoleProtectedRoute allowedRoles={['Admin', 'Requester', 'Approver']}>
+            <RoleProtectedRoute allowedRoles={['Admin', 'Requester', 'Approver', 'Assignee', 'graphic', 'editor']}>
               <Suspense fallback={<PageLoadingFallback />}>
                 <MediaPortal />
               </Suspense>

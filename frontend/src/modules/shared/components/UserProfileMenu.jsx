@@ -3,7 +3,7 @@
  * @description Shared profile dropdown menu — ใช้ร่วมกันทุกหน้า (Header + UserPortal)
  * UI ยึดดีไซน์ของ UserPortal เป็นมาตรฐาน
  *
- * เมนู: แก้ไขโปรไฟล์ | ติดต่อ Admin | ออกจากระบบ
+ * เมนู: แก้ไขโปรไฟล์ | เปลี่ยนรหัสผ่าน | ติดต่อ Admin | ออกจากระบบ
  */
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -29,6 +29,15 @@ function EnvelopeIcon({ className }) {
         <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+    );
+}
+
+function LockIcon({ className }) {
+    return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M12 15v2m-6 4h12a2 2 0 002-2v-7a2 2 0 00-2-2h-1V7a5 5 0 00-10 0v3H6a2 2 0 00-2 2v7a2 2 0 002 2zm3-11V7a3 3 0 016 0v3H9z" />
         </svg>
     );
 }
@@ -144,6 +153,13 @@ export default function UserProfileMenu({ showName = false }) {
                         >
                             <PencilIcon className="w-4 h-4 text-slate-400" />
                             แก้ไขโปรไฟล์
+                        </button>
+                        <button
+                            onClick={() => { navigate('/change-password'); setShowMenu(false); }}
+                            className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                        >
+                            <LockIcon className="w-4 h-4 text-slate-400" />
+                            เปลี่ยนรหัสผ่าน
                         </button>
                         <button
                             onClick={() => { setShowContactModal(true); setShowMenu(false); }}

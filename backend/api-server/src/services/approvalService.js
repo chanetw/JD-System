@@ -17,7 +17,12 @@ import NotificationService from './notificationService.js';
 import chainService from './chainService.js';
 import { cacheService } from './cacheService.js';
 import MagicLinkService from './magicLinkService.js';
-import { createJobApprovalEmail, createJobRejectionEmail, createJobCompletionEmail } from '../utils/emailTemplates.js';
+import {
+  createEmailTemplate,
+  createJobApprovalEmail,
+  createJobRejectionEmail,
+  createJobCompletionEmail
+} from '../utils/emailTemplates.js';
 
 export class ApprovalService extends BaseService {
   constructor() {
@@ -767,11 +772,25 @@ export class ApprovalService extends BaseService {
                 select: { email: true }
               });
               if (assignee?.email) {
-                await emailService.sendEmail(assignee.email, `✅ งาน ${job.djId} เริ่มทำงานแล้ว`,
-                  `<h2>งานเริ่มนับเวลาทำงานแล้ว</h2>
-                  <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
-                  <p>งานได้รับการอนุมัติและมอบหมายให้คุณแล้ว กรุณาดำเนินการ</p>
-                  <p><a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/jobs/${jobId}">ดูรายละเอียดงาน</a></p>`
+                const magicLink = await this.magicLinkService.createJobActionLink({
+                  userId: assignResult.assigneeId,
+                  jobId,
+                  action: 'view',
+                  djId: job.djId
+                });
+                await emailService.sendEmail(
+                  assignee.email,
+                  `✅ งาน ${job.djId} เริ่มทำงานแล้ว`,
+                  createEmailTemplate({
+                    title: `✅ งาน ${job.djId} เริ่มทำงานแล้ว`,
+                    heading: '✅ งานเริ่มนับเวลาทำงานแล้ว',
+                    content: `
+                      <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
+                      <p>งานได้รับการอนุมัติและมอบหมายให้คุณแล้ว กรุณาดำเนินการ</p>
+                    `,
+                    buttonText: '🔐 ดูรายละเอียดงาน',
+                    buttonUrl: magicLink
+                  })
                 ).catch(err => console.warn('[AutoStart] Email failed:', err.message));
               }
             } catch (emailErr) {
@@ -2411,6 +2430,10 @@ export class ApprovalService extends BaseService {
         console.error('[ApprovalService] Batch operation error:', err);
         errors.push({ error: err.message });
       }
+
+      // Ensure newly-saved skip flows are visible immediately to job creation/runtime checks
+      cacheService.invalidateByPrefix(`approval_flow:${projectId}:`);
+      console.log(`[Cache] Invalidated approval flows for project ${projectId} after bulk skip flow sync`);
 
       return {
         success: true,

@@ -12,6 +12,7 @@
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { getDatabase } from '../config/database.js';
+import { getFrontendBaseUrl } from '../utils/frontendUrl.js';
 
 export class MagicLinkService {
   constructor() {
@@ -30,7 +31,7 @@ export class MagicLinkService {
    * @param {Object} params.metadata - ข้อมูลเพิ่มเติม (jobId, etc.)
    * @returns {Promise<string>} - Magic link URL
    */
-  async generateMagicLink({ userId, targetUrl, action = 'view', metadata = {} }) {
+  async generateMagicLink({ userId, targetUrl, action = 'view', metadata = {}, frontendUrl = null }) {
     try {
       // Generate unique token ID
       const tokenId = crypto.randomBytes(32).toString('hex');
@@ -65,8 +66,8 @@ export class MagicLinkService {
       });
 
       // Build magic link URL
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      const magicLink = `${frontendUrl}/auth/magic-link?token=${token}`;
+      const resolvedFrontendUrl = frontendUrl || getFrontendBaseUrl();
+      const magicLink = `${resolvedFrontendUrl}/auth/magic-link?token=${token}`;
 
       return magicLink;
     } catch (error) {
@@ -189,7 +190,7 @@ export class MagicLinkService {
    * สร้าง Magic Link สำหรับ Job Action
    * Helper function สำหรับสร้าง magic link สำหรับงานต่างๆ
    */
-  async createJobActionLink({ userId, jobId, action, djId }) {
+  async createJobActionLink({ userId, jobId, action, djId, frontendUrl = null }) {
     const actionMap = {
       'approve': `/jobs/${jobId}?action=approve`,
       'reject': `/jobs/${jobId}?action=reject`,
@@ -205,7 +206,8 @@ export class MagicLinkService {
       userId,
       targetUrl,
       action,
-      metadata: { jobId, djId }
+      metadata: { jobId, djId },
+      frontendUrl
     });
   }
 }

@@ -16,7 +16,7 @@ import apiDatabase from '@shared/services/apiDatabase';
 import { adminService } from '@shared/services/modules/adminService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { generateTempPassword } from '@shared/utils/passwordGenerator';
-import { ROLES, ROLE_LABELS, ROLE_V1_DISPLAY, ROLE_V2_BADGE_COLORS, hasRole } from '@shared/utils/permission.utils';
+import { ROLES, ROLE_LABELS, ROLE_V1_DISPLAY, ROLE_V2_BADGE_COLORS, hasRole, normalizeRoleName } from '@shared/utils/permission.utils';
 import Button from '@shared/components/Button';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
 import RoleSelectionCheckbox from '@shared/components/RoleSelectionCheckbox';
@@ -25,7 +25,7 @@ import {
     CheckIcon, XMarkIcon,
     UserIcon, EnvelopeIcon, BuildingOfficeIcon,
     ChevronLeftIcon, ChevronRightIcon,
-    KeyIcon,
+    KeyIcon, PlusIcon,
     EyeIcon, EyeSlashIcon, ClipboardDocumentIcon,
     ExclamationTriangleIcon,
     MapIcon // For Responsibilities Icon
@@ -90,6 +90,19 @@ export default function UserManagementNew() {
         allowedProjects: [],
         assignedProjects: []
     });
+    const [createModal, setCreateModal] = useState({
+        show: false,
+        filteredScopes: null
+    });
+    const [createUserData, setCreateUserData] = useState({
+        firstName: '',
+        lastName: '',
+        email: '',
+        title: '',
+        phone: '',
+        departmentId: '',
+        isActive: true
+    });
     const [editModal, setEditModal] = useState({
         show: false,
         user: null,
@@ -109,10 +122,14 @@ export default function UserManagementNew() {
     // Multi-Role: Role configs with scopes
     const [approvalRoleConfigs, setApprovalRoleConfigs] = useState({});
     const [approvalSelectedRoles, setApprovalSelectedRoles] = useState([]);
+    const [createRoleConfigs, setCreateRoleConfigs] = useState({});
+    const [createSelectedRoles, setCreateSelectedRoles] = useState([]);
     const [editRoleConfigs, setEditRoleConfigs] = useState({});
     const [editSelectedRoles, setEditSelectedRoles] = useState([]);
 
     // --- NEW: Assignment State (BUD-level + Project-level) ---
+    const [createAssignmentData, setCreateAssignmentData] = useState({ jobTypeIds: [], budIds: [], projectIds: [] });
+    const [createBudFilter, setCreateBudFilter] = useState('all');
     const [editAssignmentData, setEditAssignmentData] = useState({ jobTypeIds: [], budIds: [], projectIds: [] });
     const [initialAssignmentData, setInitialAssignmentData] = useState({ jobTypeIds: [], budIds: [], projectIds: [] }); // To detect changes
     const [budFilter, setBudFilter] = useState('all'); // Filter for projects section
@@ -142,7 +159,8 @@ export default function UserManagementNew() {
         show: false,
         userName: '',
         temporaryPassword: '',
-        revealed: false
+        revealed: false,
+        mode: 'reset'
     });
 
     // Alert - Using SweetAlert2 now, removing local state
@@ -573,6 +591,125 @@ export default function UserManagementNew() {
         });
     };
 
+    const openCreateUserModal = () => {
+        setCreateUserData({
+            firstName: '',
+            lastName: '',
+            email: '',
+            title: '',
+            phone: '',
+            departmentId: '',
+            isActive: true
+        });
+        setCreateRoleConfigs({});
+        setCreateSelectedRoles([]);
+        setCreateAssignmentData({ jobTypeIds: [], budIds: [], projectIds: [] });
+        setCreateBudFilter('all');
+        setCreateModal({
+            show: true,
+            filteredScopes: getFilteredScopesForUser(null, availableScopes)
+        });
+    };
+
+    const closeCreateUserModal = () => {
+        setCreateModal({ show: false, filteredScopes: null });
+    };
+
+    const handleCreateUser = async () => {
+        const firstName = String(createUserData.firstName || '').trim();
+        const lastName = String(createUserData.lastName || '').trim();
+        const email = String(createUserData.email || '').trim().toLowerCase();
+
+        if (!firstName || !lastName || !email) {
+            showAlert('error', 'กรุณากรอกชื่อ นามสกุล และอีเมลให้ครบถ้วน');
+            return;
+        }
+
+        const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailPattern.test(email)) {
+            showAlert('error', 'รูปแบบอีเมลไม่ถูกต้อง');
+            return;
+        }
+
+        const selectedRoles = Array.from(new Set((createSelectedRoles || []).map(normalizeRoleName).filter(Boolean)));
+        if (selectedRoles.length === 0) {
+            showAlert('error', 'กรุณาเลือกบทบาทอย่างน้อย 1 ตัว');
+            return;
+        }
+
+        const rolesNeedingScope = selectedRoles.filter(r => r !== 'Admin' && r !== 'Assignee');
+        for (const roleName of rolesNeedingScope) {
+            const roleConfig = createRoleConfigs[roleName];
+            if (!roleConfig || !roleConfig.scopes || roleConfig.scopes.length === 0) {
+                showAlert('error', `กรุณากำหนดขอบเขตสำหรับบทบาท ${ROLE_LABELS[roleName] || roleName}`);
+                return;
+            }
+        }
+
+        const isAssigneeRole = selectedRoles.includes('Assignee');
+        if (isAssigneeRole) {
+            if (createAssignmentData.projectIds.length > 0 && createAssignmentData.jobTypeIds.length === 0) {
+                showAlert('error', 'กรุณาเลือกทักษะ (Job Types) อย่างน้อย 1 งาน');
+                return;
+            }
+            if (createAssignmentData.jobTypeIds.length > 0 && createAssignmentData.projectIds.length === 0) {
+                showAlert('error', 'กรุณาเลือกโครงการ (Projects) อย่างน้อย 1 โครงการ');
+                return;
+            }
+        }
+
+        try {
+            setIsSubmitting(true);
+
+            const createdUser = await adminService.createUserByAdmin({
+                ...createUserData,
+                firstName,
+                lastName,
+                email
+            });
+
+            const currentUserId = user.id;
+            const tenantId = user.tenantId || 1;
+
+            const rolesForSave = selectedRoles.map(roleName => {
+                const normalizedRoleName = normalizeRoleName(roleName);
+                const roleConfig = createRoleConfigs[normalizedRoleName] || { level: 'project', scopes: [] };
+                return {
+                    name: normalizedRoleName,
+                    level: roleConfig.level || 'project',
+                    isActive: true,
+                    scopes: normalizedRoleName === 'Assignee' ? [] : (roleConfig.scopes || [])
+                };
+            });
+
+            await adminService.saveUserRoles(createdUser.id, rolesForSave, currentUserId, tenantId);
+
+            if (isAssigneeRole && (createAssignmentData.projectIds.length > 0 || createAssignmentData.jobTypeIds.length > 0)) {
+                await adminService.saveUserAssignments(createdUser.id, createAssignmentData);
+            }
+
+            closeCreateUserModal();
+            showAlert('success', 'สร้างผู้ใช้สำเร็จ');
+
+            if (createdUser.temporaryPassword) {
+                setResetPasswordModal({
+                    show: true,
+                    userName: `${createdUser.firstName || firstName} ${createdUser.lastName || lastName}`.trim() || email,
+                    temporaryPassword: createdUser.temporaryPassword,
+                    revealed: false,
+                    mode: 'create'
+                });
+            }
+
+            loadUsers();
+        } catch (error) {
+            console.error('[UserManagement] handleCreateUser error:', error);
+            showAlert('error', 'ไม่สามารถสร้างผู้ใช้ได้: ' + (error.message || 'Unknown error'));
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const handleApproveClick = (registrationId) => {
         const registration = registrations.find(r => r.id === registrationId);
 
@@ -660,7 +797,8 @@ export default function UserManagementNew() {
                 show: true,
                 userName: `${userToReset.firstName || ''} ${userToReset.lastName || ''}`.trim() || userToReset.email,
                 temporaryPassword,
-                revealed: false
+                revealed: false,
+                mode: 'reset'
             });
         } catch (error) {
             console.error('Error resetting password:', error);
@@ -675,7 +813,8 @@ export default function UserManagementNew() {
             show: false,
             userName: '',
             temporaryPassword: '',
-            revealed: false
+            revealed: false,
+            mode: 'reset'
         });
     };
 
@@ -755,17 +894,20 @@ export default function UserManagementNew() {
 
             if (userWithRoles?.roles && userWithRoles.roles.length > 0) {
                 userWithRoles.roles.forEach(role => {
-                    loadedRoleNames.push(role.name);
-                    loadedRoleConfigs[role.name] = {
+                    const roleName = normalizeRoleName(role.name);
+                    if (!roleName || loadedRoleNames.includes(roleName)) return;
+
+                    loadedRoleNames.push(roleName);
+                    loadedRoleConfigs[roleName] = {
                         level: role.scopes?.[0]?.level || 'project',
-                        scopes: role.scopes || []
+                        scopes: roleName === 'Assignee' ? [] : (role.scopes || [])
                     };
                 });
                 console.log('✅ Loaded roles:', loadedRoleNames);
-            } else {
+            } else if (userToEdit.role) {
                 // Fallback: use legacy role
-                if (userToEdit.role) {
-                    const roleName = userToEdit.role === 'marketing' ? 'Requester' : userToEdit.role;
+                const roleName = normalizeRoleName(userToEdit.role);
+                if (roleName) {
                     loadedRoleNames.push(roleName);
                     console.log(`⚠️ Using legacy role: ${userToEdit.role} -> mapped to ${roleName}`);
                 }
@@ -819,7 +961,7 @@ export default function UserManagementNew() {
                     title: userWithRoles?.title || userToEdit.title,
                     phone: userWithRoles?.phone || userToEdit.phone,
                     departmentId: userWithRoles?.departmentId || userToEdit.departmentId || userToEdit.department?.id || '',
-                    role: userToEdit.role || loadedRoleNames[0] || 'Requester'
+                    role: normalizeRoleName(userToEdit.role) || loadedRoleNames[0] || 'Requester'
                 },
                 filteredScopes  // Store filtered scopes in state
             });
@@ -836,7 +978,7 @@ export default function UserManagementNew() {
     const handleSaveUserChanges = async () => {
         if (!editModal.user) return;
 
-        const selectedRoles = editSelectedRoles;
+        const selectedRoles = Array.from(new Set((editSelectedRoles || []).map(normalizeRoleName).filter(Boolean)));
         if (!selectedRoles || selectedRoles.length === 0) {
             showAlert('error', 'กรุณาเลือกบทบาทอย่างน้อย 1 ตัว');
             return;
@@ -988,12 +1130,13 @@ export default function UserManagementNew() {
 
             // 2. Build roles array for saveUserRoles
             const rolesForSave = selectedRoles.map(roleName => {
-                const roleConfig = editRoleConfigs[roleName] || { level: 'project', scopes: [] };
+                const normalizedRoleName = normalizeRoleName(roleName);
+                const roleConfig = editRoleConfigs[normalizedRoleName] || { level: 'project', scopes: [] };
                 return {
-                    name: roleName,
+                    name: normalizedRoleName,
                     level: roleConfig.level || 'project', // ✅ ส่ง level ให้ด้วย
                     isActive: true,
-                    scopes: roleConfig.scopes || []
+                    scopes: normalizedRoleName === 'Assignee' ? [] : (roleConfig.scopes || [])
                 };
             });
 
@@ -1066,11 +1209,12 @@ export default function UserManagementNew() {
 
             // Build roles array for backend
             const rolesForApprove = approvalData.roles.map(roleName => {
-                const roleConfig = approvalRoleConfigs[roleName] || { level: 'project', scopes: [] };
+                const normalizedRoleName = normalizeRoleName(roleName);
+                const roleConfig = approvalRoleConfigs[normalizedRoleName] || { level: 'project', scopes: [] };
                 return {
-                    name: roleName,
+                    name: normalizedRoleName,
                     level: roleConfig.level || 'project',
-                    scopes: roleConfig.scopes || []
+                    scopes: normalizedRoleName === 'Assignee' ? [] : (roleConfig.scopes || [])
                 };
             });
 
@@ -1173,11 +1317,18 @@ export default function UserManagementNew() {
     return (
         <div className="p-6 max-w-7xl mx-auto space-y-6">
             {/* Header */}
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
                     <p className="text-gray-500">จัดการผู้ใช้งาน และอนุมัติคำขอสมัครใหม่</p>
                 </div>
+
+                {activeTab === 'active' && isAdmin && (
+                    <Button onClick={openCreateUserModal} className="inline-flex items-center gap-2">
+                        <PlusIcon className="w-4 h-4" />
+                        เพิ่มผู้ใช้
+                    </Button>
+                )}
             </div>
 
             {/* Tabs */}
@@ -1470,23 +1621,31 @@ export default function UserManagementNew() {
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <div className="flex flex-wrap gap-1">
-                                                        {user.roles && user.roles.length > 0 ? (
-                                                            user.roles.map((roleObj, idx) => {
-                                                                const roleName = typeof roleObj === 'string' ? roleObj : roleObj?.name;
-                                                                return (
+                                                        {(() => {
+                                                            const uniqueRoleNames = Array.from(new Set(
+                                                                (user.roles || [])
+                                                                    .map((roleObj) => normalizeRoleName(typeof roleObj === 'string' ? roleObj : roleObj?.name))
+                                                                    .filter(Boolean)
+                                                            ));
+
+                                                            if (uniqueRoleNames.length > 0) {
+                                                                return uniqueRoleNames.map((roleName, idx) => (
                                                                     <span
-                                                                        key={idx}
+                                                                        key={`${user.id}-${roleName}-${idx}`}
                                                                         className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${ROLE_V2_BADGE_COLORS[roleName] || 'bg-gray-100 text-gray-800'}`}
                                                                     >
                                                                         {ROLE_V1_DISPLAY[roleName] || roleName}
                                                                     </span>
-                                                                );
-                                                            })
-                                                        ) : (
-                                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                                                {ROLE_V1_DISPLAY[user.role] || user.role || 'N/A'}
-                                                            </span>
-                                                        )}
+                                                                ));
+                                                            }
+
+                                                            const fallbackRole = normalizeRoleName(user.role);
+                                                            return (
+                                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                                                    {ROLE_V1_DISPLAY[fallbackRole] || fallbackRole || 'N/A'}
+                                                                </span>
+                                                            );
+                                                        })()}
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 text-center">
@@ -1912,15 +2071,354 @@ export default function UserManagementNew() {
                 </div>
             )}
 
+            {createModal.show && (
+                <div className="fixed inset-0 flex items-center justify-center z-50 p-4 bg-black/40">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-gray-300 p-6 max-w-4xl w-full">
+                        <div className="flex justify-between items-center mb-6 border-b border-gray-300 pb-4">
+                            <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                                <PlusIcon className="w-6 h-6 text-emerald-600" />
+                                เพิ่มผู้ใช้ใหม่
+                            </h3>
+                            <button onClick={closeCreateUserModal} className="text-gray-400 hover:text-gray-600">
+                                <XMarkIcon className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อจริง <span className="text-red-500">*</span></label>
+                                    <input
+                                        type="text"
+                                        value={createUserData.firstName}
+                                        onChange={(e) => setCreateUserData(prev => ({ ...prev, firstName: e.target.value }))}
+                                        className="w-full px-3 py-2 border border-gray-400 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                        placeholder="ชื่อจริง"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">นามสกุล <span className="text-red-500">*</span></label>
+                                    <input
+                                        type="text"
+                                        value={createUserData.lastName}
+                                        onChange={(e) => setCreateUserData(prev => ({ ...prev, lastName: e.target.value }))}
+                                        className="w-full px-3 py-2 border border-gray-400 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                        placeholder="นามสกุล"
+                                    />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">อีเมล <span className="text-red-500">*</span></label>
+                                    <input
+                                        type="email"
+                                        value={createUserData.email}
+                                        onChange={(e) => setCreateUserData(prev => ({ ...prev, email: e.target.value }))}
+                                        className="w-full px-3 py-2 border border-gray-400 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                        placeholder="name@company.com"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-gray-900 mb-1">ตำแหน่ง (Job Title)</label>
+                                <input
+                                    type="text"
+                                    value={createUserData.title || ''}
+                                    onChange={(e) => setCreateUserData(prev => ({ ...prev, title: e.target.value }))}
+                                    className="w-full px-3 py-2 border border-gray-400 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                    placeholder="เช่น Graphic Designer"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-gray-900 mb-1">เบอร์โทรศัพท์</label>
+                                <input
+                                    type="text"
+                                    value={createUserData.phone || ''}
+                                    onChange={(e) => setCreateUserData(prev => ({ ...prev, phone: e.target.value }))}
+                                    placeholder="0xx-xxx-xxxx"
+                                    className="w-full px-3 py-2 border border-gray-400 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-gray-900 mb-1">แผนก / สังกัด</label>
+                                <select
+                                    value={createUserData.departmentId || ''}
+                                    onChange={(e) => {
+                                        const nextUserData = { ...createUserData, departmentId: e.target.value };
+                                        setCreateUserData(nextUserData);
+                                        setCreateModal(prev => ({
+                                            ...prev,
+                                            filteredScopes: getFilteredScopesForUser(nextUserData, availableScopes)
+                                        }));
+                                    }}
+                                    className="w-full px-3 py-2 border border-gray-400 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                >
+                                    <option value="">-- ระบุแผนก --</option>
+                                    {masterData.departments.map(dept => (
+                                        <option key={dept.id} value={dept.id}>{dept.name} ({dept.code})</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-gray-900 mb-3">
+                                    บทบาทในระบบ <span className="text-red-500">*</span>
+                                </label>
+                                <RoleSelectionCheckbox
+                                    selectedRoles={createSelectedRoles}
+                                    onChange={(roles) => setCreateSelectedRoles(roles)}
+                                    showDescriptions={true}
+                                />
+                            </div>
+
+                            {createSelectedRoles.length > 0 && createSelectedRoles.filter(r => r !== 'Assignee').length > 0 && (
+                                <ScopeConfigPanel
+                                    selectedRoles={createSelectedRoles.filter(r => r !== 'Assignee')}
+                                    roleConfigs={createRoleConfigs}
+                                    onConfigChange={(configs) => setCreateRoleConfigs(configs)}
+                                    availableScopes={createModal.filteredScopes || {
+                                        projects: masterData.projects || [],
+                                        buds: masterData.buds || [],
+                                        tenants: masterData.tenants || []
+                                    }}
+                                    loading={scopesLoading}
+                                />
+                            )}
+
+                            {createSelectedRoles.includes('Assignee') && (
+                                <div className="mt-6 border border-gray-300 rounded-lg overflow-hidden bg-white shadow-sm">
+                                    <div className="bg-gradient-to-r from-slate-50 to-gray-50 px-5 py-4 border-b border-gray-300">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <h4 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                                                    <MapIcon className="h-5 w-5 text-slate-600" />
+                                                    ความรับผิดชอบ
+                                                </h4>
+                                                <p className="text-xs text-gray-500 mt-1">เลือกประเภทงานและโครงการที่รับผิดชอบ</p>
+                                            </div>
+                                            <div className="text-xs text-gray-500 bg-white px-3 py-1.5 rounded-md border border-gray-400">
+                                                <span className="font-medium text-gray-900">{createAssignmentData.jobTypeIds?.length || 0}</span> ทักษะ, <span className="font-medium text-gray-900">{createAssignmentData.projectIds?.length || 0}</span> โครงการ
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-5">
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                            <div className="flex flex-col">
+                                                <div className="mb-3">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <h5 className="text-sm font-semibold text-gray-900">ทักษะ (Job Types)</h5>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const allJobTypeIds = masterData.jobTypes
+                                                                    ?.filter(jt => jt.name !== 'Project Group (Parent)')
+                                                                    ?.map(jt => jt.id) || [];
+                                                                const allSelected = allJobTypeIds.length > 0 && allJobTypeIds.every(id => createAssignmentData.jobTypeIds.includes(id));
+                                                                setCreateAssignmentData({
+                                                                    ...createAssignmentData,
+                                                                    jobTypeIds: allSelected ? [] : allJobTypeIds
+                                                                });
+                                                            }}
+                                                            className="text-xs px-3 py-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                                        >
+                                                            {(() => {
+                                                                const allJobTypeIds = masterData.jobTypes
+                                                                    ?.filter(jt => jt.name !== 'Project Group (Parent)')
+                                                                    ?.map(jt => jt.id) || [];
+                                                                const allSelected = allJobTypeIds.length > 0 && allJobTypeIds.every(id => createAssignmentData.jobTypeIds.includes(id));
+                                                                return allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด';
+                                                            })()}
+                                                        </button>
+                                                    </div>
+                                                    <div className="w-full text-sm border border-transparent px-3 py-2 invisible">Placeholder</div>
+                                                </div>
+                                                <div className="border border-gray-400 shadow-sm rounded-lg h-96 overflow-y-auto bg-white">
+                                                    {masterData.jobTypes?.length > 0 ? masterData.jobTypes
+                                                        .filter(jt => jt.name !== 'Project Group (Parent)')
+                                                        .map(jt => {
+                                                            const isSelected = createAssignmentData.jobTypeIds.includes(jt.id);
+                                                            return (
+                                                                <label
+                                                                    key={jt.id}
+                                                                    className={`flex items-center gap-3 px-4 py-2.5 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors ${isSelected ? 'bg-blue-50/50' : ''}`}
+                                                                >
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500"
+                                                                        checked={isSelected}
+                                                                        onChange={(e) => {
+                                                                            const newIds = e.target.checked
+                                                                                ? [...createAssignmentData.jobTypeIds, jt.id]
+                                                                                : createAssignmentData.jobTypeIds.filter(x => x !== jt.id);
+                                                                            setCreateAssignmentData({ ...createAssignmentData, jobTypeIds: newIds });
+                                                                        }}
+                                                                    />
+                                                                    <span className="text-sm font-medium text-gray-900 flex-1">{jt.name}</span>
+                                                                </label>
+                                                            );
+                                                        }) : (
+                                                        <div className="text-sm text-gray-400 px-4 py-6 text-center">ไม่มีข้อมูล</div>
+                                                    )}
+                                                </div>
+                                                <div className="mt-2 px-1 text-xs text-gray-600">
+                                                    เลือกแล้ว: <span className="font-medium text-gray-900">{createAssignmentData.jobTypeIds?.length || 0}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-col">
+                                                <div className="mb-3">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <h5 className="text-sm font-semibold text-gray-900">โครงการ (Projects)</h5>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const filteredProjects = masterData.projects
+                                                                    ?.filter(p => p.isActive !== false && p.isParent !== true && p.isParent !== 1)
+                                                                    ?.filter(p => createBudFilter === 'all' || p.budId === createBudFilter || p.bud_id === createBudFilter) || [];
+                                                                const allIds = filteredProjects.map(p => p.id);
+                                                                const allSelected = allIds.length > 0 && allIds.every(id => createAssignmentData.projectIds.includes(id));
+
+                                                                setCreateAssignmentData({
+                                                                    ...createAssignmentData,
+                                                                    projectIds: allSelected
+                                                                        ? createAssignmentData.projectIds.filter(id => !allIds.includes(id))
+                                                                        : [...new Set([...createAssignmentData.projectIds, ...allIds])]
+                                                                });
+                                                            }}
+                                                            className="text-xs px-3 py-1 text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                                                        >
+                                                            {(() => {
+                                                                const filteredProjects = masterData.projects
+                                                                    ?.filter(p => p.isActive !== false && p.isParent !== true && p.isParent !== 1)
+                                                                    ?.filter(p => createBudFilter === 'all' || p.budId === createBudFilter || p.bud_id === createBudFilter) || [];
+                                                                const allIds = filteredProjects.map(p => p.id);
+                                                                const allSelected = allIds.length > 0 && allIds.every(id => createAssignmentData.projectIds.includes(id));
+                                                                return allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด';
+                                                            })()}
+                                                        </button>
+                                                    </div>
+                                                    <select
+                                                        value={createBudFilter}
+                                                        onChange={(e) => setCreateBudFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+                                                        className="w-full text-sm border border-gray-400 rounded-md px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                                                    >
+                                                        <option value="all">ทุก BUD</option>
+                                                        {masterData.buds?.filter(b => {
+                                                            if (b.isActive === false) return false;
+                                                            const projectCount = masterData.projects?.filter(p =>
+                                                                (p.budId === b.id || p.bud_id === b.id) &&
+                                                                p.isActive !== false &&
+                                                                p.isParent !== true &&
+                                                                p.isParent !== 1
+                                                            ).length || 0;
+                                                            return projectCount > 0;
+                                                        }).map(bud => {
+                                                            const projectCount = masterData.projects?.filter(p =>
+                                                                (p.budId === bud.id || p.bud_id === bud.id) &&
+                                                                p.isActive !== false &&
+                                                                p.isParent !== true &&
+                                                                p.isParent !== 1
+                                                            ).length || 0;
+                                                            return (
+                                                                <option key={bud.id} value={bud.id}>
+                                                                    {bud.name} ({projectCount} โครงการ)
+                                                                </option>
+                                                            );
+                                                        })}
+                                                    </select>
+                                                </div>
+
+                                                <div className="border border-gray-400 shadow-sm rounded-lg h-96 overflow-y-auto bg-white">
+                                                    {(() => {
+                                                        const filteredProjects = masterData.projects
+                                                            ?.filter(p => p.isActive !== false)
+                                                            ?.filter(p => p.isParent !== true && p.isParent !== 1)
+                                                            ?.filter(p => createBudFilter === 'all' || p.budId === createBudFilter || p.bud_id === createBudFilter) || [];
+
+                                                        return filteredProjects.length > 0 ? filteredProjects.map(p => {
+                                                            const isSelected = createAssignmentData.projectIds.includes(p.id);
+                                                            return (
+                                                                <label
+                                                                    key={p.id}
+                                                                    className={`flex items-center gap-3 px-4 py-2.5 hover:bg-indigo-50 cursor-pointer border-b border-gray-100 last:border-b-0 transition-colors ${isSelected ? 'bg-indigo-50/50' : ''}`}
+                                                                >
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        className="h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-2 focus:ring-indigo-500"
+                                                                        checked={isSelected}
+                                                                        onChange={(e) => {
+                                                                            const newIds = e.target.checked
+                                                                                ? [...createAssignmentData.projectIds, p.id]
+                                                                                : createAssignmentData.projectIds.filter(x => x !== p.id);
+                                                                            setCreateAssignmentData({ ...createAssignmentData, projectIds: newIds });
+                                                                        }}
+                                                                    />
+                                                                    <span className="text-sm font-medium text-gray-900 flex-1 truncate">
+                                                                        {p.name}
+                                                                        <span className="ml-1.5 text-xs text-gray-500">({p.code})</span>
+                                                                    </span>
+                                                                </label>
+                                                            );
+                                                        }) : (
+                                                            <div className="text-sm text-gray-400 px-4 py-6 text-center">
+                                                                {createBudFilter === 'all' ? 'ไม่มีโครงการ' : 'ไม่มีโครงการใน BUD นี้'}
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </div>
+                                                <div className="mt-2 px-1 text-xs text-gray-600">
+                                                    เลือกแล้ว: <span className="font-medium text-gray-900">{createAssignmentData.projectIds?.length || 0}</span> โครงการ
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                                ระบบจะสุ่มรหัสผ่านชั่วคราวให้ผู้ใช้ใหม่ ส่งไปทางอีเมล และบังคับให้เปลี่ยนรหัสผ่านเมื่อเข้าสู่ระบบครั้งแรก
+                            </div>
+
+                            <div className="flex items-center gap-3 p-3 border border-gray-400 rounded-lg bg-gray-50">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={createUserData.isActive}
+                                        onChange={(e) => setCreateUserData(prev => ({ ...prev, isActive: e.target.checked }))}
+                                        className="w-5 h-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                    />
+                                    <span className="text-sm font-bold text-gray-900">สถานะเปิดใช้งาน (Active)</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 mt-6 pt-4 border-t border-gray-100">
+                            <Button variant="secondary" onClick={closeCreateUserModal}>
+                                ยกเลิก
+                            </Button>
+                            <Button onClick={handleCreateUser} disabled={isSubmitting}>
+                                {isSubmitting ? 'กำลังสร้าง...' : 'สร้างผู้ใช้'}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {resetPasswordModal.show && (
                 <div className="fixed inset-0 flex items-center justify-center z-50 p-4 bg-black/40">
                     <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 max-w-md w-full overflow-hidden">
                         <div className="p-6 border-b border-amber-100 bg-gradient-to-r from-amber-50 to-orange-50">
                             <div className="flex items-start justify-between gap-4">
                                 <div>
-                                    <h3 className="text-lg font-bold text-gray-900">รีเซ็ตรหัสผ่านสำเร็จ</h3>
+                                    <h3 className="text-lg font-bold text-gray-900">
+                                        {resetPasswordModal.mode === 'create' ? 'สร้างผู้ใช้สำเร็จ' : 'รีเซ็ตรหัสผ่านสำเร็จ'}
+                                    </h3>
                                     <p className="text-sm text-amber-700 mt-1">
-                                        รหัสชั่วคราวใหม่ของ {resetPasswordModal.userName || 'ผู้ใช้'}
+                                        {resetPasswordModal.mode === 'create'
+                                            ? `รหัสชั่วคราวสำหรับ ${resetPasswordModal.userName || 'ผู้ใช้ใหม่'}`
+                                            : `รหัสชั่วคราวใหม่ของ ${resetPasswordModal.userName || 'ผู้ใช้'}`}
                                     </p>
                                 </div>
                                 <button
@@ -1965,7 +2463,11 @@ export default function UserManagementNew() {
                             </div>
 
                             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 space-y-1">
-                                <p>ระบบได้ส่งรหัสชั่วคราวไปยังอีเมลผู้ใช้แล้ว</p>
+                                <p>
+                                    {resetPasswordModal.mode === 'create'
+                                        ? 'ระบบได้สร้างบัญชีใหม่และส่งรหัสชั่วคราวไปยังอีเมลผู้ใช้แล้ว'
+                                        : 'ระบบได้ส่งรหัสชั่วคราวไปยังอีเมลผู้ใช้แล้ว'}
+                                </p>
                                 <p>ผู้ใช้จะต้องเปลี่ยนรหัสผ่านใหม่เมื่อเข้าสู่ระบบครั้งถัดไป</p>
                                 <p>ไม่สามารถดูรหัสผ่านเดิมได้ เพราะระบบเก็บเป็นรหัสแบบเข้ารหัส hash</p>
                             </div>

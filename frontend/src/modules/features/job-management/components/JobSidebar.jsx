@@ -7,7 +7,7 @@ const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
 
     const isAdmin = currentUser?.roles?.some(r => (typeof r === 'string' ? r : r?.name)?.toLowerCase() === 'admin') || currentUser?.roleName?.toLowerCase() === 'admin';
     const isManager = currentUser?.roles?.some(r => (typeof r === 'string' ? r : r?.name)?.toLowerCase() === 'manager') || currentUser?.roleName?.toLowerCase() === 'manager';
-    const isAssignee = job.assigneeId === currentUser?.id;
+    const isAssignee = String(job.assigneeId) === String(currentUser?.id);
     
     // สถานะที่ไม่ควรให้เปลี่ยนผู้รับผิดชอบ
     const lockedStatuses = ['draft_review', 'completed', 'pending_rebrief', 'rejected', 'pending_rejection', 'closed'];
@@ -59,6 +59,19 @@ const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
                             )}
                         </div>
                     </div>
+
+                    <div className="pt-2 border-t border-gray-100">
+                        <label className="text-sm text-gray-500 block mb-2">ผู้สั่งงาน (Requester)</label>
+                        <div className="flex items-center gap-3 bg-gray-50 p-2 rounded-lg">
+                            <div className="w-8 h-8 bg-indigo-500 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                                {(job.requesterName || job.requester)?.[0]?.toUpperCase() || 'R'}
+                            </div>
+                            <div>
+                                <p className="text-sm font-medium text-gray-900">{job.requesterName || job.requester || '-'}</p>
+                                <p className="text-xs text-gray-500">Requester</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -75,9 +88,10 @@ const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
                     ) : (
                         <div className="relative pl-4 space-y-6 before:absolute before:left-[21px] before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-200">
                             {job.flowSnapshot.levels.map((level, i) => {
+                                const approval = job.approvals?.find(a => a.stepNumber === level.level);
                                 const isPassed = job.currentLevel > level.level;
                                 const isCurrent = job.currentLevel === level.level;
-                                const approval = job.approvals?.find(a => a.stepNumber === level.level);
+                                const isInferredPassed = isPassed && !approval;
                                 const actualApproverName = approval?.approver?.name;
 
                                 return (
@@ -124,13 +138,16 @@ const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
                                                             <div key={idx} className="flex flex-col items-start gap-1 p-2 bg-green-50/50 rounded-lg border border-green-100">
                                                                 <span className="text-sm font-semibold text-gray-900">{app.name}</span>
                                                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-[10px] font-medium border border-green-100">
-                                                                    <CheckIcon className="w-3 h-3" /> Approved
+                                                                    <CheckIcon className="w-3 h-3" /> {isInferredPassed ? 'Passed (Legacy)' : 'Approved'}
                                                                 </span>
+                                                                {isInferredPassed && (
+                                                                    <span className="text-[10px] text-amber-600">ไม่มี approval record เก่าในฐานข้อมูล</span>
+                                                                )}
                                                             </div>
                                                         ))
                                                     ) : (
                                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-[10px] font-medium border border-green-100 mt-1">
-                                                            <CheckIcon className="w-3 h-3" /> Approved
+                                                            <CheckIcon className="w-3 h-3" /> {isInferredPassed ? 'Passed (Legacy)' : 'Approved'}
                                                         </span>
                                                     )}
                                                 </div>

@@ -11,6 +11,21 @@
 import { BaseService } from './baseService.js';
 import bcrypt from 'bcrypt';
 
+const normalizeRoleName = (rawRoleName) => {
+  const raw = String(rawRoleName || '').trim();
+  if (!raw) return '';
+
+  const normalized = raw.replace(/\s+/g, '_').toLowerCase();
+
+  if (['admin', 'superadmin', 'system_admin'].includes(normalized)) return 'Admin';
+  if (['requester', 'orgadmin', 'marketing'].includes(normalized)) return 'Requester';
+  if (['approver', 'teamlead', 'team_lead', 'manager'].includes(normalized)) return 'Approver';
+  if (['assignee', 'member', 'user'].includes(normalized)) return 'Assignee';
+  if (['viewer'].includes(normalized)) return 'Viewer';
+
+  return raw;
+};
+
 export class UserService extends BaseService {
   /**
    * สร้างผู้ใช้ใหม่
@@ -27,7 +42,21 @@ export class UserService extends BaseService {
    */
   async createUser(userData) {
     try {
-      const { tenantId, email, password, firstName, lastName, displayName, phone } = userData;
+      const {
+        tenantId,
+        email,
+        password,
+        firstName,
+        lastName,
+        displayName,
+        phone,
+        title,
+        departmentId,
+        isActive = true,
+        mustChangePassword = false
+      } = userData;
+
+      const normalizedEmail = String(email || '').trim().toLowerCase();
 
       // เข้ารหัส password
       const passwordHash = await bcrypt.hash(password, 10);
@@ -35,12 +64,16 @@ export class UserService extends BaseService {
       const user = await this.prisma.user.create({
         data: {
           tenantId,
-          email,
+          email: normalizedEmail,
           passwordHash,
-          firstName,
-          lastName,
-          displayName: displayName || `${firstName} ${lastName}`,
-          phone
+          firstName: String(firstName || '').trim(),
+          lastName: String(lastName || '').trim(),
+          displayName: (displayName || `${firstName} ${lastName}`).trim(),
+          phone: phone || null,
+          title: title || null,
+          departmentId: departmentId ? parseInt(departmentId, 10) : null,
+          isActive: Boolean(isActive),
+          mustChangePassword: Boolean(mustChangePassword)
         },
         select: {
           id: true,
@@ -49,7 +82,11 @@ export class UserService extends BaseService {
           firstName: true,
           lastName: true,
           displayName: true,
+          phone: true,
+          title: true,
+          departmentId: true,
           isActive: true,
+          mustChangePassword: true,
           createdAt: true
         }
       });
@@ -238,27 +275,37 @@ export class UserService extends BaseService {
       const users = result.data?.data;
       if (users && users.length > 0) {
         users.forEach(user => {
-          // Map userRoles -> roles
-          user.roles = (user.userRoles || []).map(r => ({
-            name: r.roleName,
-            isActive: true,
-            scopes: [] // Initial empty scopes, populated below via scope_assignments logic if needed
-          }));
+          // Map userRoles -> roles (normalize + dedupe legacy names)
+          user.roles = (user.userRoles || []).reduce((acc, r) => {
+            const roleName = normalizeRoleName(r.roleName);
+            if (!roleName || acc.some(role => role.name === roleName)) {
+              return acc;
+            }
+
+            acc.push({
+              name: roleName,
+              isActive: true,
+              scopes: [] // Initial empty scopes, populated below via scope_assignments logic if needed
+            });
+            return acc;
+          }, []);
 
           // Map scopeAssignments -> scope_assignments (snake_case)
-          user.scope_assignments = (user.scopeAssignments || []).map(s => ({
-            user_id: user.id,
-            scope_id: s.scopeId,
-            scope_level: s.scopeLevel,
-            scope_name: s.scopeName,
-            role_type: s.roleType
-          }));
+          user.scope_assignments = (user.scopeAssignments || [])
+            .filter(s => normalizeRoleName(s.roleType) !== 'Assignee')
+            .map(s => ({
+              user_id: user.id,
+              scope_id: s.scopeId,
+              scope_level: s.scopeLevel,
+              scope_name: s.scopeName,
+              role_type: s.roleType
+            }));
 
           // Populate scopes back into roles for full compatibility
           // ✅ แปลง scope_level เป็น lowercase เสมอ เพื่อให้ตรงกับ canApproveInProject ที่เช็ค 'bud' (lowercase)
           user.roles.forEach(role => {
             role.scopes = user.scope_assignments
-              .filter(s => s.role_type === role.name)
+              .filter(s => normalizeRoleName(s.role_type) === role.name)
               .map(s => ({
                 level: s.scope_level?.toLowerCase(),
                 scopeId: s.scope_id,
@@ -442,21 +489,32 @@ export class UserService extends BaseService {
       });
 
       // 4. จัด format ให้ตรงกับ frontend adminService ที่เคยทำ
-      const rolesWithScopes = roles.map(role => ({
-        id: role.id,
-        name: role.roleName,
-        isActive: role.isActive,
-        assignedBy: role.assignedBy,
-        assignedAt: role.assignedAt,
-        scopes: scopes
-          .filter(s => s.roleType === role.roleName)
-          .map(s => ({
-            id: s.id,
-            level: s.scopeLevel?.toLowerCase(),
-            scopeId: s.scopeId,
-            scopeName: s.scopeName
-          }))
-      }));
+      const rolesWithScopes = roles.reduce((acc, role) => {
+        const roleName = normalizeRoleName(role.roleName);
+        if (!roleName || acc.some(existing => existing.name === roleName)) {
+          return acc;
+        }
+
+        acc.push({
+          id: role.id,
+          name: roleName,
+          isActive: role.isActive,
+          assignedBy: role.assignedBy,
+          assignedAt: role.assignedAt,
+          scopes: roleName === 'Assignee'
+            ? []
+            : scopes
+                .filter(s => normalizeRoleName(s.roleType) === roleName)
+                .map(s => ({
+                  id: s.id,
+                  level: s.scopeLevel?.toLowerCase(),
+                  scopeId: s.scopeId,
+                  scopeName: s.scopeName
+                }))
+        });
+
+        return acc;
+      }, []);
 
       return this.successResponse({
         id: user.id,
@@ -498,8 +556,37 @@ export class UserService extends BaseService {
           where: { userId: userId }
         });
 
-        // 3. เตรียมข้อมูล Role ใหม่
-        const roleRows = roles.map(role => ({
+        // 3. เตรียมข้อมูล Role ใหม่ (normalize + dedupe legacy names)
+        const normalizedRoles = roles.reduce((acc, role) => {
+          const roleName = normalizeRoleName(role.name);
+          if (!roleName) return acc;
+
+          const existing = acc.find(item => item.name === roleName);
+          if (existing) {
+            const incomingScopes = role.scopes || [];
+            existing.scopes = existing.scopes || [];
+
+            incomingScopes.forEach((scope) => {
+              const scopeKey = `${scope.level || 'project'}:${scope.scopeId}`;
+              const alreadyExists = existing.scopes.some(
+                (existingScope) => `${existingScope.level || 'project'}:${existingScope.scopeId}` === scopeKey
+              );
+              if (!alreadyExists) {
+                existing.scopes.push(scope);
+              }
+            });
+            return acc;
+          }
+
+          acc.push({
+            ...role,
+            name: roleName,
+            scopes: role.scopes || []
+          });
+          return acc;
+        }, []);
+
+        const roleRows = normalizedRoles.map(role => ({
           userId: userId,
           tenantId: tenantId, // ✅ Add Missing TenantID
           roleName: role.name,
@@ -517,10 +604,10 @@ export class UserService extends BaseService {
 
         // 5. เตรียมข้อมูล Scope ใหม่ (ใช้ Prisma camelCase)
         const scopeRows = [];
-        roles.forEach(role => {
+        normalizedRoles.forEach(role => {
           console.log(`[UserService] Processing role: ${role.name}`, role);
           const roleLevel = role.level || 'project';
-          if (role.scopes && role.scopes.length > 0) {
+          if (role.name !== 'Assignee' && role.scopes && role.scopes.length > 0) {
             role.scopes.forEach(scope => {
               scopeRows.push({
                 userId: userId,
@@ -873,19 +960,30 @@ export class UserService extends BaseService {
         if (!user) throw new Error('User not found');
 
         // Format roles with scopes
-        const rolesWithScopes = roles.map(role => ({
-          id: role.id,
-          name: role.roleName,
-          isActive: role.isActive,
-          scopes: scopes
-            .filter(s => s.roleType === role.roleName)
-            .map(s => ({
-              id: s.id,
-              level: s.scopeLevel?.toLowerCase(),
-              scopeId: s.scopeId,
-              scopeName: s.scopeName
-            }))
-        }));
+        const rolesWithScopes = roles.reduce((acc, role) => {
+          const roleName = normalizeRoleName(role.roleName);
+          if (!roleName || acc.some(existing => existing.name === roleName)) {
+            return acc;
+          }
+
+          acc.push({
+            id: role.id,
+            name: roleName,
+            isActive: role.isActive,
+            scopes: roleName === 'Assignee'
+              ? []
+              : scopes
+                  .filter(s => normalizeRoleName(s.roleType) === roleName)
+                  .map(s => ({
+                    id: s.id,
+                    level: s.scopeLevel?.toLowerCase(),
+                    scopeId: s.scopeId,
+                    scopeName: s.scopeName
+                  }))
+          });
+
+          return acc;
+        }, []);
 
         // Format assignments
         const assignments = {

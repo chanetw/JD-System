@@ -720,6 +720,10 @@ export const adminService = {
                 name
             });
             if (!response.data.success) throw new Error(response.data.message);
+
+            // Refresh client-side approval flow cache so the first save reflects immediately
+            cacheService.invalidateByPrefix('approvalFlows:');
+
             return response.data;
         } catch (error) {
             console.error('[adminService] createBulkFlowsFromAssignments error:', error);
@@ -1006,6 +1010,32 @@ export const adminService = {
         return response.data.data;
     },
 
+    createUserByAdmin: async (userData) => {
+        try {
+            const payload = {
+                firstName: userData.firstName,
+                lastName: userData.lastName,
+                displayName: `${userData.firstName || ''} ${userData.lastName || ''}`.trim(),
+                email: userData.email,
+                phone: userData.phone,
+                title: userData.title,
+                departmentId: userData.departmentId ? parseInt(userData.departmentId, 10) : null,
+                isActive: userData.isActive !== false
+            };
+
+            const response = await httpClient.post('/users', payload);
+
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'Failed to create user');
+            }
+
+            return response.data.data;
+        } catch (error) {
+            console.error('[adminService] createUserByAdmin error:', error);
+            throw error;
+        }
+    },
+
     /**
      * ดึงรายการผู้ใช้ทั้งหมดผ่าน Backend API (Support Pagination)
      * @param {number} page - หน้าที่ต้องการ (default 1)
@@ -1054,6 +1084,18 @@ export const adminService = {
                     }
                 });
 
+                const jobAssignments = (u.assignedProjects || []).map(a => ({
+                    id: a.id,
+                    projectId: a.projectId,
+                    projectName: a.project?.name,
+                    projectCode: a.project?.code,
+                    jobTypeId: a.jobTypeId,
+                    jobTypeName: a.jobType?.name
+                }));
+
+                const responsibilityProjectIds = new Set(jobAssignments.map(a => a.projectId));
+                const visibleProjectScopes = projectScopes.filter(scope => !responsibilityProjectIds.has(scope.id));
+
                 return {
                     id: u.id,
                     name: `${u.firstName} ${u.lastName}`.trim(),
@@ -1077,20 +1119,13 @@ export const adminService = {
                     assignedScopes: {
                         tenants: tenantScopes,
                         buds: budScopes,
-                        projects: projectScopes
+                        projects: visibleProjectScopes
                     },
-                    assignedProjects: projectScopes,
+                    assignedProjects: visibleProjectScopes,
                     scope_assignments: scopeAssignments,
 
                     // NEW: Job Assignments (Responsibilities) - Preserve from backend
-                    jobAssignments: (u.assignedProjects || []).map(a => ({
-                        id: a.id,
-                        projectId: a.projectId,
-                        projectName: a.project?.name,
-                        projectCode: a.project?.code,
-                        jobTypeId: a.jobTypeId,
-                        jobTypeName: a.jobType?.name
-                    }))
+                    jobAssignments
                 };
             });
 

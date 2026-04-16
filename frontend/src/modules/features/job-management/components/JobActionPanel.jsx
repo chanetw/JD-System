@@ -341,7 +341,7 @@ const JobActionPanel = ({
 
         // ✅ Permission Check: Only show to Approver, Requester, or Admin
         // NOT to the assignee who rejected the job
-        const isRequester = job.requesterId === currentUser?.id;
+        const isRequester = String(job.requesterId) === String(currentUser?.id);
         const canApproveRejection = isAdmin || isApprover || isRequester;
 
         if (!canApproveRejection) return null;

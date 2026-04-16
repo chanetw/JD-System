@@ -49,7 +49,27 @@ export default function DraftApprovalModal({ isOpen, onClose, job, onSuccess, cu
         }
     };
 
-    const removeFile = (fileId) => {
+    const cleanupUploadedFiles = async (filesToCleanup = []) => {
+        const fileIds = filesToCleanup.map(file => file?.id).filter(Boolean);
+        if (!fileIds.length) return;
+
+        await Promise.allSettled(
+            fileIds.map(fileId => fileUploadService.deleteFile(fileId, currentUser?.id))
+        );
+    };
+
+    const removeFile = async (fileId) => {
+        const result = await fileUploadService.deleteFile(fileId, currentUser?.id);
+        if (!result.success) {
+            await Swal.fire({
+                icon: 'error',
+                title: 'ลบไฟล์ไม่สำเร็จ',
+                text: result.error || 'ไม่สามารถลบไฟล์นี้ได้',
+                confirmButtonColor: '#e11d48'
+            });
+            return;
+        }
+
         setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
     };
 
@@ -99,8 +119,9 @@ export default function DraftApprovalModal({ isOpen, onClose, job, onSuccess, cu
         setUploadedFiles([]);
     };
 
-    const handleClose = () => {
+    const handleClose = async () => {
         if (!isSubmitting) {
+            await cleanupUploadedFiles(uploadedFiles);
             handleReset();
             onClose();
         }

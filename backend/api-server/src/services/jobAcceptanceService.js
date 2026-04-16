@@ -115,7 +115,7 @@ async function extendJobManually(jobId, userId, extensionDays, reason) {
     }
 
     // ตรวจสอบว่าเป็น Assignee หรือไม่
-    if (job.assigneeId !== userId) {
+    if (String(job.assigneeId) !== String(userId)) {
         throw new Error('Only assignee can extend the job');
     }
 

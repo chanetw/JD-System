@@ -3,7 +3,7 @@
  * @description Card แสดงสรุปผลงานของ user (ใช้ใน Grid)
  */
 
-import { TrendingUp, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { TrendingUp, Clock, CheckCircle, AlertCircle, Package } from 'lucide-react';
 
 /**
  * @component UserPerformanceCard
@@ -47,7 +47,7 @@ export default function UserPerformanceCard({ user, onClick }) {
         </div>
       </div>
 
-      {/* Priority Metrics - On-Time Rate (#1) และ Completed (#2) */}
+      {/* Priority Metrics - On-Time Rate (#1), Completed (#2), Items */}
       <div className="space-y-3 mb-4">
         {/* On-Time Rate - Priority #1 - เน้นมาก */}
         <div className={`border-2 rounded-lg p-3 ${getOnTimeRateBg(user.onTimeRate)}`}>
@@ -60,13 +60,22 @@ export default function UserPerformanceCard({ user, onClick }) {
           </div>
         </div>
 
-        {/* Completed Count - Priority #2 */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-blue-600" />
-            <span className="text-xs font-medium text-gray-700">งานที่เสร็จ</span>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-blue-700">งานที่เสร็จ</span>
+              <TrendingUp className="w-4 h-4 text-blue-600" />
+            </div>
+            <div className="text-lg font-bold text-blue-900">{user.completedJobs}</div>
           </div>
-          <span className="text-lg font-bold text-blue-900">{user.completedJobs}</span>
+
+          <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-rose-700">จำนวนชิ้นงาน</span>
+              <Package className="w-4 h-4 text-rose-600" />
+            </div>
+            <div className="text-lg font-bold text-rose-900">{user.totalItems || 0}</div>
+          </div>
         </div>
       </div>
 

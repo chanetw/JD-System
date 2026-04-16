@@ -2,18 +2,18 @@
 
 <!-- README-I18N:START -->
 
-**ไทย** | [English](./README.en.md)
+[ไทย](./README.md) | **English**
 
 <!-- README-I18N:END -->
 
-ระบบจัดการงานออกแบบ (Design Job) สำหรับทีม Marketing และ Creative
-รองรับการสร้างงาน, Workflow อนุมัติหลายระดับ, SLA Tracking, Activity Timeline และการแจ้งเตือนแบบ Real-time
+A design job management platform for Marketing and Creative teams.
+Supports job requests, multi-level approvals, SLA tracking, activity timeline, and real-time notifications.
 
 ## Project Status
 
-- สถานะปัจจุบัน: Active Development / Production Deployment
-- โครงสร้างหลัก: Frontend + Backend API + PostgreSQL + Socket.io
-- สถาปัตยกรรมข้อมูล: ใช้ Prisma ORM กับฐานข้อมูล PostgreSQL (มี compatibility layer สำหรับข้อมูลเดิมบางส่วน)
+- Current status: Active Development / Production Deployment
+- Core structure: Frontend + Backend API + PostgreSQL + Socket.io
+- Data architecture: Prisma ORM on PostgreSQL, with compatibility handling for legacy data paths
 
 ## Tech Stack (Current)
 
@@ -25,7 +25,7 @@
 - React Router
 - Axios
 - Socket.io Client
-- Heroicons / MUI (บางส่วน)
+- Heroicons / MUI (partial usage)
 
 ### Backend
 
@@ -40,19 +40,19 @@
 
 ```mermaid
 flowchart LR
-	U[User Browser]
-	F[Frontend\nReact + Vite]
-	B[Backend API\nExpress + Socket.io]
-	P[(PostgreSQL)]
-	PR[Prisma ORM]
+    U[User Browser]
+    F[Frontend\nReact + Vite]
+    B[Backend API\nExpress + Socket.io]
+    P[(PostgreSQL)]
+    PR[Prisma ORM]
 
-	U --> F
-	F -->|REST API| B
-	F -->|Realtime| B
-	B --> PR --> P
+    U --> F
+    F -->|REST API| B
+    F -->|Realtime| B
+    B --> PR --> P
 ```
 
-หมายเหตุ: ระบบมีทั้งข้อมูลยุคเก่าและข้อมูลใหม่ จึงมี layer สำหรับแปลง/รองรับความเข้ากันได้ในบางเส้นทาง
+Note: The system includes both legacy and modern data paths, so compatibility adaptation is used in selected routes.
 
 ## Repository Structure
 
@@ -70,14 +70,14 @@ DJ-System/
 
 ## Core Features
 
-- Dashboard และ KPI
+- Dashboard and KPI views
 - Create Job + Validation + SLA Preview
 - Job List + Filter + Search
 - Job Detail + Activity History + Comments
-- Approval Queue และ Approval Flow
+- Approval Queue and Approval Flow
 - Admin Management (Job Types, SLA, Holiday, Flow)
 - Media Portal / User Portal
-- Real-time Notification (Socket.io)
+- Real-time Notifications (Socket.io)
 
 ## Quick Start (Local Development)
 
@@ -103,7 +103,7 @@ cp backend/api-server/.env.example backend/api-server/.env
 cp frontend/.env.local frontend/.env
 ```
 
-อัปเดตค่า environment โดยเฉพาะ `DATABASE_URL` ให้ตรงกับเครื่องของคุณ
+Update environment values, especially `DATABASE_URL`, to match your local machine.
 
 ### 3) Start services
 
@@ -131,7 +131,7 @@ npm run dev
 docker compose up -d
 ```
 
-ไฟล์ [docker-compose.yml](docker-compose.yml) ใช้สำหรับ PostgreSQL ในงานพัฒนา
+[docker-compose.yml](docker-compose.yml) is intended for development PostgreSQL.
 
 ### Production stack
 
@@ -139,7 +139,7 @@ docker compose up -d
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-ไฟล์ [docker-compose.prod.yml](docker-compose.prod.yml) ใช้รัน PostgreSQL + Backend + Frontend พร้อมกัน
+[docker-compose.prod.yml](docker-compose.prod.yml) runs PostgreSQL + Backend + Frontend together.
 
 ## Common Commands
 
@@ -172,26 +172,26 @@ npx prisma db push
 
 ## Environment Variables (Quick)
 
-ตัวแปรที่ต้องตั้งค่าก่อนรันระบบ:
+Required before running the app:
 
 - Backend: `DATABASE_URL`, `JWT_SECRET`, `ALLOWED_ORIGINS`, `PORT`
 - Frontend: `VITE_API_URL`
 
-รายละเอียดทั้งหมด (รวม production example, email, storage, feature flags):
+Full variable reference (including production examples, email, storage, and feature flags):
 
 - [docs/reference/ENVIRONMENT_VARIABLES.md](docs/reference/ENVIRONMENT_VARIABLES.md)
 
-ข้อควรระวัง:
+Security notes:
 
-- อย่า commit secret จริงลง Git
-- ใช้ไฟล์ตัวอย่างจาก `.env.example` แล้วเติมค่าเฉพาะ environment
+- Never commit real secrets to Git.
+- Use `.env.example` as a template, then set environment-specific values.
 
 ## User Roles
 
-1. Requester: สร้างงาน, แก้ brief, ติดตามงาน
-2. Approver: อนุมัติ/ส่งกลับ/จัดการขั้นตอนอนุมัติ
-3. Assignee: รับงาน, อัปเดตสถานะ, ส่งงาน, สื่อสารผ่านคอมเมนต์
-4. Admin: จัดการ master data, SLA, flow, และสิทธิ์ใช้งาน
+1. Requester: Create jobs, edit briefs, track progress
+2. Approver: Approve/reject and manage approval steps
+3. Assignee: Execute jobs, update status, deliver output, comment
+4. Admin: Manage master data, SLA, flows, and permissions
 
 ## Job Flow (High-Level)
 
@@ -206,30 +206,30 @@ alternative paths:
 
 ## Troubleshooting
 
-### Backend ต่อฐานข้อมูลไม่ได้
+### Backend cannot connect to database
 
-- ตรวจค่า `DATABASE_URL` ใน `.env`
-- ตรวจว่า PostgreSQL ทำงานอยู่
-- ทดสอบ endpoint: `/health`
+- Verify `DATABASE_URL` in `.env`
+- Ensure PostgreSQL is running
+- Check `/health`
 
-### CORS error จาก frontend
+### CORS error from frontend
 
-- ตรวจ `ALLOWED_ORIGINS` ให้รวม `http://localhost:5173`
-- restart backend หลังแก้ `.env`
+- Ensure `ALLOWED_ORIGINS` includes `http://localhost:5173`
+- Restart backend after `.env` changes
 
-### Socket ไม่เชื่อมต่อ
+### Socket connection issues
 
-- ตรวจ token ฝั่ง frontend
-- ตรวจ error จาก browser console และ backend logs
+- Verify frontend token/session
+- Check browser console and backend logs
 
-### Prisma client ไม่ตรง schema
+### Prisma client out of sync
 
 ```bash
 cd backend/prisma
 npx prisma generate
 ```
 
-สำหรับ troubleshooting เพิ่มเติม:
+More troubleshooting docs:
 
 - [docs/LOCAL_DATABASE_SETUP.md](docs/LOCAL_DATABASE_SETUP.md)
 - [docs/TROUBLESHOOTING_502_JOBS_DETAIL.md](docs/TROUBLESHOOTING_502_JOBS_DETAIL.md)

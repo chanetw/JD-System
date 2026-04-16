@@ -45,13 +45,14 @@ services:
         condition: service_healthy
     env_file:
       - ./backend/api-server/.env.production
+      - ./backend/api-server/envprod.txt
     environment:
       DATABASE_MODE: local
       STORAGE_PROVIDER: local
       AUTH_MODE: jwt_only
       NODE_ENV: production
     volumes:
-      - dj-files-prod:/app/uploads
+      - ./uploads:/app/uploads
     restart: always
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
@@ -81,15 +82,13 @@ services:
       backend:
         condition: service_healthy
     volumes:
-      - dj-files-prod:/app/uploads:ro
+      - ./uploads:/app/uploads:ro
     restart: always
     networks:
       - dj-network
 
 volumes:
   dj-data-prod:
-    driver: local
-  dj-files-prod:
     driver: local
 
 networks:

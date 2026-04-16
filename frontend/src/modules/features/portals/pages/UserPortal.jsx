@@ -379,7 +379,7 @@ export default function UserPortal() {
                             }
                             .news-ticker-text {
                                 display: inline-block;
-                                animation: news-ticker 25s linear infinite;
+                                animation: news-ticker 12s linear infinite;
                                 white-space: nowrap;
                             }
                             .news-ticker-text:hover {

@@ -28,6 +28,7 @@ import {
   createRejectionApprovedEmail,
   createRejectionDeniedEmail
 } from '../utils/emailTemplates.js';
+import { buildFrontendUrl } from '../utils/frontendUrl.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
@@ -41,6 +42,159 @@ const router = express.Router();
 // ทุก routes ต้องมีการ authenticate และตั้งค่า RLS context
 router.use(authenticateToken);
 router.use(setRLSContextMiddleware);
+
+const normalizeRoleValue = (role) => {
+  if (!role) return '';
+  if (typeof role === 'string') return role.toLowerCase();
+  return String(role.roleName || role.name || role.role || '').toLowerCase();
+};
+
+const hasAdminPrivileges = (user) => {
+  if (!user) return false;
+
+  const roles = [
+    ...(Array.isArray(user.roles) ? user.roles : []),
+    user.roleName,
+    user.role
+  ].filter(Boolean);
+
+  return roles.some(role => ['admin', 'superadmin', 'system_admin'].includes(normalizeRoleValue(role)));
+};
+
+const isSameUserId = (left, right) => {
+  if (left == null || right == null) return false;
+  return String(left) === String(right);
+};
+
+const CHAIN_JOB_SELECT = {
+  id: true,
+  djId: true,
+  subject: true,
+  status: true,
+  predecessorId: true,
+  nextJobId: true,
+  jobType: {
+    select: { name: true }
+  },
+  assignee: {
+    select: { firstName: true, lastName: true, displayName: true }
+  }
+};
+
+const getChainAssigneeName = (assignee) => {
+  if (!assignee) return null;
+  return `${assignee.firstName || ''} ${assignee.lastName || ''}`.trim() || assignee.displayName || null;
+};
+
+const mapChainJobSummary = (chainJob, currentJobId) => ({
+  id: chainJob.id,
+  djId: chainJob.djId,
+  subject: chainJob.subject,
+  status: chainJob.status,
+  predecessorId: chainJob.predecessorId || null,
+  nextJobId: chainJob.nextJobId || null,
+  jobType: chainJob.jobType?.name || null,
+  assignee: getChainAssigneeName(chainJob.assignee),
+  isCurrent: chainJob.id === currentJobId
+});
+
+const findForwardChainJob = (jobsMap, currentJob) => {
+  if (!currentJob) return null;
+
+  const byPredecessor = Array.from(jobsMap.values()).find(candidate => candidate.predecessorId === currentJob.id);
+  if (byPredecessor) return byPredecessor;
+
+  if (currentJob.nextJobId && jobsMap.has(currentJob.nextJobId)) {
+    return jobsMap.get(currentJob.nextJobId);
+  }
+
+  return null;
+};
+
+const buildJobChainContext = async (job, prisma) => {
+  if (!job) return null;
+
+  const jobsMap = new Map();
+  const addJobToMap = (chainJob) => {
+    if (chainJob?.id && !jobsMap.has(chainJob.id)) {
+      jobsMap.set(chainJob.id, chainJob);
+    }
+  };
+
+  addJobToMap(job);
+
+  let backwardCursor = job;
+  const seenBackwardIds = new Set([job.id]);
+
+  while (backwardCursor?.predecessorId && !seenBackwardIds.has(backwardCursor.predecessorId)) {
+    const predecessorJob = await prisma.job.findUnique({
+      where: { id: backwardCursor.predecessorId },
+      select: CHAIN_JOB_SELECT
+    });
+
+    if (!predecessorJob) break;
+
+    addJobToMap(predecessorJob);
+    seenBackwardIds.add(predecessorJob.id);
+    backwardCursor = predecessorJob;
+  }
+
+  let forwardCursor = job;
+  const seenForwardIds = new Set([job.id]);
+
+  while (true) {
+    let nextJob = null;
+
+    if (forwardCursor?.nextJobId && !seenForwardIds.has(forwardCursor.nextJobId)) {
+      nextJob = await prisma.job.findUnique({
+        where: { id: forwardCursor.nextJobId },
+        select: CHAIN_JOB_SELECT
+      });
+    }
+
+    if (!nextJob) {
+      nextJob = await prisma.job.findFirst({
+        where: { predecessorId: forwardCursor.id },
+        select: CHAIN_JOB_SELECT,
+        orderBy: { createdAt: 'asc' }
+      });
+    }
+
+    if (!nextJob || seenForwardIds.has(nextJob.id)) break;
+
+    addJobToMap(nextJob);
+    seenForwardIds.add(nextJob.id);
+    forwardCursor = nextJob;
+  }
+
+  const orderedJobs = [];
+  const seenOrderedIds = new Set();
+  let orderedCursor = backwardCursor;
+
+  while (orderedCursor && !seenOrderedIds.has(orderedCursor.id)) {
+    orderedJobs.push(orderedCursor);
+    seenOrderedIds.add(orderedCursor.id);
+
+    const nextOrderedJob = findForwardChainJob(jobsMap, orderedCursor);
+    if (!nextOrderedJob) break;
+    orderedCursor = nextOrderedJob;
+  }
+
+  if (orderedJobs.length <= 1) {
+    return null;
+  }
+
+  const currentIndex = orderedJobs.findIndex(chainJob => chainJob.id === job.id);
+  if (currentIndex === -1) {
+    return null;
+  }
+
+  return {
+    currentIndex: currentIndex + 1,
+    total: orderedJobs.length,
+    jobs: orderedJobs.map(chainJob => mapChainJobSummary(chainJob, job.id))
+  };
+};
 
 /**
  * GET /api/jobs
@@ -548,10 +702,10 @@ router.get('/', async (req, res) => {
         slaDays: j.slaDays,
         updatedAt: j.completedAt || j.activityLogs?.[0]?.createdAt || j.createdAt,
         requesterId: j.requesterId,
-        requester: j.requester?.displayName || `${j.requester?.firstName} ${j.requester?.lastName}`.trim(),
+        requester: `${j.requester?.firstName || ''} ${j.requester?.lastName || ''}`.trim() || j.requester?.displayName || j.requester?.email || null,
         requesterAvatar: j.requester?.avatarUrl,
         assigneeId: j.assigneeId,
-        assignee: j.assignee?.displayName || (j.assignee ? `${j.assignee?.firstName} ${j.assignee?.lastName}`.trim() : null),
+        assignee: (j.assignee ? `${j.assignee?.firstName || ''} ${j.assignee?.lastName || ''}`.trim() : '') || j.assignee?.displayName || j.assignee?.email || null,
         assigneeAvatar: j.assignee?.avatarUrl,
         // Parent-Child relationship metadata
         isParent: j.isParent || false,
@@ -699,7 +853,7 @@ function buildDashboardRoleFilter(roles, userId) {
  * แทน getDashboardStats ที่ดึงผ่าน Supabase ตรง
  *
  * @query {string} role - comma-separated roles (e.g. 'requester,approver')
- * @returns {Object} { newToday, dueToday, overdue, totalJobs, pending, myJobs }
+ * @returns {Object} { newToday, dueToday, overdue, totalJobs, totalItems, pending, myJobs, assigneeSummary }
  */
 router.get('/dashboard-stats', async (req, res) => {
   try {
@@ -764,8 +918,10 @@ router.get('/dashboard-stats', async (req, res) => {
       dueToday,
       overdue,
       totalJobs,
+      totalItemsAgg,
       pending,
-      myJobs
+      myJobs,
+      assigneeJobs
     ] = await Promise.all([
       // งานสร้างวันนี้
       prisma.job.count({
@@ -789,6 +945,17 @@ router.get('/dashboard-stats', async (req, res) => {
       }),
       // งานทั้งหมด
       prisma.job.count({ where: baseWhere }),
+      // จำนวนชิ้นงานทั้งหมดใน scope เดียวกับ dashboard ปัจจุบัน
+      prisma.designJobItem.aggregate({
+        where: {
+          job: {
+            is: baseWhere
+          }
+        },
+        _sum: {
+          quantity: true
+        }
+      }),
       // งานรออนุมัติ
       prisma.job.count({
         where: {
@@ -799,12 +966,77 @@ router.get('/dashboard-stats', async (req, res) => {
       // myJobs = งานที่ requesterId = userId เสมอ (ใช้เป็น KPI ส่วนตัว)
       prisma.job.count({
         where: { tenantId, isParent: false, requesterId: userId }
+      }),
+      prisma.job.findMany({
+        where: {
+          ...baseWhere,
+          assigneeId: { not: null }
+        },
+        select: {
+          id: true,
+          assigneeId: true,
+          assignee: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              displayName: true,
+              avatarUrl: true
+            }
+          }
+        }
       })
     ]);
 
+    const totalItems = totalItemsAgg?._sum?.quantity || 0;
+
+    let assigneeSummary = [];
+
+    if (assigneeJobs.length > 0) {
+      const jobIds = assigneeJobs.map(job => job.id);
+      const itemTotalsByJob = await prisma.designJobItem.groupBy({
+        by: ['jobId'],
+        where: {
+          jobId: { in: jobIds }
+        },
+        _sum: {
+          quantity: true
+        }
+      });
+
+      const itemMap = new Map(itemTotalsByJob.map(entry => [entry.jobId, entry._sum.quantity || 0]));
+      const assigneeMap = new Map();
+
+      assigneeJobs.forEach(job => {
+        if (!job.assigneeId) return;
+
+        if (!assigneeMap.has(job.assigneeId)) {
+          const assigneeName = `${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}`.trim() || job.assignee?.displayName || 'ไม่ระบุชื่อ';
+          assigneeMap.set(job.assigneeId, {
+            assigneeId: job.assigneeId,
+            name: assigneeName,
+            avatar: job.assignee?.avatarUrl || null,
+            jobCount: 0,
+            itemCount: 0
+          });
+        }
+
+        const summary = assigneeMap.get(job.assigneeId);
+        summary.jobCount += 1;
+        summary.itemCount += itemMap.get(job.id) || 0;
+      });
+
+      assigneeSummary = Array.from(assigneeMap.values())
+        .sort((left, right) => {
+          if (right.jobCount !== left.jobCount) return right.jobCount - left.jobCount;
+          if (right.itemCount !== left.itemCount) return right.itemCount - left.itemCount;
+          return left.name.localeCompare(right.name, 'th');
+        });
+    }
+
     res.json({
       success: true,
-      data: { newToday, dueToday, overdue, totalJobs, pending, myJobs }
+      data: { newToday, dueToday, overdue, totalJobs, totalItems, pending, myJobs, assigneeSummary }
     });
   } catch (error) {
     console.error('[Jobs] Get dashboard stats error:', error.message);
@@ -957,11 +1189,11 @@ router.get('/dashboard-jobs', async (req, res) => {
         project: job.project?.name || null,
         jobType: job.jobType?.name || null,
         assignee: job.assignee
-          ? (job.assignee.displayName || `${job.assignee.firstName || ''} ${job.assignee.lastName || ''}`.trim())
+          ? `${job.assignee.firstName || ''} ${job.assignee.lastName || ''}`.trim() || job.assignee.displayName || null
           : null,
         assigneeAvatar: job.assignee?.avatarUrl || null,
         requester: job.requester
-          ? `${job.requester.firstName || ''} ${job.requester.lastName || ''}`.trim()
+          ? `${job.requester.firstName || ''} ${job.requester.lastName || ''}`.trim() || job.requester.displayName || null
           : null,
         isOverdue,
         overdueDays
@@ -1756,6 +1988,8 @@ router.get('/:id', async (req, res) => {
       console.warn('[Jobs] getApprovalFlow warning (non-blocking):', flowErr.message);
     }
 
+    const chain = await buildJobChainContext(job, prisma);
+
     // Transform to frontend format
     const transformed = {
       id: job.id,
@@ -1795,6 +2029,9 @@ router.get('/:id', async (req, res) => {
         email: job.assignee.email,
         avatar: job.assignee.avatarUrl
       } : null,
+      predecessorId: job.predecessorId || null,
+      nextJobId: job.nextJobId || null,
+      chain,
       isParent: job.isParent,
       parentJobId: job.parentJobId,
       // Child jobs for parent
@@ -1804,7 +2041,7 @@ router.get('/:id', async (req, res) => {
         subject: child.subject,
         status: child.status,
         jobType: child.jobType?.name,
-        assignee: child.assignee ? (child.assignee.displayName || `${child.assignee.firstName || ''} ${child.assignee.lastName || ''}`.trim()) : null,
+        assignee: child.assignee ? (`${child.assignee.firstName || ''} ${child.assignee.lastName || ''}`.trim() || child.assignee.displayName) : null,
         deadline: child.dueDate,
         items: (child.jobItems || []).map(item => ({
           id: item.id,
@@ -2316,8 +2553,8 @@ router.post('/:id/request-rejection', async (req, res) => {
       });
     }
 
-    // Check if user is the assignee
-    if (job.assigneeId !== userId) {
+    // Check if user is the assignee or admin
+    if (!hasAdminPrivileges(req.user) && !isSameUserId(job.assigneeId, userId)) {
       return res.status(403).json({
         success: false,
         error: 'INSUFFICIENT_PERMISSIONS',
@@ -3386,6 +3623,30 @@ router.post('/parent-child', async (req, res) => {
           }
         });
 
+        const childCreateMessage = isDraft
+          ? `บันทึกร่างงาน ${childDjId}`
+          : predecessorId
+            ? `สร้างงาน ${childDjId} เป็นงานต่อเนื่องจากขั้นก่อนหน้า`
+            : `สร้างงาน ${childDjId}`;
+
+        await tx.activityLog.create({
+          data: {
+            jobId: childJob.id,
+            userId,
+            action: isDraft ? 'draft_saved' : 'job_created',
+            message: childCreateMessage,
+            detail: {
+              isChildJob: true,
+              parentJobId: parentJob.id,
+              parentDjId,
+              childIndex: i + 1,
+              predecessorId,
+              status: childStatus,
+              priority: priority.toLowerCase()
+            }
+          }
+        });
+
         // ✅ คัดลอก Job Items ไปยัง Child Job (เฉพาะของ job type นี้)
         if (childItems.length > 0) {
           await tx.designJobItem.createMany({
@@ -4075,7 +4336,7 @@ router.post('/:id/start', async (req, res) => {
     });
 
     // 4. Notify Requester
-    if (job.requesterId && job.requesterId !== userId) {
+    if (job.requesterId && !isSameUserId(job.requesterId, userId)) {
       await notificationService.createNotification({
         tenantId: job.tenantId,
         userId: job.requesterId,
@@ -4125,7 +4386,7 @@ router.post('/:id/complete', async (req, res) => {
           where: { id: jobId },
           select: { requesterId: true, djId: true, subject: true, tenantId: true, assignee: { select: { firstName: true, lastName: true } } }
         });
-        if (completedJobInfo?.requesterId && completedJobInfo.requesterId !== userId) {
+        if (completedJobInfo?.requesterId && !isSameUserId(completedJobInfo.requesterId, userId)) {
           const assigneeName = completedJobInfo.assignee ? `${completedJobInfo.assignee.firstName} ${completedJobInfo.assignee.lastName}`.trim() : 'ผู้รับงาน';
           await notificationService.createNotification({
             tenantId: completedJobInfo.tenantId,
@@ -4269,7 +4530,7 @@ router.post('/:id/extend', async (req, res) => {
         where: { id: jobId },
         select: { requesterId: true, djId: true, subject: true, tenantId: true, assignee: { select: { firstName: true, lastName: true } } }
       });
-      if (job?.requesterId && job.requesterId !== userId) {
+      if (job?.requesterId && !isSameUserId(job.requesterId, userId)) {
         await notificationService.createNotification({
           tenantId: job.tenantId,
           userId: job.requesterId,
@@ -4403,9 +4664,9 @@ router.post('/:id/submit-draft', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Job not found' });
     }
 
-    // Check permission: only assignee can submit draft
-    if (job.assigneeId !== userId) {
-      return res.status(403).json({ success: false, message: 'Only assignee can submit draft' });
+    // Check permission: current assignee or admin can submit draft
+    if (!hasAdminPrivileges(req.user) && !isSameUserId(job.assigneeId, userId)) {
+      return res.status(403).json({ success: false, message: 'Only the assignee or admin can submit draft' });
     }
 
     // Check status
@@ -4528,6 +4789,7 @@ router.post('/:id/submit-draft', async (req, res) => {
       }
 
       // ⚡ Performance: ส่ง email แบบ parallel แทน sequential
+      const jobUrl = buildFrontendUrl(`/jobs/${jobId}`, { req });
       const emailSubject = `📝 Draft งาน ${job.djId} ส่งมาแล้ว`;
       const emailBody = `
             <h2>Draft งานส่งมาแล้ว</h2>
@@ -4536,7 +4798,7 @@ router.post('/:id/submit-draft', async (req, res) => {
             ${note ? `<p><strong>หมายเหตุ:</strong> ${note}</p>` : ''}
             ${link ? `<p><strong>ลิงก์ Draft:</strong> <a href="${link}">${link}</a></p>` : ''}
             <p>กรุณาตรวจสอบและให้ feedback ในระบบ</p>
-            <p><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/jobs/${jobId}">ดูรายละเอียดงาน</a></p>
+        <p><a href="${jobUrl}">ดูรายละเอียดงาน</a></p>
           `;
       await Promise.allSettled(
         recipients.map(email =>
@@ -4620,11 +4882,11 @@ router.post('/:id/approve-draft', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Job not found' });
     }
 
-    // Check permission: only requester can approve/reject draft
-    if (job.requesterId !== userId) {
+    // Check permission: requester owner or admin can approve/reject draft
+    if (!hasAdminPrivileges(req.user) && !isSameUserId(job.requesterId, userId)) {
       return res.status(403).json({
         success: false,
-        message: 'Only requester can approve or reject draft'
+        message: 'Only the requester or admin can approve or reject draft'
       });
     }
 
@@ -4748,6 +5010,7 @@ router.post('/:id/approve-draft', async (req, res) => {
       }
 
       if (recipients.length > 0) {
+        const jobUrl = buildFrontendUrl(`/jobs/${jobId}`, { req });
         const emailSubject = action === 'approve'
           ? `✅ Draft งาน ${job.djId} ผ่านการตรวจสอบ`
           : `❌ Draft งาน ${job.djId} ไม่ผ่าน`;
@@ -4757,7 +5020,7 @@ router.post('/:id/approve-draft', async (req, res) => {
           <p><strong>ผู้ตรวจสอบ:</strong> ${job.requester?.firstName || ''} ${job.requester?.lastName || ''}</p>
           <p><strong>${action === 'approve' ? 'ความเห็น' : 'เหตุผล'}:</strong> ${reason.trim()}</p>
           <p>${action === 'approve' ? 'สามารถทำงานต่อได้เลย' : 'กรุณาแก้ไขและส่ง draft ใหม่'}</p>
-          <p><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/jobs/${jobId}">ดูรายละเอียดงาน</a></p>
+          <p><a href="${jobUrl}">ดูรายละเอียดงาน</a></p>
         `;
         await Promise.allSettled(
           recipients.map(email =>
@@ -4827,8 +5090,8 @@ router.post('/:id/rebrief', async (req, res) => {
     }
 
     // Check permission
-    if (job.assigneeId !== userId) {
-      return res.status(403).json({ success: false, message: 'Only assignee can request rebrief' });
+    if (!hasAdminPrivileges(req.user) && !isSameUserId(job.assigneeId, userId)) {
+      return res.status(403).json({ success: false, message: 'Only the assignee or admin can request rebrief' });
     }
 
     // Check status
@@ -4879,6 +5142,7 @@ router.post('/:id/rebrief', async (req, res) => {
     if (job.requester?.email) {
       try {
         const emailService = new EmailService();
+        const jobUrl = buildFrontendUrl(`/jobs/${jobId}`, { req });
 
         await emailService.sendEmail(
           job.requester.email,
@@ -4889,7 +5153,7 @@ router.post('/:id/rebrief', async (req, res) => {
             <p><strong>ผู้ขอ:</strong> ${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}</p>
             <p><strong>เหตุผล:</strong> ${reason.trim()}</p>
             <p>กรุณาเพิ่มข้อมูลหรือแก้ไข brief ในระบบ</p>
-            <p><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/jobs/${jobId}">ดูรายละเอียดงาน</a></p>
+            <p><a href="${jobUrl}">ดูรายละเอียดงาน</a></p>
           `
         ).catch(err => console.warn('[Rebrief] Email failed:', err));
       } catch (emailErr) {
@@ -4956,8 +5220,8 @@ router.post('/:id/submit-rebrief', async (req, res) => {
     }
 
     // Check permission
-    if (job.requesterId !== userId) {
-      return res.status(403).json({ success: false, message: 'Only requester can submit rebrief response' });
+    if (!hasAdminPrivileges(req.user) && !isSameUserId(job.requesterId, userId)) {
+      return res.status(403).json({ success: false, message: 'Only the requester or admin can submit rebrief response' });
     }
 
     // Check status
@@ -5010,6 +5274,7 @@ router.post('/:id/submit-rebrief', async (req, res) => {
     if (job.assignee?.email) {
       try {
         const emailService = new EmailService();
+        const jobUrl = buildFrontendUrl(`/jobs/${jobId}`, { req });
 
         await emailService.sendEmail(
           job.assignee.email,
@@ -5021,7 +5286,7 @@ router.post('/:id/submit-rebrief', async (req, res) => {
             <p><strong>คำตอบ:</strong> ${rebriefResponse.trim()}</p>
             ${briefLink ? `<p><strong>Brief Link:</strong> <a href="${briefLink}">${briefLink}</a></p>` : ''}
             <p>กรุณาตรวจสอบและตัดสินใจว่าจะรับงานหรือขอ rebrief อีกครั้ง</p>
-            <p><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/jobs/${jobId}">ดูรายละเอียดงาน</a></p>
+            <p><a href="${jobUrl}">ดูรายละเอียดงาน</a></p>
           `
         ).catch(err => console.warn('[SubmitRebrief] Email failed:', err));
       } catch (emailErr) {
@@ -5075,8 +5340,8 @@ router.post('/:id/accept-rebrief', async (req, res) => {
     }
 
     // Check permission
-    if (job.assigneeId !== userId) {
-      return res.status(403).json({ success: false, message: 'Only assignee can accept rebrief' });
+    if (!hasAdminPrivileges(req.user) && !isSameUserId(job.assigneeId, userId)) {
+      return res.status(403).json({ success: false, message: 'Only the assignee or admin can accept rebrief' });
     }
 
     // Check status
@@ -5137,6 +5402,7 @@ router.post('/:id/accept-rebrief', async (req, res) => {
     if (job.requester?.email) {
       try {
         const emailService = new EmailService();
+        const jobUrl = buildFrontendUrl(`/jobs/${jobId}`, { req });
 
         await emailService.sendEmail(
           job.requester.email,
@@ -5147,7 +5413,7 @@ router.post('/:id/accept-rebrief', async (req, res) => {
             <p><strong>ผู้รับงาน:</strong> ${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}</p>
             <p><strong>วันที่รับงาน:</strong> ${now.toLocaleDateString('th-TH')}</p>
             <p><strong>กำหนดส่งใหม่:</strong> ${newDueDate.toLocaleDateString('th-TH')} (${slaDays} วันทำการ)</p>
-            <p><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/jobs/${jobId}">ดูรายละเอียดงาน</a></p>
+            <p><a href="${jobUrl}">ดูรายละเอียดงาน</a></p>
           `
         ).catch(err => console.warn('[AcceptRebrief] Email failed:', err));
       } catch (emailErr) {

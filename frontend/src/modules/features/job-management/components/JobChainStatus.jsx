@@ -6,28 +6,44 @@
  */
 
 import React from 'react';
-import { ArrowRightIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowRightIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  ExclamationCircleIcon,
+  PauseCircleIcon,
+  XCircleIcon
+} from '@heroicons/react/24/outline';
 
 const JobChainStatus = ({ job }) => {
-  // Only show for jobs that are part of a chain
-  if (!job || (!job.previousJobId && !job.nextJobId)) {
+  const chain = job?.chain;
+
+  if (!chain || !Array.isArray(chain.jobs) || chain.jobs.length <= 1) {
     return null;
   }
 
+  const currentIndex = chain.currentIndex || chain.jobs.findIndex(chainJob => chainJob.isCurrent) + 1;
+
   const getStatusBadge = (status) => {
     const statusMap = {
-      completed: { color: 'bg-green-100 text-green-800', icon: CheckCircleIcon, label: 'เสร็จสมบูรณ์' },
-      closed: { color: 'bg-green-100 text-green-800', icon: CheckCircleIcon, label: 'ปิดงานแล้ว' },
-      in_progress: { color: 'bg-blue-100 text-blue-800', icon: null, label: 'กำลังดำเนินการ' },
-      assigned: { color: 'bg-purple-100 text-purple-800', icon: null, label: 'รับงานแล้ว' },
-      pending_approval: { color: 'bg-yellow-100 text-yellow-800', icon: null, label: 'รออนุมัติ' },
-      rejected: { color: 'bg-red-100 text-red-800', icon: XCircleIcon, label: 'ปฏิเสธ' },
-      rejected_by_assignee: { color: 'bg-red-100 text-red-800', icon: XCircleIcon, label: 'ปฏิเสธโดย Assignee' },
-      cancelled: { color: 'bg-gray-100 text-gray-800', icon: XCircleIcon, label: 'ยกเลิก' },
-      draft: { color: 'bg-gray-100 text-gray-800', icon: null, label: 'ร่าง' },
+      completed: { color: 'bg-emerald-100 text-emerald-800 border border-emerald-200', icon: CheckCircleIcon, label: 'Completed' },
+      closed: { color: 'bg-emerald-100 text-emerald-800 border border-emerald-200', icon: CheckCircleIcon, label: 'Closed' },
+      in_progress: { color: 'bg-sky-100 text-sky-800 border border-sky-200', icon: ClockIcon, label: 'In Progress' },
+      assigned: { color: 'bg-violet-100 text-violet-800 border border-violet-200', icon: ClockIcon, label: 'Assigned' },
+      approved: { color: 'bg-lime-100 text-lime-800 border border-lime-200', icon: CheckCircleIcon, label: 'Ready' },
+      pending_dependency: { color: 'bg-amber-100 text-amber-800 border border-amber-200', icon: PauseCircleIcon, label: 'Waiting' },
+      pending_approval: { color: 'bg-amber-100 text-amber-800 border border-amber-200', icon: ClockIcon, label: 'Pending Approval' },
+      rejected: { color: 'bg-rose-100 text-rose-800 border border-rose-200', icon: XCircleIcon, label: 'Rejected' },
+      rejected_by_assignee: { color: 'bg-rose-100 text-rose-800 border border-rose-200', icon: XCircleIcon, label: 'Rejected' },
+      cancelled: { color: 'bg-slate-100 text-slate-700 border border-slate-200', icon: XCircleIcon, label: 'Cancelled' },
+      draft: { color: 'bg-slate-100 text-slate-700 border border-slate-200', icon: ExclamationCircleIcon, label: 'Draft' },
     };
 
-    const config = statusMap[status] || { color: 'bg-gray-100 text-gray-800', icon: null, label: status };
+    const config = statusMap[status] || {
+      color: 'bg-slate-100 text-slate-700 border border-slate-200',
+      icon: ExclamationCircleIcon,
+      label: status || 'Unknown'
+    };
     const Icon = config.icon;
 
     return (
@@ -38,63 +54,94 @@ const JobChainStatus = ({ job }) => {
     );
   };
 
+  const getCardTone = (position) => {
+    if (position < currentIndex) {
+      return {
+        card: 'border-emerald-200 bg-emerald-50/70',
+        eyebrow: 'text-emerald-700',
+        accent: 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+      };
+    }
+
+    if (position === currentIndex) {
+      return {
+        card: 'border-rose-300 bg-rose-50 shadow-[0_0_0_3px_rgba(244,63,94,0.12)]',
+        eyebrow: 'text-rose-700',
+        accent: 'bg-rose-100 text-rose-700 border border-rose-200'
+      };
+    }
+
+    return {
+      card: 'border-slate-200 bg-slate-50/80',
+      eyebrow: 'text-slate-400',
+      accent: 'bg-slate-100 text-slate-600 border border-slate-200'
+    };
+  };
+
+  const getCardLabel = (position) => {
+    if (position < currentIndex) return 'งานก่อนหน้า';
+    if (position === currentIndex) return 'งานปัจจุบัน';
+    return 'งานถัดไป';
+  };
+
   return (
-    <div className="rounded-lg border border-purple-200 bg-purple-50 p-4">
-      <div className="flex items-center mb-3">
-        <svg className="h-5 w-5 text-purple-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-        </svg>
-        <h3 className="text-sm font-semibold text-gray-900">งานต่อเนื่อง (Job Chain)</h3>
-      </div>
-
-      <div className="flex items-center space-x-2 overflow-x-auto">
-        {/* Previous Job */}
-        {job.previousJob && (
-          <>
-            <div className="flex-shrink-0 rounded-md border border-gray-300 bg-white p-3 shadow-sm min-w-[200px]">
-              <div className="text-xs text-gray-500 mb-1">งานก่อนหน้า</div>
-              <div className="font-medium text-sm text-gray-900 mb-1">{job.previousJob.djId}</div>
-              <div className="text-xs text-gray-600 mb-2 line-clamp-1">{job.previousJob.subject}</div>
-              {getStatusBadge(job.previousJob.status)}
-            </div>
-            <ArrowRightIcon className="h-5 w-5 text-gray-400 flex-shrink-0" />
-          </>
-        )}
-
-        {/* Current Job */}
-        <div className="flex-shrink-0 rounded-md border-2 border-purple-500 bg-purple-100 p-3 shadow-md min-w-[200px]">
-          <div className="text-xs text-purple-700 font-semibold mb-1">งานปัจจุบัน</div>
-          <div className="font-semibold text-sm text-gray-900 mb-1">{job.djId}</div>
-          <div className="text-xs text-gray-700 mb-2 line-clamp-1">{job.subject}</div>
-          {getStatusBadge(job.status)}
+    <div className="overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-sm">
+      <div className="border-b border-slate-300 px-4 py-4 sm:px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">ลำดับ Chain</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              งานนี้อยู่ลำดับที่ {currentIndex} จาก {chain.total} ในเชนงานที่ต่อกัน
+            </p>
+          </div>
+          <span className="inline-flex w-fit items-center rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
+            {currentIndex} / {chain.total}
+          </span>
         </div>
-
-        {/* Next Job */}
-        {job.nextJob && (
-          <>
-            <ArrowRightIcon className="h-5 w-5 text-gray-400 flex-shrink-0" />
-            <div className="flex-shrink-0 rounded-md border border-gray-300 bg-white p-3 shadow-sm min-w-[200px]">
-              <div className="text-xs text-gray-500 mb-1">งานถัดไป</div>
-              <div className="font-medium text-sm text-gray-900 mb-1">{job.nextJob.djId}</div>
-              <div className="text-xs text-gray-600 mb-2 line-clamp-1">{job.nextJob.subject}</div>
-              {getStatusBadge(job.nextJob.status)}
-            </div>
-          </>
-        )}
       </div>
 
-      {/* Chain info */}
-      <div className="mt-3 text-xs text-gray-600">
-        <p>
-          {job.previousJobId && !job.nextJobId && '📍 งานสุดท้ายในสายงาน'}
-          {!job.previousJobId && job.nextJobId && '📍 งานแรกในสายงาน'}
-          {job.previousJobId && job.nextJobId && '📍 งานกลางสายงาน'}
-        </p>
-        {job.status === 'cancelled' && job.cancellationReason && (
-          <p className="mt-1 text-red-600">
-            ⚠️ เหตุผลยกเลิก: {job.cancellationReason}
-          </p>
-        )}
+      <div className="px-4 py-5 sm:px-6">
+        <div className="flex items-center gap-3 overflow-x-auto pb-1">
+          {chain.jobs.map((chainJob, index) => {
+            const position = index + 1;
+            const tone = getCardTone(position);
+
+            return (
+              <React.Fragment key={chainJob.id}>
+                <div className={`min-w-[240px] flex-shrink-0 rounded-2xl border p-4 transition-colors ${tone.card}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className={`text-sm font-semibold ${tone.eyebrow}`}>
+                        {chainJob.djId}
+                        {chainJob.isCurrent ? ' < งานของคุณ >' : ''}
+                      </div>
+                      <p className="mt-1 text-lg font-semibold leading-tight text-slate-900">
+                        {chainJob.jobType || chainJob.subject || 'ไม่ระบุชื่องาน'}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {chainJob.assignee || 'ยังไม่ระบุผู้รับผิดชอบ'}
+                      </p>
+                    </div>
+                    <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${tone.accent}`}>
+                      {getCardLabel(position)}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    {getStatusBadge(chainJob.status)}
+                    <span className="text-xs font-medium text-slate-500">Step {position}</span>
+                  </div>
+                </div>
+
+                {index < chain.jobs.length - 1 && (
+                  <ArrowRightIcon
+                    className={`h-6 w-6 flex-shrink-0 ${position < currentIndex ? 'text-emerald-400' : position === currentIndex ? 'text-rose-400' : 'text-slate-300'}`}
+                  />
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

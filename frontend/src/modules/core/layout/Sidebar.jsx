@@ -33,6 +33,10 @@ export default function Sidebar() {
     const canCreateJob = hasAnyRole(user, ['Admin', 'Requester', 'Approver']);
     const canAccessAnalytics = isAdmin || isViewer;
     const isApprover = checkIsApprover(user) || isAdmin;
+    const shouldPrioritizeMyQueue = isAssignee && !isAdmin && !checkIsApprover(user) && !hasAnyRole(user, ['Requester']);
+    const dashboardPath = hasAnyRole(user, ['Admin', 'Requester', 'Assignee', 'manager', 'supervisor'])
+        ? '/dashboard'
+        : getDefaultHomeRoute(user);
 
     /**
      * จำนวน User Requests ที่รอ Admin ดำเนินการ (pending)
@@ -78,7 +82,13 @@ export default function Sidebar() {
           ============================================ */}
             <nav className="flex-1 px-4 space-y-1 overflow-y-auto pt-2 scrollbar-rose">
 
-                <SidebarLink to="/" icon={DashboardIcon}>
+                {shouldPrioritizeMyQueue && (
+                    <SidebarLink to="/assignee/my-queue" icon={InboxIcon}>
+                        คิวงานของฉัน (My Queue)
+                    </SidebarLink>
+                )}
+
+                <SidebarLink to={dashboardPath} icon={DashboardIcon}>
                     แผงควบคุม (Dashboard)
                 </SidebarLink>
 
@@ -98,7 +108,7 @@ export default function Sidebar() {
                     </SidebarLink>
                 )}
 
-                {(isAssignee || isAdmin) && (
+                {(isAssignee || isAdmin) && !shouldPrioritizeMyQueue && (
                     <SidebarLink to="/assignee/my-queue" icon={InboxIcon}>
                         คิวงานของฉัน (My Queue)
                     </SidebarLink>

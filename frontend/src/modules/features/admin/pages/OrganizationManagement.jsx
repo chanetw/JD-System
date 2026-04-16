@@ -12,7 +12,8 @@ import Button from '@shared/components/Button';
 import { FormInput, FormSelect } from '@shared/components/FormInput';
 import {
     PlusIcon, PencilIcon, TrashIcon, XMarkIcon,
-    BuildingOfficeIcon, FolderIcon, BuildingLibraryIcon, UserGroupIcon
+    BuildingOfficeIcon, FolderIcon, BuildingLibraryIcon, UserGroupIcon,
+    MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
 import Swal from 'sweetalert2';
 
@@ -36,6 +37,13 @@ const TABS = [
 export default function OrganizationManagement() {
     /** แท็บที่กำลังใช้งานอยู่ (Active Tab) */
     const [activeTab, setActiveTab] = useState('projects');
+    /** คำค้นหาแยกตามแท็บ */
+    const [searchByTab, setSearchByTab] = useState({
+        projects: '',
+        departments: '',
+        buds: '',
+        tenants: ''
+    });
 
     // === สถานะข้อมูล (Data States) ===
     /** รายการบริษัททั้งหมด (Tenants) */
@@ -432,7 +440,7 @@ export default function OrganizationManagement() {
                             <td className="px-6 py-4 text-sm text-gray-600">{bud.name || item.bud?.name || '-'}</td>
                             <td className="px-6 py-4 text-center">
                                 <StatusBadge
-                                    isActive={item.status === 'Active'}
+                                    isActive={Boolean(item.isActive)}
                                     onClick={() => handleToggleStatus(item.id, item)}
                                     disabled={togglingItems.has(item.id)}
                                 />
@@ -630,20 +638,34 @@ export default function OrganizationManagement() {
         const originalTenants = [...tenants];
 
         try {
+            const newIsActive = toggleValue(Boolean(item.isActive));
+            const newStatus = newIsActive ? 'Active' : 'Inactive';
+
             if (activeTab === 'projects') {
                 // Update Local UI
-                setProjects(prev => prev.map(p => p.id === id ? { ...p, status: toggleStatusStr(p.status), isActive: !p.isActive } : p));
-                const newStatus = item.status === 'Active' ? 'Inactive' : 'Active';
-                await api.updateProject(id, { ...item, status: newStatus });
+                setProjects(prev => prev
+                    .map(p => p.id === id ? { ...p, status: newStatus, isActive: newIsActive } : p)
+                    .sort((a, b) => Number(b.isActive) - Number(a.isActive))
+                );
+                await api.updateProject(id, { ...item, status: newStatus, isActive: newIsActive });
             } else if (activeTab === 'buds') {
-                setBuds(prev => prev.map(b => b.id === id ? { ...b, isActive: toggleValue(b.isActive) } : b));
-                await api.updateBud(id, { ...item, isActive: !item.isActive });
+                setBuds(prev => prev
+                    .map(b => b.id === id ? { ...b, isActive: newIsActive, status: newStatus } : b)
+                    .sort((a, b) => Number(b.isActive) - Number(a.isActive))
+                );
+                await api.updateBud(id, { ...item, isActive: newIsActive });
             } else if (activeTab === 'departments') {
-                setDepartments(prev => prev.map(d => d.id === id ? { ...d, isActive: toggleValue(d.isActive) } : d));
-                await api.updateDepartment(id, { ...item, isActive: !item.isActive });
+                setDepartments(prev => prev
+                    .map(d => d.id === id ? { ...d, isActive: newIsActive, status: newStatus } : d)
+                    .sort((a, b) => Number(b.isActive) - Number(a.isActive))
+                );
+                await api.updateDepartment(id, { ...item, isActive: newIsActive });
             } else if (activeTab === 'tenants') {
-                setTenants(prev => prev.map(t => t.id === id ? { ...t, isActive: toggleValue(t.isActive) } : t));
-                await api.updateTenant(id, { ...item, isActive: !item.isActive });
+                setTenants(prev => prev
+                    .map(t => t.id === id ? { ...t, isActive: newIsActive, status: newStatus } : t)
+                    .sort((a, b) => Number(b.isActive) - Number(a.isActive))
+                );
+                await api.updateTenant(id, { ...item, isActive: newIsActive });
             }
 
             // Sync with Server silently to ensure correctness
@@ -723,6 +745,35 @@ export default function OrganizationManagement() {
         setCurrentPage(1);
     }, [activeTab]);
 
+    // Reset to first page when search changes
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchByTab, activeTab]);
+
+    const getSearchPlaceholder = () => {
+        if (activeTab === 'projects') return 'ค้นหาชื่อโครงการ...';
+        if (activeTab === 'departments') return 'ค้นหาชื่อแผนก...';
+        if (activeTab === 'buds') return 'ค้นหาชื่อฝ่าย...';
+        if (activeTab === 'tenants') return 'ค้นหาชื่อบริษัท...';
+        return 'ค้นหาข้อมูล...';
+    };
+
+    const getSearchLabel = () => {
+        if (activeTab === 'projects') return 'ค้นหาโครงการ';
+        if (activeTab === 'departments') return 'ค้นหาแผนก';
+        if (activeTab === 'buds') return 'ค้นหาฝ่าย';
+        if (activeTab === 'tenants') return 'ค้นหาบริษัท';
+        return 'ค้นหา';
+    };
+
+    const getEmptySearchMessage = () => {
+        if (activeTab === 'projects') return 'ไม่พบโครงการที่ตรงกับคำค้น';
+        if (activeTab === 'departments') return 'ไม่พบแผนกที่ตรงกับคำค้น';
+        if (activeTab === 'buds') return 'ไม่พบฝ่ายที่ตรงกับคำค้น';
+        if (activeTab === 'tenants') return 'ไม่พบบริษัทที่ตรงกับคำค้น';
+        return 'ไม่พบข้อมูลที่ตรงกับคำค้น';
+    };
+
     // Helper to get current data list
     const getCurrentList = () => {
         if (activeTab === 'projects') return projects;
@@ -733,8 +784,15 @@ export default function OrganizationManagement() {
     };
 
     const currentList = getCurrentList();
-    const totalPages = Math.ceil(currentList.length / ITEMS_PER_PAGE);
-    const paginatedList = currentList.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+    const currentSearchTerm = (searchByTab[activeTab] || '').trim().toLowerCase();
+    const filteredList = currentList.filter((item) => {
+        if (!currentSearchTerm) return true;
+        const searchableName = `${item?.name || ''}`.toLowerCase();
+        return searchableName.includes(currentSearchTerm);
+    });
+
+    const totalPages = Math.max(1, Math.ceil(filteredList.length / ITEMS_PER_PAGE));
+    const paginatedList = filteredList.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
     const Pagination = () => {
         if (totalPages <= 1) return null;
@@ -747,7 +805,7 @@ export default function OrganizationManagement() {
                 <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
                     <div>
                         <p className="text-sm text-gray-700">
-                            Showing <span className="font-medium">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</span> to <span className="font-medium">{Math.min(currentPage * ITEMS_PER_PAGE, currentList.length)}</span> of <span className="font-medium">{currentList.length}</span> results
+                            Showing <span className="font-medium">{filteredList.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1}</span> to <span className="font-medium">{Math.min(currentPage * ITEMS_PER_PAGE, filteredList.length)}</span> of <span className="font-medium">{filteredList.length}</span> results
                         </p>
                     </div>
                     <div>
@@ -828,12 +886,62 @@ export default function OrganizationManagement() {
             </div>
 
             <Card className="overflow-hidden">
+                <div className="border-b border-gray-200 bg-gray-50/70 px-4 py-4 sm:px-6">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                        <div className="w-full md:max-w-md">
+                            <label className="mb-1 block text-sm font-medium text-gray-700">{getSearchLabel()}</label>
+                            <div className="relative rounded-md shadow-sm">
+                                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                    <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
+                                </div>
+                                <input
+                                    type="text"
+                                    className="block w-full rounded-md border border-gray-300 p-2 pl-10 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                    placeholder={getSearchPlaceholder()}
+                                    value={searchByTab[activeTab] || ''}
+                                    onChange={(e) => setSearchByTab((prev) => ({ ...prev, [activeTab]: e.target.value }))}
+                                />
+                                {searchByTab[activeTab] && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSearchByTab((prev) => ({ ...prev, [activeTab]: '' }))}
+                                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-xs font-medium text-gray-500 hover:text-gray-700"
+                                    >
+                                        ล้าง
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="text-sm text-gray-500 md:text-right">
+                            พบ <span className="font-semibold text-gray-900">{filteredList.length}</span> รายการ
+                        </div>
+                    </div>
+                </div>
+
                 <div className="overflow-x-auto min-h-[400px]">
-                    {/* แสดงตารางตามแท็บที่เลือกอยู่ (Render table based on active tab) */}
-                    {activeTab === 'projects' && renderProjectsTable(paginatedList)}
-                    {activeTab === 'buds' && renderBudsTable(paginatedList)}
-                    {activeTab === 'departments' && renderDepartmentsTable(paginatedList)}
-                    {activeTab === 'tenants' && renderTenantsTable(paginatedList)}
+                    {filteredList.length === 0 ? (
+                        <div className="flex min-h-[320px] flex-col items-center justify-center px-6 text-center">
+                            <MagnifyingGlassIcon className="mb-3 h-10 w-10 text-gray-300" />
+                            <h3 className="text-base font-semibold text-gray-800">{getEmptySearchMessage()}</h3>
+                            <p className="mt-1 text-sm text-gray-500">ลองพิมพ์ชื่อใหม่อีกครั้ง หรือกดล้างคำค้นเพื่อดูรายการทั้งหมด</p>
+                            <Button
+                                variant="secondary"
+                                className="mt-4"
+                                onClick={() => setSearchByTab((prev) => ({ ...prev, [activeTab]: '' }))}
+                            >
+                                ล้างคำค้น
+                            </Button>
+                        </div>
+                    ) : (
+                        <>
+                            {/* แสดงตารางตามแท็บที่เลือกอยู่ (Render table based on active tab) */}
+                            {activeTab === 'projects' && renderProjectsTable(paginatedList)}
+                            {activeTab === 'buds' && renderBudsTable(paginatedList)}
+                            {activeTab === 'departments' && renderDepartmentsTable(paginatedList)}
+                            {activeTab === 'tenants' && renderTenantsTable(paginatedList)}
+                        </>
+                    )}
                 </div>
                 {/* Pagination Controls */}
                 <Pagination />

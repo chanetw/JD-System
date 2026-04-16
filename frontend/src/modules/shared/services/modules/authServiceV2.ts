@@ -84,8 +84,24 @@ export const authServiceV2 = {
 
       const data = await response.json();
 
-      // If response is not ok (4xx, 5xx), the data will contain error info
-      // but we still return it so the store can extract the error message
+      if (!response.ok || data?.success === false) {
+        const errorCode = data?.errorCode || data?.code;
+        const errorMessages: Record<string, string> = {
+          MISSING_FIELDS: 'กรุณากรอกชื่อผู้ใช้ (อีเมล) และรหัสผ่าน',
+          INVALID_CREDENTIALS: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง',
+          PENDING_APPROVAL: 'บัญชีของคุณอยู่ระหว่างรอการอนุมัติจากผู้ดูแลระบบ',
+          REGISTRATION_REJECTED: 'บัญชีนี้ถูกปฏิเสธการใช้งาน กรุณาติดต่อผู้ดูแลระบบ',
+          USER_INACTIVE: 'บัญชีนี้ถูกปิดการใช้งาน กรุณาติดต่อผู้ดูแลระบบ',
+          NOT_APPROVED: 'บัญชีนี้ยังไม่ได้รับอนุมัติ กรุณาติดต่อผู้ดูแลระบบ',
+        };
+
+        return {
+          ...data,
+          success: false,
+          error: errorMessages[errorCode] || data?.error || data?.message || 'เข้าสู่ระบบไม่สำเร็จ',
+        };
+      }
+
       return data;
     } catch (error) {
       // Network error or JSON parse error

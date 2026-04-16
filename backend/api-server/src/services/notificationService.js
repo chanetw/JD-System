@@ -10,6 +10,12 @@
 
 import { getDatabase } from '../config/database.js';
 import EmailService from './emailService.js';
+import {
+  createEmailTemplate,
+  createJobApprovalEmail,
+  createJobAssignmentEmail,
+  createJobRejectionEmail
+} from '../utils/emailTemplates.js';
 
 export class NotificationService {
   constructor() {
@@ -159,15 +165,78 @@ export class NotificationService {
 
             if (user && user.email) {
               let emailResult;
+              const buttonUrl = emailData?.magicLink
+                || emailData?.viewUrl
+                || emailData?.editUrl
+                || (/^https?:\/\//i.test(link || '') ? link : null);
+
+              const genericEmailHtml = buttonUrl
+                ? createEmailTemplate({
+                    title,
+                    heading: title,
+                    content: `<p>${message}</p>`,
+                    buttonText: emailData?.buttonText || 'เปิดงานในระบบ',
+                    buttonUrl
+                  })
+                : `<p>${message}</p>`;
 
               // เลือก method ตามประเภท
               switch (type) {
                 case 'job_assigned':
-                  emailResult = await this.emailService.notifyJobAssigned({
-                    ...emailData,
-                    assigneeEmail: user.email,
-                    assigneeName: `${user.firstName} ${user.lastName}`
-                  });
+                  if (buttonUrl) {
+                    emailResult = await this.emailService.sendEmail(
+                      user.email,
+                      title,
+                      createJobAssignmentEmail({
+                        djId: emailData.jobId,
+                        subject: emailData.jobSubject,
+                        priority: emailData.priority,
+                        dueDate: emailData.deadline,
+                        magicLink: buttonUrl,
+                        assigneeName: emailData.assigneeName || `${user.firstName} ${user.lastName}`.trim()
+                      })
+                    );
+                  } else {
+                    emailResult = await this.emailService.notifyJobAssigned({
+                      ...emailData,
+                      assigneeEmail: user.email,
+                      assigneeName: `${user.firstName} ${user.lastName}`
+                    });
+                  }
+                  break;
+                case 'job_approval_request':
+                  if (emailData?.magicLink) {
+                    emailResult = await this.emailService.sendEmail(
+                      user.email,
+                      title,
+                      createJobApprovalEmail({
+                        djId: emailData.jobId,
+                        subject: emailData.jobSubject,
+                        priority: emailData.priority,
+                        magicLink: emailData.magicLink,
+                        approverName: emailData.approverName || `${user.firstName} ${user.lastName}`.trim()
+                      })
+                    );
+                  } else {
+                    emailResult = await this.emailService.sendCustomEmail(user.email, title, genericEmailHtml);
+                  }
+                  break;
+                case 'job_rejected':
+                  if (buttonUrl) {
+                    emailResult = await this.emailService.sendEmail(
+                      user.email,
+                      title,
+                      createJobRejectionEmail({
+                        djId: emailData.jobId,
+                        subject: emailData.jobSubject,
+                        reason: emailData.comment || emailData.reason || message,
+                        magicLink: buttonUrl,
+                        requesterName: emailData.requesterName || `${user.firstName} ${user.lastName}`.trim()
+                      })
+                    );
+                  } else {
+                    emailResult = await this.emailService.sendCustomEmail(user.email, title, genericEmailHtml);
+                  }
                   break;
                 case 'job_status_changed':
                   emailResult = await this.emailService.notifyJobStatusChanged({
@@ -183,12 +252,7 @@ export class NotificationService {
                   });
                   break;
                 default:
-                  // ส่ง custom email
-                  emailResult = await this.emailService.sendCustomEmail(
-                    user.email,
-                    title,
-                    `<p>${message}</p>`
-                  );
+                  emailResult = await this.emailService.sendCustomEmail(user.email, title, genericEmailHtml);
               }
 
               if (emailResult.success) {

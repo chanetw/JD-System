@@ -1,90 +1,85 @@
-# Dependencies
+# ============================================
+# DJ System - .gitignore
+# ============================================
+
+# ---------- Dependencies ----------
 node_modules/
 .pnpm-store/
 
-# Build outputs
+# ---------- Lock files ----------
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+bun.lock
+
+# ---------- Build outputs ----------
 dist/
 build/
 .next/
 out/
+dist-ssr/
 
-# Environment files
+# ---------- Environment files ----------
 .env
-.env.local
-.env.production
-.env.*.local
+.env.*
+!.env.example
+!.env.*.example
 
-# IDE
+# ---------- IDE / Editor ----------
 .vscode/
 .idea/
 *.swp
 *.swo
-.DS_Store
+*.sw?
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
 
-# Logs
+# ---------- OS files ----------
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ---------- Logs ----------
 logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# Cache
+# ---------- Cache ----------
 .cache/
 .parcel-cache/
 .npm/
 .eslintcache
+*.tsbuildinfo
 
-# Gemini/agent files
-.gemini/
-
-# OS files
-Thumbs.db
-
-# App temporary files
-*.pid
-
-# Test and debug scripts
-backend/api-server/test-*.js
-backend/api-server/check-*.js
-backend/api-server/fix-*.js
-backend/api-server/clear-cache.js
-backend/test_*.js
-frontend/test-*.js
-
-# Database migration archives
-database/migrations/archived/
-database/migrations/fixes/
-
-# Debug and session documentation
-docs/DEBUG_*.md
-docs/sessions/
-docs/reference/
-
-# Docker
-*.sql
-docker-compose.override.yml
-
-# Uploads (local storage)
+# ---------- Uploads (user-generated content) ----------
 uploads/
+backend/api-server/uploads/
 !uploads/.gitkeep
 
-# Agent devlog exception (allow direct editing)
-!.agent/logs/devlog.md
-backend/api-server/envprod.txt
-
-# AI tool config folders
+# ---------- AI tool / Agent config folders ----------
 .agent/
 .agents/
 .claude/
+.gemini/
 .opencode/
 .windsurf/
 CLAUDE.md
 skills-lock.json
 
-# Screenshots
+# ---------- Screenshots ----------
 screenshots/
 
-# More debug/one-off scripts
+# ---------- Temporary / Debug / One-off scripts ----------
+# Root-level debug scripts in backend/api-server/
+backend/api-server/check_*.js
+backend/api-server/check_*.cjs
+backend/api-server/check_*.mjs
 backend/api-server/debug_*.js
 backend/api-server/debug_*.cjs
 backend/api-server/apply_*.js
@@ -92,8 +87,36 @@ backend/api-server/verify_*.js
 backend/api-server/inspect_*.js
 backend/api-server/sync_*.mjs
 backend/api-server/clean_*.js
+backend/api-server/clear-cache.js
+backend/api-server/test_*.js
+backend/api-server/envprod.txt
 backend/api-server/job39.json
+# Scripts directory (one-off debug/check/fix scripts)
+backend/api-server/src/scripts/
+# Root backend test/debug files
+backend/test.js
+backend/test_*.js
 
-# Temp Office files
+# ---------- Database migration archives ----------
+database/migrations/archived/
+database/migrations/fixes/
+database/migrations/manual/*verify*.sql
+
+# ---------- Documentation (session/debug docs) ----------
+docs/DEBUG_*.md
+docs/sessions/
+
+# ---------- Standalone HTML visualizations (generated/large) ----------
+docs/workflows/*.html
+
+# ---------- Docker ----------
+docker-compose.override.yml
+
+# ---------- Misc ----------
+*.pid
 docs/~$*.xlsx
 docs/~$*.docx
+
+# Preview / standalone HTML files (not part of app)
+job-detail-preview.html
+frontend/password-preview.html

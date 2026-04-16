@@ -103,6 +103,10 @@ export default function AdminApprovalFlow() {
     const [selectedJobTypesForSkip, setSelectedJobTypesForSkip] = useState([]);
     /** สถานะกำลังสร้าง Skip Flows */
     const [isCreatingSkipFlows, setIsCreatingSkipFlows] = useState(false);
+    /** สถานะกำลังบันทึกการตั้งค่าทั้งหมด */
+    const [isSavingAll, setIsSavingAll] = useState(false);
+    /** มีการแก้ไขรายการ Skip Approval ในเครื่องหรือไม่ */
+    const [hasLocalSkipSelectionChanges, setHasLocalSkipSelectionChanges] = useState(false);
 
     // === ทีมงานที่เกี่ยวข้องกับโครงการ (States: Responsible Team) ===
     /** รวมรายการผู้ใช้งานทุกคน (เพื่อการกรองตามขอบเขต) */
@@ -200,6 +204,10 @@ export default function AdminApprovalFlow() {
         loadData();
     }, []);
 
+    useEffect(() => {
+        setHasLocalSkipSelectionChanges(false);
+    }, [selectedProject?.id]);
+
     /**
      * useEffect Hook สำหรับคัดกรองทีมงานที่รับผิดชอบตามโครงการที่เลือก
      * เมื่อโครงการเปลี่ยนไป จะทำการคัดกรอง Requesters, Approvers และ Assignees ที่มีสิทธิ์เฉพาะโครงการนั้น
@@ -295,9 +303,13 @@ export default function AdminApprovalFlow() {
             // RESTORE SKIP FLOWS SELECTION
             const skipFlows = projectFlows.filter(f => f.skipApproval === true && f.jobTypeId !== null);
             const skippedJobTypeIds = skipFlows.map(f => f.jobTypeId);
-            setSelectedJobTypesForSkip(skippedJobTypeIds);
+            const shouldSyncSkipSelections = !isEditMode || !hasLocalSkipSelectionChanges;
+
+            if (shouldSyncSkipSelections) {
+                setSelectedJobTypesForSkip(skippedJobTypeIds);
+            }
         }
-    }, [selectedProject, allApprovalFlows]); // ✅ Depend on allApprovalFlows
+    }, [selectedProject, allApprovalFlows, isEditMode, hasLocalSkipSelectionChanges]); // ✅ Depend on allApprovalFlows
 
     /**
      * โหลด Job Assignments ของโปรเจกต์ปัจจุบัน
@@ -350,7 +362,7 @@ export default function AdminApprovalFlow() {
      * @function handleSaveFlow
      * @returns {Promise<void>}
      */
-    const handleSaveFlow = async () => {
+    const handleSaveFlow = async ({ shouldReload = true, shouldCloseEditor = true, showSuccessToast = true } = {}) => {
         try {
             // Default Flow: always skipApproval = false, jobTypeId = null (apply to all)
             const flowData = {
@@ -373,30 +385,48 @@ export default function AdminApprovalFlow() {
                 await api.createApprovalFlow(flowData);
             }
 
-            showToast('บันทึกขั้นตอนการอนุมัติสำเร็จ!', 'success');
-            setIsEditMode(false);
-            loadData(); // โหลดข้อมูลใหม่เพื่อแสดงผลล่าสุด
+            if (showSuccessToast) {
+                showToast('บันทึกขั้นตอนการอนุมัติสำเร็จ!', 'success');
+            }
+
+            if (shouldReload) {
+                await loadData(); // โหลดข้อมูลใหม่เพื่อแสดงผลล่าสุด
+            }
+
+            if (shouldCloseEditor) {
+                setIsEditMode(false);
+            }
+
+            return { success: true };
         } catch (error) {
             showToast('เกิดข้อผิดพลาดในการบันทึก: ' + error.message, 'error');
+            return { success: false, error };
         }
     };
 
     /**
-     * สร้าง Skip Approval Flows สำหรับ Job Types ที่เลือก (Bulk Creation)
+     * สร้าง/ซิงก์ Skip Approval Flows สำหรับ Job Types ที่เลือก (Bulk Creation)
      * ดึง assignee จาก project_job_assignments โดยอัตโนมัติ
      *
      * @async
      * @function handleCreateSkipFlows
-     * @returns {Promise<void>}
+     * @returns {Promise<Object>}
      */
-    const handleCreateSkipFlows = async () => {
-        if (selectedJobTypesForSkip.length === 0) {
+    const handleCreateSkipFlows = async (
+        jobTypeIds = selectedJobTypesForSkip,
+        { shouldReload = true, allowEmptySelection = false, showSuccessToast = true } = {}
+    ) => {
+        const normalizedJobTypeIds = Array.isArray(jobTypeIds)
+            ? [...new Set(jobTypeIds.map(id => parseInt(id)).filter(id => !Number.isNaN(id)))]
+            : [];
+
+        if (normalizedJobTypeIds.length === 0 && !allowEmptySelection) {
             showToast('กรุณาเลือกอย่างน้อย 1 ประเภทงาน', 'error');
-            return;
+            return { success: false };
         }
 
         // ตรวจสอบว่า Job Types ที่เลือกมี assignee ครบหรือไม่
-        const missingAssignees = selectedJobTypesForSkip.filter(jtId => {
+        const missingAssignees = normalizedJobTypeIds.filter(jtId => {
             const assignment = projectJobAssignments.find(a => a.jobTypeId === jtId);
             return !assignment?.assigneeId;
         });
@@ -407,25 +437,77 @@ export default function AdminApprovalFlow() {
                 return jt?.name || `ID: ${jtId}`;
             }).join(', ');
             showToast(`ไม่สามารถสร้าง Skip Flow ได้: ${missingNames} ยังไม่ได้กำหนดผู้รับงาน`, 'error');
-            return;
+            return { success: false };
         }
 
         setIsCreatingSkipFlows(true);
         try {
             const result = await adminService.createBulkFlowsFromAssignments({
                 projectId: selectedProject.id,
-                jobTypeIds: selectedJobTypesForSkip,
+                jobTypeIds: normalizedJobTypeIds,
                 skipApproval: true,
                 name: `Skip Approval Flow - ${selectedProject.name}`
             });
 
-            showToast(`สร้าง Skip Approval สำเร็จ ${result.created || selectedJobTypesForSkip.length} รายการ`, 'success');
-            setSelectedJobTypesForSkip([]);
-            loadData(); // โหลดข้อมูลใหม่
+            setHasLocalSkipSelectionChanges(false);
+
+            if (showSuccessToast) {
+                if (normalizedJobTypeIds.length === 0) {
+                    showToast('ล้างการตั้งค่า Skip Approval สำเร็จ', 'success');
+                } else {
+                    const affectedCount = (result.created || 0) + (result.updated || 0) || normalizedJobTypeIds.length;
+                    showToast(`บันทึก Skip Approval สำเร็จ ${affectedCount} รายการ`, 'success');
+                }
+            }
+
+            if (shouldReload) {
+                await loadData(); // โหลดข้อมูลใหม่
+            }
+
+            return { success: true, result };
         } catch (error) {
             showToast('เกิดข้อผิดพลาดในการสร้าง Skip Flows: ' + error.message, 'error');
+            return { success: false, error };
         } finally {
             setIsCreatingSkipFlows(false);
+        }
+    };
+
+    const handleSaveAll = async () => {
+        const skipJobTypeIdsSnapshot = [...selectedJobTypesForSkip];
+        setIsSavingAll(true);
+
+        try {
+            const saveFlowResult = await handleSaveFlow({
+                shouldReload: false,
+                shouldCloseEditor: false,
+                showSuccessToast: false
+            });
+
+            if (!saveFlowResult?.success) {
+                return;
+            }
+
+            const saveSkipResult = await handleCreateSkipFlows(skipJobTypeIdsSnapshot, {
+                shouldReload: false,
+                allowEmptySelection: true,
+                showSuccessToast: false
+            });
+
+            if (!saveSkipResult?.success) {
+                return;
+            }
+
+            await loadData();
+            setIsEditMode(false);
+
+            if (skipJobTypeIdsSnapshot.length === 0) {
+                showToast('บันทึกการตั้งค่าและล้าง Skip Approval สำเร็จ', 'success');
+            } else {
+                showToast(`บันทึกการตั้งค่าและ Skip Approval สำเร็จ ${skipJobTypeIdsSnapshot.length} รายการ`, 'success');
+            }
+        } finally {
+            setIsSavingAll(false);
         }
     };
 
@@ -437,6 +519,7 @@ export default function AdminApprovalFlow() {
      * @returns {void}
      */
     const toggleJobTypeForSkip = (jobTypeId) => {
+        setHasLocalSkipSelectionChanges(true);
         setSelectedJobTypesForSkip(prev =>
             prev.includes(jobTypeId)
                 ? prev.filter(id => id !== jobTypeId)
@@ -1460,22 +1543,16 @@ export default function AdminApprovalFlow() {
                                                                                     return;
                                                                                 }
 
-                                                                                // Save default flow first
-                                                                                await handleSaveFlow();
-
-                                                                                // Then create skip flows if any selected
-                                                                                if (selectedJobTypesForSkip.length > 0) {
-                                                                                    await handleCreateSkipFlows();
-                                                                                }
+                                                                                await handleSaveAll();
                                                                             }}
-                                                                            disabled={hasErrors}
-                                                                            className={hasErrors
+                                                                            disabled={hasErrors || isSavingAll || isCreatingSkipFlows}
+                                                                            className={hasErrors || isSavingAll || isCreatingSkipFlows
                                                                                 ? 'bg-gray-400 cursor-not-allowed'
                                                                                 : 'bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200'
                                                                             }
                                                                         >
                                                                             <CheckCircleIcon className="w-4 h-4" />
-                                                                            บันทึกทั้งหมด
+                                                                            {isSavingAll ? 'กำลังบันทึก...' : 'บันทึกทั้งหมด'}
                                                                         </Button>
                                                                     </div>
                                                                 </div>

@@ -64,8 +64,13 @@ export const fileUploadService = {
             // === API_ONLY MODE: ใช้ Backend API /api/storage/upload ===
             if (FRONTEND_MODE === 'api_only') {
                 const formData = new FormData();
+                const safeAttachmentType = String(attachmentType || 'general').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+                const folderParts = [`tenant_${tenantId || 1}`];
+                if (jobId) folderParts.push(`job_${jobId}`);
+                folderParts.push(safeAttachmentType);
+
                 formData.append('file', file);
-                formData.append('folder', `tenant_${tenantId}/job_${jobId}`);
+                formData.append('folder', folderParts.join('/'));
                 if (jobId) formData.append('jobId', jobId);
 
                 const response = await httpClient.post('/storage/upload', formData, {
@@ -188,11 +193,16 @@ export const fileUploadService = {
             else failCount++;
         }
 
+        const successfulFiles = results.filter(result => result.success && result.data).map(result => result.data);
+        const errors = results.filter(result => !result.success).map(result => `${result.fileName}: ${result.error}`);
+
         return {
             success: failCount === 0,
             successCount,
             failCount,
-            results
+            results,
+            successfulFiles,
+            errors
         };
     },
 

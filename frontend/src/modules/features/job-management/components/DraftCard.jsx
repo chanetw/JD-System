@@ -17,8 +17,8 @@ export default function DraftCard({ job, currentUser, onSuccess }) {
 
     const [showApprovalModal, setShowApprovalModal] = useState(false);
 
-    const isRequester = job.requesterId === currentUser?.id;
-    const isAssignee = job.assigneeId === currentUser?.id;
+    const isRequester = String(job.requesterId) === String(currentUser?.id);
+    const isAssignee = String(job.assigneeId) === String(currentUser?.id);
     const userRoles = currentUser?.roles || (currentUser?.roleName ? [currentUser.roleName] : []);
     const normalizedRoles = userRoles.map(r => (typeof r === 'string' ? r : r?.name || '').toLowerCase());
     const isAdminOrManager = normalizedRoles.some(r => ['admin', 'manager'].includes(r));

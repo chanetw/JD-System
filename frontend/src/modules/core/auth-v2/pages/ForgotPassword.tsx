@@ -5,16 +5,18 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStoreV2 } from '../../stores/authStoreV2';
 
 const ForgotPasswordV2: React.FC = () => {
   const { forgotPassword, logout, isLoading, error, clearError } = useAuthStoreV2();
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Form state
   const [email, setEmail] = useState('');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const locationMessage = (location.state as { message?: string } | null)?.message;
 
   // Clear error on mount
   useEffect(() => {
@@ -42,7 +44,13 @@ const ForgotPasswordV2: React.FC = () => {
       await forgotPassword(email);
       setShowConfirmModal(false);
       logout();
-      navigate('/login', { replace: true });
+      navigate('/login', {
+        replace: true,
+        state: {
+          forgotPasswordSuccess: true,
+          message: 'หากอีเมลนี้มีอยู่ในระบบ เราได้ส่งรหัสผ่านชั่วคราวไปให้แล้ว กรุณาใช้ชื่อผู้ใช้ (อีเมล) เดิมและรหัสดังกล่าวเพื่อเข้าสู่ระบบ'
+        }
+      });
     } catch (err) {
       console.error('Forgot password failed:', err);
     }
@@ -67,12 +75,18 @@ const ForgotPasswordV2: React.FC = () => {
           <h1 className="text-4xl font-bold text-white">DJ System</h1>
           <h2 className="mt-4 text-2xl font-semibold text-white">ลืมรหัสผ่าน</h2>
           <p className="mt-2 text-base text-white/80">
-            กรุณากรอกอีเมลของคุณ แล้วเราจะส่งลิงก์สำหรับรีเซ็ตรหัสผ่านไปให้
+            กรุณากรอกอีเมลของคุณ แล้วระบบจะส่งรหัสผ่านชั่วคราวไปให้เพื่อใช้เข้าสู่ระบบและเปลี่ยนรหัสผ่านใหม่
           </p>
         </div>
 
         {/* Form */}
         <form className="mt-8 space-y-6 bg-white p-8 rounded-xl shadow-lg" onSubmit={handleSubmit}>
+          {locationMessage && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm">
+              {locationMessage}
+            </div>
+          )}
+
           {/* Error Message */}
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
@@ -115,7 +129,7 @@ const ForgotPasswordV2: React.FC = () => {
                 กำลังส่ง...
               </span>
             ) : (
-              'ส่งลิงก์สำหรับเปลี่ยนรหัสผ่าน'
+              'ส่งรหัสผ่านชั่วคราว'
             )}
           </button>
 
@@ -142,8 +156,12 @@ const ForgotPasswordV2: React.FC = () => {
 
               <div className="px-6 py-5 space-y-4">
                 <p className="text-sm leading-6 text-gray-700">
-                  ระบบจะดำเนินการส่งลิงก์สำหรับตั้งรหัสผ่านใหม่ไปยังอีเมลที่ท่านระบุ หากข้อมูลถูกต้องตามเงื่อนไขของระบบ
+                  ระบบจะรีเซ็ตรหัสผ่านของบัญชีนี้เป็นรหัสผ่านชั่วคราว และส่งไปยังอีเมลที่ท่านระบุ หากข้อมูลถูกต้องตามเงื่อนไขของระบบ
                 </p>
+
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                  เมื่อได้รับอีเมลแล้ว ให้ใช้รหัสผ่านชั่วคราวเข้าสู่ระบบ จากนั้นระบบจะบังคับให้เปลี่ยนรหัสผ่านใหม่ทันที
+                </div>
 
                 <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
                   <p className="text-xs text-gray-500">อีเมลที่ระบุ</p>

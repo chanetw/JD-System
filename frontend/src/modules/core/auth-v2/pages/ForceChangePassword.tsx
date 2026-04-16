@@ -5,13 +5,13 @@
  * User must change their password before accessing the system.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStoreV2 } from '../../stores/authStoreV2';
 
 const ForceChangePassword: React.FC = () => {
   const navigate = useNavigate();
-  const { user, logout } = useAuthStoreV2();
+  const { user, logout, setUser } = useAuthStoreV2();
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -54,10 +54,10 @@ const ForceChangePassword: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
       const token = localStorage.getItem('auth_token_v2');
 
-      const response = await fetch(`${API_URL}/api/v2/auth/change-password`, {
+      const response = await fetch(`${API_URL}/v2/auth/change-password`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -72,7 +72,10 @@ const ForceChangePassword: React.FC = () => {
         throw new Error(data.error || 'Failed to change password');
       }
 
-      // Success - redirect to home
+      // Clear mustChangePassword flag in store then redirect
+      if (user) {
+        setUser({ ...user, mustChangePassword: false } as typeof user);
+      }
       navigate('/', { replace: true });
 
     } catch (err) {
@@ -106,7 +109,7 @@ const ForceChangePassword: React.FC = () => {
           <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-lg text-sm">
             <p className="font-medium">ต้องเปลี่ยนรหัสผ่าน</p>
             <p className="mt-1 text-xs">
-              คุณกำลังใช้รหัสผ่านชั่วคราวที่ได้รับจาก Admin กรุณาตั้งรหัสผ่านใหม่ก่อนเข้าสู่ระบบ
+              คุณกำลังใช้รหัสผ่านชั่วคราวจากการรีเซ็ตบัญชี กรุณาตั้งรหัสผ่านใหม่ก่อนเข้าสู่ระบบ
             </p>
           </div>
 

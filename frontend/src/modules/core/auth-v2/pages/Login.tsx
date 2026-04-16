@@ -4,7 +4,7 @@
  * Production-ready login with email/password authentication.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuthStoreV2 } from '../../stores/authStoreV2';
 import { getDefaultHomeRoute } from '@shared/utils/permission.utils';
@@ -20,6 +20,36 @@ const LoginV2: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginNotice, setLoginNotice] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
+  const [rememberMe, setRememberMe] = useState(() => localStorage.getItem('dj_remember') !== 'false');
+  const [showErrorPopup, setShowErrorPopup] = useState(false);
+  const errorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const isCredentialErrorMessage = (message?: string | null) => {
+    const normalized = String(message || '').toLowerCase();
+    return normalized.includes('อีเมลหรือรหัสผ่านไม่ถูกต้อง')
+      || normalized.includes('invalid email or password')
+      || normalized.includes('invalid credentials');
+  };
+
+  const validateForm = () => {
+    const nextErrors: { email?: string; password?: string } = {};
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail) {
+      nextErrors.email = 'กรุณากรอกชื่อผู้ใช้ (อีเมล)';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      nextErrors.email = 'รูปแบบอีเมลไม่ถูกต้อง';
+    }
+
+    if (!password) {
+      nextErrors.password = 'กรุณากรอกรหัสผ่าน';
+    }
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
 
   // Get redirect destination
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/';
@@ -36,20 +66,32 @@ const LoginV2: React.FC = () => {
   useEffect(() => {
     clearError();
     const sessionNotice = consumeSessionUpdateNotice();
+    const locationState = location.state as { message?: string } | null;
     setLoginError(sessionNotice);
-  }, [clearError]);
+    setLoginNotice(locationState?.message || null);
+    setFieldErrors({});
+  }, [clearError, location.state]);
+
+  const displayedError = loginError || error || null;
+  const hasCredentialError = isCredentialErrorMessage(displayedError);
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
+    setLoginNotice(null);
+    setFieldErrors({});
 
-    if (!email || !password) {
+    if (!validateForm()) {
       return;
     }
 
     try {
-      const user = await login(email, password);
+      // Save remember-me preference
+      localStorage.setItem('dj_remember', rememberMe ? 'true' : 'false');
+      sessionStorage.setItem('dj_session_active', '1');
+
+      const user = await login(email.trim(), password);
 
       // If user must change password (forced change after approval), redirect to that page
       if (user?.mustChangePassword) {
@@ -62,11 +104,62 @@ const LoginV2: React.FC = () => {
       // Set local error state for guaranteed display
       const msg = err instanceof Error ? err.message : 'เข้าสู่ระบบไม่สำเร็จ';
       setLoginError(msg);
+
+      // Show popup toast
+      setShowErrorPopup(true);
+      if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
+      errorTimeoutRef.current = setTimeout(() => setShowErrorPopup(false), 6000);
+
+      if (isCredentialErrorMessage(msg)) {
+        setFieldErrors({
+          email: 'โปรดตรวจสอบชื่อผู้ใช้ (อีเมล) ของคุณอีกครั้ง',
+          password: 'โปรดตรวจสอบรหัสผ่านแล้วลองใหม่อีกครั้ง',
+        });
+      }
     }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-rose-600 via-rose-700 to-rose-900 flex items-center justify-center p-4">
+      {/* Keyframes for popup animation */}
+      <style>{`
+        @keyframes slideDown {
+          from { opacity: 0; transform: translate(-50%, -20px); }
+          to { opacity: 1; transform: translate(-50%, 0); }
+        }
+      `}</style>
+
+      {/* Error Popup Toast */}
+      {showErrorPopup && displayedError && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm animate-[slideDown_0.3s_ease-out]">
+          <div className="mx-4 bg-white border border-red-200 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="bg-red-500 h-1" />
+            <div className="p-4 flex items-start gap-3">
+              <div className="flex-shrink-0 w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-red-800">เข้าสู่ระบบไม่สำเร็จ</p>
+                <p className="text-xs text-red-600 mt-0.5">{displayedError}</p>
+                {hasCredentialError && (
+                  <p className="text-xs text-gray-500 mt-1">โปรดตรวจสอบชื่อผู้ใช้ (อีเมล) และรหัสผ่านอีกครั้ง</p>
+                )}
+              </div>
+              <button
+                onClick={() => setShowErrorPopup(false)}
+                className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Background Pattern */}
       <div className="absolute inset-0 opacity-10">
         <div className="absolute inset-0" style={{
@@ -88,10 +181,21 @@ const LoginV2: React.FC = () => {
 
         {/* Login Form */}
         <form className="space-y-6" onSubmit={handleSubmit}>
+          {loginNotice && (
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg text-sm">
+              {loginNotice}
+            </div>
+          )}
+
           {/* Error Message */}
-          {(loginError || error) && (
+          {displayedError && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-              {loginError || error}
+              <p className="font-medium">{displayedError}</p>
+              {hasCredentialError && (
+                <p className="mt-1 text-xs text-red-600">
+                  โปรดตรวจสอบชื่อผู้ใช้ (อีเมล) และรหัสผ่านของคุณอีกครั้ง หรือกด “ลืมรหัสผ่าน” เพื่อรับรหัสผ่านชั่วคราวทางอีเมล
+                </p>
+              )}
             </div>
           )}
 
@@ -99,7 +203,7 @@ const LoginV2: React.FC = () => {
             {/* Email Input */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1">
-                อีเมล
+                ชื่อผู้ใช้ (อีเมล)
               </label>
               <input
                 id="email"
@@ -108,10 +212,24 @@ const LoginV2: React.FC = () => {
                 autoComplete="email"
                 required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent bg-white text-slate-800"
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setLoginError(null);
+                  clearError();
+                  setFieldErrors((prev) => ({ ...prev, email: undefined }));
+                }}
+                className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:border-transparent bg-white text-slate-800 ${fieldErrors.email || hasCredentialError
+                  ? 'border-red-300 bg-red-50 focus:ring-red-500'
+                  : 'border-slate-300 focus:ring-rose-500'
+                }`}
                 placeholder="name@sena.co.th"
+                aria-invalid={Boolean(fieldErrors.email || hasCredentialError)}
               />
+              {fieldErrors.email ? (
+                <p className="mt-1 text-xs text-red-600">{fieldErrors.email}</p>
+              ) : (
+                <p className="mt-1 text-xs text-slate-500">ใช้ชื่อผู้ใช้เป็นอีเมลที่ลงทะเบียนไว้ในระบบ</p>
+              )}
             </div>
 
             {/* Password Input */}
@@ -127,9 +245,18 @@ const LoginV2: React.FC = () => {
                   autoComplete="current-password"
                   required
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent bg-white text-slate-800 pr-12"
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setLoginError(null);
+                    clearError();
+                    setFieldErrors((prev) => ({ ...prev, password: undefined }));
+                  }}
+                  className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:border-transparent bg-white text-slate-800 pr-12 ${fieldErrors.password || hasCredentialError
+                    ? 'border-red-300 bg-red-50 focus:ring-red-500'
+                    : 'border-slate-300 focus:ring-rose-500'
+                  }`}
                   placeholder="••••••••"
+                  aria-invalid={Boolean(fieldErrors.password || hasCredentialError)}
                 />
                 <button
                   type="button"
@@ -148,7 +275,27 @@ const LoginV2: React.FC = () => {
                   )}
                 </button>
               </div>
+              {fieldErrors.password ? (
+                <p className="mt-1 text-xs text-red-600">{fieldErrors.password}</p>
+              ) : (
+                <p className="mt-1 text-xs text-slate-500">หากคุณได้รับรหัสผ่านชั่วคราวทางอีเมล ให้ใช้รหัสดังกล่าวเข้าสู่ระบบก่อน แล้วระบบจะให้เปลี่ยนรหัสผ่านใหม่ทันที</p>
+              )}
             </div>
+          </div>
+
+          {/* Remember Me Checkbox */}
+          <div className="flex items-center">
+            <input
+              id="rememberMe"
+              name="rememberMe"
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="h-4 w-4 text-rose-600 border-slate-300 rounded focus:ring-rose-500 cursor-pointer"
+            />
+            <label htmlFor="rememberMe" className="ml-2 block text-sm text-slate-600 cursor-pointer select-none">
+              จำรหัสผ่าน
+            </label>
           </div>
 
           {/* Submit Button */}

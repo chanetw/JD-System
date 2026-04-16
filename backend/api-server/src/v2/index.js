@@ -15,6 +15,7 @@ import crypto from 'crypto';
 import PrismaV1Adapter from './adapters/PrismaV1Adapter.js';
 import EmailService from '../services/emailService.js';
 import { notifyUserSessionUpdate } from '../helpers/userSessionNotification.js';
+import { buildLoginUrl } from '../utils/frontendUrl.js';
 
 // Email service instance
 const emailService = new EmailService();
@@ -289,30 +290,35 @@ router.post('/auth/login', async (req, res, next) => {
 
     // Find user in V1 users table via adapter
     const user = await PrismaV1Adapter.findUserByEmail(email, tenantId);
-    if (!user) return res.status(401).json(errorResponse('USER_NOT_FOUND', 'ไม่พบผู้ใช้งานในระบบ กรุณาตรวจสอบอีเมลอีกครั้ง'));
 
-    // Check user registration/approval status
-    const authStatus = await PrismaV1Adapter.checkUserAuthStatus(user.id);
-    if (!authStatus.canAuth) {
-      const statusMessages = {
-        'PENDING_APPROVAL': 'Your account is pending approval. Please wait for admin review.',
-        'REGISTRATION_REJECTED': 'Your registration has been rejected. Please contact support.',
-        'USER_INACTIVE': 'Your account has been deactivated. Please contact support.',
-        'NOT_APPROVED': 'Your account is not approved. Please contact support.'
-      };
-      const message = statusMessages[authStatus.reason] || 'Account access denied';
-      return res.status(403).json(errorResponse(authStatus.reason, message, { status: authStatus.status }));
-    }
+    // Get password hash for verification first
+    // Best practice: return a generic auth error for unknown email / wrong password
+    const userWithPassword = user
+      ? await PrismaV1Adapter.findUserByIdWithPassword(user.id, tenantId)
+      : null;
 
-    // Get password hash for verification
-    const userWithPassword = await PrismaV1Adapter.findUserByIdWithPassword(user.id, tenantId);
-    if (!userWithPassword || !userWithPassword.passwordHash) {
-      return res.status(401).json(errorResponse('INVALID_CREDENTIALS', 'Invalid email or password'));
+    if (!user || !userWithPassword || !userWithPassword.passwordHash) {
+      return res.status(401).json(errorResponse('INVALID_CREDENTIALS', 'อีเมลหรือรหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง'));
     }
 
     // Verify password
     const isValid = await verifyPassword(password, userWithPassword.passwordHash);
-    if (!isValid) return res.status(401).json(errorResponse('INVALID_PASSWORD', 'รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง'));
+    if (!isValid) {
+      return res.status(401).json(errorResponse('INVALID_CREDENTIALS', 'อีเมลหรือรหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง'));
+    }
+
+    // Check user registration/approval status only after password has been verified
+    const authStatus = await PrismaV1Adapter.checkUserAuthStatus(user.id);
+    if (!authStatus.canAuth) {
+      const statusMessages = {
+        'PENDING_APPROVAL': 'บัญชีของคุณอยู่ระหว่างรอการอนุมัติจากผู้ดูแลระบบ',
+        'REGISTRATION_REJECTED': 'บัญชีนี้ถูกปฏิเสธการใช้งาน กรุณาติดต่อผู้ดูแลระบบ',
+        'USER_INACTIVE': 'บัญชีนี้ถูกปิดการใช้งาน กรุณาติดต่อผู้ดูแลระบบ',
+        'NOT_APPROVED': 'บัญชีนี้ยังไม่ได้รับอนุมัติ กรุณาติดต่อผู้ดูแลระบบ'
+      };
+      const message = statusMessages[authStatus.reason] || 'ไม่สามารถเข้าใช้งานบัญชีนี้ได้';
+      return res.status(403).json(errorResponse(authStatus.reason, message, { status: authStatus.status }));
+    }
 
     // Update last login time
     await PrismaV1Adapter.updateLastLogin(user.id);
@@ -474,7 +480,7 @@ router.post('/admin/approve-registration', authenticateToken, requireOrgAdmin, a
     console.log(`[V2 Admin] Registration approved: ${approvedUser.email} by Admin ID: ${req.user.userId}`);
 
     // Send approval email with temporary password
-    const loginUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/login` : null;
+    const loginUrl = buildLoginUrl({ req });
     const emailResult = await emailService.notifyRegistrationApproved({
       userEmail: approvedUser.email,
       userName: approvedUser.displayName || `${approvedUser.firstName} ${approvedUser.lastName}`,
@@ -629,27 +635,29 @@ router.post('/auth/forgot-password', async (req, res) => {
   if (cooldownState.inCooldown) {
     return res.json(successResponse({
       cooldownRemainingSeconds: cooldownState.remainingSeconds
-    }, 'If the email exists, a password reset link will be sent'));
+    }, 'If the email exists, a temporary password will be sent'));
   }
 
   try {
-    // Use Adapter
-    // Note: Defaulting tenantId to 1 (SENA) if not specified, as this is a public endpoint
+    // Note: Default tenantId to 1 (SENA) because this is a public endpoint.
     const user = await PrismaV1Adapter.findUserByEmail(email, 1);
     console.log(`[V2 Auth] forgot-password request for email: ${email}. User found:`, !!user, 'isActive:', user?.isActive);
 
     if (user && user.isActive) {
-      const resetToken = await PrismaV1Adapter.createPasswordResetToken(user.id);
-      console.log(`[V2 Auth] Password reset token for ${email} generated successfully (length: ${resetToken.token?.length})`);
+      // Invalidate any old reset links before issuing a new temporary password.
+      await PrismaV1Adapter.invalidatePasswordResetTokens(user.id);
 
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-      const resetUrl = `${frontendUrl}/reset-password?token=${resetToken.token}`;
+      const resetResult = await PrismaV1Adapter.resetPasswordRandom(user.id);
+      console.log(`[V2 Auth] Temporary password generated for ${email}`);
 
-      console.log(`[V2 Auth] About to send notifyForgotPassword email to ${user.email}`);
-      const emailResult = await emailService.notifyForgotPassword({
+      const loginUrl = buildLoginUrl({ req });
+
+      console.log(`[V2 Auth] About to send notifyPasswordReset email to ${user.email}`);
+      const emailResult = await emailService.notifyPasswordReset({
         userEmail: user.email,
         userName: user.firstName || 'ผู้ใช้งาน',
-        resetUrl
+        newPassword: resetResult.newPassword,
+        loginUrl
       });
       console.log(`[V2 Auth] Email service response for ${email}:`, emailResult);
     } else {
@@ -659,25 +667,18 @@ router.post('/auth/forgot-password', async (req, res) => {
     console.error('[V2 Auth] forgot-password error:', e);
   }
 
-  res.json(successResponse(null, 'If the email exists, a password reset link will be sent'));
+  res.json(successResponse(null, 'If the email exists, a temporary password will be sent'));
 });
 
 // POST /api/v2/auth/reset-password
 router.post('/auth/reset-password', async (req, res, next) => {
   try {
-    const { token, newPassword } = req.body;
-    if (!token || !newPassword) return res.status(400).json(errorResponse('MISSING_FIELDS', 'Token and new password required'));
-
-    // Use Adapter to verify and use token
-    try {
-      await PrismaV1Adapter.usePasswordResetToken(token, newPassword);
-      res.json(successResponse(null, 'Password reset successful'));
-    } catch (error) {
-      if (error.message === 'INVALID_OR_EXPIRED_TOKEN') {
-        return res.status(400).json(errorResponse('INVALID_RESET_TOKEN', 'Invalid or expired token'));
-      }
-      throw error;
-    }
+    return res.status(410).json(
+      errorResponse(
+        'RESET_PASSWORD_FLOW_DEPRECATED',
+        'Token-based password reset has been deprecated. Please request a new temporary password via forgot-password.'
+      )
+    );
   } catch (error) {
     next(error);
   }
@@ -881,8 +882,8 @@ router.put('/users/:id', authenticateToken, requireOrgAdmin, async (req, res, ne
 });
 
 // PUT /api/v2/users/:id/reset-password
-// ADMIN ONLY: Reset password to default '123456'
-router.put('/users/:id/reset-password', authenticateToken, requireOrgAdmin, async (req, res, next) => {
+// Admin can reset any user in the tenant; Requester/Approver can reset users in their own organization.
+router.put('/users/:id/reset-password', authenticateToken, requireTeamLead, async (req, res, next) => {
   try {
     const userId = parseInt(req.params.id);
     const user = await PrismaV1Adapter.findUserById(userId);
@@ -891,7 +892,12 @@ router.put('/users/:id/reset-password', authenticateToken, requireOrgAdmin, asyn
       return res.status(404).json(errorResponse('NOT_FOUND', 'User not found'));
     }
 
-    if (req.user.role !== 'Admin' && user.organizationId !== req.user.organizationId) {
+    const isAdminUser = String(req.user.role || '').toLowerCase() === 'admin';
+    const actorOrganizationId = Number(req.user.organizationId || 0);
+    const targetOrganizationId = Number(user.organizationId || 0);
+    const canManageAcrossOrganizations = isAdminUser || actorOrganizationId === 0;
+
+    if (!canManageAcrossOrganizations && targetOrganizationId !== actorOrganizationId) {
       return res.status(403).json(errorResponse('FORBIDDEN', 'Access denied'));
     }
 
@@ -903,7 +909,7 @@ router.put('/users/:id/reset-password', authenticateToken, requireOrgAdmin, asyn
       userEmail: user.email,
       userName: user.firstName,
       newPassword: result.newPassword,
-      loginUrl: process.env.FRONTEND_URL || 'http://localhost:5173'
+      loginUrl: buildLoginUrl({ req })
     });
 
     res.json(successResponse({

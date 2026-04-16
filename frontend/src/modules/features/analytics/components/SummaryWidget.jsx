@@ -23,8 +23,8 @@ export default function SummaryWidget({ kpi, trend, isLoading, error }) {
     // แสดง Loading state
     if (isLoading) {
         return (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {[1, 2, 3, 4].map((i) => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                {[1, 2, 3, 4, 5].map((i) => (
                     <div key={i} className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm animate-pulse">
                         <div className="flex items-center gap-4">
                             <div className="w-12 h-12 rounded-lg bg-gray-200"></div>
@@ -51,13 +51,20 @@ export default function SummaryWidget({ kpi, trend, isLoading, error }) {
 
     // แสดง KPI Cards
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             <KPICard
                 title="งานทั้งหมด"
                 value={kpi?.totalDJ || 0}
                 icon={<TotalJobsIcon />}
                 color="blue"
                 trend={trend?.totalJobsChange}
+            />
+            <KPICard
+                title="จำนวนชิ้นงาน"
+                value={kpi?.totalItems || 0}
+                icon={<TotalItemsIcon />}
+                color="rose"
+                trend={trend?.totalItemsChange}
             />
             <KPICard
                 title="อัตราส่งตรงเวลา"
@@ -105,6 +112,7 @@ function KPICard({ title, value, icon, color, trend, isPercentage = false, decim
         green: 'bg-green-50 text-green-600',
         amber: 'bg-amber-50 text-amber-600',
         red: 'bg-red-50 text-red-600',
+        rose: 'bg-rose-50 text-rose-600',
     };
 
     return (
@@ -141,6 +149,14 @@ function TotalJobsIcon() {
     return (
         <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+        </svg>
+    );
+}
+
+function TotalItemsIcon() {
+    return (
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8 4-8-4m16 0l-8-4-8 4m16 0v10l-8 4m-8-14v10l8 4m0-10l8-4" />
         </svg>
     );
 }

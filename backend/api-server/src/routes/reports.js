@@ -532,10 +532,29 @@ router.get('/user-performance/:userId', async (req, res) => {
       });
     }
 
+    let itemCountByJob = new Map();
+
+    if (jobs.length > 0) {
+      const itemTotalsByJob = await prisma.designJobItem.groupBy({
+        by: ['jobId'],
+        where: {
+          jobId: { in: jobs.map(job => job.id) }
+        },
+        _sum: {
+          quantity: true
+        }
+      });
+
+      itemCountByJob = new Map(
+        itemTotalsByJob.map(entry => [entry.jobId, entry._sum.quantity || 0])
+      );
+    }
+
     // คำนวณ Summary
     const totalJobs = jobs.length;
     const completedJobs = jobs.filter(j => j.status === 'completed');
     const completedCount = completedJobs.length;
+    const totalItems = jobs.reduce((sum, job) => sum + (itemCountByJob.get(job.id) || 0), 0);
 
     // งานที่ส่งตรงเวลา
     const onTimeJobs = completedJobs.filter(j => {
@@ -644,6 +663,7 @@ router.get('/user-performance/:userId', async (req, res) => {
       status: j.status,
       dueDate: j.dueDate,
       completedAt: j.completedAt,
+      itemCount: itemCountByJob.get(j.id) || 0,
       isOnTime: j.completedAt && j.dueDate ? new Date(j.completedAt) <= new Date(j.dueDate) : null
     }));
 
@@ -660,6 +680,7 @@ router.get('/user-performance/:userId', async (req, res) => {
         },
         summary: {
           totalJobs,
+          totalItems,
           completedJobs: completedCount,
           onTimeJobs: onTimeCount,
           delayedJobs: delayedJobs.length,
@@ -733,6 +754,7 @@ router.get('/team-comparison', async (req, res) => {
     const jobs = await prisma.job.findMany({
       where: whereCondition,
       select: {
+        id: true,
         status: true,
         createdAt: true,
         completedAt: true,
@@ -751,6 +773,24 @@ router.get('/team-comparison', async (req, res) => {
       }
     });
 
+    let itemCountByJob = new Map();
+
+    if (jobs.length > 0) {
+      const itemTotalsByJob = await prisma.designJobItem.groupBy({
+        by: ['jobId'],
+        where: {
+          jobId: { in: jobs.map(job => job.id) }
+        },
+        _sum: {
+          quantity: true
+        }
+      });
+
+      itemCountByJob = new Map(
+        itemTotalsByJob.map(entry => [entry.jobId, entry._sum.quantity || 0])
+      );
+    }
+
     // จัดกลุ่มตาม assignee
     const userMap = {};
     jobs.forEach(job => {
@@ -764,6 +804,7 @@ router.get('/team-comparison', async (req, res) => {
           userEmail: job.assignee.email,
           userRole: job.assignee.userRoles?.[0]?.roleName || 'Unknown',
           totalJobs: 0,
+          totalItems: 0,
           completedJobs: 0,
           onTimeJobs: 0,
           delayedJobs: 0,
@@ -772,6 +813,7 @@ router.get('/team-comparison', async (req, res) => {
       }
 
       userMap[userId].totalJobs++;
+      userMap[userId].totalItems += itemCountByJob.get(job.id) || 0;
 
       if (job.status === 'completed') {
         userMap[userId].completedJobs++;
@@ -813,6 +855,7 @@ router.get('/team-comparison', async (req, res) => {
         userEmail: user.userEmail,
         userRole: user.userRole,
         totalJobs: user.totalJobs,
+        totalItems: user.totalItems,
         completedJobs: user.completedJobs,
         onTimeRate,
         avgTurnaroundDays,
@@ -935,6 +978,22 @@ router.get('/analytics', async (req, res) => {
       },
       orderBy: { createdAt: 'desc' }
     });
+
+    let totalItems = 0;
+
+    if (jobs.length > 0) {
+      const itemTotalsByJob = await prisma.designJobItem.groupBy({
+        by: ['jobId'],
+        where: {
+          jobId: { in: jobs.map(job => job.id) }
+        },
+        _sum: {
+          quantity: true
+        }
+      });
+
+      totalItems = itemTotalsByJob.reduce((sum, entry) => sum + (entry._sum.quantity || 0), 0);
+    }
 
     // คำนวณ KPI
     const totalJobs = jobs.length;
@@ -1072,6 +1131,7 @@ router.get('/analytics', async (req, res) => {
         jobs,
         kpi: {
           totalDJ: totalJobs,
+          totalItems,
           completed: completedCount,
           completionRate: completionRate.toFixed(1),
           onTimeRate: onTimeRate.toFixed(1),

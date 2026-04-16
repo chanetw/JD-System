@@ -45,21 +45,20 @@ class PrismaV1Adapter {
     // Helper function to normalize role names
     const normalizeRoleName = (rawRoleName) => {
       if (!rawRoleName) return 'Assignee';
-      const normalized = rawRoleName.toLowerCase().trim();
+      const normalized = rawRoleName.toLowerCase().trim().replace(/\s+/g, '_');
 
       // Normalize legacy/V2 role names to V1 standard
-      if (normalized === 'superadmin') return 'Admin';
-      if (normalized === 'orgadmin') return 'Requester';
-      if (normalized === 'teamlead') return 'Approver';
-      if (normalized === 'member') return 'Assignee';
-      if (normalized === 'user') return 'Assignee';
-      if (normalized === 'manager') return 'Approver';
+      if (['admin', 'superadmin', 'system_admin'].includes(normalized)) return 'Admin';
+      if (['requester', 'orgadmin', 'marketing'].includes(normalized)) return 'Requester';
+      if (['approver', 'teamlead', 'team_lead', 'manager'].includes(normalized)) return 'Approver';
+      if (['assignee', 'member', 'user'].includes(normalized)) return 'Assignee';
+      if (normalized === 'viewer') return 'Viewer';
 
       return rawRoleName; // Keep original if no mapping found
     };
 
     // ✅ NEW: Collect ALL roles from userRoles array
-    const allRoles = (prismaUser.userRoles || []).map(ur => normalizeRoleName(ur.roleName));
+    const allRoles = Array.from(new Set((prismaUser.userRoles || []).map(ur => normalizeRoleName(ur.roleName))));
 
     // Failsafe for specific admin user
     if (prismaUser.id === 10000 && !allRoles.includes('Admin')) {

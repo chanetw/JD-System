@@ -18,7 +18,7 @@ import {
     DocumentIcon,
     GlobeAltIcon
 } from '@heroicons/react/24/outline';
-import { ROLES, ROLE_LABELS } from '@shared/utils/permission.utils';
+import { ROLES, ROLE_LABELS, normalizeRoleName } from '@shared/utils/permission.utils';
 
 // Scope level labels
 const SCOPE_LEVEL_LABELS = {
@@ -45,16 +45,19 @@ export default function ScopeConfigPanel({
     loading = false
 }) {
     const [expandedPanels, setExpandedPanels] = useState({});
+    const normalizedSelectedRoles = Array.from(
+        new Set((selectedRoles || []).map(normalizeRoleName).filter(Boolean))
+    );
 
     useEffect(() => {
         const newExpanded = { ...expandedPanels };
-        selectedRoles.forEach(role => {
+        normalizedSelectedRoles.forEach(role => {
             if (role !== ROLES.ADMIN && !(role in newExpanded)) {
                 newExpanded[role] = true;
             }
         });
         setExpandedPanels(newExpanded);
-    }, [selectedRoles]);
+    }, [normalizedSelectedRoles]);
 
     const togglePanel = (roleName) => {
         setExpandedPanels(prev => ({
@@ -74,7 +77,7 @@ export default function ScopeConfigPanel({
         onConfigChange?.(updated);
     };
 
-    const rolesNeedingScope = selectedRoles.filter(r => r !== ROLES.ADMIN);
+    const rolesNeedingScope = normalizedSelectedRoles.filter(r => r !== ROLES.ADMIN);
 
     if (rolesNeedingScope.length === 0) {
         return null;

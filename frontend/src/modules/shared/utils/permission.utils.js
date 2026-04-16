@@ -41,6 +41,21 @@ export const SCOPE_LEVELS = {
     PROJECT: 'project'
 };
 
+export const normalizeRoleName = (rawRoleName) => {
+    const raw = String(rawRoleName || '').trim();
+    if (!raw) return '';
+
+    const normalized = raw.replace(/\s+/g, '_').toLowerCase();
+
+    if (['admin', 'superadmin', 'system_admin'].includes(normalized)) return 'Admin';
+    if (['requester', 'orgadmin', 'marketing'].includes(normalized)) return 'Requester';
+    if (['approver', 'teamlead', 'team_lead', 'manager'].includes(normalized)) return 'Approver';
+    if (['assignee', 'member', 'user'].includes(normalized)) return 'Assignee';
+    if (['viewer'].includes(normalized)) return 'Viewer';
+
+    return raw;
+};
+
 // Thai labels for roles (V1 naming: Admin, Requester, Approver, Assignee, Viewer)
 export const ROLE_LABELS = {
     admin: 'ผู้ดูแลระบบ',
@@ -668,22 +683,24 @@ export const getAccessibleProjects = (user, allProjects = []) => {
 export const getJobRole = (user, job) => {
     if (!user || !job) return 'viewer';
 
-    // Priority 1: Admin มีสิทธิ์สูงสุด
+    const isJobAssignee = String(job.assigneeId) === String(user.id) || String(job.assignee?.id) === String(user.id);
+    const isJobRequester = String(job.requesterId) === String(user.id) || String(job.requester?.id) === String(user.id);
+
+    // Priority 1: ความสัมพันธ์กับงานจริงต้องมาก่อน
+    // เพื่อให้ user ที่เป็น Admin + Assignee ใช้งาน assignee actions ได้ครบ
+    if (isJobAssignee) {
+        return 'assignee';
+    }
+
+    if (isJobRequester) {
+        return 'requester';
+    }
+
+    // Priority 2: System-wide roles
     if (hasRole(user, ROLES.ADMIN) || hasRole(user, 'Admin') || hasRole(user, 'SuperAdmin')) {
         return 'admin';
     }
 
-    // Priority 2: Assignee (ผู้รับมอบหมายจริง) - ตรวจสอบก่อน role อื่น
-    if (String(job.assigneeId) === String(user.id) || String(job.assignee?.id) === String(user.id)) {
-        return 'assignee';
-    }
-
-    // Priority 3: Requester (ผู้สร้างงาน) - ตรวจสอบก่อน role อื่น
-    if (String(job.requesterId) === String(user.id) || String(job.requester?.id) === String(user.id)) {
-        return 'requester';
-    }
-
-    // Priority 4: Approver (ผู้อนุมัติ) - ตรวจสอบทีหลัง
     if (hasRole(user, ROLES.APPROVER) || hasRole(user, 'Approver') || hasRole(user, 'TeamLead')) {
         return 'approver';
     }

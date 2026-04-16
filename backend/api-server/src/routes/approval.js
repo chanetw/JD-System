@@ -13,11 +13,14 @@ import express from 'express';
 import { ApprovalService } from '../services/approvalService.js';
 import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import NotificationService from '../services/notificationService.js';
+import MagicLinkService from '../services/magicLinkService.js';
 import { hasRole } from '../helpers/roleHelper.js';
+import { buildFrontendUrl, getFrontendBaseUrl } from '../utils/frontendUrl.js';
 
 const router = express.Router();
 const approvalService = new ApprovalService();
 const notificationService = new NotificationService();
+const magicLinkService = new MagicLinkService();
 
 /**
  * POST /api/approvals/request
@@ -73,9 +76,16 @@ router.post('/request', authenticateToken, setRLSContextMiddleware, async (req, 
     if (result.success) {
       // ส่ง email แจ้งผู้อนุมัติ
       const approval = result.data;
-      const approvalUrl = `${process.env.FRONTEND_URL}/approve/${approval.approvalToken}`;
-      const rejectUrl = `${process.env.FRONTEND_URL}/reject/${approval.approvalToken}`;
-      const viewUrl = `${process.env.FRONTEND_URL}/jobs/${approval.jobId}`;
+      const frontendUrl = getFrontendBaseUrl({ req });
+      const viewLink = `/jobs/${approval.jobId}`;
+      const viewUrl = buildFrontendUrl(viewLink, { req });
+      const magicLink = await magicLinkService.createJobActionLink({
+        userId: approverId,
+        jobId: approval.jobId,
+        action: 'approve',
+        djId: approval.job.djId,
+        frontendUrl
+      });
 
       await notificationService.sendNotification({
         tenantId: job.tenantId,
@@ -83,7 +93,7 @@ router.post('/request', authenticateToken, setRLSContextMiddleware, async (req, 
         type: 'job_approval_request',
         title: 'คำขออนุมัติงาน',
         message: `มีคำขออนุมัติงาน ${approval.job.djId}`,
-        link: viewUrl,
+        link: viewLink,
         sendEmail: true,
         emailData: {
           approverName: `${approval.approver.firstName} ${approval.approver.lastName}`,
@@ -96,9 +106,9 @@ router.post('/request', authenticateToken, setRLSContextMiddleware, async (req, 
           deadline: approval.job.dueDate?.toLocaleDateString('th-TH'),
           brief: approval.job.description || approval.job.objective,
           attachments: [], // ต้องดึงจาก database จริง
-          approveUrl,
-          rejectUrl,
           viewUrl,
+          magicLink,
+          buttonText: 'เปิดงานเพื่ออนุมัติ',
           approvalToken: approval.approvalToken
         }
       });
@@ -146,6 +156,15 @@ router.post('/approve', async (req, res) => {
 
     if (result.success) {
       const approval = result.data;
+      const frontendUrl = getFrontendBaseUrl({ req });
+      const viewLink = `/jobs/${approval.jobId}`;
+      const requesterMagicLink = await magicLinkService.createJobActionLink({
+        userId: approval.job.requesterId,
+        jobId: approval.jobId,
+        action: 'view',
+        djId: approval.job.djId,
+        frontendUrl
+      });
       
       // ส่ง email แจ้ง requester ว่างานได้รับการอนุมัติ
       await notificationService.sendNotification({
@@ -154,7 +173,7 @@ router.post('/approve', async (req, res) => {
         type: 'job_approved',
         title: 'งานได้รับการอนุมัติ',
         message: `งาน ${approval.job.djId} ได้รับการอนุมัติแล้ว`,
-        link: `${process.env.FRONTEND_URL}/jobs/${approval.jobId}`,
+        link: viewLink,
         sendEmail: true,
         emailData: {
           requesterName: `${approval.job.requester.firstName} ${approval.job.requester.lastName}`,
@@ -165,7 +184,9 @@ router.post('/approve', async (req, res) => {
           comment,
           assigneeName: approval.job.assignee ? 
             `${approval.job.assignee.firstName} ${approval.job.assignee.lastName}` : null,
-          viewUrl: `${process.env.FRONTEND_URL}/jobs/${approval.jobId}`,
+          viewUrl: buildFrontendUrl(viewLink, { req }),
+          magicLink: requesterMagicLink,
+          buttonText: 'ดูงานที่อนุมัติแล้ว',
           approvalToken: token,
           approverIp: ipAddress
         }
@@ -173,13 +194,21 @@ router.post('/approve', async (req, res) => {
 
       // ถ้ามี assignee ให้ส่ง email แจ้งด้วย
       if (approval.job.assigneeId) {
+        const assigneeMagicLink = await magicLinkService.createJobActionLink({
+          userId: approval.job.assigneeId,
+          jobId: approval.jobId,
+          action: 'view',
+          djId: approval.job.djId,
+          frontendUrl
+        });
+
         await notificationService.sendNotification({
           tenantId: approval.job.tenantId,
           userIds: [approval.job.assigneeId],
           type: 'job_assigned',
           title: 'ได้รับมอบหมายงานใหม่',
           message: `คุณได้รับมอบหมายงาน ${approval.job.djId}`,
-          link: `${process.env.FRONTEND_URL}/jobs/${approval.jobId}`,
+          link: viewLink,
           sendEmail: true,
           emailData: {
             assigneeName: `${approval.job.assignee.firstName} ${approval.job.assignee.lastName}`,
@@ -190,7 +219,9 @@ router.post('/approve', async (req, res) => {
             priorityText: approval.job.priority.toUpperCase(),
             assignedAt: new Date().toLocaleDateString('th-TH'),
             deadline: approval.job.dueDate?.toLocaleDateString('th-TH'),
-            viewUrl: `${process.env.FRONTEND_URL}/jobs/${approval.jobId}`
+            viewUrl: buildFrontendUrl(viewLink, { req }),
+            magicLink: assigneeMagicLink,
+            buttonText: 'เปิดงานที่ได้รับมอบหมาย'
           }
         });
       }
@@ -246,6 +277,15 @@ router.post('/reject', async (req, res) => {
 
     if (result.success) {
       const approval = result.data;
+      const frontendUrl = getFrontendBaseUrl({ req });
+      const viewLink = `/jobs/${approval.jobId}`;
+      const requesterMagicLink = await magicLinkService.createJobActionLink({
+        userId: approval.job.requesterId,
+        jobId: approval.jobId,
+        action: 'view',
+        djId: approval.job.djId,
+        frontendUrl
+      });
       
       // ส่ง email แจ้ง requester ว่างานถูกปฏิเสธ
       await notificationService.sendNotification({
@@ -254,7 +294,7 @@ router.post('/reject', async (req, res) => {
         type: 'job_rejected',
         title: 'งานถูกปฏิเสธ',
         message: `งาน ${approval.job.djId} ถูกปฏิเสธ`,
-        link: `${process.env.FRONTEND_URL}/jobs/${approval.jobId}`,
+        link: viewLink,
         sendEmail: true,
         emailData: {
           requesterName: `${approval.job.requester.firstName} ${approval.job.requester.lastName}`,
@@ -263,7 +303,11 @@ router.post('/reject', async (req, res) => {
           approverName: `${approval.approver.firstName} ${approval.approver.lastName}`,
           rejectedAt: new Date().toLocaleString('th-TH'),
           comment,
-          editUrl: `${process.env.FRONTEND_URL}/jobs/${approval.jobId}/edit`,
+          editUrl: buildFrontendUrl(`/jobs/${approval.jobId}/edit`, { req }),
+          viewUrl: buildFrontendUrl(viewLink, { req }),
+          magicLink: requesterMagicLink,
+          reason: comment,
+          buttonText: 'เปิดงานเพื่อแก้ไข',
           approvalToken: token,
           approverIp: ipAddress
         }

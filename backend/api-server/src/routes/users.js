@@ -13,10 +13,18 @@ import { UserService } from '../services/userService.js';
 import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import { getSupabaseClient } from '../config/supabase.js';
 import { getDatabase } from '../config/database.js';
+import EmailService from '../services/emailService.js';
 import { notifyUserSessionUpdate } from '../helpers/userSessionNotification.js';
+import { buildLoginUrl } from '../utils/frontendUrl.js';
 
 const router = express.Router();
 const userService = new UserService();
+const emailService = new EmailService();
+
+const generateTemporaryPassword = (length = 12) => {
+  const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  return Array.from({ length }, () => charset.charAt(Math.floor(Math.random() * charset.length))).join('');
+};
 
 // Case-insensitive role helper (centralized)
 import { hasAdminRole } from '../helpers/roleHelper.js';
@@ -194,14 +202,24 @@ router.get('/:id', async (req, res) => {
  */
 router.post('/', async (req, res) => {
   try {
-    const { email, password, firstName, lastName, displayName, phone } = req.body;
+    const {
+      email,
+      password,
+      firstName,
+      lastName,
+      displayName,
+      phone,
+      title,
+      departmentId,
+      isActive = true
+    } = req.body;
 
     // ตรวจสอบ required fields
-    if (!email || !password || !firstName || !lastName) {
+    if (!email || !firstName || !lastName) {
       return res.status(400).json({
         success: false,
         error: 'MISSING_REQUIRED_FIELDS',
-        message: 'กรุณากรอกข้อมูลให้ครบถ้วน (email, password, firstName, lastName)'
+        message: 'กรุณากรอกข้อมูลให้ครบถ้วน (email, firstName, lastName)'
       });
     }
 
@@ -214,22 +232,71 @@ router.post('/', async (req, res) => {
       });
     }
 
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const existingUser = await userService.prisma.user.findFirst({
+      where: {
+        tenantId: req.user.tenantId,
+        email: normalizedEmail
+      },
+      select: { id: true }
+    });
+
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        error: 'EMAIL_ALREADY_EXISTS',
+        message: 'อีเมลนี้มีอยู่ในระบบแล้ว'
+      });
+    }
+
+    const generatedPassword = password || generateTemporaryPassword();
+    const mustChangePassword = !password;
+
     const result = await userService.createUser({
       tenantId: req.user.tenantId,
-      email,
-      password,
+      email: normalizedEmail,
+      password: generatedPassword,
       firstName,
       lastName,
       displayName,
-      phone
+      phone,
+      title,
+      departmentId,
+      isActive,
+      mustChangePassword
     });
 
     if (result.success) {
-      res.status(201).json(result);
-    } else {
-      res.status(400).json(result);
+      const createdUser = result.data;
+      let emailSent = false;
+
+      try {
+        await emailService.notifyRegistrationApproved({
+          userEmail: createdUser.email,
+          userName: createdUser.displayName || `${createdUser.firstName || ''} ${createdUser.lastName || ''}`.trim() || createdUser.email,
+          temporaryPassword: generatedPassword,
+          loginUrl: buildLoginUrl({ req })
+        });
+        emailSent = true;
+      } catch (emailError) {
+        console.warn('[Users] User created but email sending failed:', emailError.message);
+      }
+
+      return res.status(201).json({
+        ...result,
+        data: {
+          ...createdUser,
+          temporaryPassword: generatedPassword,
+          mustChangePassword,
+          emailSent
+        },
+        message: mustChangePassword
+          ? 'สร้างผู้ใช้สำเร็จและส่งรหัสผ่านชั่วคราวแล้ว'
+          : 'สร้างผู้ใช้สำเร็จ'
+      });
     }
 
+    res.status(400).json(result);
   } catch (error) {
     console.error('[Users] Create user error:', error);
     res.status(500).json({

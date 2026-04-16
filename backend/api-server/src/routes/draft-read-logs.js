@@ -60,7 +60,7 @@ router.post('/:jobId', async (req, res) => {
     }
 
     // ตรวจสอบว่า User เป็น Requester ของงานนี้หรือไม่
-    if (job.requesterId !== userId) {
+    if (String(job.requesterId) !== String(userId)) {
       return res.status(403).json({
         success: false,
         error: 'FORBIDDEN',

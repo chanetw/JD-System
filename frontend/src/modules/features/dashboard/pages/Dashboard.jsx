@@ -57,6 +57,18 @@ const KPI_CONFIG = {
     },
 };
 
+const getPersonDisplayName = (person) => {
+    if (!person) return '';
+    if (typeof person === 'string') return person;
+
+    const fullName = `${person.firstName || person.first_name || ''} ${person.lastName || person.last_name || ''}`.trim();
+    if (fullName) return fullName;
+    if (person.displayName) return person.displayName;
+    if (person.name) return person.name;
+
+    return person.email || '';
+};
+
 // ============================================
 // Main Component
 // ============================================
@@ -69,7 +81,7 @@ function Dashboard() {
     const { user } = useAuthStoreV2();
 
     // KPI Stats
-    const [stats, setStats] = useState({ newToday: 0, dueToday: 0, overdue: 0 });
+    const [stats, setStats] = useState({ newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, totalItems: 0, assigneeSummary: [] });
 
     // My Queue jobs list — Lazy Load
     const [jobs, setJobs] = useState([]);
@@ -449,17 +461,7 @@ function Dashboard() {
         return '-';
     }, []);
 
-    const getAssigneeName = useCallback((job) => {
-        const assignee = job?.assignee;
-        if (!assignee) return '';
-        if (typeof assignee === 'string') return assignee;
-        if (typeof assignee === 'object') {
-            if (assignee.name) return assignee.name;
-            const fullName = `${assignee.firstName || ''} ${assignee.lastName || ''}`.trim();
-            if (fullName) return fullName;
-        }
-        return '';
-    }, []);
+    const getAssigneeName = useCallback((job) => getPersonDisplayName(job?.assignee), []);
 
     const buildParentViewJobs = useCallback((sourceJobs) => {
         const result = [...sourceJobs];
@@ -580,6 +582,17 @@ function Dashboard() {
         }
         return getAssigneeName(j);
     }).flat().filter(Boolean))].sort();
+
+    const dashboardScopeLabel = useMemo(() => {
+        if (assigneeFilter) return `รายบุคคล: ${assigneeFilter}`;
+        if (hasAnyRole(user, ['Admin', 'Superadmin'])) return 'Dashboard รวม';
+        return 'ตามสิทธิ์ของคุณ';
+    }, [assigneeFilter, user]);
+
+    const dashboardScopeSubtitle = useMemo(() => {
+        if (statusFilter) return `${dashboardScopeLabel} • สถานะ ${statusFilter}`;
+        return dashboardScopeLabel;
+    }, [dashboardScopeLabel, statusFilter]);
 
     // รายการ status ที่มีในรายการงาน (unique)
     const statusOptions = [...new Set(filterableJobs.map(j => {
@@ -702,8 +715,9 @@ function Dashboard() {
                                             <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">หัวข้อ</th>
                                             <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">ประเภท</th>
                                             <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">สถานะ</th>
-                                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">กำหนดส่ง</th>
-                                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">ผู้รับงาน</th>
+                                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">กำหนดส่ง</th>
+                                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">ผู้เปิดงาน</th>
+                                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">ผู้รับงาน</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
@@ -838,18 +852,19 @@ function Dashboard() {
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">DJ ID</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Project</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Job Type</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Deadline</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">สถานะ SLA</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assignee</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Last Update</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase min-w-[220px]">Subject</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Status</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Deadline</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">สถานะ SLA</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase min-w-[140px]">Requester</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase min-w-[140px]">Assignee</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap min-w-[130px]">Last Update</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-400">
                             {filteredJobs.length === 0 && !queueLoading ? (
                                 <tr>
-                                    <td colSpan={10} className="px-4 py-8 text-center text-gray-500">
+                                    <td colSpan={11} className="px-4 py-8 text-center text-gray-500">
                                         ไม่มีรายการงาน
                                     </td>
                                 </tr>
@@ -1052,6 +1067,59 @@ function StatCard({ title, subtitle, value, icon, color, active = false, onClick
     );
 }
 
+function SummaryMetricCard({ title, value, unit, subtitle, icon, color = 'slate' }) {
+    const colorMap = {
+        slate: {
+            icon: 'bg-slate-100 text-slate-700',
+            border: 'border-slate-300',
+            bg: 'bg-white',
+            unit: 'text-slate-500'
+        },
+        rose: {
+            icon: 'bg-rose-100 text-rose-700',
+            border: 'border-rose-200',
+            bg: 'bg-rose-50/40',
+            unit: 'text-rose-500'
+        }
+    };
+
+    const palette = colorMap[color] || colorMap.slate;
+
+    return (
+        <div className={`rounded-xl border px-4 py-4 shadow-sm ${palette.border} ${palette.bg}`}>
+            <div className="flex items-start gap-4">
+                <div className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${palette.icon}`}>
+                    {icon}
+                </div>
+                <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{title}</p>
+                    <div className="mt-1 flex items-end gap-2">
+                        <p className="text-3xl font-bold leading-none text-gray-900">{value}</p>
+                        <span className={`pb-0.5 text-sm font-medium ${palette.unit}`}>{unit}</span>
+                    </div>
+                    <p className="mt-2 text-sm text-gray-500">{subtitle}</p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function BriefcaseMetricIcon() {
+    return (
+        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8.25 7.5V6a2.25 2.25 0 0 1 2.25-2.25h3A2.25 2.25 0 0 1 15.75 6v1.5m-12 3h16.5m-15 0V9A1.5 1.5 0 0 1 6 7.5h12A1.5 1.5 0 0 1 19.5 9v1.5m-15 0v6.75A2.25 2.25 0 0 0 6.75 19.5h10.5A2.25 2.25 0 0 0 19.5 17.25V10.5" />
+        </svg>
+    );
+}
+
+function ItemsMetricIcon() {
+    return (
+        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M20.25 7.5 12 3 3.75 7.5m16.5 0V16.5L12 21l-8.25-4.5V7.5m16.5 0L12 12m-8.25-4.5L12 12m0 9V12" />
+        </svg>
+    );
+}
+
 // ============================================
 // PanelJobRow Component
 // ============================================
@@ -1065,6 +1133,9 @@ function PanelJobRow({ job }) {
 
     const formatDate = (d) =>
         d ? new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '-';
+
+    const requesterName = getPersonDisplayName(job.requester);
+    const assigneeName = getPersonDisplayName(job.assignee);
 
     return (
         <tr className={`hover:bg-gray-50 transition-colors ${job.isOverdue ? 'bg-red-50/40' : ''}`}>
@@ -1093,16 +1164,19 @@ function PanelJobRow({ job }) {
                 )}
             </td>
             <td className="px-4 py-3 whitespace-nowrap">
-                {job.assignee ? (
+                <span className="text-gray-700 text-xs font-medium">{requesterName || '-'}</span>
+            </td>
+            <td className="px-4 py-3 whitespace-nowrap">
+                {assigneeName ? (
                     <div className="flex items-center gap-1.5">
                         {job.assigneeAvatar ? (
                             <img src={job.assigneeAvatar} alt="" className="w-5 h-5 rounded-full object-cover" />
                         ) : (
                             <span className="w-5 h-5 rounded-full bg-gray-200 text-gray-500 text-xs flex items-center justify-center font-bold">
-                                {job.assignee.charAt(0)}
+                                {assigneeName.charAt(0)}
                             </span>
                         )}
-                        <span className="text-gray-700 text-xs">{job.assignee}</span>
+                        <span className="text-gray-700 text-xs">{assigneeName}</span>
                     </div>
                 ) : (
                     <span className="text-gray-400 text-xs">Unassigned</span>
@@ -1283,6 +1357,9 @@ function JobRow({
         ? fmtDate(job.derivedDeadline) 
         : fmtDate(job.deadline);
 
+    const requesterName = getPersonDisplayName(job.requester);
+    const assigneeName = getPersonDisplayName(job.assignee);
+
     return (
         <tr className={`hover:bg-gray-50 ${job.status === 'scheduled' ? 'bg-violet-50' : ''} ${isChild ? 'bg-gray-50/80' : ''}`}>
             <td className="px-4 py-3 text-center text-sm text-gray-400 w-12">
@@ -1326,10 +1403,15 @@ function JobRow({
                     {job.status?.replace(/_/g, ' ')}
                 </span>
             </td>
-            <td className="px-4 py-3 text-sm text-gray-600">{displayDeadline}</td>
-            <td className="px-4 py-3">{getSLABadge()}</td>
-            <td className="px-4 py-3 text-sm text-gray-600">{job.assignee || '-'}</td>
-            <td className="px-4 py-3 text-sm text-gray-500">
+            <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{displayDeadline}</td>
+            <td className="px-4 py-3 whitespace-nowrap">{getSLABadge()}</td>
+            <td className="px-4 py-3 text-sm text-gray-700 min-w-[140px]">
+                <span className="block truncate font-medium" title={requesterName || '-'}>{requesterName || '-'}</span>
+            </td>
+            <td className="px-4 py-3 text-sm text-gray-600 min-w-[140px]">
+                <span className="block truncate" title={assigneeName || 'Unassigned'}>{assigneeName || 'Unassigned'}</span>
+            </td>
+            <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
                 {job.updatedAt
                     ? new Date(job.updatedAt).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
                     + ' '

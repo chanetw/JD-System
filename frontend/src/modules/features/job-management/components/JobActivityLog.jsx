@@ -1,7 +1,168 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '@shared/services/apiService';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
 import { UserIcon } from '@heroicons/react/24/outline';
+
+const ACTION_STYLE_MAP = {
+    job_created: { label: 'สร้างงาน', tone: 'positive', stage: 'Created' },
+    parent_child_created: { label: 'สร้างงานกลุ่ม', tone: 'positive', stage: 'Created' },
+    draft_saved: { label: 'บันทึกร่าง', tone: 'neutral' },
+    job_started: { label: 'เริ่มดำเนินงาน', tone: 'positive' },
+    started: { label: 'เริ่มงาน', tone: 'positive' },
+
+    job_approved: { label: 'อนุมัติงาน', tone: 'positive', stage: 'Approved' },
+    approved: { label: 'อนุมัติงาน', tone: 'positive', stage: 'Approved' },
+    job_auto_approved: { label: 'อนุมัติอัตโนมัติ', tone: 'positive', stage: 'Approved' },
+    job_approved_cascade: { label: 'อนุมัติอัตโนมัติ (Cascade)', tone: 'positive', stage: 'Approved' },
+    job_approved_cascade_sequential: { label: 'อนุมัติอัตโนมัติตามลำดับ', tone: 'positive', stage: 'Approved' },
+    approval_requested: { label: 'ส่งขออนุมัติ', tone: 'neutral', stage: 'Approval' },
+    rejection_approved: { label: 'อนุมัติคำขอปฏิเสธ', tone: 'positive' },
+
+    job_rejected: { label: 'ส่งกลับแก้ไข', tone: 'negative' },
+    rejected: { label: 'ส่งกลับแก้ไข', tone: 'negative' },
+    rejection_requested: { label: 'ขอปฏิเสธงาน', tone: 'negative' },
+    rejection_denied: { label: 'ไม่อนุมัติคำขอปฏิเสธ', tone: 'negative' },
+    job_rejected_by_assignee: { label: 'ผู้รับงานปฏิเสธ', tone: 'negative' },
+    assignee_rejection_denied: { label: 'ไม่ยืนยันการปฏิเสธ', tone: 'negative' },
+    draft_rejected: { label: 'มีแก้ไข Draft', tone: 'negative' },
+
+    draft_submitted: { label: 'ส่ง Draft', tone: 'neutral' },
+    draft_approved: { label: 'อนุมัติ Draft', tone: 'positive' },
+    assigned: { label: 'มอบหมายงาน', tone: 'neutral' },
+    reassigned: { label: 'ย้ายผู้รับผิดชอบ', tone: 'neutral' },
+
+    job_completed: { label: 'ส่งมอบงาน', tone: 'positive' },
+    completed: { label: 'ส่งงาน', tone: 'positive' },
+    closed: { label: 'ปิดงาน', tone: 'positive' },
+    parent_job_closed: { label: 'ปิดงานหลัก', tone: 'positive' },
+
+    rebrief_requested: { label: 'ขอข้อมูลเพิ่ม', tone: 'neutral' },
+    rebrief_submitted: { label: 'ส่งข้อมูลเพิ่ม', tone: 'neutral' },
+    rebrief_accepted: { label: 'รับงานหลัง Rebrief', tone: 'positive' },
+
+    comment_added: { label: 'แสดงความคิดเห็น', tone: 'neutral' },
+    comment_deleted: { label: 'ลบความคิดเห็น', tone: 'neutral' },
+    file_uploaded: { label: 'อัปโหลดไฟล์', tone: 'neutral' },
+    status_updated: { label: 'อัปเดตสถานะ', tone: 'neutral' },
+    due_date_adjusted: { label: 'ปรับวันกำหนดส่ง', tone: 'neutral' }
+};
+
+const TONE_STYLE = {
+    positive: {
+        dotOuter: 'border-emerald-500',
+        dotInner: 'bg-emerald-500',
+        badge: 'bg-emerald-500 text-white',
+        accent: 'text-emerald-700'
+    },
+    negative: {
+        dotOuter: 'border-red-500',
+        dotInner: 'bg-red-500',
+        badge: 'bg-red-500 text-white',
+        accent: 'text-red-700'
+    },
+    neutral: {
+        dotOuter: 'border-amber-500',
+        dotInner: 'bg-amber-500',
+        badge: 'bg-amber-500 text-white',
+        accent: 'text-amber-700'
+    }
+};
+
+const getActivityMeta = (activity) => {
+    const serverMeta = activity?.activityMeta;
+    const mapped = serverMeta?.label
+        ? {
+            label: serverMeta.label,
+            tone: serverMeta.tone || 'neutral',
+            stage: serverMeta.stage || 'Activity'
+        }
+        : (ACTION_STYLE_MAP[activity?.action] || { label: activity?.action || 'กิจกรรม', tone: 'neutral', stage: 'Activity' });
+    const style = TONE_STYLE[mapped.tone] || TONE_STYLE.neutral;
+
+    return {
+        ...mapped,
+        ...style,
+        toneLabel: mapped.tone === 'positive' ? 'สำเร็จ' : mapped.tone === 'negative' ? 'ปฏิเสธ' : 'กำลังดำเนินการ'
+    };
+};
+
+const formatTimelineDate = (date) => {
+    const day = date.toLocaleDateString('en-GB', { day: '2-digit' });
+    const month = date.toLocaleDateString('en-GB', { month: 'short' });
+    return { day, month };
+};
+
+const getUserName = (activity) => {
+    if (activity.user?.firstName) {
+        return `${activity.user.firstName}${activity.user.lastName ? ` ${activity.user.lastName}` : ''}`;
+    }
+    return 'ระบบ';
+};
+
+const getDetailObject = (detail) => {
+    if (!detail) return null;
+    if (typeof detail === 'object') return detail;
+    if (typeof detail === 'string') {
+        try {
+            return JSON.parse(detail);
+        } catch {
+            return null;
+        }
+    }
+    return null;
+};
+
+const getTrackingHint = (entry) => {
+    const detail = getDetailObject(entry.detail);
+
+    if (entry.action === 'job_created') return 'เริ่มต้นจากผู้สั่งงานสร้างงาน';
+    if (entry.action === 'approval_requested') return 'ส่งเข้า Approval Flow';
+    if (entry.action === 'job_auto_approved') return 'ข้ามอนุมัติอัตโนมัติ (ผู้สร้างเป็นผู้อนุมัติ)';
+    if (entry.action === 'job_approved') return 'อนุมัติผ่านผู้อนุมัติ';
+    if (entry.action === 'job_approved_cascade') return 'อนุมัติอัตโนมัติแบบ Cascade จากความสัมพันธ์งาน';
+    if (entry.action === 'job_approved_cascade_sequential') return 'อนุมัติอัตโนมัติตามลำดับขั้น';
+
+    if (detail?.isChildJob) return 'กิจกรรมของงานลูกใน Parent-Child';
+    return null;
+};
+
+const shouldMergeTimelineEntry = (previous, current) => {
+    if (!previous || !current) return false;
+    if (previous.action !== 'job_auto_approved' || current.action !== 'job_auto_approved') return false;
+    if ((previous.user?.id || null) !== (current.user?.id || null)) return false;
+
+    const prevTime = new Date(previous.createdAt).getTime();
+    const currentTime = new Date(current.createdAt).getTime();
+    const withinOneMinute = Math.abs(currentTime - prevTime) <= 60 * 1000;
+
+    return withinOneMinute;
+};
+
+const aggregateTimelineActivities = (sourceActivities) => {
+    const result = [];
+
+    sourceActivities.forEach((activity) => {
+        const previous = result[result.length - 1];
+
+        if (shouldMergeTimelineEntry(previous, activity)) {
+            const mergedMessages = [...(previous.mergedMessages || [previous.message]), activity.message]
+                .filter(Boolean);
+            previous.mergedMessages = mergedMessages;
+            previous.mergeCount = (previous.mergeCount || 1) + 1;
+            previous.message = `${mergedMessages[0]} และอีก ${mergedMessages.length - 1} รายการ`;
+            previous.detail = {
+                ...(getDetailObject(previous.detail) || {}),
+                merged: true,
+                mergedCount: mergedMessages.length
+            };
+            return;
+        }
+
+        result.push({ ...activity, mergeCount: 1, mergedMessages: activity.message ? [activity.message] : [] });
+    });
+
+    return result;
+};
 
 const JobActivityLog = ({ jobId }) => {
     const [activities, setActivities] = useState([]);
@@ -9,19 +170,18 @@ const JobActivityLog = ({ jobId }) => {
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        if (jobId) {
-            loadActivities();
-        }
+        if (jobId) loadActivities();
     }, [jobId]);
 
     const loadActivities = async () => {
         setIsLoading(true);
+        setError(null);
         try {
             const result = await api.getJobActivities(jobId);
             if (result.success) {
-                setActivities(result.data);
+                setActivities(Array.isArray(result.data) ? result.data : []);
             } else {
-                setError(result.error);
+                setError(result.error || 'ไม่สามารถโหลดประวัติกิจกรรมได้');
             }
         } catch (err) {
             console.error('Failed to load activities:', err);
@@ -31,157 +191,106 @@ const JobActivityLog = ({ jobId }) => {
         }
     };
 
-    if (isLoading) return <LoadingSpinner />;
-    if (error) return <div className="text-red-500 text-sm p-4 text-center">{error}</div>;
-    if (activities.length === 0) return (
-        <div className="text-center py-10 text-gray-400">
-            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                <UserIcon className="w-5 h-5 text-gray-400" />
-            </div>
-            <p className="text-sm">ยังไม่มีกิจกรรม</p>
-        </div>
-    );
+    const timelineEntries = useMemo(() => {
+        const aggregatedActivities = aggregateTimelineActivities(activities);
 
-    // Group activities by date (YYYY-MM-DD)
-    const grouped = activities.reduce((acc, activity) => {
-        const dateKey = new Date(activity.createdAt).toLocaleDateString('th-TH', {
-            year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
+        return aggregatedActivities.map((activity, index) => {
+            const createdAt = new Date(activity.createdAt);
+            const date = formatTimelineDate(createdAt);
+            const time = createdAt.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+            const userName = getUserName(activity);
+            const meta = getActivityMeta(activity);
+            const prev = aggregatedActivities[index - 1];
+            const prevDateKey = prev ? new Date(prev.createdAt).toDateString() : null;
+            const currentDateKey = createdAt.toDateString();
+
+            return {
+                ...activity,
+                date,
+                time,
+                userName,
+                meta,
+                showDate: prevDateKey !== currentDateKey
+            };
         });
-        if (!acc[dateKey]) acc[dateKey] = [];
-        acc[dateKey].push(activity);
-        return acc;
-    }, {});
+    }, [activities]);
 
-    const groupKeys = Object.keys(grouped);
+    if (isLoading) return <LoadingSpinner />;
+    if (error) return <div className="p-4 text-center text-sm text-red-500">{error}</div>;
+    if (timelineEntries.length === 0) {
+        return (
+            <div className="py-10 text-center text-gray-400">
+                <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100">
+                    <UserIcon className="h-5 w-5 text-gray-400" />
+                </div>
+                <p className="text-sm">ยังไม่มีกิจกรรม</p>
+            </div>
+        );
+    }
 
     return (
-        <div className="space-y-6 px-1">
-            {groupKeys.map((dateLabel, groupIdx) => (
-                <div key={dateLabel}>
-                    {/* Day header */}
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="h-px flex-1 bg-gray-200" />
-                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide px-2 py-0.5 bg-gray-100 rounded-full whitespace-nowrap">
-                            {dateLabel}
-                        </span>
-                        <div className="h-px flex-1 bg-gray-200" />
+        <div className="relative space-y-2 px-1 sm:space-y-2.5">
+            <div className="absolute bottom-4 left-[78px] top-4 hidden w-px bg-slate-300 sm:block" aria-hidden="true" />
+
+            {timelineEntries.map((entry) => (
+                <div key={entry.id} className="relative grid grid-cols-1 gap-2 sm:grid-cols-[58px_20px_minmax(0,1fr)] sm:gap-4">
+                    <div className="hidden pt-1 text-right sm:block">
+                        {entry.showDate ? (
+                            <>
+                                <p className="text-2xl font-semibold leading-none text-slate-900">{entry.date.day}</p>
+                                <p className="mt-0.5 text-lg leading-none text-slate-400">{entry.date.month}</p>
+                            </>
+                        ) : (
+                            <p className="pt-2 text-[10px] font-medium uppercase tracking-wide text-transparent select-none">same day</p>
+                        )}
                     </div>
 
-                    {/* Activity items */}
-                    <ul className="space-y-0">
-                        {grouped[dateLabel].map((activity, idx) => {
-                            const isLast = idx === grouped[dateLabel].length - 1 && groupIdx === groupKeys.length - 1;
-                            const { dotColor, dotBg, label } = getActionStyle(activity.action);
-                            const timeStr = new Date(activity.createdAt).toLocaleTimeString('th-TH', {
-                                hour: '2-digit', minute: '2-digit'
-                            });
-                            const userName = activity.user?.firstName
-                                ? `${activity.user.firstName}${activity.user.lastName ? ' ' + activity.user.lastName : ''}`
-                                : 'ระบบ';
+                    <div className="hidden justify-center pt-3 sm:flex">
+                        <span className={`relative flex h-5 w-5 items-center justify-center rounded-full border-2 bg-white ${entry.meta.dotOuter}`}>
+                            <span className={`h-2 w-2 rounded-full ${entry.meta.dotInner}`} />
+                        </span>
+                    </div>
 
-                            return (
-                                <li key={activity.id} className="relative flex gap-4">
-                                    {/* Timeline line + dot */}
-                                    <div className="flex flex-col items-center">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ring-4 ring-white ${dotBg}`}>
-                                            {activity.user?.avatarUrl ? (
-                                                <img
-                                                    src={activity.user.avatarUrl}
-                                                    alt=""
-                                                    className="w-8 h-8 rounded-full object-cover"
-                                                />
-                                            ) : (
-                                                <span className={`text-xs font-bold ${dotColor}`}>
-                                                    {userName.charAt(0).toUpperCase()}
-                                                </span>
-                                            )}
-                                        </div>
-                                        {!isLast && (
-                                            <div className="w-0.5 flex-1 bg-gray-200 mt-1 mb-1 min-h-[16px]" />
-                                        )}
-                                    </div>
+                    <article className="rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-4 sm:py-3">
+                        <div className="mb-2 flex items-start justify-between gap-2">
+                            <span className={`inline-flex rounded-md px-2 py-0.5 text-xs font-semibold ${entry.meta.badge}`}>
+                                {entry.meta.toneLabel}
+                            </span>
+                            <time className="pt-1 text-xs font-medium text-slate-400">{entry.time} น.</time>
+                        </div>
 
-                                    {/* Content */}
-                                    <div className={`flex-1 ${!isLast ? 'pb-4' : 'pb-1'}`}>
-                                        <div className="flex items-start justify-between gap-2">
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm text-gray-700">
-                                                    <span className="font-semibold text-gray-900">{userName}</span>
-                                                    {' '}
-                                                    <span className={`font-medium ${dotColor}`}>{label}</span>
-                                                </p>
-                                                {activity.message && (
-                                                    <p className="mt-1 text-sm text-gray-500 italic bg-gray-50 rounded-lg px-3 py-1.5 border-l-2 border-gray-300">
-                                                        "{activity.message}"
-                                                    </p>
-                                                )}
-                                            </div>
-                                            <time className="text-xs text-gray-400 whitespace-nowrap flex-shrink-0 pt-0.5">
-                                                {timeStr} น.
-                                            </time>
-                                        </div>
-                                    </div>
-                                </li>
-                            );
-                        })}
-                    </ul>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="text-base font-bold text-slate-900">{entry.meta.label}</h4>
+                            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                                {entry.meta.stage}
+                            </span>
+                        </div>
+
+                        {entry.message && (
+                            <p className="mt-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm leading-5 text-slate-600">
+                                {entry.message}
+                            </p>
+                        )}
+
+                        {entry.mergeCount > 1 && (
+                            <p className="mt-1 text-xs text-slate-500">รวมเหตุการณ์อนุมัติอัตโนมัติ {entry.mergeCount} รายการในช่วงเวลาเดียวกัน</p>
+                        )}
+
+                        {getTrackingHint(entry) && (
+                            <p className="mt-1.5 text-xs font-medium text-indigo-600">{getTrackingHint(entry)}</p>
+                        )}
+
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-sm text-slate-500">
+                            <span>โดย {entry.userName}</span>
+                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${entry.meta.accent} border-current/20 bg-white`}>
+                                {entry.action}
+                            </span>
+                        </div>
+                    </article>
                 </div>
             ))}
         </div>
     );
-};
-
-// คืนค่า style (dotColor, dotBg, label) ตาม action type
-const getActionStyle = (action) => {
-    const actionMap = {
-        // สร้าง — สีเขียว
-        job_created:                    { dotColor: 'text-green-700', dotBg: 'bg-green-100', label: 'สร้างงาน' },
-        parent_child_created:           { dotColor: 'text-green-700', dotBg: 'bg-green-100', label: 'สร้างงานกลุ่ม (Parent-Child)' },
-        draft_saved:                    { dotColor: 'text-green-700', dotBg: 'bg-green-100', label: 'บันทึกร่างงาน' },
-        job_started:                    { dotColor: 'text-green-700', dotBg: 'bg-green-100', label: 'เริ่มดำเนินการงาน' },
-        started:                        { dotColor: 'text-green-700', dotBg: 'bg-green-100', label: 'เริ่มงาน' },
-        // อนุมัติ — สีน้ำเงิน
-        job_approved:                   { dotColor: 'text-blue-700', dotBg: 'bg-blue-100', label: 'อนุมัติงาน' },
-        approved:                       { dotColor: 'text-blue-700', dotBg: 'bg-blue-100', label: 'อนุมัติงาน' },
-        job_auto_approved:              { dotColor: 'text-blue-700', dotBg: 'bg-blue-100', label: 'อนุมัติอัตโนมัติ' },
-        job_approved_cascade:           { dotColor: 'text-blue-700', dotBg: 'bg-blue-100', label: 'อนุมัติอัตโนมัติ (Cascade)' },
-        job_approved_cascade_sequential:{ dotColor: 'text-blue-700', dotBg: 'bg-blue-100', label: 'อนุมัติอัตโนมัติตามลำดับ' },
-        approval_requested:             { dotColor: 'text-blue-700', dotBg: 'bg-blue-100', label: 'ส่งเรื่องขออนุมัติ' },
-        rejection_approved:             { dotColor: 'text-blue-700', dotBg: 'bg-blue-100', label: 'อนุมัติคำขอปฏิเสธ' },
-        assignee_rejection_confirmed:   { dotColor: 'text-blue-700', dotBg: 'bg-blue-100', label: 'ยืนยันการปฏิเสธของผู้รับงาน' },
-        // ปฏิเสธ/ส่งกลับ — สีแดง
-        job_rejected:                   { dotColor: 'text-red-700', dotBg: 'bg-red-100', label: 'ส่งกลับแก้ไข' },
-        rejected:                       { dotColor: 'text-red-700', dotBg: 'bg-red-100', label: 'ส่งกลับแก้ไข' },
-        rejection_requested:            { dotColor: 'text-red-700', dotBg: 'bg-red-100', label: 'ขอปฏิเสธงาน' },
-        rejection_denied:               { dotColor: 'text-red-700', dotBg: 'bg-red-100', label: 'ไม่อนุมัติคำขอปฏิเสธ' },
-        job_rejected_by_assignee:       { dotColor: 'text-red-700', dotBg: 'bg-red-100', label: 'ผู้รับงานปฏิเสธงาน' },
-        assignee_rejection_denied:      { dotColor: 'text-red-700', dotBg: 'bg-red-100', label: 'ไม่ยืนยันการปฏิเสธของผู้รับงาน' },
-        draft_rejected:                 { dotColor: 'text-red-700', dotBg: 'bg-red-100', label: 'มีแก้ไข Draft' },
-        // Draft — สีฟ้า
-        draft_submitted:                { dotColor: 'text-cyan-700', dotBg: 'bg-cyan-100', label: 'ส่ง Draft' },
-        draft_approved:                 { dotColor: 'text-cyan-700', dotBg: 'bg-cyan-100', label: 'อนุมัติ Draft' },
-        // มอบหมาย — สีม่วง
-        assigned:                       { dotColor: 'text-violet-700', dotBg: 'bg-violet-100', label: 'มอบหมายงาน' },
-        reassigned:                     { dotColor: 'text-violet-700', dotBg: 'bg-violet-100', label: 'ย้ายผู้รับผิดชอบ' },
-        // ส่งมอบงาน — สีเขียวเข้ม
-        job_completed:                  { dotColor: 'text-emerald-700', dotBg: 'bg-emerald-100', label: 'ส่งมอบงาน' },
-        completed:                      { dotColor: 'text-emerald-700', dotBg: 'bg-emerald-100', label: 'ส่งงาน' },
-        closed:                         { dotColor: 'text-emerald-700', dotBg: 'bg-emerald-100', label: 'ปิดงาน' },
-        parent_job_closed:              { dotColor: 'text-emerald-700', dotBg: 'bg-emerald-100', label: 'ปิดงานหลัก' },
-        // Rebrief — สีส้ม
-        rebrief_requested:              { dotColor: 'text-orange-700', dotBg: 'bg-orange-100', label: 'ขอข้อมูลเพิ่มเติม' },
-        rebrief_submitted:              { dotColor: 'text-orange-700', dotBg: 'bg-orange-100', label: 'ส่งข้อมูลเพิ่มเติม' },
-        rebrief_accepted:               { dotColor: 'text-orange-700', dotBg: 'bg-orange-100', label: 'รับงานหลัง Rebrief' },
-        // Comments / Files — สีเทา
-        comment_added:                  { dotColor: 'text-gray-600', dotBg: 'bg-gray-100', label: 'แสดงความคิดเห็น' },
-        comment_deleted:                { dotColor: 'text-gray-600', dotBg: 'bg-gray-100', label: 'ลบความคิดเห็น' },
-        file_uploaded:                  { dotColor: 'text-gray-600', dotBg: 'bg-gray-100', label: 'อัปโหลดไฟล์' },
-        // ทั่วไป
-        status_updated:                 { dotColor: 'text-gray-600', dotBg: 'bg-gray-100', label: 'อัปเดตสถานะ' },
-        due_date_adjusted:              { dotColor: 'text-amber-700', dotBg: 'bg-amber-100', label: 'ปรับวันกำหนดส่ง' },
-    };
-
-    return actionMap[action] || { dotColor: 'text-gray-600', dotBg: 'bg-gray-100', label: action };
 };
 
 export default JobActivityLog;

@@ -149,6 +149,7 @@ export default function AnalyticsDashboard() {
 
         return {
             totalJobsChange: calculatePercentageChange(data.kpi?.totalDJ, trendData.kpi?.totalDJ),
+            totalItemsChange: calculatePercentageChange(data.kpi?.totalItems, trendData.kpi?.totalItems),
             onTimeRateChange: calculatePercentageChange(
                 parseFloat(data.kpi?.onTimeRate) || 0,
                 parseFloat(trendData.kpi?.onTimeRate) || 0

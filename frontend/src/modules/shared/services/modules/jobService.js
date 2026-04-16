@@ -589,12 +589,12 @@ export const jobService = {
             const response = await httpClient.get('/jobs/dashboard-stats', { params });
             if (!response.data.success) {
                 console.warn('getDashboardStats API failed:', response.data.message);
-                return { newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, pending: 0, myJobs: 0 };
+                return { newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, totalItems: 0, pending: 0, myJobs: 0, assigneeSummary: [] };
             }
             return response.data.data;
         } catch (err) {
             console.error('getDashboardStats error:', err);
-            return { newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, pending: 0, myJobs: 0 };
+            return { newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, totalItems: 0, pending: 0, myJobs: 0, assigneeSummary: [] };
         }
     },
 

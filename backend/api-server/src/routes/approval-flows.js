@@ -116,17 +116,21 @@ router.post('/bulk-from-assignments', async (req, res) => {
         const { projectId, jobTypeIds, skipApproval, name } = req.body;
         const tenantId = req.user.tenantId;
 
-        if (!projectId || !jobTypeIds || jobTypeIds.length === 0) {
+        if (!projectId || !Array.isArray(jobTypeIds)) {
             return res.status(400).json({
                 success: false,
-                message: 'projectId และ jobTypeIds required'
+                message: 'projectId และ jobTypeIds (array) required'
             });
         }
+
+        const normalizedJobTypeIds = jobTypeIds
+            .map(id => parseInt(id))
+            .filter(id => !Number.isNaN(id));
 
         const result = await approvalService.createBulkFlowsFromAssignments({
             tenantId,
             projectId: parseInt(projectId),
-            jobTypeIds: jobTypeIds.map(id => parseInt(id)),
+            jobTypeIds: normalizedJobTypeIds,
             skipApproval: !!skipApproval,
             name: name || 'Approval Flow'
         });

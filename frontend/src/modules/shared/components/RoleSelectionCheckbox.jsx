@@ -17,7 +17,7 @@ import {
     WrenchScrewdriverIcon,
     EyeIcon
 } from '@heroicons/react/24/outline';
-import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS } from '@shared/utils/permission.utils';
+import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS, normalizeRoleName } from '@shared/utils/permission.utils';
 
 // Role icons mapping
 const ROLE_ICONS = {
@@ -97,19 +97,24 @@ export default function RoleSelectionCheckbox({
     compact = false,
     className = ''
 }) {
+    const normalizedSelectedRoles = Array.from(
+        new Set((selectedRoles || []).map(normalizeRoleName).filter(Boolean))
+    );
+
     // Handle checkbox toggle
     const handleToggle = (roleName) => {
         if (disabledRoles.includes(roleName)) return;
 
-        const newSelection = selectedRoles.includes(roleName)
-            ? selectedRoles.filter(r => r !== roleName)
-            : [...selectedRoles, roleName];
+        const normalizedRole = normalizeRoleName(roleName);
+        const newSelection = normalizedSelectedRoles.includes(normalizedRole)
+            ? normalizedSelectedRoles.filter(r => r !== normalizedRole)
+            : [...normalizedSelectedRoles, normalizedRole];
 
         onChange?.(newSelection);
     };
 
     // Check if role is selected
-    const isSelected = (roleName) => selectedRoles.includes(roleName);
+    const isSelected = (roleName) => normalizedSelectedRoles.includes(normalizeRoleName(roleName));
 
     // Check if role is disabled
     const isDisabled = (roleName) => disabledRoles.includes(roleName);

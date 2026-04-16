@@ -5,7 +5,7 @@
 
 import { useEffect } from 'react';
 import { useUserPerformance } from '../hooks/useUserPerformance';
-import { X, Download, TrendingUp, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, Download, TrendingUp, Clock, CheckCircle, AlertCircle, Package } from 'lucide-react';
 
 /**
  * @component UserDetailSidePanel
@@ -95,7 +95,7 @@ export default function UserDetailSidePanel({ userId, isOpen, onClose, startDate
 
           {data && !isLoading && data.summary && (
             <>
-              {/* KPI Cards - เน้น On-Time Rate และ Completed */}
+              {/* KPI Cards - เน้น On-Time Rate, Completed และ Item Count */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
                 {/* On-Time Rate - Priority #1 */}
                 <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-lg p-4">
@@ -121,6 +121,16 @@ export default function UserDetailSidePanel({ userId, isOpen, onClose, startDate
                   </div>
                 </div>
 
+                {/* Total Items */}
+                <div className="bg-gradient-to-br from-rose-50 to-pink-50 border border-rose-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-medium text-rose-700">จำนวนชิ้นงาน</span>
+                    <Package className="w-4 h-4 text-rose-500" />
+                  </div>
+                  <div className="text-xl font-bold text-rose-900">{data.summary.totalItems || 0}</div>
+                  <div className="text-xs text-rose-600 mt-1">ชิ้นงานในช่วงที่เลือก</div>
+                </div>
+
                 {/* Avg Turnaround */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
                   <div className="flex items-center justify-between mb-2">
@@ -129,16 +139,6 @@ export default function UserDetailSidePanel({ userId, isOpen, onClose, startDate
                   </div>
                   <div className="text-xl font-bold text-gray-900">{data.summary.avgTurnaroundDays}</div>
                   <div className="text-xs text-gray-500 mt-1">วัน/งาน</div>
-                </div>
-
-                {/* Delayed Jobs */}
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-medium text-gray-600">งานดีเลย์</span>
-                    <AlertCircle className="w-4 h-4 text-orange-500" />
-                  </div>
-                  <div className="text-xl font-bold text-gray-900">{data.summary.delayedJobs}</div>
-                  <div className="text-xs text-gray-500 mt-1">งาน</div>
                 </div>
               </div>
 
@@ -220,6 +220,9 @@ export default function UserDetailSidePanel({ userId, isOpen, onClose, startDate
                           <div className="flex-1">
                             <div className="text-sm font-medium text-gray-900">{job.djId}</div>
                             <div className="text-xs text-gray-600 mt-1 line-clamp-1">{job.subject}</div>
+                            <div className="mt-2 inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700">
+                              {job.itemCount || 0} ชิ้นงาน
+                            </div>
                           </div>
                           <div className="text-right ml-3">
                             <StatusBadge status={job.status} />
