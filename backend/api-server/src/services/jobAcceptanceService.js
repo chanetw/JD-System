@@ -10,8 +10,75 @@
  */
 
 const prisma = require('../config/database');
-const { addBusinessDays, differenceInBusinessDays, parseISO, format } = require('date-fns');
+const { differenceInBusinessDays, parseISO, format } = require('date-fns');
 const NotificationService = require('./notificationService');
+
+function toDateKey(dateValue) {
+    const d = new Date(dateValue);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+async function loadTenantHolidaySet(db, tenantId, startDate, workingDays) {
+    const holidaySet = new Set();
+
+    if (!tenantId) {
+        return holidaySet;
+    }
+
+    const rangeStart = new Date(startDate);
+    rangeStart.setHours(0, 0, 0, 0);
+
+    const safeDays = Number(workingDays) || 0;
+    const rangeEnd = new Date(startDate);
+    rangeEnd.setDate(rangeEnd.getDate() + Math.max(45, safeDays * 4));
+    rangeEnd.setHours(23, 59, 59, 999);
+
+    try {
+        const holidays = await db.holiday.findMany({
+            where: {
+                tenantId,
+                date: {
+                    gte: rangeStart,
+                    lte: rangeEnd
+                }
+            },
+            select: { date: true }
+        });
+
+        holidays.forEach(({ date }) => {
+            holidaySet.add(toDateKey(date));
+        });
+    } catch (err) {
+        console.warn('[JobAcceptanceService] Could not load holidays, fallback to weekends only:', err.message);
+    }
+
+    return holidaySet;
+}
+
+async function addWorkingDaysWithTenantHolidays({ db, tenantId, startDate, workingDays }) {
+    const safeWorkingDays = Number(workingDays) || 0;
+    const result = new Date(startDate);
+
+    if (safeWorkingDays <= 0) {
+        return result;
+    }
+
+    const holidaySet = await loadTenantHolidaySet(db, tenantId, result, safeWorkingDays);
+
+    let daysAdded = 0;
+    while (daysAdded < safeWorkingDays) {
+        result.setDate(result.getDate() + 1);
+        const dayOfWeek = result.getDay();
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        const isHoliday = holidaySet.has(toDateKey(result));
+
+        if (!isWeekend && !isHoliday) {
+            daysAdded++;
+        }
+    }
+
+    return result;
+}
 
 /**
  * คำนวณ Due Date จาก Acceptance Date และ SLA
@@ -55,8 +122,21 @@ function checkAutoExtension(acceptanceDate, approvedDate) {
  */
 async function applyAutoExtension(jobId, extensionDays, originalDueDate, transaction = null) {
     const db = transaction || prisma;
+    const job = await db.job.findUnique({
+        where: { id: jobId },
+        select: { tenantId: true, requesterId: true }
+    });
 
-    const newDueDate = addBusinessDays(originalDueDate, extensionDays);
+    if (!job) {
+        throw new Error('Job not found');
+    }
+
+    const newDueDate = await addWorkingDaysWithTenantHolidays({
+        db,
+        tenantId: job.tenantId,
+        startDate: originalDueDate,
+        workingDays: extensionDays
+    });
 
     const updatedJob = await db.job.update({
         where: { id: jobId },
@@ -75,7 +155,7 @@ async function applyAutoExtension(jobId, extensionDays, originalDueDate, transac
         data: {
             tenantId: updatedJob.tenantId,
             jobId: updatedJob.id,
-            userId: updatedJob.requesterId, // System action on behalf of requester
+            userId: job.requesterId, // System action on behalf of requester
             action: 'job_auto_extended',
             description: `ระบบ Extend งานอัตโนมัติ ${extensionDays} วัน เนื่องจากการอนุมัติล่าช้า`,
             metadata: {
@@ -125,7 +205,12 @@ async function extendJobManually(jobId, userId, extensionDays, reason) {
     }
 
     const currentDueDate = job.dueDate;
-    const newDueDate = addBusinessDays(currentDueDate, extensionDays);
+    const newDueDate = await addWorkingDaysWithTenantHolidays({
+        db: prisma,
+        tenantId: job.tenantId,
+        startDate: currentDueDate,
+        workingDays: extensionDays
+    });
 
     // บันทึก original due date ถ้ายังไม่เคยมี
     const originalDueDate = job.originalDueDate || currentDueDate;
@@ -211,14 +296,19 @@ async function extendJobManually(jobId, userId, extensionDays, reason) {
  * @param {Array<Object>} childJobs - Array ของ child jobs พร้อม SLA
  * @returns {Array<Object>} Timeline ของแต่ละ child job
  */
-function calculateSequentialTimeline(parentStartDate, childJobs) {
+async function calculateSequentialTimeline(parentStartDate, childJobs, tenantId = null) {
     const startDate = typeof parentStartDate === 'string' ? parseISO(parentStartDate) : parentStartDate;
 
     let currentStartDate = startDate;
     const timeline = [];
 
     for (const child of childJobs) {
-        const dueDate = addBusinessDays(currentStartDate, child.slaDays);
+        const dueDate = await addWorkingDaysWithTenantHolidays({
+            db: prisma,
+            tenantId,
+            startDate: currentStartDate,
+            workingDays: child.slaDays
+        });
 
         timeline.push({
             jobTypeId: child.jobTypeId,
@@ -278,13 +368,14 @@ async function getJobSlaInfo(jobId) {
 
     // ถ้ามี child jobs ให้คำนวณ timeline
     if (job.childJobs && job.childJobs.length > 0) {
-        const childTimeline = calculateSequentialTimeline(
+        const childTimeline = await calculateSequentialTimeline(
             job.acceptanceDate || new Date(),
             job.childJobs.map(child => ({
                 jobTypeId: child.jobTypeId,
                 jobTypeName: child.jobType.name,
                 slaDays: child.slaDays
-            }))
+            })),
+            job.tenantId
         );
 
         slaInfo.childTimeline = childTimeline;

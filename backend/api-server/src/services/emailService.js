@@ -8,7 +8,17 @@
 
 import nodemailer from 'nodemailer';
 import { getDatabase } from '../config/database.js';
-import { createPasswordResetEmail, createForgotPasswordEmail } from '../utils/emailTemplates.js';
+import {
+  createEmailTemplate,
+  createJobExtensionEmail,
+  createPasswordResetEmail,
+  createForgotPasswordEmail,
+  createUserCreatedEmail,
+  createJobStatusChangedEmail,
+  createJobDeadlineEmail,
+  createRegistrationRejectedEmail,
+  createRegistrationApprovedEmail,
+} from '../utils/emailTemplates.js';
 
 export class EmailService {
   constructor() {
@@ -114,17 +124,23 @@ export class EmailService {
    * แจ้งเตือนเมื่อมีการมอบหมายงาน
    */
   async notifyJobAssigned({ assigneeEmail, assigneeName, jobId, jobSubject, requesterName }) {
-    // TODO: Use Template Engine if complex
     const subject = `📋 งานใหม่: ${jobId} - ${jobSubject}`;
-    const html = `
+    const templatedHtml = `
       <h2>คุณได้รับมอบหมายงานใหม่</h2>
-      <p>เรียน ${assigneeName},</p>
-      <p>คุณได้รับมอบหมายงาน <strong>${jobId} - ${jobSubject}</strong></p>
-      <p>ผู้ขอ: ${requesterName}</p>
-      <br>
-      <p>กรุณาตรวจสอบในระบบ DJ System</p>
+      <div class="info-box">
+        <p><strong>รหัสงาน:</strong> ${jobId}</p>
+        <p><strong>หัวข้อ:</strong> ${jobSubject}</p>
+        <p><strong>ผู้ขอ:</strong> ${requesterName}</p>
+      </div>
+      <p>เรียน ${assigneeName || ''},</p>
+      <p>กรุณาตรวจสอบงานนี้ในระบบ DJ System</p>
     `;
-    return await this.sendEmail(assigneeEmail, subject, html);
+    const wrapped = createEmailTemplate({
+      title: subject,
+      heading: '📋 คุณได้รับมอบหมายงานใหม่',
+      content: templatedHtml,
+    });
+    return await this.sendEmail(assigneeEmail, subject, wrapped);
   }
 
   /**
@@ -135,12 +151,7 @@ export class EmailService {
       this.sendEmail(
         email,
         `UPDATED: งาน ${jobId} เปลี่ยนสถานะเป็น ${newStatus}`,
-        `
-          <h2>อัปเดตสถานะงาน</h2>
-          <p>งาน <strong>${jobId} - ${jobSubject}</strong></p>
-          <p>สถานะใหม่: <strong>${newStatus}</strong></p>
-          <p>โดย: ${updatedBy}</p>
-        `
+        createJobStatusChangedEmail({ jobId, newStatus, jobSubject, updatedBy })
       )
     );
 
@@ -153,16 +164,38 @@ export class EmailService {
    */
   async notifyJobDeadline({ assigneeEmail, assigneeName, jobId, jobSubject, deadline }) {
     const subject = `⏰ งาน ${jobId} ใกล้ถึง deadline`;
-    const html = `
-      <h2>แจ้งเตือน Deadline</h2>
-      <p>เรียน ${assigneeName},</p>
-      <p>งาน <strong>${jobId} - ${jobSubject}</strong> จะถึง deadline ในวันที่ ${deadline.toLocaleDateString('th-TH')}</p>
-      <p>กรุณาดำเนินการให้เสร็จสิ้นตามกำหนด</p>
-      <br>
-      <p>ขอบคุณครับ,<br>DJ System</p>
-    `;
+    const html = createJobDeadlineEmail({ assigneeName, jobId, jobSubject, deadline });
 
     return await this.sendEmail(assigneeEmail, subject, html);
+  }
+
+  /**
+   * แจ้งเตือนเมื่อมีการเลื่อนกำหนดส่งงาน
+   */
+  async sendExtensionNotification({
+    to,
+    jobId,
+    jobSubject,
+    assigneeName,
+    extensionDays,
+    reason,
+    newDueDate,
+    jobLink,
+    requesterName
+  }) {
+    const subject = `⏰ งาน ${jobId} ขอขยายเวลา`;
+    const html = createJobExtensionEmail({
+      djId: jobId,
+      subject: jobSubject,
+      assigneeName,
+      extensionDays,
+      newDueDate,
+      reason,
+      magicLink: jobLink,
+      requesterName
+    });
+
+    return await this.sendEmail(to, subject, html);
   }
 
   /**
@@ -170,15 +203,7 @@ export class EmailService {
    */
   async notifyUserCreated({ userEmail, userName, tempPassword }) {
     const subject = '👋 ยินดีต้อนรับสู่ DJ System';
-    const html = `
-      <h2>ยินดีต้อนรับสู่ระบบ DJ System</h2>
-      <p>เรียน ${userName},</p>
-      <p>บัญชีของคุณได้ถูกสร้างขึ้นในระบบ DJ System เรียบร้อยแล้ว</p>
-      ${tempPassword ? `<p>รหัสผ่านชั่วคราวของคุณ: <strong>${tempPassword}</strong></p>` : ''}
-      <p>กรุณาเข้าสู่ระบบเพื่อเริ่มใช้งาน</p>
-      <br>
-      <p>ขอบคุณครับ,<br>DJ System</p>
-    `;
+    const html = createUserCreatedEmail({ userName, tempPassword });
 
     return await this.sendEmail(userEmail, subject, html);
   }
@@ -188,59 +213,7 @@ export class EmailService {
    */
   async notifyRegistrationApproved({ userEmail, userName, temporaryPassword, loginUrl }) {
     const subject = '✅ การลงทะเบียนได้รับการอนุมัติแล้ว - DJ System';
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <style>
-          body { font-family: 'Sarabun', Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background: linear-gradient(135deg, #4F46E5, #7C3AED); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-          .content { background: #fff; padding: 30px; border: 1px solid #e5e7eb; }
-          .password-box { background: #FEF3C7; border: 2px solid #F59E0B; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center; }
-          .password { font-family: monospace; font-size: 24px; font-weight: bold; color: #B45309; letter-spacing: 2px; }
-          .warning { background: #FEE2E2; border-left: 4px solid #EF4444; padding: 15px; margin: 20px 0; }
-          .button { display: inline-block; background: #4F46E5; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin-top: 20px; }
-          .footer { text-align: center; padding: 20px; color: #6B7280; font-size: 14px; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="header">
-            <h1 style="margin:0;">🎉 ยินดีต้อนรับสู่ DJ System</h1>
-          </div>
-          <div class="content">
-            <p>เรียน <strong>${userName}</strong>,</p>
-            <p>การลงทะเบียนของคุณได้รับการอนุมัติเรียบร้อยแล้ว! ตอนนี้คุณสามารถเข้าสู่ระบบได้</p>
-
-            <div class="password-box">
-              <p style="margin: 0 0 10px 0; color: #92400E;">🔐 รหัสผ่านชั่วคราวของคุณ</p>
-              <div class="password">${temporaryPassword}</div>
-            </div>
-
-            <div class="warning">
-              <strong>⚠️ สำคัญ:</strong> เมื่อเข้าสู่ระบบครั้งแรก ระบบจะบังคับให้คุณเปลี่ยนรหัสผ่าน กรุณาตั้งรหัสผ่านใหม่ที่จำได้และปลอดภัย
-            </div>
-
-            <h3>ขั้นตอนการเข้าใช้งาน:</h3>
-            <ol>
-              <li>เข้าสู่ระบบด้วยอีเมล: <strong>${userEmail}</strong></li>
-              <li>ใช้รหัสผ่านชั่วคราวด้านบน</li>
-              <li>ตั้งรหัสผ่านใหม่ของคุณ (อย่างน้อย 8 ตัวอักษร)</li>
-              <li>เริ่มใช้งานระบบได้เลย!</li>
-            </ol>
-
-            ${loginUrl ? `<center><a href="${loginUrl}" class="button">เข้าสู่ระบบ</a></center>` : ''}
-          </div>
-          <div class="footer">
-            <p>หากมีข้อสงสัย กรุณาติดต่อ Admin ของคุณ</p>
-            <p>DJ System - Design Job Management</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
+    const html = createRegistrationApprovedEmail({ userEmail, userName, temporaryPassword, loginUrl });
 
     const text = `
 ยินดีต้อนรับสู่ DJ System
@@ -270,17 +243,7 @@ DJ System
    */
   async notifyRegistrationRejected({ userEmail, userName, reason }) {
     const subject = '❌ การลงทะเบียนไม่ได้รับการอนุมัติ - DJ System';
-    const html = `
-      <div style="font-family: 'Sarabun', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #DC2626;">การลงทะเบียนไม่ได้รับการอนุมัติ</h2>
-        <p>เรียน ${userName},</p>
-        <p>เราขอแจ้งให้ทราบว่าคำขอลงทะเบียนของคุณไม่ได้รับการอนุมัติ</p>
-        ${reason ? `<p><strong>เหตุผล:</strong> ${reason}</p>` : ''}
-        <p>หากคุณคิดว่ามีข้อผิดพลาด กรุณาติดต่อ Admin เพื่อสอบถามเพิ่มเติม</p>
-        <br>
-        <p>ขอบคุณครับ,<br>DJ System</p>
-      </div>
-    `;
+    const html = createRegistrationRejectedEmail({ userName, reason });
 
     return await this.sendEmail(userEmail, subject, html);
   }

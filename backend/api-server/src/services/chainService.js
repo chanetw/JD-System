@@ -10,7 +10,77 @@
  */
 
 import { chainConfig } from '../config/chainConfig.js';
-import { addBusinessDays, format } from 'date-fns';
+import { format } from 'date-fns';
+import EmailService from './emailService.js';
+import { createJobExtensionEmail } from '../utils/emailTemplates.js';
+import { buildFrontendUrl } from '../utils/frontendUrl.js';
+
+function toDateKey(dateValue) {
+  const d = new Date(dateValue);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+async function loadTenantHolidaySet(prisma, tenantId, startDate, workingDays) {
+  const holidaySet = new Set();
+
+  if (!tenantId) {
+    return holidaySet;
+  }
+
+  const rangeStart = new Date(startDate);
+  rangeStart.setHours(0, 0, 0, 0);
+
+  const safeDays = Number(workingDays) || 0;
+  const rangeEnd = new Date(startDate);
+  rangeEnd.setDate(rangeEnd.getDate() + Math.max(45, safeDays * 4));
+  rangeEnd.setHours(23, 59, 59, 999);
+
+  try {
+    const holidays = await prisma.holiday.findMany({
+      where: {
+        tenantId,
+        date: {
+          gte: rangeStart,
+          lte: rangeEnd
+        }
+      },
+      select: { date: true }
+    });
+
+    holidays.forEach(({ date }) => {
+      holidaySet.add(toDateKey(date));
+    });
+  } catch (err) {
+    console.warn('[ChainService] Could not load holidays, fallback to weekends only:', err.message);
+  }
+
+  return holidaySet;
+}
+
+async function addWorkingDaysWithTenantHolidays({ prisma, tenantId, startDate, workingDays }) {
+  const safeWorkingDays = Number(workingDays) || 0;
+  const result = new Date(startDate);
+
+  if (safeWorkingDays <= 0) {
+    return result;
+  }
+
+  const holidaySet = await loadTenantHolidaySet(prisma, tenantId, result, safeWorkingDays);
+
+  let daysAdded = 0;
+  while (daysAdded < safeWorkingDays) {
+    result.setDate(result.getDate() + 1);
+    const dayOfWeek = result.getDay();
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const isHoliday = holidaySet.has(toDateKey(result));
+
+    if (!isWeekend && !isHoliday) {
+      daysAdded++;
+    }
+  }
+
+  return result;
+}
 
 class ChainService {
   /**
@@ -147,7 +217,15 @@ class ChainService {
         parentJobId: true,
         isParent: true,
         requesterId: true,
-        tenantId: true
+        tenantId: true,
+        requester: {
+          select: {
+            email: true,
+            firstName: true,
+            lastName: true,
+            displayName: true
+          }
+        }
       }
     });
 
@@ -272,6 +350,7 @@ class ChainService {
     const shiftDays = chainConfig.urgentShiftDays;
     const affected = [];
     const processedJobIds = new Set(); // ป้องกัน extend ซ้ำ
+    const emailService = new EmailService();
 
     for (const job of jobs) {
       // ข้ามงาน urgent ที่เป็นตัวกระตุ้น
@@ -294,7 +373,12 @@ class ChainService {
 
       // Extend งานนี้ (ใช้ working days)
       const oldDueDate = new Date(job.dueDate);
-      const newDueDate = addBusinessDays(oldDueDate, shiftDays);
+      const newDueDate = await addWorkingDaysWithTenantHolidays({
+        prisma,
+        tenantId: job.tenantId,
+        startDate: oldDueDate,
+        workingDays: shiftDays
+      });
       
       await prisma.job.update({
         where: { id: job.id },
@@ -315,7 +399,12 @@ class ChainService {
         status: job.status,
         requesterId: job.requesterId,
         tenantId: job.tenantId,
-        isParent: job.isParent
+        isParent: job.isParent,
+        requesterEmail: job.requester?.email || null,
+        requesterName:
+          job.requester?.displayName
+          || `${job.requester?.firstName || ''} ${job.requester?.lastName || ''}`.trim()
+          || null
       });
       
       processedJobIds.add(job.id);
@@ -330,7 +419,15 @@ class ChainService {
           select: {
             id: true, djId: true, subject: true, 
             dueDate: true, status: true,
-            requesterId: true, tenantId: true
+            requesterId: true, tenantId: true,
+            requester: {
+              select: {
+                email: true,
+                firstName: true,
+                lastName: true,
+                displayName: true
+              }
+            }
           }
         });
 
@@ -348,7 +445,12 @@ class ChainService {
           }
           
           const childOldDueDate = new Date(child.dueDate);
-          const childNewDueDate = addBusinessDays(childOldDueDate, shiftDays);
+          const childNewDueDate = await addWorkingDaysWithTenantHolidays({
+            prisma,
+            tenantId: child.tenantId,
+            startDate: childOldDueDate,
+            workingDays: shiftDays
+          });
           
           await prisma.job.update({
             where: { id: child.id },
@@ -369,6 +471,11 @@ class ChainService {
             status: child.status,
             requesterId: child.requesterId,
             tenantId: child.tenantId,
+            requesterEmail: child.requester?.email || null,
+            requesterName:
+              child.requester?.displayName
+              || `${child.requester?.firstName || ''} ${child.requester?.lastName || ''}`.trim()
+              || null,
             cascaded: true,
             parentJobId: job.id
           });
@@ -418,6 +525,30 @@ class ChainService {
               isRead: false
             }
           }).catch(err => console.warn(`[ChainService] Failed to create notification for ${affectedJob.djId}:`, err.message));
+
+          if (affectedJob.requesterEmail) {
+            const jobUrl = buildFrontendUrl(`/jobs/${affectedJob.jobId}`);
+            const reason = affectedJob.cascaded
+              ? `ระบบเลื่อนกำหนดส่งอัตโนมัติ เพราะมีงานด่วน ${urgentJob.djId} (งานพ่วง)`
+              : `ระบบเลื่อนกำหนดส่งอัตโนมัติ เพราะมีงานด่วน ${urgentJob.djId}`;
+
+            const extensionEmail = createJobExtensionEmail({
+              djId: affectedJob.djId,
+              subject: affectedJob.subject,
+              assigneeName: 'ระบบ DJ',
+              extensionDays: shiftDays,
+              newDueDate: format(affectedJob.newDueDate, 'dd/MM/yyyy'),
+              reason,
+              magicLink: jobUrl,
+              requesterName: affectedJob.requesterName
+            });
+
+            await emailService.sendEmail(
+              affectedJob.requesterEmail,
+              `⏰ งาน ${affectedJob.djId} ถูกเลื่อนกำหนดส่งอัตโนมัติ`,
+              extensionEmail
+            ).catch(err => console.warn(`[ChainService] Failed to send email for ${affectedJob.djId}:`, err.message));
+          }
         }
       } catch (err) {
         console.error(`[ChainService] Error processing affected job ${affectedJob.djId}:`, err);
