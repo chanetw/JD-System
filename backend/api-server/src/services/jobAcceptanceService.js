@@ -264,21 +264,29 @@ async function extendJobManually(jobId, userId, extensionDays, reason) {
 
         // ส่งอีเมล (ถ้ามี email service)
         try {
-            const EmailService = require('./emailService');
+            const { default: EmailService } = await import('./emailService.js');
+            const { default: MagicLinkService } = await import('./magicLinkService.js');
             const emailService = new EmailService();
+            const magicLinkService = new MagicLinkService();
 
             if (job.requester?.email) {
+                const magicLink = await magicLinkService.createJobActionLink({
+                    userId: job.requesterId,
+                    jobId: job.id,
+                    action: 'view',
+                    djId: job.djId
+                });
+
                 await emailService.sendExtensionNotification({
                     to: job.requester.email,
                     jobId: job.djId,
                     jobSubject: job.subject,
                     assigneeName: assigneeName,
-                    projectName: projectName,
                     extensionDays: extensionDays,
                     reason: reason,
-                    oldDueDate: format(currentDueDate, 'dd/MM/yyyy'),
                     newDueDate: format(newDueDate, 'dd/MM/yyyy'),
-                    jobLink: `/jobs/${jobId}`
+                    jobLink: magicLink,
+                    requesterName: job.requester?.displayName || `${job.requester?.firstName || ''} ${job.requester?.lastName || ''}`.trim()
                 });
             }
         } catch (emailErr) {

@@ -12,6 +12,7 @@
 import { chainConfig } from '../config/chainConfig.js';
 import { format } from 'date-fns';
 import EmailService from './emailService.js';
+import MagicLinkService from './magicLinkService.js';
 import { createJobExtensionEmail } from '../utils/emailTemplates.js';
 import { buildFrontendUrl } from '../utils/frontendUrl.js';
 
@@ -351,6 +352,7 @@ class ChainService {
     const affected = [];
     const processedJobIds = new Set(); // ป้องกัน extend ซ้ำ
     const emailService = new EmailService();
+    const magicLinkService = new MagicLinkService();
 
     for (const job of jobs) {
       // ข้ามงาน urgent ที่เป็นตัวกระตุ้น
@@ -527,7 +529,18 @@ class ChainService {
           }).catch(err => console.warn(`[ChainService] Failed to create notification for ${affectedJob.djId}:`, err.message));
 
           if (affectedJob.requesterEmail) {
-            const jobUrl = buildFrontendUrl(`/jobs/${affectedJob.jobId}`);
+            let jobUrl = buildFrontendUrl(`/jobs/${affectedJob.jobId}`);
+            try {
+              jobUrl = await magicLinkService.createJobActionLink({
+                userId: affectedJob.requesterId,
+                jobId: affectedJob.jobId,
+                action: 'view',
+                djId: affectedJob.djId
+              });
+            } catch (magicErr) {
+              console.warn(`[ChainService] Failed to create magic link for ${affectedJob.djId}, fallback to frontend URL:`, magicErr.message);
+            }
+
             const reason = affectedJob.cascaded
               ? `ระบบเลื่อนกำหนดส่งอัตโนมัติ เพราะมีงานด่วน ${urgentJob.djId} (งานพ่วง)`
               : `ระบบเลื่อนกำหนดส่งอัตโนมัติ เพราะมีงานด่วน ${urgentJob.djId}`;
