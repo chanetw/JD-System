@@ -48,6 +48,8 @@ export default function DJList() {
     // === สถานะการค้นหาและจัดเรียง (Search & Sort States) ===
     const [searchQuery, setSearchQuery] = useState(''); // ข้อความที่ใช้ค้นหา
     const [sortBy, setSortBy] = useState('createdDate'); // รูปแบบการจัดเรียง (วันที่สร้าง หรือ Deadline)
+    const [includeCompleted, setIncludeCompleted] = useState(false); // false = ซ่อน completed/closed เป็นค่าเริ่มต้น
+    const shouldIncludeCompletedInQuery = includeCompleted || filters.status === 'completed';
 
     // === สถานะการจัดการหน้า (Pagination States) ===
     const [currentPage, setCurrentPage] = useState(1); // หน้าปัจจุบันที่แสดงผล
@@ -64,7 +66,7 @@ export default function DJList() {
         if (user) {
             loadData();
         }
-    }, [user]);
+    }, [user, shouldIncludeCompletedInQuery]);
 
     /** โหลดข้อมูลงานและข้อมูลอ้างอิงจาก API */
     const loadData = async () => {
@@ -74,7 +76,7 @@ export default function DJList() {
             // Always use getJobsByRole to pass correct role parameter to backend
             // getJobs() without role defaults to 'requester' on backend, which is incorrect for admin
             const [jobsResponse, masterDataResult] = await Promise.all([
-                api.getJobsByRole(user),
+                api.getJobsByRole(user, { includeCompleted: shouldIncludeCompletedInQuery ? 'true' : 'false' }),
                 api.getMasterData()
             ]);
 
@@ -295,6 +297,7 @@ export default function DJList() {
             priority: ''
         });
         setSearchQuery('');
+        setIncludeCompleted(false);
     };
 
     // ============================================
@@ -341,7 +344,11 @@ export default function DJList() {
     // Get Unique Values for Filters
     // ============================================
     const uniqueProjects = [...new Set(jobs.map(j => j.project))].filter(Boolean);
-    const uniqueAssignees = [...new Set(jobs.map(j => j.assignee))].filter(Boolean);
+    const uniqueAssignees = [...new Set(
+        jobs
+            .filter(j => j.assigneeIsActive !== false)
+            .map(j => j.assignee)
+    )].filter(Boolean);
 
     // ============================================
     // Render
@@ -414,7 +421,16 @@ export default function DJList() {
                     />
                 </div>
 
-                <div className="flex items-center justify-end mt-4 pt-4 border-t border-gray-100">
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+                    <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                            type="checkbox"
+                            checked={includeCompleted}
+                            onChange={(e) => setIncludeCompleted(e.target.checked)}
+                            className="h-4 w-4 rounded border-gray-300 text-rose-500 focus:ring-rose-300"
+                        />
+                        แสดงงานสำเร็จ
+                    </label>
                     <div className="flex gap-2">
                         <Button variant="ghost" className="text-sm" onClick={handleClearFilters}>ล้างค่า (Clear)</Button>
                         <Button className="text-sm" onClick={applyFiltersAndSearch}>ใช้งานการคัดกรอง (Apply)</Button>

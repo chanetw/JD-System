@@ -54,7 +54,7 @@ export const jobService = {
         }
     },
 
-    getJobsByRole: async (user) => {
+    getJobsByRole: async (user, options = {}) => {
         try {
             // Multi-role support: collect ALL user roles and send as comma-separated
             // Backend will return union of jobs from all applicable roles
@@ -89,8 +89,18 @@ export const jobService = {
             const roleParam = allRoles.map(r => r.toLowerCase()).join(',') || 'requester';
 
 
+            const params = {
+                role: roleParam,
+                limit: 500,
+                ...options
+            };
+
+            const sanitizedParams = Object.fromEntries(
+                Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
+            );
+
             const response = await httpClient.get('/jobs', {
-                params: { role: roleParam, limit: 500 }
+                params: sanitizedParams
             });
 
             if (!response.data.success) {

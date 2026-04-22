@@ -174,6 +174,7 @@ export class UserService extends BaseService {
       limit = 20,
       search = '',
       isActive = undefined,
+      activeOnly = false,
       role = '',
       departmentId = undefined
     } = options;
@@ -182,7 +183,9 @@ export class UserService extends BaseService {
       const where = { tenantId };
 
       // Filter by active status
-      if (isActive !== undefined) {
+      if (activeOnly === true) {
+        where.isActive = true;
+      } else if (isActive !== undefined) {
         where.isActive = isActive;
       }
 
@@ -606,14 +609,15 @@ export class UserService extends BaseService {
         const scopeRows = [];
         normalizedRoles.forEach(role => {
           console.log(`[UserService] Processing role: ${role.name}`, role);
-          const roleLevel = role.level || 'project';
+          const roleLevel = String(role.level || 'project').toLowerCase();
           if (role.name !== 'Assignee' && role.scopes && role.scopes.length > 0) {
             role.scopes.forEach(scope => {
+              const scopeLevel = String(scope.level || roleLevel || 'project').toLowerCase();
               scopeRows.push({
                 userId: userId,
                 tenantId: tenantId,
                 roleType: role.name,
-                scopeLevel: roleLevel,
+                scopeLevel,
                 scopeId: scope.scopeId,
                 scopeName: scope.scopeName || null,
                 assignedBy: executedBy,
