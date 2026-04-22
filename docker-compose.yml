@@ -24,6 +24,60 @@ services:
       timeout: 10s
       retries: 3
 
+  # ==========================================
+  # Backend API (Development, optional)
+  # Run with: docker compose --profile app up -d
+  # ==========================================
+  backend:
+    image: node:20-bookworm
+    container_name: dj-backend-dev
+    profiles: ["app"]
+    working_dir: /workspace/api-server
+    command: sh -c "npm ci && npx prisma generate --schema ../prisma/schema.prisma && npm run dev"
+    env_file:
+      - ./backend/api-server/.env.example
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-dj_system}
+      ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./backend:/workspace
+      - dj-backend-node-modules:/workspace/api-server/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ==========================================
+  # Frontend Vite (Development, optional)
+  # Run with: docker compose --profile app up -d
+  # ==========================================
+  frontend:
+    image: node:22-alpine
+    container_name: dj-frontend-dev
+    profiles: ["app"]
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173"
+    environment:
+      VITE_API_URL: http://localhost:3001/api
+      VITE_FRONTEND_MODE: api_only
+      VITE_AUTH_MODE: jwt_only
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - dj-frontend-node-modules:/app/node_modules
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   dj-data:
+    driver: local
+  dj-backend-node-modules:
+    driver: local
+  dj-frontend-node-modules:
     driver: local

@@ -9,7 +9,7 @@
  * 4. สามารถเปลี่ยนผู้รับผิดชอบงาน (Assignee) ได้ภายหลังหลังจากได้รับการอนุมัติแล้ว (Approved)
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '@shared/services/apiService';
 import { adminService } from '@shared/services/modules/adminService';
 import { Card, CardHeader } from '@shared/components/Card';
@@ -42,6 +42,16 @@ const PROJECT_COLORS = [
  */
 const LEVEL_COLORS = ['blue', 'purple', 'teal', 'pink', 'indigo'];
 
+const isUserActive = (user) => {
+    if (!user) return false;
+    if (user.isActive === false || user.is_active === false) return false;
+
+    const status = (user.status || user.userStatus || '').toString().toLowerCase();
+    if (['inactive', 'disabled', 'suspended'].includes(status)) return false;
+
+    return true;
+};
+
 /**
  * AdminApprovalFlow Component
  * หน้าจัดการกำหนดขั้นตอนการทำงาน (Workflow) และสิทธิ์การทำงานร่วมกันในโครงการ
@@ -52,12 +62,6 @@ export default function AdminApprovalFlow() {
     const [projects, setProjects] = useState([]);
     /** รายการขั้นตอนการอนุมัติทั้งหมดของทุกโครงการ (สำหรับนับจำนวนและกรอง) */
     const [allApprovalFlows, setAllApprovalFlows] = useState([]);
-    /** รายการขั้นตอนการอนุมัติของโครงการที่เลือก */
-    const [currentProjectFlows, setCurrentProjectFlows] = useState([]);
-    /** รายการผู้อนุมัติ (อ้างตามบทบาท) */
-    const [approvers, setApprovers] = useState([]);
-    /** รายการผู้รับงาน (อ้างตามบทบาท) */
-    const [assignees, setAssignees] = useState([]);
     /** สถานะการโหลดข้อมูล */
     const [isLoading, setIsLoading] = useState(true);
 
@@ -87,14 +91,8 @@ export default function AdminApprovalFlow() {
     // === V1 Extended: Job Type + Skip Approval States ===
     /** รายการ Job Types */
     const [jobTypes, setJobTypes] = useState([]);
-    /** Job Type ที่เลือก (null = Default Flow สำหรับทุก Job Type) */
-    const [selectedJobType, setSelectedJobType] = useState(null);
     /** ข้ามการอนุมัติหรือไม่ */
     const [skipApproval, setSkipApproval] = useState(false);
-    /** ประเภทการมอบหมายอัตโนมัติ: manual, dept_manager, team_lead, specific_user */
-    const [autoAssignType, setAutoAssignType] = useState('manual');
-    /** ID ของผู้รับมอบหมายเฉพาะ */
-    const [autoAssignUserId, setAutoAssignUserId] = useState(null);
 
     // === V1 Extended: Skip Approval Multi-Select States ===
     /** ข้อมูล Job Assignments ของโปรเจกต์ (jobType → assignee) */
@@ -121,6 +119,66 @@ export default function AdminApprovalFlow() {
     /** สถานะการแสดงข้อความแจ้งเตือน (Toast) */
     const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
+    const normalizeId = (value) => {
+        const parsed = parseInt(value, 10);
+        return Number.isNaN(parsed) ? null : parsed;
+    };
+
+    const resolveJobTypeAssigneeStatus = (jobTypeId) => {
+        const normalizedJobTypeId = normalizeId(jobTypeId);
+
+        if (!normalizedJobTypeId) {
+            return {
+                hasAssignee: false,
+                assigneeId: null,
+                assigneeName: null,
+                source: null,
+                hasInactiveFlowAssignee: false
+            };
+        }
+
+        const assignment = projectJobAssignments.find(a => normalizeId(a.jobTypeId) === normalizedJobTypeId);
+
+        if (assignment?.assigneeId) {
+            return {
+                hasAssignee: true,
+                assigneeId: assignment.assigneeId,
+                assigneeName: assignment.assigneeName || null,
+                source: 'assignment',
+                hasInactiveFlowAssignee: false
+            };
+        }
+
+        const flowForJobType = allApprovalFlows.find(
+            f => normalizeId(f.projectId) === normalizeId(selectedProject?.id)
+                && normalizeId(f.jobTypeId) === normalizedJobTypeId
+                && !!f.autoAssignUserId
+        );
+
+        if (!flowForJobType?.autoAssignUserId) {
+            return {
+                hasAssignee: false,
+                assigneeId: null,
+                assigneeName: null,
+                source: null,
+                hasInactiveFlowAssignee: false
+            };
+        }
+
+        const flowAssigneeUser = allUsers.find(u => normalizeId(u.id) === normalizeId(flowForJobType.autoAssignUserId));
+        const flowAssigneeIsActive = !!flowAssigneeUser && isUserActive(flowAssigneeUser);
+
+        return {
+            hasAssignee: flowAssigneeIsActive,
+            assigneeId: flowForJobType.autoAssignUserId,
+            assigneeName: flowAssigneeUser
+                ? `${flowAssigneeUser.firstName || ''} ${flowAssigneeUser.lastName || ''}`.trim() || flowAssigneeUser.displayName || flowAssigneeUser.email || null
+                : null,
+            source: flowAssigneeIsActive ? 'flow' : null,
+            hasInactiveFlowAssignee: !flowAssigneeIsActive
+        };
+    };
+
     /**
      * ดึงข้อมูลตั้งต้นจาก API
      * โหลดข้อมูลโครงการ, รายการขั้นตอนการอนุมัติ และผู้ใช้งานทั้งหมด
@@ -129,7 +187,7 @@ export default function AdminApprovalFlow() {
      * @function loadData
      * @returns {Promise<void>}
      */
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         setIsLoading(true);
         try {
             // ⚡ Performance: โหลดข้อมูลแบบ parallel ด้วย Promise.allSettled (เร็วขึ้น 600ms)
@@ -175,26 +233,23 @@ export default function AdminApprovalFlow() {
             setAllUsers(usersData);
             setJobTypes((jobTypesData || []).filter(t => t.name !== 'Project Group (Parent)'));
 
-            // คัดกรองผู้ใช้งานตามบทบาทพื้นฐาน เพื่อความสะดวกรวดเร็ว
-            setApprovers(usersData.filter(u => hasRole(u, 'Approver') || hasRole(u, 'Admin')));
-            setAssignees(usersData.filter(u => hasRole(u, 'Assignee')));
-
             // ✅ Preserve selected project: ถ้ามีโครงการที่เลือกอยู่แล้ว ให้ restore จาก data ใหม่
             // ถ้ายังไม่มี (โหลดครั้งแรก) ให้เลือกโครงการแรก
             if (projectsData.length > 0) {
-                if (selectedProject?.id) {
-                    const restored = projectsData.find(p => p.id === selectedProject.id);
-                    setSelectedProject(restored || projectsData[0]);
-                } else {
-                    setSelectedProject(projectsData[0]);
-                }
+                setSelectedProject((prevSelectedProject) => {
+                    if (prevSelectedProject?.id) {
+                        const restored = projectsData.find(p => p.id === prevSelectedProject.id);
+                        return restored || projectsData[0];
+                    }
+                    return projectsData[0];
+                });
             }
         } catch (error) {
             console.error('เกิดข้อผิดพลาดในการโหลดข้อมูล:', error);
         } finally {
             setIsLoading(false);
         }
-    };
+    }, []);
 
     /**
      * useEffect Hook
@@ -202,7 +257,7 @@ export default function AdminApprovalFlow() {
      */
     useEffect(() => {
         loadData();
-    }, []);
+    }, [loadData]);
 
     useEffect(() => {
         setHasLocalSkipSelectionChanges(false);
@@ -252,6 +307,7 @@ export default function AdminApprovalFlow() {
             // คัดกรองผู้รับงาน (Assignees)
             // ใช้ Multi-Role: canBeAssignedInBud helper
             const asgs = allUsers.filter(u => {
+                if (!isUserActive(u)) return false;
                 if (!hasRole(u, 'Assignee')) return false;
                 // ใช้ canBeAssignedInBud จาก permission.utils
                 return canBeAssignedInBud(u, budId, projectId);
@@ -280,7 +336,6 @@ export default function AdminApprovalFlow() {
         if (selectedProject?.id && allApprovalFlows.length >= 0) {
             // ✅ กรอง Flows จาก allApprovalFlows ที่โหลดไว้แล้ว
             const projectFlows = allApprovalFlows.filter(f => f.projectId === selectedProject.id);
-            setCurrentProjectFlows(projectFlows);
 
             // Find default flow
             const defaultFlow = projectFlows.find(f => f.jobTypeId === null);
@@ -318,7 +373,7 @@ export default function AdminApprovalFlow() {
      * @async
      * @function fetchJobAssignments
      */
-    const fetchJobAssignments = async () => {
+    const fetchJobAssignments = useCallback(async () => {
         if (selectedProject?.id) {
             try {
                 const assignments = await adminService.getProjectJobAssignments(selectedProject.id);
@@ -329,7 +384,7 @@ export default function AdminApprovalFlow() {
                 setProjectJobAssignments([]);
             }
         }
-    };
+    }, [selectedProject?.id]);
 
     const refreshFlowsAndAssignments = async () => {
         if (!selectedProject?.id) return;
@@ -350,7 +405,7 @@ export default function AdminApprovalFlow() {
      */
     useEffect(() => {
         fetchJobAssignments();
-    }, [selectedProject]);
+    }, [fetchJobAssignments]);
 
     // === ส่วนงานประมวลผล (Actions) ===
 
@@ -427,8 +482,8 @@ export default function AdminApprovalFlow() {
 
         // ตรวจสอบว่า Job Types ที่เลือกมี assignee ครบหรือไม่
         const missingAssignees = normalizedJobTypeIds.filter(jtId => {
-            const assignment = projectJobAssignments.find(a => a.jobTypeId === jtId);
-            return !assignment?.assigneeId;
+            const assigneeStatus = resolveJobTypeAssigneeStatus(jtId);
+            return !assigneeStatus.hasAssignee;
         });
 
         if (missingAssignees.length > 0) {
@@ -519,11 +574,14 @@ export default function AdminApprovalFlow() {
      * @returns {void}
      */
     const toggleJobTypeForSkip = (jobTypeId) => {
+        const normalizedJobTypeId = normalizeId(jobTypeId);
+        if (!normalizedJobTypeId) return;
+
         setHasLocalSkipSelectionChanges(true);
         setSelectedJobTypesForSkip(prev =>
-            prev.includes(jobTypeId)
-                ? prev.filter(id => id !== jobTypeId)
-                : [...prev, jobTypeId]
+            prev.includes(normalizedJobTypeId)
+                ? prev.filter(id => id !== normalizedJobTypeId)
+                : [...prev, normalizedJobTypeId]
         );
     };
 
@@ -634,6 +692,11 @@ export default function AdminApprovalFlow() {
 
         return matchText && matchFlow;
     });
+
+    const selectedTeamLeadUser = teamLeadId
+        ? allUsers.find(u => parseInt(u.id) === parseInt(teamLeadId))
+        : null;
+    const selectedTeamLeadInactive = !!selectedTeamLeadUser && !isUserActive(selectedTeamLeadUser);
 
     // ============================================
     // Render
@@ -1223,12 +1286,23 @@ export default function AdminApprovalFlow() {
                                                                                 className="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
                                                                             >
                                                                                 <option value="">-- กรุณาเลือก Team Lead --</option>
+                                                                                {selectedTeamLeadInactive && selectedTeamLeadUser && (
+                                                                                    <option value={selectedTeamLeadUser.id} disabled>
+                                                                                        {`${selectedTeamLeadUser.display_name || `${selectedTeamLeadUser.firstName || ''} ${selectedTeamLeadUser.lastName || ''}`.trim() || selectedTeamLeadUser.email} (Inactive)`}
+                                                                                    </option>
+                                                                                )}
                                                                                 {responsibleTeam.assignees.map(user => (
                                                                                     <option key={user.id} value={user.id}>
                                                                                         {user.display_name} ({user.email})
                                                                                     </option>
                                                                                 ))}
                                                                             </select>
+                                                                            {selectedTeamLeadInactive && (
+                                                                                <p className="mt-2 text-xs text-amber-700 flex items-center gap-1">
+                                                                                    <ExclamationTriangleIcon className="w-4 h-4" />
+                                                                                    Team Lead ที่เลือกไว้เดิมถูกปิดการใช้งาน กรุณาเลือกผู้ใช้ Active ใหม่
+                                                                                </p>
+                                                                            )}
                                                                             {!teamLeadId && (
                                                                                 <p className="mt-2 text-xs text-amber-600 flex items-center gap-1">
                                                                                     <ExclamationCircleIcon className="w-4 h-4" />
@@ -1271,28 +1345,22 @@ export default function AdminApprovalFlow() {
                                                     <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl p-5 border border-emerald-200">
                                                         {/* Job Types Grid with Assignees */}
                                                         <div className="bg-white rounded-lg border border-emerald-200/50 p-4 mb-4">
+                                                            {(() => {
+                                                                const normalizedSkipJobTypeIdSet = new Set(
+                                                                    selectedJobTypesForSkip
+                                                                        .map(id => normalizeId(id))
+                                                                        .filter(id => id !== null)
+                                                                );
+
+                                                                return (
                                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                                 {jobTypes.map(jt => {
                                                                     const jtId = parseInt(jt.id);
-                                                                    const assignment = projectJobAssignments.find(a => parseInt(a.jobTypeId) === jtId);
-                                                                    // Fallback: ดู assignee จาก allApprovalFlows ที่มี autoAssignUserId
-                                                                    // กรณีที่ projectJobAssignments ยังไม่อัพเดต หรือ job type นี้มีการบันทึกผ่าน flow
-                                                                    const flowForJt = allApprovalFlows.find(
-                                                                        f => parseInt(f.projectId) === parseInt(selectedProject?.id) &&
-                                                                            parseInt(f.jobTypeId) === jtId &&
-                                                                            f.autoAssignUserId
-                                                                    );
-                                                                    const flowAssigneeUser = flowForJt?.autoAssignUserId
-                                                                        ? allUsers.find(u => parseInt(u.id) === parseInt(flowForJt.autoAssignUserId))
-                                                                        : null;
-
-                                                                    // hasAssignee: มี record จาก job-assignments API หรือมี autoAssignUserId ใน flow
-                                                                    const hasAssignee = !!assignment?.assigneeId || !!flowForJt?.autoAssignUserId;
-                                                                    const displayAssigneeName = assignment?.assigneeName
-                                                                        || (flowAssigneeUser
-                                                                            ? `${flowAssigneeUser.firstName || ''} ${flowAssigneeUser.lastName || ''}`.trim()
-                                                                            : null);
-                                                                    const isSelected = selectedJobTypesForSkip.some(id => parseInt(id) === jtId);
+                                                                    const assigneeStatus = resolveJobTypeAssigneeStatus(jtId);
+                                                                    const hasAssignee = assigneeStatus.hasAssignee;
+                                                                    const displayAssigneeName = assigneeStatus.assigneeName;
+                                                                    const hasInactiveFlowAssignee = assigneeStatus.hasInactiveFlowAssignee;
+                                                                    const isSelected = normalizedSkipJobTypeIdSet.has(jtId);
 
                                                                     return (
                                                                         <div
@@ -1321,6 +1389,11 @@ export default function AdminApprovalFlow() {
                                                                                         <UserIcon className="w-3 h-3" />
                                                                                         {displayAssigneeName || 'มีผู้รับงาน'}
                                                                                     </span>
+                                                                                ) : hasInactiveFlowAssignee ? (
+                                                                                    <span className="text-xs text-amber-700 bg-amber-100 px-2 py-1 rounded-full flex items-center gap-1">
+                                                                                        <ExclamationTriangleIcon className="w-3 h-3" />
+                                                                                        ผู้รับงานเดิม Inactive
+                                                                                    </span>
                                                                                 ) : (
                                                                                     <span className="text-xs text-orange-700 bg-orange-100 px-2 py-1 rounded-full flex items-center gap-1">
                                                                                         <ExclamationTriangleIcon className="w-3 h-3" />
@@ -1332,6 +1405,8 @@ export default function AdminApprovalFlow() {
                                                                     );
                                                                 })}
                                                             </div>
+                                                                );
+                                                            })()}
 
                                                             {jobTypes.length === 0 && (
                                                                 <p className="text-center text-gray-400 py-4">ไม่พบประเภทงานในระบบ</p>
@@ -1343,7 +1418,7 @@ export default function AdminApprovalFlow() {
                                                         </div>
 
                                                         {/* Warning Note */}
-                                                        {projectJobAssignments.filter(a => !a.assigneeId).length > 0 && (
+                                                        {jobTypes.some(jt => !resolveJobTypeAssigneeStatus(jt.id).hasAssignee) && (
                                                             <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
                                                                 <p className="text-xs text-amber-700 flex items-start gap-2">
                                                                     <ExclamationCircleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -1371,8 +1446,13 @@ export default function AdminApprovalFlow() {
 
                                                     {(() => {
                                                         // Calculate summary
-                                                        const skipJobTypes = jobTypes.filter(jt => selectedJobTypesForSkip.includes(jt.id));
-                                                        const approvalJobTypes = jobTypes.filter(jt => !selectedJobTypesForSkip.includes(jt.id));
+                                                        const normalizedSkipJobTypeIdSet = new Set(
+                                                            selectedJobTypesForSkip
+                                                                .map(id => normalizeId(id))
+                                                                .filter(id => id !== null)
+                                                        );
+                                                        const skipJobTypes = jobTypes.filter(jt => normalizedSkipJobTypeIdSet.has(normalizeId(jt.id)));
+                                                        const approvalJobTypes = jobTypes.filter(jt => !normalizedSkipJobTypeIdSet.has(normalizeId(jt.id)));
 
                                                         // Validation errors
                                                         const errors = [];
@@ -1392,8 +1472,8 @@ export default function AdminApprovalFlow() {
 
                                                         // Check: Skip approval jobs have assignees
                                                         skipJobTypes.forEach(jt => {
-                                                            const assignment = projectJobAssignments.find(a => a.jobTypeId === jt.id);
-                                                            if (!assignment?.assigneeId) {
+                                                            const assigneeStatus = resolveJobTypeAssigneeStatus(jt.id);
+                                                            if (!assigneeStatus.hasAssignee) {
                                                                 errors.push(`งาน "${jt.name}" ยังไม่มีผู้รับงาน (ไม่สามารถข้ามการอนุมัติได้)`);
                                                             }
                                                         });
@@ -1447,12 +1527,12 @@ export default function AdminApprovalFlow() {
                                                                         </div>
                                                                         <div className="space-y-1 max-h-32 overflow-y-auto">
                                                                             {skipJobTypes.length > 0 ? skipJobTypes.map(jt => {
-                                                                                const assignment = projectJobAssignments.find(a => a.jobTypeId === jt.id);
+                                                                                const assigneeStatus = resolveJobTypeAssigneeStatus(jt.id);
                                                                                 return (
                                                                                     <div key={jt.id} className="flex items-center justify-between bg-white p-2 rounded border border-emerald-100">
                                                                                         <span className="text-sm text-gray-800">{jt.name}</span>
                                                                                         <span className="text-xs text-emerald-600">
-                                                                                            → {assignment?.assigneeName || 'ยังไม่ระบุ'}
+                                                                                            → {assigneeStatus.assigneeName || (assigneeStatus.hasInactiveFlowAssignee ? 'ผู้รับงานเดิม Inactive' : 'ยังไม่ระบุ')}
                                                                                         </span>
                                                                                     </div>
                                                                                 );

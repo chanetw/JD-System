@@ -15,7 +15,7 @@ import { getDatabase } from '../config/database.js';
 import NotificationService from './notificationService.js';
 import EmailService from './emailService.js';
 import MagicLinkService from './magicLinkService.js';
-import { createEmailTemplate } from '../utils/emailTemplates.js';
+import { createSlaDeadlineReminderEmail, createStaleJobReminderEmail } from '../utils/emailTemplates.js';
 
 class JobReminderCron {
   constructor() {
@@ -134,17 +134,12 @@ class JobReminderCron {
               await emailSvc.sendEmail(
                 job.assignee.email,
                 `⏰ เตือน: งาน ${job.djId} รอดำเนินการเกิน 1 วัน`,
-                createEmailTemplate({
-                  title: `⏰ เตือน: งาน ${job.djId} รอดำเนินการเกิน 1 วัน`,
-                  heading: '⏰ เตือนการดำเนินการ',
-                  content: `
-                    <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
-                    <p><strong>สถานะ:</strong> ${statusText} (เกิน 24 ชั่วโมง)</p>
-                    <p><strong>ผู้รับงาน:</strong> ${toName}</p>
-                    <p>กรุณาเข้าระบบและดำเนินการโดยเร็ว</p>
-                  `,
-                  buttonText: '🔐 เปิดงานในระบบ',
-                  buttonUrl: magicLink
+                createStaleJobReminderEmail({
+                  assigneeName: toName,
+                  jobId: job.djId,
+                  jobSubject: job.subject,
+                  statusText,
+                  jobUrl: magicLink
                 })
               );
             } catch (emailErr) {
@@ -249,17 +244,13 @@ class JobReminderCron {
                 await emailSvc.sendEmail(
                   job.assignee.email,
                   `⏰ งาน ${job.djId} ครบกำหนดพรุ่งนี้`,
-                  createEmailTemplate({
-                    title: `⏰ งาน ${job.djId} ครบกำหนดพรุ่งนี้`,
-                    heading: '⏰ แจ้งเตือน SLA Deadline',
-                    content: `
-                      <p>เรียน ${assigneeName},</p>
-                      <p>งาน <strong>${job.djId} - ${job.subject}</strong> จะครบกำหนดในวันที่ <strong>${dueDateStr}</strong></p>
-                      <p>กรุณาดำเนินการให้เสร็จสิ้นตามกำหนด</p>
-                      <p>ขอบคุณครับ,<br>DJ System</p>
-                    `,
-                    buttonText: '🔐 ดูรายละเอียดงาน',
-                    buttonUrl: magicLink
+                  createSlaDeadlineReminderEmail({
+                    recipientName: assigneeName,
+                    jobId: job.djId,
+                    jobSubject: job.subject,
+                    dueDateText: dueDateStr,
+                    role: 'assignee',
+                    jobUrl: magicLink
                   })
                 ).catch(err => console.error(`[JobReminder] Assignee email failed for ${job.djId}:`, err.message));
               }
@@ -305,17 +296,13 @@ class JobReminderCron {
                 await emailSvc.sendEmail(
                   job.requester.email,
                   `⏰ งาน ${job.djId} ครบกำหนดพรุ่งนี้`,
-                  createEmailTemplate({
-                    title: `⏰ งาน ${job.djId} ครบกำหนดพรุ่งนี้`,
-                    heading: '⏰ แจ้งเตือน SLA Deadline',
-                    content: `
-                      <p>เรียน ${requesterName},</p>
-                      <p>งาน <strong>${job.djId} - ${job.subject}</strong> ที่คุณร้องขอจะครบกำหนดในวันที่ <strong>${dueDateStr}</strong></p>
-                      <p>ติดตามสถานะงานได้ที่ลิงก์ด้านล่าง</p>
-                      <p>ขอบคุณครับ,<br>DJ System</p>
-                    `,
-                    buttonText: '🔐 ดูรายละเอียดงาน',
-                    buttonUrl: magicLink
+                  createSlaDeadlineReminderEmail({
+                    recipientName: requesterName,
+                    jobId: job.djId,
+                    jobSubject: job.subject,
+                    dueDateText: dueDateStr,
+                    role: 'requester',
+                    jobUrl: magicLink
                   })
                 ).catch(err => console.error(`[JobReminder] Requester email failed for ${job.djId}:`, err.message));
               }

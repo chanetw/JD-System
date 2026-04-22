@@ -4,6 +4,16 @@ import { FormSelect } from '@shared/components/FormInput';
 import Button from '@shared/components/Button';
 import Modal from '@shared/components/Modal';
 
+const isUserActive = (user) => {
+    if (!user) return false;
+    if (user.isActive === false || user.is_active === false) return false;
+
+    const status = (user.status || user.userStatus || '').toString().toLowerCase();
+    if (['inactive', 'disabled', 'suspended'].includes(status)) return false;
+
+    return true;
+};
+
 /**
  * AssignmentMatrix Component
  * จัดการตารางกำหนดผู้รับงานอัตโนมัติตามประเภทงาน (Project + JobType -> Assignee)
@@ -40,8 +50,15 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
             try {
                 // ถ้าไม่มี propAssignees ให้โหลด Users ทั้งหมด (หรือกรองตาม Role)
                 if (!propAssignees) {
-                    const usersResponse = await api.getUsers(); // หรือ api.getUsers({ role: 'assignee' }) ถ้ามี
-                    setLocalAssignees(usersResponse?.data || []);
+                    const usersResponse = await api.getUsers(1, 1000, {
+                        role: 'Assignee',
+                        activeOnly: true,
+                        isActive: true
+                    });
+                    const usersList = Array.isArray(usersResponse)
+                        ? usersResponse
+                        : (usersResponse?.data || []);
+                    setLocalAssignees(usersList.filter(isUserActive));
                 }
 
                 // ถ้าไม่มี propProjectId ให้โหลด Projects มาให้เลือก
@@ -156,7 +173,22 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
     };
 
     // Determine values to use
-    const activeAssignees = propAssignees || localAssignees;
+    const sourceAssignees = propAssignees || localAssignees;
+    const activeAssignees = (Array.isArray(sourceAssignees) ? sourceAssignees : []).filter(isUserActive);
+    const activeAssigneeIdSet = new Set(activeAssignees.map(u => parseInt(u.id, 10)).filter(Number.isInteger));
+
+    const inactiveAssignmentRows = jobTypes
+        .map(type => {
+            const assignment = matrix.find(m => m.jobTypeId === type.id);
+            if (!assignment?.assigneeId) return null;
+            if (activeAssigneeIdSet.has(parseInt(assignment.assigneeId, 10))) return null;
+
+            return {
+                jobTypeName: type.name,
+                assigneeName: assignment.assigneeName || assignment.assigneeEmail || `User #${assignment.assigneeId}`
+            };
+        })
+        .filter(Boolean);
 
     return (
         <div className="bg-white rounded-lg border border-gray-400 mt-4 p-4 shadow-sm">
@@ -194,6 +226,22 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
                         ตั้งค่าผู้รับงานเริ่มต้นสำหรับแต่ละประเภทงาน เมื่อ User เลือกโครงการและประเภทงานนี้ ระบบจะเลือกผู้รับงานให้อัตโนมัติ
                     </p>
 
+                    {inactiveAssignmentRows.length > 0 && (
+                        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3">
+                            <p className="text-sm font-semibold text-amber-800">พบผู้รับงานที่ถูกปิดการใช้งาน</p>
+                            <p className="text-xs text-amber-700 mt-1">
+                                ระบบจะยังแสดงค่าเดิมเพื่ออ้างอิง แต่การเลือกใหม่จะเลือกได้เฉพาะผู้ใช้ที่ Active เท่านั้น
+                            </p>
+                            <ul className="mt-2 list-disc pl-5 text-xs text-amber-800">
+                                {inactiveAssignmentRows.map((row) => (
+                                    <li key={`${row.jobTypeName}-${row.assigneeName}`}>
+                                        {row.jobTypeName}: {row.assigneeName}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
                     <div className="overflow-x-auto border rounded-lg">
                         <table className="min-w-full divide-y divide-gray-400">
                             <thead className="bg-gray-50">
@@ -212,12 +260,22 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
                                                 {type.name}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                                {current?.assigneeId && !activeAssigneeIdSet.has(parseInt(current.assigneeId, 10)) && (
+                                                    <div className="mb-2 text-xs text-amber-700">
+                                                        ค่าปัจจุบันเป็นผู้ใช้ Inactive: {current.assigneeName || `User #${current.assigneeId}`}
+                                                    </div>
+                                                )}
                                                 <select
                                                     className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
                                                     value={current?.assigneeId || ''}
                                                     onChange={(e) => handleAssigneeChange(type.id, e.target.value)}
                                                 >
                                                     <option value="">-- ไม่ระบุ (ปล่อยว่าง) --</option>
+                                                    {current?.assigneeId && !activeAssigneeIdSet.has(parseInt(current.assigneeId, 10)) && (
+                                                        <option value={current.assigneeId} disabled>
+                                                            {`${current.assigneeName || current.assigneeEmail || `User #${current.assigneeId}`} (Inactive)`}
+                                                        </option>
+                                                    )}
                                                     {activeAssignees.map(u => (
                                                         <option key={u.id} value={u.id}>
                                                             {[u.prefix, u.firstName || u.first_name, u.lastName || u.last_name].filter(Boolean).join(' ') ||

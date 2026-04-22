@@ -4,7 +4,7 @@
  * Production-ready login with email/password authentication.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuthStoreV2 } from '../../stores/authStoreV2';
 import { getDefaultHomeRoute } from '@shared/utils/permission.utils';
@@ -23,14 +23,25 @@ const LoginV2: React.FC = () => {
   const [loginNotice, setLoginNotice] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [rememberMe, setRememberMe] = useState(() => localStorage.getItem('dj_remember') !== 'false');
-  const [showErrorPopup, setShowErrorPopup] = useState(false);
-  const errorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showRememberConditions, setShowRememberConditions] = useState(false);
 
-  const isCredentialErrorMessage = (message?: string | null) => {
+  const getAuthErrorType = (message?: string | null): 'user' | 'password' | 'credential' | null => {
     const normalized = String(message || '').toLowerCase();
-    return normalized.includes('อีเมลหรือรหัสผ่านไม่ถูกต้อง')
+    if (normalized.includes('ชื่อผู้ใช้') || normalized.includes('user_not_found')) {
+      return 'user';
+    }
+
+    if (normalized.includes('รหัสผ่านไม่ถูกต้อง') || normalized.includes('invalid_password')) {
+      return 'password';
+    }
+
+    if (normalized.includes('อีเมลหรือรหัสผ่านไม่ถูกต้อง')
       || normalized.includes('invalid email or password')
-      || normalized.includes('invalid credentials');
+      || normalized.includes('invalid credentials')) {
+      return 'credential';
+    }
+
+    return null;
   };
 
   const validateForm = () => {
@@ -73,7 +84,9 @@ const LoginV2: React.FC = () => {
   }, [clearError, location.state]);
 
   const displayedError = loginError || error || null;
-  const hasCredentialError = isCredentialErrorMessage(displayedError);
+  const authErrorType = getAuthErrorType(displayedError);
+  const isEmailErrorActive = Boolean(fieldErrors.email) || authErrorType === 'user' || authErrorType === 'credential';
+  const isPasswordErrorActive = Boolean(fieldErrors.password) || authErrorType === 'password' || authErrorType === 'credential';
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
@@ -105,12 +118,16 @@ const LoginV2: React.FC = () => {
       const msg = err instanceof Error ? err.message : 'เข้าสู่ระบบไม่สำเร็จ';
       setLoginError(msg);
 
-      // Show popup toast
-      setShowErrorPopup(true);
-      if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
-      errorTimeoutRef.current = setTimeout(() => setShowErrorPopup(false), 6000);
-
-      if (isCredentialErrorMessage(msg)) {
+      const errorType = getAuthErrorType(msg);
+      if (errorType === 'user') {
+        setFieldErrors({
+          email: 'ชื่อผู้ใช้ (อีเมล) ไม่ถูกต้อง',
+        });
+      } else if (errorType === 'password') {
+        setFieldErrors({
+          password: 'รหัสผ่านไม่ถูกต้อง',
+        });
+      } else if (errorType === 'credential') {
         setFieldErrors({
           email: 'โปรดตรวจสอบชื่อผู้ใช้ (อีเมล) ของคุณอีกครั้ง',
           password: 'โปรดตรวจสอบรหัสผ่านแล้วลองใหม่อีกครั้ง',
@@ -121,45 +138,6 @@ const LoginV2: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-rose-600 via-rose-700 to-rose-900 flex items-center justify-center p-4">
-      {/* Keyframes for popup animation */}
-      <style>{`
-        @keyframes slideDown {
-          from { opacity: 0; transform: translate(-50%, -20px); }
-          to { opacity: 1; transform: translate(-50%, 0); }
-        }
-      `}</style>
-
-      {/* Error Popup Toast */}
-      {showErrorPopup && displayedError && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm animate-[slideDown_0.3s_ease-out]">
-          <div className="mx-4 bg-white border border-red-200 rounded-2xl shadow-2xl overflow-hidden">
-            <div className="bg-red-500 h-1" />
-            <div className="p-4 flex items-start gap-3">
-              <div className="flex-shrink-0 w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                </svg>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-red-800">เข้าสู่ระบบไม่สำเร็จ</p>
-                <p className="text-xs text-red-600 mt-0.5">{displayedError}</p>
-                {hasCredentialError && (
-                  <p className="text-xs text-gray-500 mt-1">โปรดตรวจสอบชื่อผู้ใช้ (อีเมล) และรหัสผ่านอีกครั้ง</p>
-                )}
-              </div>
-              <button
-                onClick={() => setShowErrorPopup(false)}
-                className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Background Pattern */}
       <div className="absolute inset-0 opacity-10">
         <div className="absolute inset-0" style={{
@@ -191,7 +169,17 @@ const LoginV2: React.FC = () => {
           {displayedError && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
               <p className="font-medium">{displayedError}</p>
-              {hasCredentialError && (
+              {authErrorType === 'user' && (
+                <p className="mt-1 text-xs text-red-600">
+                  กรุณาตรวจสอบชื่อผู้ใช้ (อีเมล) ให้ถูกต้อง
+                </p>
+              )}
+              {authErrorType === 'password' && (
+                <p className="mt-1 text-xs text-red-600">
+                  พบชื่อผู้ใช้แล้ว แต่รหัสผ่านไม่ถูกต้อง
+                </p>
+              )}
+              {authErrorType === 'credential' && (
                 <p className="mt-1 text-xs text-red-600">
                   โปรดตรวจสอบชื่อผู้ใช้ (อีเมล) และรหัสผ่านของคุณอีกครั้ง หรือกด “ลืมรหัสผ่าน” เพื่อรับรหัสผ่านชั่วคราวทางอีเมล
                 </p>
@@ -218,12 +206,12 @@ const LoginV2: React.FC = () => {
                   clearError();
                   setFieldErrors((prev) => ({ ...prev, email: undefined }));
                 }}
-                className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:border-transparent bg-white text-slate-800 ${fieldErrors.email || hasCredentialError
+                className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:border-transparent bg-white text-slate-800 ${isEmailErrorActive
                   ? 'border-red-300 bg-red-50 focus:ring-red-500'
                   : 'border-slate-300 focus:ring-rose-500'
                 }`}
                 placeholder="name@sena.co.th"
-                aria-invalid={Boolean(fieldErrors.email || hasCredentialError)}
+                aria-invalid={isEmailErrorActive}
               />
               {fieldErrors.email ? (
                 <p className="mt-1 text-xs text-red-600">{fieldErrors.email}</p>
@@ -251,12 +239,12 @@ const LoginV2: React.FC = () => {
                     clearError();
                     setFieldErrors((prev) => ({ ...prev, password: undefined }));
                   }}
-                  className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:border-transparent bg-white text-slate-800 pr-12 ${fieldErrors.password || hasCredentialError
+                    className={`w-full px-4 py-3 rounded-xl border focus:outline-none focus:ring-2 focus:border-transparent bg-white text-slate-800 pr-12 ${isPasswordErrorActive
                     ? 'border-red-300 bg-red-50 focus:ring-red-500'
                     : 'border-slate-300 focus:ring-rose-500'
                   }`}
                   placeholder="••••••••"
-                  aria-invalid={Boolean(fieldErrors.password || hasCredentialError)}
+                    aria-invalid={isPasswordErrorActive}
                 />
                 <button
                   type="button"
@@ -283,19 +271,47 @@ const LoginV2: React.FC = () => {
             </div>
           </div>
 
-          {/* Remember Me Checkbox */}
-          <div className="flex items-center">
-            <input
-              id="rememberMe"
-              name="rememberMe"
-              type="checkbox"
-              checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
-              className="h-4 w-4 text-rose-600 border-slate-300 rounded focus:ring-rose-500 cursor-pointer"
-            />
-            <label htmlFor="rememberMe" className="ml-2 block text-sm text-slate-600 cursor-pointer select-none">
-              จำรหัสผ่าน
-            </label>
+          {/* Remember Login */}
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center min-w-0">
+                <input
+                  id="rememberMe"
+                  name="rememberMe"
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="h-4 w-4 text-rose-600 border-slate-300 rounded focus:ring-rose-500 cursor-pointer"
+                />
+                <label htmlFor="rememberMe" className="ml-2 block text-sm text-slate-600 cursor-pointer select-none">
+                  จำการเข้าสู่ระบบ
+                </label>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowRememberConditions((prev) => !prev)}
+                className="text-xs font-medium text-rose-700 hover:text-rose-800 underline underline-offset-2"
+                aria-expanded={showRememberConditions}
+                aria-controls="remember-conditions"
+              >
+                {showRememberConditions ? 'ซ่อนเงื่อนไข' : 'ดูเงื่อนไข'}
+              </button>
+            </div>
+
+            {showRememberConditions && (
+              <div
+                id="remember-conditions"
+                className="mt-2 rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-slate-700"
+              >
+                <ul className="list-disc pl-4 space-y-1">
+                  <li>ระบบจะจำการเข้าสู่ระบบของอุปกรณ์นี้ ไม่ได้เก็บรหัสผ่านจริง</li>
+                  <li>ถ้าไม่เลือก ตัวระบบจะให้เข้าสู่ระบบใหม่เมื่อปิดเบราว์เซอร์</li>
+                  <li>หากกดออกจากระบบ หรือเคลียร์ข้อมูลเบราว์เซอร์ ต้องเข้าสู่ระบบใหม่</li>
+                  <li>เมื่อโทเค็นหมดอายุ ระบบอาจขอให้ยืนยันตัวตนอีกครั้ง</li>
+                </ul>
+              </div>
+            )}
           </div>
 
           {/* Submit Button */}

@@ -26,7 +26,8 @@ import {
   createJobExtensionEmail,
   createRejectionRequestEmail,
   createRejectionApprovedEmail,
-  createRejectionDeniedEmail
+  createRejectionDeniedEmail,
+  createEmailTemplate
 } from '../utils/emailTemplates.js';
 import { buildFrontendUrl } from '../utils/frontendUrl.js';
 import { createRequire } from 'module';
@@ -64,6 +65,22 @@ const hasAdminPrivileges = (user) => {
 const isSameUserId = (left, right) => {
   if (left == null || right == null) return false;
   return String(left) === String(right);
+};
+
+const shouldSkipRecentJobAssignedDelivery = async ({ prisma, tenantId, userId, jobId, windowMinutes = 5 }) => {
+  const since = new Date(Date.now() - windowMinutes * 60 * 1000);
+  const existing = await prisma.notification.findFirst({
+    where: {
+      tenantId,
+      userId,
+      type: 'job_assigned',
+      link: `/jobs/${jobId}`,
+      createdAt: { gte: since }
+    },
+    orderBy: { createdAt: 'desc' }
+  });
+
+  return Boolean(existing);
 };
 
 const CHAIN_JOB_SELECT = {
@@ -207,10 +224,11 @@ const buildJobChainContext = async (job, prisma) => {
  */
 router.get('/', async (req, res) => {
   try {
-    const { role = 'requester', status, page = 1, limit = 50, assignee } = req.query;
+    const { role = 'requester', status, page = 1, limit = 50, assignee, includeCompleted } = req.query;
     const prisma = getDatabase();
     const userId = req.user.userId;
     const tenantId = req.user.tenantId;
+    const shouldIncludeCompleted = String(includeCompleted ?? 'true').toLowerCase() !== 'false';
 
 
     let where = { tenantId };
@@ -593,6 +611,17 @@ router.get('/', async (req, res) => {
       }
     }
 
+    // Default behavior for dashboard queue: hide completed/closed when includeCompleted=false
+    // Keep explicit status filter precedence (e.g. status=completed should still work).
+    if (!status && !shouldIncludeCompleted) {
+      const completedExclusion = { status: { notIn: ['completed', 'closed'] } };
+      if (where.status) {
+        where.AND = [...(where.AND || []), completedExclusion];
+      } else {
+        where.status = completedExclusion.status;
+      }
+    }
+
     // Assignee filtering (search by display name)
     if (assignee) {
       where.assignee = {
@@ -640,7 +669,7 @@ router.get('/', async (req, res) => {
             select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true }
           },
           assignee: {
-            select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true }
+            select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, isActive: true }
           },
           approvals: { // Fetch approvals for history data
             where: { approverId: userId, status: { in: ['approved', 'rejected', 'returned'] } },
@@ -706,6 +735,7 @@ router.get('/', async (req, res) => {
         requesterAvatar: j.requester?.avatarUrl,
         assigneeId: j.assigneeId,
         assignee: (j.assignee ? `${j.assignee?.firstName || ''} ${j.assignee?.lastName || ''}`.trim() : '') || j.assignee?.displayName || j.assignee?.email || null,
+        assigneeIsActive: j.assignee?.isActive ?? true,
         assigneeAvatar: j.assignee?.avatarUrl,
         // Parent-Child relationship metadata
         isParent: j.isParent || false,
@@ -1410,9 +1440,11 @@ router.post('/', async (req, res) => {
 
       // คำนวณ Due Date ใหม่จาก Acceptance Date + SLA
       if (jobType.slaWorkingDays) {
-        calculatedDueDate = jobAcceptanceService.calculateDueDate(
+        calculatedDueDate = await calculateDueDateWithTenantHolidays(
           acceptanceDate,
-          jobType.slaWorkingDays
+          jobType.slaWorkingDays,
+          tenantId,
+          prisma
         );
 
         console.log(`[Jobs] Calculated Due Date from Acceptance Date: ${calculatedDueDate}`);
@@ -1424,9 +1456,11 @@ router.post('/', async (req, res) => {
 
       // คำนวณ Due Date จาก SLA
       if (jobType.slaWorkingDays) {
-        calculatedDueDate = jobAcceptanceService.calculateDueDate(
+        calculatedDueDate = await calculateDueDateWithTenantHolidays(
           acceptanceDate,
-          jobType.slaWorkingDays
+          jobType.slaWorkingDays,
+          tenantId,
+          prisma
         );
       } else {
         // ถ้าไม่มี SLA ให้ใช้ dueDate ที่ปรับแล้ว
@@ -1710,38 +1744,49 @@ router.post('/', async (req, res) => {
           );
         }
       } else if (result.assigneeId && ['in_progress', 'approved', 'assigned'].includes(jobStatus)) {
-        // แจ้ง Assignee
-        await notificationService.createNotification({
+        const skipAssignedDelivery = await shouldSkipRecentJobAssignedDelivery({
+          prisma,
           tenantId,
           userId: result.assigneeId,
-          type: 'job_assigned',
-          title: `👤 คุณได้รับมอบหมายงาน: ${djId}`,
-          message: `งาน "${subject}" ถูกมอบหมายให้คุณ${result.autoAssigned ? ' (อัตโนมัติ)' : ''}`,
-          link: jobLink
-        }).catch(err => console.warn('[Jobs] Noti to assignee failed:', err.message));
-
-        // Email Assignee with Magic Link
-        const assignee = await prisma.user.findUnique({
-          where: { id: result.assigneeId },
-          select: { email: true, firstName: true, lastName: true }
+          jobId: result.job.id
         });
-        if (assignee?.email) {
-          const magicLink = await magicLinkService.createJobActionLink({
+
+        if (skipAssignedDelivery) {
+          console.log(`[Jobs] Skip duplicate assignment delivery for ${djId} (assigneeId=${result.assigneeId})`);
+        } else {
+          // แจ้ง Assignee
+          await notificationService.createNotification({
+            tenantId,
             userId: result.assigneeId,
-            jobId: result.job.id,
-            action: 'view',
-            djId: djId
+            type: 'job_assigned',
+            title: `👤 คุณได้รับมอบหมายงาน: ${djId}`,
+            message: `งาน "${subject}" ถูกมอบหมายให้คุณ${result.autoAssigned ? ' (อัตโนมัติ)' : ''}`,
+            link: jobLink
+          }).catch(err => console.warn('[Jobs] Noti to assignee failed:', err.message));
+
+          // Email Assignee with Magic Link
+          const assignee = await prisma.user.findUnique({
+            where: { id: result.assigneeId },
+            select: { email: true, firstName: true, lastName: true }
           });
-          const emailHtml = createJobAssignmentEmail({
-            djId,
-            subject,
-            priority,
-            dueDate: result.job.dueDate ? new Date(result.job.dueDate).toLocaleDateString('th-TH') : null,
-            magicLink,
-            assigneeName: `${assignee.firstName} ${assignee.lastName}`
-          });
-          await emailService.sendEmail(assignee.email, `👤 คุณได้รับมอบหมายงาน: ${djId}`, emailHtml)
-            .catch(err => console.warn('[Jobs] Email to assignee failed:', err.message));
+          if (assignee?.email) {
+            const magicLink = await magicLinkService.createJobActionLink({
+              userId: result.assigneeId,
+              jobId: result.job.id,
+              action: 'view',
+              djId: djId
+            });
+            const emailHtml = createJobAssignmentEmail({
+              djId,
+              subject,
+              priority,
+              dueDate: result.job.dueDate ? new Date(result.job.dueDate).toLocaleDateString('th-TH') : null,
+              magicLink,
+              assigneeName: `${assignee.firstName} ${assignee.lastName}`
+            });
+            await emailService.sendEmail(assignee.email, `👤 คุณได้รับมอบหมายงาน: ${djId}`, emailHtml)
+              .catch(err => console.warn('[Jobs] Email to assignee failed:', err.message));
+          }
         }
       }
     } catch (notiError) {
@@ -3530,7 +3575,12 @@ router.post('/parent-child', async (req, res) => {
 
         // Calculate due date based on SLA & Start Date
         const slaWorkingDays = childJobType.slaWorkingDays || 7;
-        const childDueDate = calculateWorkingDays(startDate, slaWorkingDays);
+        const childDueDate = await calculateDueDateWithTenantHolidays(
+          startDate,
+          slaWorkingDays,
+          tenantId,
+          tx
+        );
 
         // Generate child DJ-ID (เพิ่ม suffix -01, -02, ...)
         const childDjId = generateChildDjId(i);
@@ -3950,18 +4000,63 @@ router.post('/parent-child', async (req, res) => {
 });
 
 /**
- * Helper: Calculate working days (skip weekends)
- * TODO: Add holiday support from database
+ * Helper: Calculate due date by working days with tenant holidays
+ * - นับเฉพาะวันทำการ (จันทร์-ศุกร์)
+ * - ข้ามวันหยุดจาก holidays table ของ tenant
+ * - ใช้สำหรับ SLA due date calculation ตอนสร้างงาน
+ *
+ * @param {Date} startDate
+ * @param {number} workingDays
+ * @param {number} tenantId
+ * @param {Object} prisma
+ * @returns {Promise<Date>}
  */
-function calculateWorkingDays(startDate, workingDays) {
+async function calculateDueDateWithTenantHolidays(startDate, workingDays, tenantId, prisma) {
+  const safeWorkingDays = Number(workingDays) || 0;
   const result = new Date(startDate);
-  let daysAdded = 0;
 
-  while (daysAdded < workingDays) {
+  if (safeWorkingDays <= 0) {
+    return result;
+  }
+
+  // เผื่อช่วงวันหยุดยาว: ช่วงค้นหาวันหยุด = SLA * 4 + 45 วัน
+  const rangeStart = new Date(startDate);
+  rangeStart.setHours(0, 0, 0, 0);
+  const rangeEnd = new Date(startDate);
+  rangeEnd.setDate(rangeEnd.getDate() + Math.max(45, safeWorkingDays * 4));
+  rangeEnd.setHours(23, 59, 59, 999);
+
+  const holidaySet = new Set();
+  try {
+    const holidays = await prisma.holiday.findMany({
+      where: {
+        tenantId,
+        date: {
+          gte: rangeStart,
+          lte: rangeEnd
+        }
+      },
+      select: { date: true }
+    });
+
+    holidays.forEach(({ date }) => {
+      const d = new Date(date);
+      holidaySet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    });
+  } catch (err) {
+    console.warn('[Jobs] Could not load holidays for SLA due date calculation, fallback to weekends only:', err.message);
+  }
+
+  let daysAdded = 0;
+  while (daysAdded < safeWorkingDays) {
     result.setDate(result.getDate() + 1);
+
     const dayOfWeek = result.getDay();
-    // Skip Saturday (6) and Sunday (0)
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+    const dateKey = `${result.getFullYear()}-${String(result.getMonth() + 1).padStart(2, '0')}-${String(result.getDate()).padStart(2, '0')}`;
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const isHoliday = holidaySet.has(dateKey);
+
+    if (!isWeekend && !isHoliday) {
       daysAdded++;
     }
   }
@@ -4070,6 +4165,10 @@ router.post('/:id/reassign', async (req, res) => {
       return res.status(404).json({ success: false, message: 'ไม่พบผู้รับงานใหม่' });
     }
 
+    if (newAssignee.isActive === false) {
+      return res.status(400).json({ success: false, message: 'ไม่สามารถมอบหมายให้ผู้ใช้ที่ปิดการใช้งานได้' });
+    }
+
     // 3. Update Job
     const updateData = {
       assignee: { connect: { id: Number(newAssigneeId) } },
@@ -4099,15 +4198,28 @@ router.post('/:id/reassign', async (req, res) => {
 
     // 5. Notifications
     try {
-      // แจ้ง Assignee ใหม่
-      await notificationService.createNotification({
+      const skipAssignedDelivery = await shouldSkipRecentJobAssignedDelivery({
+        prisma,
         tenantId,
         userId: Number(newAssigneeId),
-        type: 'job_assigned',
-        title: `👤 คุณได้รับมอบหมายงาน: ${job.djId}`,
-        message: `งาน "${job.subject}" ถูกมอบหมายให้คุณ${reason ? ' เหตุผล: ' + reason : ''}`,
-        link: `/jobs/${id}`
-      }).catch(err => console.warn('[Reassign] Noti to new assignee failed:', err.message));
+        jobId: Number(id)
+      });
+
+      if (skipAssignedDelivery) {
+        console.log(`[Reassign] Skip duplicate assignment delivery for ${job.djId} (assigneeId=${newAssigneeId})`);
+      }
+
+      // แจ้ง Assignee ใหม่
+      if (!skipAssignedDelivery) {
+        await notificationService.createNotification({
+          tenantId,
+          userId: Number(newAssigneeId),
+          type: 'job_assigned',
+          title: `👤 คุณได้รับมอบหมายงาน: ${job.djId}`,
+          message: `งาน "${job.subject}" ถูกมอบหมายให้คุณ${reason ? ' เหตุผล: ' + reason : ''}`,
+          link: `/jobs/${id}`
+        }).catch(err => console.warn('[Reassign] Noti to new assignee failed:', err.message));
+      }
 
       // แจ้ง Assignee เก่า (ถ้ามีและไม่ใช่คนเดียวกัน)
       if (job.assigneeId && job.assigneeId !== Number(newAssigneeId)) {
@@ -4122,7 +4234,7 @@ router.post('/:id/reassign', async (req, res) => {
       }
 
       // Email Assignee ใหม่ with Magic Link
-      if (newAssignee.email) {
+      if (!skipAssignedDelivery && newAssignee.email) {
         const emailService = new EmailService();
         const magicLink = await magicLinkService.createJobActionLink({
           userId: Number(newAssigneeId),
@@ -4204,6 +4316,10 @@ router.post('/:id/assign', async (req, res) => {
       return res.status(404).json({ success: false, message: 'ไม่พบผู้รับงานที่ระบุ' });
     }
 
+    if (newAssignee.isActive === false) {
+      return res.status(400).json({ success: false, message: 'ไม่สามารถมอบหมายให้ผู้ใช้ที่ปิดการใช้งานได้' });
+    }
+
     // 4. Update job
     const updateData = {
       assignee: { connect: { id: Number(assigneeId) } },
@@ -4229,16 +4345,27 @@ router.post('/:id/assign', async (req, res) => {
 
     // 6. Notifications (non-blocking)
     try {
-      await notificationService.createNotification({
+      const skipAssignedDelivery = await shouldSkipRecentJobAssignedDelivery({
+        prisma,
         tenantId,
         userId: Number(assigneeId),
-        type: 'job_assigned',
-        title: `👤 คุณได้รับมอบหมายงาน: ${job.djId}`,
-        message: `งาน "${job.subject}" ถูกมอบหมายให้คุณ`,
-        link: `/jobs/${id}`
+        jobId: Number(id)
       });
 
-      if (newAssignee.email) {
+      if (skipAssignedDelivery) {
+        console.log(`[Assign] Skip duplicate assignment delivery for ${job.djId} (assigneeId=${assigneeId})`);
+      } else {
+        await notificationService.createNotification({
+          tenantId,
+          userId: Number(assigneeId),
+          type: 'job_assigned',
+          title: `👤 คุณได้รับมอบหมายงาน: ${job.djId}`,
+          message: `งาน "${job.subject}" ถูกมอบหมายให้คุณ`,
+          link: `/jobs/${id}`
+        });
+      }
+
+      if (!skipAssignedDelivery && newAssignee.email) {
         const emailService = new EmailService();
         const magicLink = await magicLinkService.createJobActionLink({
           userId: Number(assigneeId),
@@ -4791,15 +4918,21 @@ router.post('/:id/submit-draft', async (req, res) => {
       // ⚡ Performance: ส่ง email แบบ parallel แทน sequential
       const jobUrl = buildFrontendUrl(`/jobs/${jobId}`, { req });
       const emailSubject = `📝 Draft งาน ${job.djId} ส่งมาแล้ว`;
-      const emailBody = `
-            <h2>Draft งานส่งมาแล้ว</h2>
-            <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
-            <p><strong>ผู้ส่ง:</strong> ${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}</p>
-            ${note ? `<p><strong>หมายเหตุ:</strong> ${note}</p>` : ''}
-            ${link ? `<p><strong>ลิงก์ Draft:</strong> <a href="${link}">${link}</a></p>` : ''}
+      const emailBody = createEmailTemplate({
+        title: emailSubject,
+        heading: '📝 Draft งานส่งมาแล้ว',
+        content: `
+            <div class="info-box">
+              <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
+              <p><strong>ผู้ส่ง:</strong> ${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}</p>
+              ${note ? `<p><strong>หมายเหตุ:</strong> ${note}</p>` : ''}
+              ${link ? `<p><strong>ลิงก์ Draft:</strong> <a href="${link}" style="color:#be123c;">${link}</a></p>` : ''}
+            </div>
             <p>กรุณาตรวจสอบและให้ feedback ในระบบ</p>
-        <p><a href="${jobUrl}">ดูรายละเอียดงาน</a></p>
-          `;
+        `,
+        buttonText: '🔐 ดูรายละเอียดงาน',
+        buttonUrl: jobUrl
+      });
       await Promise.allSettled(
         recipients.map(email =>
           emailService.sendEmail(email, emailSubject, emailBody)
@@ -5014,14 +5147,20 @@ router.post('/:id/approve-draft', async (req, res) => {
         const emailSubject = action === 'approve'
           ? `✅ Draft งาน ${job.djId} ผ่านการตรวจสอบ`
           : `❌ Draft งาน ${job.djId} ไม่ผ่าน`;
-        const emailBody = `
-          <h2>${action === 'approve' ? 'Draft ผ่านการตรวจสอบ' : 'Draft ไม่ผ่านการตรวจสอบ'}</h2>
-          <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
-          <p><strong>ผู้ตรวจสอบ:</strong> ${job.requester?.firstName || ''} ${job.requester?.lastName || ''}</p>
-          <p><strong>${action === 'approve' ? 'ความเห็น' : 'เหตุผล'}:</strong> ${reason.trim()}</p>
-          <p>${action === 'approve' ? 'สามารถทำงานต่อได้เลย' : 'กรุณาแก้ไขและส่ง draft ใหม่'}</p>
-          <p><a href="${jobUrl}">ดูรายละเอียดงาน</a></p>
-        `;
+        const emailBody = createEmailTemplate({
+          title: emailSubject,
+          heading: action === 'approve' ? '✅ Draft ผ่านการตรวจสอบ' : '❌ Draft ไม่ผ่านการตรวจสอบ',
+          content: `
+            <div class="info-box">
+              <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
+              <p><strong>ผู้ตรวจสอบ:</strong> ${job.requester?.firstName || ''} ${job.requester?.lastName || ''}</p>
+              <p><strong>${action === 'approve' ? 'ความเห็น' : 'เหตุผล'}:</strong> ${reason.trim()}</p>
+            </div>
+            <p>${action === 'approve' ? 'สามารถทำงานต่อได้เลย' : 'กรุณาแก้ไขและส่ง draft ใหม่'}</p>
+          `,
+          buttonText: '🔐 ดูรายละเอียดงาน',
+          buttonUrl: jobUrl
+        });
         await Promise.allSettled(
           recipients.map(email =>
             emailService.sendEmail(email, emailSubject, emailBody)
@@ -5147,14 +5286,20 @@ router.post('/:id/rebrief', async (req, res) => {
         await emailService.sendEmail(
           job.requester.email,
           `🔄 ขอข้อมูลเพิ่มเติม: ${job.djId}`,
-          `
-            <h2>ขอข้อมูลเพิ่มเติมสำหรับงาน</h2>
-            <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
-            <p><strong>ผู้ขอ:</strong> ${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}</p>
-            <p><strong>เหตุผล:</strong> ${reason.trim()}</p>
-            <p>กรุณาเพิ่มข้อมูลหรือแก้ไข brief ในระบบ</p>
-            <p><a href="${jobUrl}">ดูรายละเอียดงาน</a></p>
-          `
+          createEmailTemplate({
+            title: `🔄 ขอข้อมูลเพิ่มเติม: ${job.djId}`,
+            heading: '🔄 ขอข้อมูลเพิ่มเติมสำหรับงาน',
+            content: `
+              <div class="info-box">
+                <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
+                <p><strong>ผู้ขอ:</strong> ${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}</p>
+                <p><strong>เหตุผล:</strong> ${reason.trim()}</p>
+              </div>
+              <p>กรุณาเพิ่มข้อมูลหรือแก้ไข brief ในระบบ</p>
+            `,
+            buttonText: '🔐 ดูรายละเอียดงาน',
+            buttonUrl: jobUrl
+          })
         ).catch(err => console.warn('[Rebrief] Email failed:', err));
       } catch (emailErr) {
         console.error('[Rebrief] Email error:', emailErr);
@@ -5279,15 +5424,21 @@ router.post('/:id/submit-rebrief', async (req, res) => {
         await emailService.sendEmail(
           job.assignee.email,
           `✅ ข้อมูลเพิ่มเติมส่งมาแล้ว: ${job.djId}`,
-          `
-            <h2>ข้อมูลเพิ่มเติมส่งมาแล้ว</h2>
-            <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
-            <p><strong>ผู้ส่ง:</strong> ${job.requester?.firstName || ''} ${job.requester?.lastName || ''}</p>
-            <p><strong>คำตอบ:</strong> ${rebriefResponse.trim()}</p>
-            ${briefLink ? `<p><strong>Brief Link:</strong> <a href="${briefLink}">${briefLink}</a></p>` : ''}
-            <p>กรุณาตรวจสอบและตัดสินใจว่าจะรับงานหรือขอ rebrief อีกครั้ง</p>
-            <p><a href="${jobUrl}">ดูรายละเอียดงาน</a></p>
-          `
+          createEmailTemplate({
+            title: `✅ ข้อมูลเพิ่มเติมส่งมาแล้ว: ${job.djId}`,
+            heading: '✅ ข้อมูลเพิ่มเติมส่งมาแล้ว',
+            content: `
+              <div class="info-box">
+                <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
+                <p><strong>ผู้ส่ง:</strong> ${job.requester?.firstName || ''} ${job.requester?.lastName || ''}</p>
+                <p><strong>คำตอบ:</strong> ${rebriefResponse.trim()}</p>
+                ${briefLink ? `<p><strong>Brief Link:</strong> <a href="${briefLink}" style="color:#be123c;">${briefLink}</a></p>` : ''}
+              </div>
+              <p>กรุณาตรวจสอบและตัดสินใจว่าจะรับงานหรือขอ rebrief อีกครั้ง</p>
+            `,
+            buttonText: '🔐 ดูรายละเอียดงาน',
+            buttonUrl: jobUrl
+          })
         ).catch(err => console.warn('[SubmitRebrief] Email failed:', err));
       } catch (emailErr) {
         console.error('[SubmitRebrief] Email error:', emailErr);
@@ -5407,14 +5558,20 @@ router.post('/:id/accept-rebrief', async (req, res) => {
         await emailService.sendEmail(
           job.requester.email,
           `✅ งาน ${job.djId} รับแล้ว`,
-          `
-            <h2>งานได้รับการยอมรับแล้ว</h2>
-            <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
-            <p><strong>ผู้รับงาน:</strong> ${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}</p>
-            <p><strong>วันที่รับงาน:</strong> ${now.toLocaleDateString('th-TH')}</p>
-            <p><strong>กำหนดส่งใหม่:</strong> ${newDueDate.toLocaleDateString('th-TH')} (${slaDays} วันทำการ)</p>
-            <p><a href="${jobUrl}">ดูรายละเอียดงาน</a></p>
-          `
+          createEmailTemplate({
+            title: `✅ งาน ${job.djId} รับแล้ว`,
+            heading: '✅ งานได้รับการยอมรับแล้ว',
+            content: `
+              <div class="info-box">
+                <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
+                <p><strong>ผู้รับงาน:</strong> ${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}</p>
+                <p><strong>วันที่รับงาน:</strong> ${now.toLocaleDateString('th-TH')}</p>
+                <p><strong>กำหนดส่งใหม่:</strong> ${newDueDate.toLocaleDateString('th-TH')} (${slaDays} วันทำการ)</p>
+              </div>
+            `,
+            buttonText: '🔐 ดูรายละเอียดงาน',
+            buttonUrl: jobUrl
+          })
         ).catch(err => console.warn('[AcceptRebrief] Email failed:', err));
       } catch (emailErr) {
         console.error('[AcceptRebrief] Email error:', emailErr);

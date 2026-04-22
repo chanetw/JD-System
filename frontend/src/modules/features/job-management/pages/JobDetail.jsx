@@ -51,6 +51,16 @@ import DraftCard from '../components/DraftCard';
 import RejectionApprovalCard from '../components/RejectionApprovalCard';
 import JobAssigneeInfo from '../components/JobAssigneeInfo';
 
+const isUserActive = (user) => {
+    if (!user) return false;
+    if (user.isActive === false || user.is_active === false) return false;
+
+    const status = (user.status || user.userStatus || '').toString().toLowerCase();
+    if (['inactive', 'disabled', 'suspended'].includes(status)) return false;
+
+    return true;
+};
+
 export default function JobDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -114,10 +124,15 @@ export default function JobDetail() {
 
     const loadUsers = async () => {
         try {
-            const usersData = await adminService.getUsers(1, 1000);
+            const usersData = await adminService.getUsers(1, 1000, {
+                role: 'Assignee',
+                activeOnly: true,
+                isActive: true
+            });
             const usersList = usersData?.data || usersData || [];
 
             const assigneeUsers = (Array.isArray(usersList) ? usersList : []).filter(u => {
+                if (!isUserActive(u)) return false;
                 if (!u.roles || !Array.isArray(u.roles)) return false;
                 return u.roles.some(r => r.name && r.name.toLowerCase() === 'assignee');
             });
@@ -1098,6 +1113,11 @@ export default function JobDetail() {
                                 );
                             })}
                         </select>
+                        {users.filter(u => u.id !== job?.assigneeId).length === 0 && (
+                            <p className="text-xs text-amber-700 mb-3">
+                                ไม่พบผู้รับงานที่ Active สำหรับการย้ายงาน
+                            </p>
+                        )}
                         <textarea
                             className="w-full border rounded p-2 mb-4"
                             rows={3}

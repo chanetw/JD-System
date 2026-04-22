@@ -133,6 +133,17 @@ docker compose up -d
 
 ไฟล์ [docker-compose.yml](docker-compose.yml) ใช้สำหรับ PostgreSQL ในงานพัฒนา
 
+### Development full stack (PostgreSQL + Backend + Frontend)
+
+```bash
+docker compose --profile app up -d
+```
+
+เมื่อรัน profile `app` แล้ว:
+- Frontend: http://localhost:5173
+- Backend: http://localhost:3001
+- Health: http://localhost:3001/health
+
 ### Production stack
 
 ```bash

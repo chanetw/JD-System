@@ -197,7 +197,7 @@ const AcceptanceDatePicker = ({
             )}
 
             {/* Calendar */}
-            <div className="border border-rose-300 rounded-lg p-3 bg-white shadow-sm">
+            <div className="border border-rose-300 rounded-lg p-2 sm:p-3 bg-white shadow-sm">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-3">
                     <button
@@ -228,7 +228,7 @@ const AcceptanceDatePicker = ({
                 </div>
 
                 {/* Day Headers */}
-                <div className="grid grid-cols-7 gap-1 text-center text-xs mb-2">
+                <div className="grid grid-cols-7 gap-1 text-center text-[10px] sm:text-xs mb-2">
                     <span className="text-rose-400 font-medium">อา</span>
                     <span className="text-gray-500 font-medium">จ</span>
                     <span className="text-gray-500 font-medium">อ</span>
@@ -239,10 +239,10 @@ const AcceptanceDatePicker = ({
                 </div>
 
                 {/* Calendar Grid */}
-                <div className="grid grid-cols-7 gap-1 text-center text-xs">
+                <div className="grid grid-cols-7 gap-1 text-center text-[10px] sm:text-xs">
                     {daysInMonth.map((day, index) => {
                         if (day === null) {
-                            return <span key={index} className="p-2"></span>;
+                            return <span key={index} className="min-h-[2.25rem] p-1.5 sm:min-h-[2.5rem] sm:p-2"></span>;
                         }
 
                         const selectable = isSelectable(day);
@@ -251,7 +251,7 @@ const AcceptanceDatePicker = ({
                         const todayDate = isToday(day);
                         const selectedDueDate = isSelected(day);
 
-                        let className = "p-2 rounded transition-all ";
+                        let className = "min-h-[2.25rem] p-1.5 sm:min-h-[2.5rem] sm:p-2 rounded transition-all ";
 
                         if (selectedDueDate) {
                             // วันส่งงาน (Due Date) ที่เลือก - Rose-500 (Bold)
@@ -312,7 +312,7 @@ const AcceptanceDatePicker = ({
 
             {/* Selected Date Info */}
             {selectedDate && calculatedStartDate && (
-                <div className="mt-3 grid grid-cols-3 gap-3">
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 sm:gap-3">
                     {/* Box 1: วันส่งงาน */}
                     <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
                         <span className="text-rose-600 font-medium text-xs block mb-1">วันส่งงาน</span>

@@ -20,7 +20,7 @@ import { adminService } from '@shared/services/modules/adminService';
  * @component Sidebar
  * @description แถบเมนูด้านซ้าย
  */
-export default function Sidebar() {
+export default function Sidebar({ isMobileOpen = false, onClose = () => {} }) {
     const navigate = useNavigate();
 
     /** ข้อมูลผู้ใช้งานปัจจุบันจาก store */
@@ -59,21 +59,33 @@ export default function Sidebar() {
         // ============================================
         // Sidebar Container
         // ============================================
-        <aside className="fixed left-0 top-0 h-screen w-64 bg-[#881337] text-white flex flex-col z-20 shadow-xl">
+        <aside className={`fixed left-0 top-0 h-screen w-72 max-w-[85vw] bg-[#881337] text-white flex flex-col z-40 shadow-xl transform transition-transform duration-200 ease-out md:w-64 md:z-20 md:translate-x-0 ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
 
             {/* ============================================
           Logo & Title
           ============================================ */}
             <div className="p-6">
                 {/* โลโก้ระบบ */}
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm">
-                        <span className="text-[#881337] font-bold text-lg">DJ</span>
+                <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm">
+                            <span className="text-[#881337] font-bold text-lg">DJ</span>
+                        </div>
+                        <div>
+                            <h1 className="font-bold text-white text-lg leading-tight">DJ System</h1>
+                            <p className="text-xs text-rose-200">Design Job Management</p>
+                        </div>
                     </div>
-                    <div>
-                        <h1 className="font-bold text-white text-lg leading-tight">DJ System</h1>
-                        <p className="text-xs text-rose-200">Design Job Management</p>
-                    </div>
+                    <button
+                        type="button"
+                        aria-label="Close sidebar"
+                        onClick={onClose}
+                        className="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-lg text-rose-100 hover:bg-white/10 hover:text-white"
+                    >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
                 </div>
             </div>
 
@@ -83,43 +95,43 @@ export default function Sidebar() {
             <nav className="flex-1 px-4 space-y-1 overflow-y-auto pt-2 scrollbar-rose">
 
                 {shouldPrioritizeMyQueue && (
-                    <SidebarLink to="/assignee/my-queue" icon={InboxIcon}>
+                    <SidebarLink to="/assignee/my-queue" icon={InboxIcon} onClick={onClose}>
                         คิวงานของฉัน (My Queue)
                     </SidebarLink>
                 )}
 
-                <SidebarLink to={dashboardPath} icon={DashboardIcon}>
+                <SidebarLink to={dashboardPath} icon={DashboardIcon} onClick={onClose}>
                     แผงควบคุม (Dashboard)
                 </SidebarLink>
 
                 {canCreateJob && (
-                    <SidebarLink to="/create" icon={CreateIcon}>
+                    <SidebarLink to="/create" icon={CreateIcon} onClick={onClose}>
                         สร้างงาน DJ ใหม่
                     </SidebarLink>
                 )}
 
-                <SidebarLink to="/jobs" icon={ListIcon}>
+                <SidebarLink to="/jobs" icon={ListIcon} onClick={onClose}>
                     รายการงาน DJ ทั้งหมด
                 </SidebarLink>
 
                 {isApprover && (
-                    <SidebarLink to="/approvals" icon={ApprovalIcon}>
+                    <SidebarLink to="/approvals" icon={ApprovalIcon} onClick={onClose}>
                         คิวงานรออนุมัติ
                     </SidebarLink>
                 )}
 
                 {(isAssignee || isAdmin) && !shouldPrioritizeMyQueue && (
-                    <SidebarLink to="/assignee/my-queue" icon={InboxIcon}>
+                    <SidebarLink to="/assignee/my-queue" icon={InboxIcon} onClick={onClose}>
                         คิวงานของฉัน (My Queue)
                     </SidebarLink>
                 )}
 
-                <SidebarLink to="/media-portal" icon={MediaIcon}>
+                <SidebarLink to="/media-portal" icon={MediaIcon} onClick={onClose}>
                     ศูนย์จัดการสื่อ (Media)
                 </SidebarLink>
 
                 {canCreateJob && (
-                    <SidebarLink to="/user-portal" icon={UserIcon}>
+                    <SidebarLink to="/user-portal" icon={UserIcon} onClick={onClose}>
                         ข้อมูลผู้ใช้งาน (User)
                     </SidebarLink>
                 )}
@@ -137,11 +149,11 @@ export default function Sidebar() {
                             </p>
                         </div>
 
-                        <SidebarLink to="/admin/organization" icon={BuildingOfficeIcon}>
+                        <SidebarLink to="/admin/organization" icon={BuildingOfficeIcon} onClick={onClose}>
                             ข้อมูลโครงสร้างองค์กร
                         </SidebarLink>
 
-                        <SidebarLink to="/admin/approval-flow" icon={FlowIcon}>
+                        <SidebarLink to="/admin/approval-flow" icon={FlowIcon} onClick={onClose}>
                             ผังการอนุมัติ (Flow)
                         </SidebarLink>
 
@@ -152,27 +164,28 @@ export default function Sidebar() {
                             icon={UserGroupIcon}
                             badge={pendingRequestCount > 0 ? pendingRequestCount : undefined}
                             badgeColor="bg-red-500"
+                            onClick={onClose}
                         >
                             จัดการผู้ใช้งาน
                         </SidebarLink>
 
-                        <SidebarLink to="/admin/job-types" icon={Cog6ToothIcon}>
+                        <SidebarLink to="/admin/job-types" icon={Cog6ToothIcon} onClick={onClose}>
                             ประเภทงาน & SLA
                         </SidebarLink>
 
-                        <SidebarLink to="/admin/job-type-items" icon={Cog6ToothIcon}>
+                        <SidebarLink to="/admin/job-type-items" icon={Cog6ToothIcon} onClick={onClose}>
                             ชิ้นงานย่อย (Sub-items)
                         </SidebarLink>
 
-                        <SidebarLink to="/admin/holidays" icon={CalendarIcon}>
+                        <SidebarLink to="/admin/holidays" icon={CalendarIcon} onClick={onClose}>
                             ปฏิทินวันหยุด
                         </SidebarLink>
 
-                        <SidebarLink to="/admin/email-settings" icon={Cog6ToothIcon}>
+                        <SidebarLink to="/admin/email-settings" icon={Cog6ToothIcon} onClick={onClose}>
                             ตั้งค่าอีเมล (Email)
                         </SidebarLink>
 
-                        <SidebarLink to="/admin/portal-settings" icon={Cog6ToothIcon}>
+                        <SidebarLink to="/admin/portal-settings" icon={Cog6ToothIcon} onClick={onClose}>
                             ตั้งค่า User Portal
                         </SidebarLink>
 
@@ -190,11 +203,11 @@ export default function Sidebar() {
                             </p>
                         </div>
 
-                        <SidebarLink to="/analytics" icon={AnalyticsIcon}>
+                        <SidebarLink to="/analytics" icon={AnalyticsIcon} onClick={onClose}>
                             Dashboard ภาพรวม
                         </SidebarLink>
 
-                        <SidebarLink to="/reports" icon={ReportIcon}>
+                        <SidebarLink to="/reports" icon={ReportIcon} onClick={onClose}>
                             รายงานบุคคล (Individual Reports)
                         </SidebarLink>
                     </>
@@ -226,10 +239,11 @@ export default function Sidebar() {
  * @param {string|number} [props.badge] - ข้อความตัวเลขบน Badge แจ้งเตือน (ถ้ามี)
  * @param {string} [props.badgeColor] - คลาสสีสำหรับ Badge
  */
-function SidebarLink({ to, icon: Icon, children, badge, badgeColor }) {
+function SidebarLink({ to, icon: Icon, children, badge, badgeColor, onClick }) {
     return (
         <NavLink
             to={to}
+            onClick={onClick}
             className={({ isActive }) =>
                 `flex items-center justify-between px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${isActive
                     ? 'bg-[#9f1239] text-white shadow-sm'

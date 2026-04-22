@@ -51,6 +51,8 @@ services:
       STORAGE_PROVIDER: local
       AUTH_MODE: jwt_only
       NODE_ENV: production
+      FRONTEND_URL: ${FRONTEND_URL:-https://dj.sena.co.th}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://dj.sena.co.th,http://localhost,http://localhost:80}
     volumes:
       - ./uploads:/app/uploads
     restart: always

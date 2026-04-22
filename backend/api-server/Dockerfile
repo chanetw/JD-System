@@ -2,7 +2,7 @@
 # สำหรับ production deployment (multi-platform: AMD64 + ARM64)
 # Build context: ./backend (ไม่ใช่ ./backend/api-server)
 
-FROM node:18-alpine
+FROM node:22-alpine
 
 # ติดตั้ง dependencies สำหรับ sharp (image processing) + openssl สำหรับ Prisma
 RUN apk add --no-cache python3 make g++ vips-dev openssl

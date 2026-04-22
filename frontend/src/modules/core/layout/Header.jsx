@@ -10,21 +10,19 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { useNotificationStore } from '@core/stores/notificationStore';
-import api from '@shared/services/apiService';
 import UserProfileMenu from '@shared/components/UserProfileMenu';
 
 /**
  * @component Header
  * @description แถบบนพร้อม Search, Role Switcher และ Notifications
  */
-export default function Header() {
+export default function Header({ onMenuClick }) {
     // ดึงสถานะและฟังก์ชันการจัดการจาก Store (Auth และ Notifications)
     const { user } = useAuthStoreV2();
     const { notifications, unreadCount, fetchNotifications, markAsRead, markAllAsRead, isLoading } = useNotificationStore();
-    const navigate = useNavigate();
 
     // === สถานะการแสดงผลเมนู Dropdown (UI States) ===
     const [showNoti, setShowNoti] = useState(false);               // เมนูแจ้งเตือน
@@ -66,26 +64,37 @@ export default function Header() {
         // ============================================
         // Header Container
         // ============================================
-        <header className="fixed top-0 left-64 right-0 h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 z-40">
+        <header className="fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 flex items-center justify-between px-3 sm:px-4 md:left-64 md:px-6 z-40">
 
-            {/* ============================================
+            <div className="flex items-center gap-2 sm:gap-3">
+                <button
+                    type="button"
+                    onClick={onMenuClick}
+                    className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100"
+                    aria-label="Open menu"
+                >
+                    <MenuIcon className="w-5 h-5" />
+                </button>
+
+                {/* ============================================
           Search Box - ช่องค้นหา
           ============================================ */}
-            <div className="w-full max-w-md">
-                <div className="relative">
-                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                        type="text"
-                        placeholder="ค้นหา DJ ID หรือ Subject..."
-                        className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-                    />
+                <div className="hidden sm:block w-full max-w-md">
+                    <div className="relative">
+                        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="ค้นหา DJ ID หรือ Subject..."
+                            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                        />
+                    </div>
                 </div>
             </div>
 
             {/* ============================================
           Right Section - ด้านขวา
           ============================================ */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
 
                 {/* ============================================
             Notifications - การแจ้งเตือน
@@ -203,6 +212,14 @@ function SearchIcon({ className }) {
         <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+    );
+}
+
+function MenuIcon({ className }) {
+    return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
         </svg>
     );
 }

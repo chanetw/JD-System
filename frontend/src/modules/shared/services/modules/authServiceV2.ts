@@ -17,6 +17,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 const API_V2_AUTH = `${API_URL}/v2/auth`;
 const API_V2_USERS = `${API_URL}/v2/users`;
 const API_V2_ADMIN = `${API_URL}/v2/admin`;
+const LOGIN_TIMEOUT_MS = 15000;
 
 // Registration request data type
 export interface IRegisterRequestData {
@@ -75,10 +76,14 @@ export const authServiceV2 = {
    * Login with email and password
    */
   async login(credentials: ILoginRequest): Promise<IApiResponse<ILoginResponse>> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), LOGIN_TIMEOUT_MS);
+
     try {
       const response = await fetch(`${API_V2_AUTH}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify(credentials),
       });
 
@@ -88,6 +93,8 @@ export const authServiceV2 = {
         const errorCode = data?.errorCode || data?.code;
         const errorMessages: Record<string, string> = {
           MISSING_FIELDS: 'กรุณากรอกชื่อผู้ใช้ (อีเมล) และรหัสผ่าน',
+          USER_NOT_FOUND: 'ชื่อผู้ใช้ (อีเมล) ไม่ถูกต้อง',
+          INVALID_PASSWORD: 'รหัสผ่านไม่ถูกต้อง',
           INVALID_CREDENTIALS: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง',
           PENDING_APPROVAL: 'บัญชีของคุณอยู่ระหว่างรอการอนุมัติจากผู้ดูแลระบบ',
           REGISTRATION_REJECTED: 'บัญชีนี้ถูกปฏิเสธการใช้งาน กรุณาติดต่อผู้ดูแลระบบ',
@@ -104,12 +111,21 @@ export const authServiceV2 = {
 
       return data;
     } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return {
+          success: false,
+          error: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ภายในเวลาที่กำหนด กรุณาลองใหม่อีกครั้ง',
+        };
+      }
+
       // Network error or JSON parse error
       console.error('[authServiceV2] Login error:', error);
       return {
         success: false,
         error: 'เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่อีกครั้ง',
       };
+    } finally {
+      clearTimeout(timeoutId);
     }
   },
 

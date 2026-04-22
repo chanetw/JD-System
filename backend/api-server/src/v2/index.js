@@ -291,20 +291,21 @@ router.post('/auth/login', async (req, res, next) => {
     // Find user in V1 users table via adapter
     const user = await PrismaV1Adapter.findUserByEmail(email, tenantId);
 
-    // Get password hash for verification first
-    // Best practice: return a generic auth error for unknown email / wrong password
-    const userWithPassword = user
-      ? await PrismaV1Adapter.findUserByIdWithPassword(user.id, tenantId)
-      : null;
+    if (!user) {
+      return res.status(401).json(errorResponse('USER_NOT_FOUND', 'ชื่อผู้ใช้ (อีเมล) ไม่ถูกต้อง'));
+    }
 
-    if (!user || !userWithPassword || !userWithPassword.passwordHash) {
-      return res.status(401).json(errorResponse('INVALID_CREDENTIALS', 'อีเมลหรือรหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง'));
+    // Load password hash for verification
+    const userWithPassword = await PrismaV1Adapter.findUserByIdWithPassword(user.id, tenantId);
+
+    if (!userWithPassword || !userWithPassword.passwordHash) {
+      return res.status(401).json(errorResponse('INVALID_PASSWORD', 'รหัสผ่านไม่ถูกต้อง'));
     }
 
     // Verify password
     const isValid = await verifyPassword(password, userWithPassword.passwordHash);
     if (!isValid) {
-      return res.status(401).json(errorResponse('INVALID_CREDENTIALS', 'อีเมลหรือรหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง'));
+      return res.status(401).json(errorResponse('INVALID_PASSWORD', 'รหัสผ่านไม่ถูกต้อง'));
     }
 
     // Check user registration/approval status only after password has been verified

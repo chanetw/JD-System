@@ -653,6 +653,21 @@ export class ApprovalService extends BaseService {
         isFinal = true;
       }
 
+      // Persist approval decision for the current job so Approvals Queue history can render reliably.
+      await this.prisma.approval.create({
+        data: {
+          tenantId: job.tenantId,
+          jobId,
+          approverId,
+          stepNumber: currentLevel || 1,
+          status: 'approved',
+          approvedAt: new Date(),
+          comment: comment || null,
+          ipAddress: ipAddress || null,
+          userAgent: 'web_action'
+        }
+      });
+
       // 3. Update Job
       const updateData = {
         status: nextStatus
@@ -1079,6 +1094,26 @@ export class ApprovalService extends BaseService {
           message: 'กรุณาระบุเหตุผลในการปฏิเสธงาน'
         };
       }
+
+      let currentLevel = 1;
+      if (job.status?.startsWith('pending_level_')) {
+        currentLevel = parseInt(job.status.split('_')[2], 10) || 1;
+      }
+
+      // Persist approval decision for the current job so rejected items appear in Approvals Queue history.
+      await this.prisma.approval.create({
+        data: {
+          tenantId: job.tenantId,
+          jobId,
+          approverId,
+          stepNumber: currentLevel,
+          status: 'rejected',
+          approvedAt: new Date(),
+          comment,
+          ipAddress: ipAddress || null,
+          userAgent: 'web_action'
+        }
+      });
 
       // Update to rejected
       await this.prisma.job.update({
@@ -1911,7 +1946,7 @@ export class ApprovalService extends BaseService {
         where: { projectId: parseInt(projectId) },
         include: {
           jobType: true,
-          assignee: { select: { id: true, firstName: true, lastName: true } }
+          assignee: { select: { id: true, firstName: true, lastName: true, displayName: true, email: true, isActive: true } }
         }
       });
       return { success: true, data: matrix };
@@ -1922,14 +1957,43 @@ export class ApprovalService extends BaseService {
 
   async saveAssignmentMatrix(projectId, assignments) {
     try {
+      const normalizedProjectId = parseInt(projectId);
+      const normalizedAssignments = Array.isArray(assignments) ? assignments : [];
+
+      const selectedAssigneeIds = [...new Set(
+        normalizedAssignments
+          .map(a => (a?.assigneeId !== null && a?.assigneeId !== undefined && a?.assigneeId !== '' ? parseInt(a.assigneeId) : null))
+          .filter(id => Number.isInteger(id) && id > 0)
+      )];
+
+      if (selectedAssigneeIds.length > 0) {
+        const activeUsers = await this.prisma.user.findMany({
+          where: {
+            id: { in: selectedAssigneeIds },
+            isActive: true
+          },
+          select: { id: true }
+        });
+
+        const activeIdSet = new Set(activeUsers.map(u => u.id));
+        const invalidAssigneeIds = selectedAssigneeIds.filter(id => !activeIdSet.has(id));
+
+        if (invalidAssigneeIds.length > 0) {
+          return {
+            success: false,
+            message: `ไม่สามารถบันทึกได้: มีผู้รับงานที่ไม่ active (${invalidAssigneeIds.join(', ')})`
+          };
+        }
+      }
+
       // Upsert logic
       await this.prisma.$transaction(async (tx) => {
-        for (const a of assignments) {
+        for (const a of normalizedAssignments) {
           // Check existing
           const existing = await tx.projectJobAssignment.findUnique({
             where: {
               projectId_jobTypeId: {
-                projectId: parseInt(projectId),
+                projectId: normalizedProjectId,
                 jobTypeId: parseInt(a.jobTypeId)
               }
             }
@@ -1943,7 +2007,7 @@ export class ApprovalService extends BaseService {
           } else {
             await tx.projectJobAssignment.create({
               data: {
-                projectId: parseInt(projectId),
+                projectId: normalizedProjectId,
                 jobTypeId: parseInt(a.jobTypeId),
                 assigneeId: a.assigneeId
               }

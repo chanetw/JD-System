@@ -340,9 +340,37 @@ export default function UserPortal() {
             {/* ============================================
           Top Navigation
           ============================================ */}
-            <nav className="bg-white shadow-sm border-b border-slate-200 fixed top-0 left-0 right-0 z-10 h-16">
-                <div className="max-w-6xl mx-auto px-6 h-full">
-                    <div className="flex items-center justify-between h-full">
+            <nav className="bg-white shadow-sm border-b border-slate-200 fixed top-0 left-0 right-0 z-40 h-[90px] sm:h-16">
+                <div className="max-w-6xl mx-auto px-3 sm:px-6 h-full">
+                    {/* Mobile Header */}
+                    <div className="sm:hidden h-full py-2">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <div className="w-9 h-9 bg-rose-600 rounded-lg flex items-center justify-center text-white shrink-0">
+                                    <span className="font-bold text-base">DJ</span>
+                                </div>
+                                <div className="min-w-0">
+                                    <h1 className="font-bold text-base text-slate-800 leading-tight truncate">DJ Request Portal</h1>
+                                    <p className="text-[11px] text-slate-500 leading-tight truncate">Design Job Self-Service</p>
+                                </div>
+                            </div>
+                            <div className="shrink-0">
+                                <UserProfileMenu />
+                            </div>
+                        </div>
+
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                            <Link to="/jobs" className="text-center rounded-lg border border-slate-200 bg-slate-50 py-1.5 text-xs font-semibold text-slate-700 hover:text-rose-600 hover:border-rose-200">
+                                My Jobs
+                            </Link>
+                            <Link to="/media-portal" className="text-center rounded-lg border border-slate-200 bg-slate-50 py-1.5 text-xs font-semibold text-slate-700 hover:text-rose-600 hover:border-rose-200">
+                                Media Portal
+                            </Link>
+                        </div>
+                    </div>
+
+                    {/* Desktop Header */}
+                    <div className="hidden sm:flex items-center justify-between h-full">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-rose-600 rounded-lg flex items-center justify-center text-white">
                                 <span className="font-bold text-lg">DJ</span>
@@ -367,7 +395,7 @@ export default function UserPortal() {
             {/* ============================================
           Main Content
           ============================================ */}
-            <main className="pt-16 pb-12">
+            <main className="pt-[90px] pb-12 sm:pt-16">
 
                 {/* Announcement Banner - Marquee Scrolling */}
                 {portalSettings.announcementVisible && portalSettings.announcementText && (
@@ -404,7 +432,7 @@ export default function UserPortal() {
 
                 {/* Hero Section */}
                 <div className="bg-gradient-to-r from-rose-600 to-rose-800 py-16">
-                    <div className="max-w-6xl mx-auto px-6 text-center">
+                    <div className="max-w-6xl mx-auto px-4 sm:px-6 text-center">
                         <h2 className="text-3xl font-bold text-white mb-4">{portalSettings.heroTitle}</h2>
                         <p className="text-rose-100 mb-8">{portalSettings.heroSubtitle}</p>
 
@@ -423,7 +451,7 @@ export default function UserPortal() {
                 </div>
 
                 {/* Quick Actions Cards */}
-                <div className="max-w-6xl mx-auto px-6 -mt-8 relative z-10">
+                <div className="max-w-6xl mx-auto px-4 sm:px-6 mt-4 sm:-mt-8 relative z-0">
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                         <QuickActionCard
                             to="/create"

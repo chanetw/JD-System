@@ -29,6 +29,8 @@ export function createEmailTemplate({
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
   <title>${title}</title>
   <style>
     body {
@@ -47,6 +49,7 @@ export function createEmailTemplate({
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
     .email-header {
+      background-color: #f43f5e;
       background: linear-gradient(135deg, #fb7185 0%, #f43f5e 100%);
       padding: 30px 20px;
       text-align: center;
@@ -90,6 +93,7 @@ export function createEmailTemplate({
     .button {
       display: inline-block;
       padding: 14px 32px;
+      background-color: #e11d48;
       background: linear-gradient(135deg, #fb7185 0%, #f43f5e 100%);
       color: #ffffff !important;
       text-decoration: none;
@@ -107,7 +111,7 @@ export function createEmailTemplate({
       background-color: #fef2f2;
       padding: 20px;
       text-align: center;
-      color: #9ca3af;
+      color: #4b5563;
       font-size: 13px;
       border-top: 1px solid #fecdd3;
     }
@@ -131,16 +135,16 @@ export function createEmailTemplate({
     }
   </style>
 </head>
-<body>
-  <div class="email-container">
-    <div class="email-header">
-      <h1>${heading}</h1>
+<body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background-color:#fef2f2;-webkit-font-smoothing:antialiased;">
+  <div class="email-container" style="max-width:600px;margin:20px auto;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+    <div class="email-header" style="background-color:#f43f5e;">
+      <h1 style="color:#ffffff;">${heading}</h1>
     </div>
-    <div class="email-body">
+    <div class="email-body" style="padding:30px 25px;color:#374151;line-height:1.6;">
       ${content}
       ${buttonText && buttonUrl ? `
       <div class="button-container">
-        <a href="${buttonUrl}" class="button">${buttonText}</a>
+        <a href="${buttonUrl}" class="button" style="background-color:#e11d48;color:#ffffff;text-decoration:none;">${buttonText}</a>
       </div>
       ` : ''}
     </div>
@@ -264,7 +268,7 @@ export function createDraftSubmissionEmail({ djId, subject, assigneeName, note, 
       <p><strong>หัวข้อ:</strong> ${subject}</p>
       <p><strong>ผู้ส่ง:</strong> ${assigneeName}</p>
       ${note ? `<p><strong>หมายเหตุ:</strong> ${note}</p>` : ''}
-      ${link ? `<p><strong>ลิงก์ Draft:</strong> <a href="${link}" style="color: #f43f5e;">${link}</a></p>` : ''}
+      ${link ? `<p><strong>ลิงก์ Draft:</strong> <a href="${link}" style="color: #be123c;">${link}</a></p>` : ''}
     </div>
     <p>เรียน คุณ${requesterName ? requesterName : ''},</p>
     <p>ผู้รับงานได้ส่ง Draft มาให้ตรวจสอบ กรุณาให้ feedback ในระบบ</p>
@@ -424,7 +428,7 @@ export function createForgotPasswordEmail({ userName, resetUrl }) {
     
     <p style="font-size: 12px; color: #6b7280; margin-top: 20px;">
       หากปุ่มด้านบนไม่ทำงาน คุณสามารถคัดลอกลิงก์ด้านล่างไปวางในเบราว์เซอร์ของคุณ:<br>
-      <a href="${resetUrl}" style="color: #f43f5e; word-break: break-all;">${resetUrl}</a>
+      <a href="${resetUrl}" style="color: #be123c; word-break: break-all;">${resetUrl}</a>
     </p>
   `;
 
@@ -434,6 +438,181 @@ export function createForgotPasswordEmail({ userName, resetUrl }) {
     content,
     buttonText: '🔐 ตั้งรหัสผ่านใหม่',
     buttonUrl: resetUrl
+  });
+}
+
+/**
+ * สร้าง Email สำหรับแจ้งเตือนสร้างผู้ใช้ใหม่
+ */
+export function createUserCreatedEmail({ userName, tempPassword }) {
+  const content = `
+    <h2>ยินดีต้อนรับสู่ระบบ DJ System</h2>
+    <p>เรียน ${userName || ''},</p>
+    <p>บัญชีของคุณได้ถูกสร้างขึ้นในระบบ DJ System เรียบร้อยแล้ว</p>
+    ${tempPassword ? `<p><strong>รหัสผ่านชั่วคราวของคุณ:</strong> ${tempPassword}</p>` : ''}
+    <p>กรุณาเข้าสู่ระบบเพื่อเริ่มใช้งาน</p>
+  `;
+
+  return createEmailTemplate({
+    title: '👋 ยินดีต้อนรับสู่ DJ System',
+    heading: '👋 ยินดีต้อนรับ',
+    content,
+  });
+}
+
+/**
+ * สร้าง Email สำหรับแจ้งเตือนสถานะงานเปลี่ยน
+ */
+export function createJobStatusChangedEmail({ jobId, newStatus, jobSubject, updatedBy }) {
+  const content = `
+    <h2>อัปเดตสถานะงาน</h2>
+    <div class="info-box">
+      <p><strong>รหัสงาน:</strong> ${jobId}</p>
+      <p><strong>หัวข้อ:</strong> ${jobSubject}</p>
+      <p><strong>สถานะใหม่:</strong> ${newStatus}</p>
+      <p><strong>โดย:</strong> ${updatedBy}</p>
+    </div>
+  `;
+
+  return createEmailTemplate({
+    title: `UPDATED: งาน ${jobId} เปลี่ยนสถานะเป็น ${newStatus}`,
+    heading: '🔄 อัปเดตสถานะงาน',
+    content,
+  });
+}
+
+/**
+ * สร้าง Email สำหรับแจ้งเตือนงานใกล้ deadline
+ */
+export function createJobDeadlineEmail({ assigneeName, jobId, jobSubject, deadline }) {
+  const dueText = deadline ? new Date(deadline).toLocaleDateString('th-TH') : '-';
+  const content = `
+    <h2>แจ้งเตือน Deadline</h2>
+    <div class="info-box">
+      <p><strong>รหัสงาน:</strong> ${jobId}</p>
+      <p><strong>หัวข้อ:</strong> ${jobSubject}</p>
+      <p><strong>กำหนดส่ง:</strong> ${dueText}</p>
+    </div>
+    <p>เรียน ${assigneeName || ''},</p>
+    <p>งานนี้ใกล้ถึงกำหนดส่ง กรุณาดำเนินการให้เสร็จสิ้นตามกำหนด</p>
+  `;
+
+  return createEmailTemplate({
+    title: `⏰ งาน ${jobId} ใกล้ถึง deadline`,
+    heading: '⏰ แจ้งเตือน Deadline',
+    content,
+  });
+}
+
+/**
+ * สร้าง Email สำหรับแจ้งเตือนงานรอดำเนินการเกิน 24 ชั่วโมง
+ */
+export function createStaleJobReminderEmail({ assigneeName, jobId, jobSubject, statusText, jobUrl }) {
+  const content = `
+    <h2>เตือนการดำเนินการ</h2>
+    <div class="info-box">
+      <p><strong>งาน:</strong> ${jobId} - ${jobSubject}</p>
+      <p><strong>สถานะ:</strong> ${statusText} (เกิน 24 ชั่วโมง)</p>
+      <p><strong>ผู้รับงาน:</strong> ${assigneeName || '-'}</p>
+    </div>
+    <p>กรุณาเข้าระบบและดำเนินการโดยเร็ว</p>
+  `;
+
+  return createEmailTemplate({
+    title: `⏰ เตือน: งาน ${jobId} รอดำเนินการเกิน 1 วัน`,
+    heading: '⏰ เตือนการดำเนินการ',
+    content,
+    buttonText: '🔐 ดูรายละเอียดงาน',
+    buttonUrl: jobUrl,
+  });
+}
+
+/**
+ * สร้าง Email สำหรับแจ้งเตือน SLA ครบกำหนดพรุ่งนี้
+ */
+export function createSlaDeadlineReminderEmail({ recipientName, jobId, jobSubject, dueDateText, role = 'assignee', jobUrl }) {
+  const introText = role === 'requester'
+    ? `งาน <strong>${jobId} - ${jobSubject}</strong> ที่คุณร้องขอจะครบกำหนดในวันที่ <strong>${dueDateText}</strong>`
+    : `งาน <strong>${jobId} - ${jobSubject}</strong> จะครบกำหนดในวันที่ <strong>${dueDateText}</strong>`;
+
+  const guidanceText = role === 'requester'
+    ? 'ติดตามสถานะงานได้ที่ลิงก์ด้านล่าง'
+    : 'กรุณาดำเนินการให้เสร็จสิ้นตามกำหนด';
+
+  const content = `
+    <h2>แจ้งเตือน SLA Deadline</h2>
+    <p>เรียน ${recipientName || ''},</p>
+    <p>${introText}</p>
+    <p>${guidanceText}</p>
+    <div class="info-box">
+      <p><strong>งาน:</strong> ${jobId} - ${jobSubject}</p>
+      <p><strong>วันครบกำหนด:</strong> ${dueDateText}</p>
+    </div>
+    <p>ขอบคุณครับ,<br>DJ System</p>
+  `;
+
+  return createEmailTemplate({
+    title: `⏰ งาน ${jobId} ครบกำหนดพรุ่งนี้`,
+    heading: '⏰ แจ้งเตือน SLA Deadline',
+    content,
+    buttonText: '🔐 ดูรายละเอียดงาน',
+    buttonUrl: jobUrl,
+  });
+}
+
+/**
+ * สร้าง Email สำหรับแจ้งเตือนการลงทะเบียนถูกปฏิเสธ
+ */
+export function createRegistrationRejectedEmail({ userName, reason }) {
+  const content = `
+    <h2>การลงทะเบียนไม่ได้รับการอนุมัติ</h2>
+    <p>เรียน ${userName || ''},</p>
+    <p>เราขอแจ้งให้ทราบว่าคำขอลงทะเบียนของคุณไม่ได้รับการอนุมัติ</p>
+    ${reason ? `<div class="info-box"><p><strong>เหตุผล:</strong> ${reason}</p></div>` : ''}
+    <p>หากคุณคิดว่ามีข้อผิดพลาด กรุณาติดต่อ Admin เพื่อสอบถามเพิ่มเติม</p>
+  `;
+
+  return createEmailTemplate({
+    title: '❌ การลงทะเบียนไม่ได้รับการอนุมัติ - DJ System',
+    heading: '❌ การลงทะเบียนไม่ได้รับการอนุมัติ',
+    content,
+  });
+}
+
+/**
+ * สร้าง Email สำหรับแจ้งเตือนการลงทะเบียนได้รับการอนุมัติ
+ */
+export function createRegistrationApprovedEmail({ userEmail, userName, temporaryPassword, loginUrl }) {
+  const content = `
+    <h2>🎉 ยินดีต้อนรับสู่ DJ System</h2>
+    <p>เรียน <strong>${userName || ''}</strong>,</p>
+    <p>การลงทะเบียนของคุณได้รับการอนุมัติเรียบร้อยแล้ว! ตอนนี้คุณสามารถเข้าสู่ระบบได้</p>
+
+    <div class="info-box">
+      <p><strong>อีเมล:</strong> ${userEmail}</p>
+      <p><strong>รหัสผ่านชั่วคราว:</strong></p>
+      <p style="font-family: monospace; font-size: 22px; font-weight: 700; color: #9a3412; letter-spacing: 1px; text-align: center; margin: 12px 0;">${temporaryPassword}</p>
+    </div>
+
+    <div class="info-box" style="border-left-color:#ef4444; background-color:#fef2f2;">
+      <p><strong>⚠️ สำคัญ:</strong> เมื่อเข้าสู่ระบบครั้งแรก ระบบจะบังคับให้คุณเปลี่ยนรหัสผ่าน กรุณาตั้งรหัสผ่านใหม่ที่จำได้และปลอดภัย</p>
+    </div>
+
+    <p><strong>ขั้นตอนการเข้าใช้งาน:</strong></p>
+    <ol>
+      <li>เข้าสู่ระบบด้วยอีเมลของคุณ</li>
+      <li>ใช้รหัสผ่านชั่วคราวด้านบน</li>
+      <li>ตั้งรหัสผ่านใหม่ของคุณ (อย่างน้อย 8 ตัวอักษร)</li>
+      <li>เริ่มใช้งานระบบได้ทันที</li>
+    </ol>
+  `;
+
+  return createEmailTemplate({
+    title: '✅ การลงทะเบียนได้รับการอนุมัติแล้ว - DJ System',
+    heading: '✅ ลงทะเบียนสำเร็จ',
+    content,
+    buttonText: loginUrl ? '🔐 เข้าสู่ระบบ' : null,
+    buttonUrl: loginUrl || null,
   });
 }
 
@@ -449,5 +628,12 @@ export default {
   createRejectionApprovedEmail,
   createRejectionDeniedEmail,
   createPasswordResetEmail,
-  createForgotPasswordEmail
+  createForgotPasswordEmail,
+  createUserCreatedEmail,
+  createJobStatusChangedEmail,
+  createJobDeadlineEmail,
+  createStaleJobReminderEmail,
+  createSlaDeadlineReminderEmail,
+  createRegistrationRejectedEmail,
+  createRegistrationApprovedEmail
 };

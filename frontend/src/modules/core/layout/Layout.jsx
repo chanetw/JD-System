@@ -9,7 +9,7 @@
  */
 
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import httpClient from '@shared/services/httpClient';
 import Sidebar from './Sidebar';
@@ -23,6 +23,7 @@ export default function Layout() {
     // ดึง state จาก authStoreV2 (Updated to V2)
     const { isAuthenticated } = useAuthStoreV2();
     const location = useLocation();
+    const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
     // ============================================
     // useEffect - ทำงานเมื่อเปลี่ยนหน้า
@@ -55,15 +56,26 @@ export default function Layout() {
         // ============================================
         <div className="min-h-screen bg-gray-50">
             {/* Sidebar - แถบเมนูซ้าย */}
-            <Sidebar />
+            <Sidebar
+                isMobileOpen={isMobileSidebarOpen}
+                onClose={() => setIsMobileSidebarOpen(false)}
+            />
+
+            {isMobileSidebarOpen && (
+                <button
+                    type="button"
+                    aria-label="Close sidebar overlay"
+                    onClick={() => setIsMobileSidebarOpen(false)}
+                    className="fixed inset-0 z-30 bg-black/40 md:hidden"
+                />
+            )}
 
             {/* Header - แถบบน */}
-            <Header />
+            <Header onMenuClick={() => setIsMobileSidebarOpen((prev) => !prev)} />
 
             {/* Main Content - เนื้อหาหลัก */}
-            {/* ml-64 = margin-left เท่ากับความกว้างของ Sidebar */}
             {/* mt-16 = margin-top เท่ากับความสูงของ Header */}
-            <main className="ml-64 mt-16 p-6">
+            <main className="mt-16 p-4 md:ml-64 md:p-6">
                 {/* Outlet = ที่แสดง nested route component */}
                 <Outlet />
             </main>

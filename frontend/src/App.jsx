@@ -112,7 +112,7 @@ const RoleHomeIndex = () => {
 function App() {
   const dynamicRoutes = getAllRoutes();
   const initialize = useAuthStoreV2((state) => state.initialize);
-  const isLoading = useAuthStoreV2((state) => state.isLoading);
+  const isInitializing = useAuthStoreV2((state) => state.isInitializing);
 
   // Initialize auth on app start
   useEffect(() => {
@@ -120,7 +120,7 @@ function App() {
   }, [initialize]);
 
   // Show loading spinner while checking auth
-  if (isLoading) {
+  if (isInitializing) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">

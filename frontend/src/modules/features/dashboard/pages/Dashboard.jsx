@@ -93,6 +93,7 @@ function Dashboard() {
     const [filter, setFilter] = useState('all');
     const [assigneeFilter, setAssigneeFilter] = useState('');  // string ชื่อ assignee ที่กรอง
     const [statusFilter, setStatusFilter] = useState('');      // status ที่ต้องการกรอง
+    const [includeCompleted, setIncludeCompleted] = useState(false); // false = ซ่อน completed/closed โดยค่าเริ่มต้น
     const [viewMode, setViewMode] = useState('flat');          // 'flat' | 'parent' — View Mode Toggle
     const [expandedRows, setExpandedRows] = useState(new Set()); // Parent IDs ที่กางอยู่ (Parent View)
     const [sortMode, setSortMode] = useState('sla');     // 'sla' | 'createdAt' | 'updatedAt' — default: SLA น้อยไปมาก
@@ -167,7 +168,7 @@ function Dashboard() {
     // ============================================
     // Load My Queue (ครั้งแรก และเมื่อ filter เปลี่ยน)
     // ============================================
-    const fetchQueueJobs = useCallback(async (pageNum, append = false, overrideStatus, overrideAssignee) => {
+    const fetchQueueJobs = useCallback(async (pageNum, append = false, overrideStatus, overrideAssignee, overrideIncludeCompleted) => {
         if (!user) return;
         if (append && queueLoading) return; // ป้องกันโหลดซ้ำเฉพาะ infinite scroll
         setQueueLoading(true);
@@ -177,7 +178,13 @@ function Dashboard() {
             // ใช้ override ถ้ามี (จาก useEffect filter change) มิฉะนั้นใช้ค่าจาก closure
             const activeStatus = overrideStatus !== undefined ? overrideStatus : statusFilter;
             const activeAssignee = overrideAssignee !== undefined ? overrideAssignee : assigneeFilter;
-            const params = { role: roleParam, page: pageNum, limit: 20 };
+            const activeIncludeCompleted = overrideIncludeCompleted !== undefined ? overrideIncludeCompleted : includeCompleted;
+            const params = {
+                role: roleParam,
+                page: pageNum,
+                limit: 20,
+                includeCompleted: activeIncludeCompleted ? 'true' : 'false'
+            };
             if (activeStatus) params.status = activeStatus;
             if (activeAssignee) params.assignee = activeAssignee;
             console.log(`[Dashboard] Fetch params:`, params);
@@ -207,7 +214,7 @@ function Dashboard() {
             setQueueLoading(false);
             if (!append) setIsLoading(false);
         }
-    }, [user, queueLoading, getRoleParam, statusFilter, assigneeFilter]);
+    }, [user, queueLoading, getRoleParam, statusFilter, assigneeFilter, includeCompleted]);
 
     // โหลดครั้งแรกเมื่อ user หรือ filter เปลี่ยน
     useEffect(() => {
@@ -225,7 +232,7 @@ function Dashboard() {
         setQueuePage(1);
         fetchQueueJobs(1, false, statusFilter, assigneeFilter);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [statusFilter, assigneeFilter]);
+    }, [statusFilter, assigneeFilter, includeCompleted]);
 
     // ============================================
     // Fetch Page of Drill-down Jobs
@@ -716,8 +723,8 @@ function Dashboard() {
                                             <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">ประเภท</th>
                                             <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">สถานะ</th>
                                             <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">กำหนดส่ง</th>
-                                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">ผู้เปิดงาน</th>
-                                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">ผู้รับงาน</th>
+                                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">ผู้แจ้งงาน</th>
+                                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">ผู้รับผิดชอบ</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
@@ -814,16 +821,30 @@ function Dashboard() {
                                 onChange={e => setAssigneeFilter(e.target.value)}
                                 className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
                             >
-                                <option value="">All Assignee</option>
+                                <option value="">ผู้รับผิดชอบทั้งหมด</option>
                                 {assigneeOptions.map(name => (
                                     <option key={name} value={name}>{name}</option>
                                 ))}
                             </select>
 
                             {/* Clear Filters */}
-                            {(statusFilter || assigneeFilter) && (
+                            <label className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-700">
+                                <input
+                                    type="checkbox"
+                                    checked={includeCompleted}
+                                    onChange={(e) => setIncludeCompleted(e.target.checked)}
+                                    className="h-4 w-4 rounded border-gray-300 text-rose-500 focus:ring-rose-300"
+                                />
+                                แสดงงานสำเร็จ
+                            </label>
+
+                            {(statusFilter || assigneeFilter || includeCompleted) && (
                                 <button
-                                    onClick={() => { setStatusFilter(''); setAssigneeFilter(''); }}
+                                    onClick={() => {
+                                        setStatusFilter('');
+                                        setAssigneeFilter('');
+                                        setIncludeCompleted(false);
+                                    }}
                                     className="px-3 py-1.5 text-sm rounded-lg border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors cursor-pointer"
                                 >
                                     ✕ ล้าง filter
@@ -856,8 +877,8 @@ function Dashboard() {
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Status</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Deadline</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">สถานะ SLA</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase min-w-[140px]">Requester</th>
-                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase min-w-[140px]">Assignee</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase min-w-[140px]">ผู้แจ้งงาน</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase min-w-[140px]">ผู้รับผิดชอบ</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap min-w-[130px]">Last Update</th>
                             </tr>
                         </thead>

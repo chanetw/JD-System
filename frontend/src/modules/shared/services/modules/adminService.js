@@ -749,7 +749,9 @@ export const adminService = {
                 assigneeId: item.assigneeId,
                 assigneeName: item.assignee ?
                     [item.assignee.firstName, item.assignee.lastName].filter(Boolean).join(' ') :
-                    'ไม่ระบุ'
+                    'ไม่ระบุ',
+                assigneeEmail: item.assignee?.email || null,
+                assigneeIsActive: item.assignee?.isActive !== false
             }));
         } catch (error) {
             console.error('[adminService] getAssignmentMatrix error:', error);

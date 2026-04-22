@@ -23,6 +23,7 @@ interface AuthState {
   user: IUser | null;
   token: string | null;
   isAuthenticated: boolean;
+  isInitializing: boolean;
   isLoading: boolean;
   error: string | null;
   // Registration approval workflow state
@@ -60,6 +61,7 @@ const initialState: AuthState = {
   user: null,
   token: null,
   isAuthenticated: false,
+  isInitializing: false,
   isLoading: false,
   error: null,
   // Registration approval workflow initial state
@@ -81,6 +83,8 @@ export const useAuthStoreV2 = create<AuthStore>()(
        * Initialize auth state from stored token
        */
       initialize: async () => {
+        set({ isInitializing: true });
+
         // "Remember me" check: if user chose not to remember and browser was restarted
         // (sessionStorage clears on browser close, localStorage persists)
         const rememberMe = localStorage.getItem('dj_remember');
@@ -90,7 +94,7 @@ export const useAuthStoreV2 = create<AuthStore>()(
           localStorage.removeItem('auth_token_v2');
           localStorage.removeItem('token');
           localStorage.removeItem('dj_remember');
-          set({ ...initialState, isLoading: false });
+          set({ ...initialState, isInitializing: false });
           return;
         }
         // Mark current session as active
@@ -104,11 +108,9 @@ export const useAuthStoreV2 = create<AuthStore>()(
         }
 
         if (!token) {
-          set({ isLoading: false });
+          set({ isInitializing: false });
           return;
         }
-
-        set({ isLoading: true });
 
         try {
           const response = await authServiceV2.verifyToken(token);
@@ -118,20 +120,20 @@ export const useAuthStoreV2 = create<AuthStore>()(
               user: response.data,
               token,
               isAuthenticated: true,
-              isLoading: false,
+              isInitializing: false,
               error: null,
             });
           } else {
             // Token invalid - clear everything
             localStorage.removeItem('auth_token_v2');
             localStorage.removeItem('token');
-            set({ ...initialState, isLoading: false });
+            set({ ...initialState, isInitializing: false });
           }
         } catch (error) {
           console.error('[AuthStoreV2] Initialize error:', error);
           localStorage.removeItem('auth_token_v2');
           localStorage.removeItem('token');
-          set({ ...initialState, isLoading: false });
+          set({ ...initialState, isInitializing: false });
         }
       },
 

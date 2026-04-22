@@ -34,7 +34,10 @@ class JobService {
         for (const job of successors) {
             try {
                 // Calculate New Due Date: NOW + original SLA Days
-                const newDueDate = this.calculateNewDueDate(job.slaDays || 2); // Default 2 if missing
+                const newDueDate = await this.calculateNewDueDate(
+                    job.slaDays || 2,
+                    job.tenantId
+                ); // Default 2 if missing
 
                 await this.prisma.job.update({
                     where: { id: job.id },
@@ -109,17 +112,54 @@ class JobService {
     }
 
     /**
-     * Calculate due date skipping weekends (Simple version)
-     * TODO: Use HolidayService for accurate calculation
+     * Calculate due date by working days with tenant holidays.
      */
-    calculateNewDueDate(slaDays) {
+    async calculateNewDueDate(slaDays, tenantId) {
         let date = new Date();
+        const safeSlaDays = Number(slaDays) || 0;
+
+        if (safeSlaDays <= 0) {
+            date.setHours(18, 0, 0, 0);
+            return date;
+        }
+
+        const rangeStart = new Date(date);
+        rangeStart.setHours(0, 0, 0, 0);
+        const rangeEnd = new Date(date);
+        rangeEnd.setDate(rangeEnd.getDate() + Math.max(45, safeSlaDays * 4));
+        rangeEnd.setHours(23, 59, 59, 999);
+
+        const holidaySet = new Set();
+        if (tenantId) {
+            try {
+                const holidays = await this.prisma.holiday.findMany({
+                    where: {
+                        tenantId,
+                        date: {
+                            gte: rangeStart,
+                            lte: rangeEnd
+                        }
+                    },
+                    select: { date: true }
+                });
+
+                holidays.forEach(({ date: holidayDate }) => {
+                    const d = new Date(holidayDate);
+                    holidaySet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+                });
+            } catch (error) {
+                console.warn('[JobService] Could not load holidays for due date calculation, fallback to weekends only:', error.message);
+            }
+        }
+
         let daysAdded = 0;
 
-        while (daysAdded < slaDays) {
+        while (daysAdded < safeSlaDays) {
             date.setDate(date.getDate() + 1);
-            // 0 = Sunday, 6 = Saturday
-            if (date.getDay() !== 0 && date.getDay() !== 6) {
+            const dayOfWeek = date.getDay();
+            const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+            if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidaySet.has(dateKey)) {
                 daysAdded++;
             }
         }

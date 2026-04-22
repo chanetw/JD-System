@@ -304,7 +304,12 @@ router.get('/:projectId/job-assignments', async (req, res) => {
         const assignments = await prisma.projectJobAssignment.findMany({
             where: {
                 projectId,
-                isActive: true
+                isActive: true,
+                assignee: {
+                    is: {
+                        isActive: true
+                    }
+                }
             },
             include: {
                 jobType: {

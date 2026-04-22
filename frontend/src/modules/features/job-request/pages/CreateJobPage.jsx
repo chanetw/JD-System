@@ -944,12 +944,12 @@ export default function CreateDJ() {
     };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6">
             {/* === หัวข้อหน้า (Page Header) === */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">สร้างรายการงาน (Create Design Job)</h1>
-                    <p className="text-gray-500">กรอกรายละเอียดเพื่อเปิดพรีวิวงบประมาณและงานออกแบบใหม่</p>
+                    <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">สร้างรายการงาน (Create Design Job)</h1>
+                    <p className="text-sm text-gray-500 sm:text-base">กรอกรายละเอียดเพื่อเปิดพรีวิวงบประมาณและงานออกแบบใหม่</p>
                 </div>
             </div>
 
@@ -972,15 +972,15 @@ export default function CreateDJ() {
                 </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 lg:grid-cols-3">
                 {/* === คอลัมน์ซ้าย: ฟอร์มกรอกข้อมูล (Form Sections) === */}
-                <div className="lg:col-span-2 space-y-6">
+                <div className="space-y-4 md:col-span-2 md:space-y-6 lg:col-span-2">
 
                     {/* ส่วนที่ 1: ข้อมูลโครงการ (Job Info) */}
                     <Card>
                         <CardHeader title="ข้อมูลโครงการและประเภทงาน" badge="1" />
-                        <CardBody className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
+                        <CardBody className="!p-4 space-y-4 sm:!p-6">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <FormSelect
                                     label="โครงการ (Project)"
                                     name="project"
@@ -1013,12 +1013,12 @@ export default function CreateDJ() {
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                     ความสำคัญ (Priority) <span className="text-red-500">*</span>
                                 </label>
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                     <button
                                         type="button"
                                         onClick={() => setFormData({ ...formData, priority: 'Normal' })}
                                         className={`
-                                            px-4 py-2 rounded-lg font-medium transition-all duration-200
+                                            min-h-[44px] rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 sm:text-base
                                             ${formData.priority === 'Normal'
                                                 ? 'bg-blue-500 text-white shadow-md ring-2 ring-blue-300'
                                                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -1032,7 +1032,7 @@ export default function CreateDJ() {
                                         type="button"
                                         onClick={() => setFormData({ ...formData, priority: 'Urgent' })}
                                         className={`
-                                            px-4 py-2 rounded-lg font-medium transition-all duration-200
+                                            min-h-[44px] rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 sm:text-base
                                             ${formData.priority === 'Urgent'
                                                 ? 'bg-red-500 text-white shadow-md ring-2 ring-red-300 animate-pulse'
                                                 : 'bg-gray-100 text-gray-700 hover:bg-red-50 hover:text-red-700'
@@ -1068,7 +1068,7 @@ export default function CreateDJ() {
                                 </label>
 
                                 {/* ส่วนเพิ่ม Job Type ใหม่ */}
-                                <div className="flex gap-2 mb-3">
+                                <div className="mb-3 flex flex-col gap-2 sm:flex-row">
                                     <select
                                         className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"
                                         id="newJobTypeSelect"
@@ -1088,7 +1088,7 @@ export default function CreateDJ() {
                                             addJobType(select.value);
                                             select.value = '';
                                         }}
-                                        className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors flex items-center gap-1"
+                                        className="w-full rounded-lg bg-rose-600 px-4 py-2.5 text-white transition-colors hover:bg-rose-700 sm:w-auto sm:px-4 sm:py-2 flex items-center justify-center gap-1"
                                     >
                                         <span>+</span> เพิ่ม
                                     </button>
@@ -1103,20 +1103,20 @@ export default function CreateDJ() {
                                                 className="border border-rose-200 rounded-lg overflow-hidden"
                                             >
                                                 {/* Header (Always Visible) */}
-                                                <div className="flex items-center gap-3 p-3 bg-rose-50">
+                                                <div className="flex items-start gap-2 p-3 bg-rose-50 sm:items-center sm:gap-3">
                                                     {/* Toggle Button */}
                                                     <button
                                                         type="button"
                                                         onClick={() => toggleJobTypeExpand(index)}
-                                                        className="w-6 h-6 flex items-center justify-center text-rose-600 hover:bg-rose-100 rounded transition-colors"
+                                                        className="h-8 w-8 flex-shrink-0 flex items-center justify-center text-rose-600 hover:bg-rose-100 rounded transition-colors"
                                                         title={jt.isExpanded ? 'ปิด' : 'เปิดเลือกชิ้นงาน'}
                                                     >
                                                         {jt.isExpanded ? '▼' : '▶'}
                                                     </button>
 
                                                     {/* Job Type Info & Dependency */}
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center gap-2">
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex flex-wrap items-center gap-2">
                                                             <span className="text-sm font-medium text-rose-800">
                                                                 {index + 1}. {jt.name}
                                                             </span>
@@ -1129,17 +1129,17 @@ export default function CreateDJ() {
                                                         </div>
 
                                                         {/* Sub-line info */}
-                                                        <div className="flex items-center gap-3 mt-1">
+                                                        <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
                                                             <span className="text-xs text-rose-600">
                                                                 SLA: {jt.sla || 7} วัน
                                                             </span>
 
                                                             {/* Dependency Selector (Show only for 2nd job onwards) */}
                                                             {index > 0 && (
-                                                                <div className="flex items-center gap-2">
+                                                                <div className="flex flex-wrap items-center gap-2">
                                                                     <label className="text-xs text-gray-500">เริ่มงาน:</label>
                                                                     <select
-                                                                        className="text-xs border border-gray-300 rounded px-2 py-0.5 bg-gray-100 text-gray-500 cursor-not-allowed opacity-70"
+                                                                        className="min-h-[36px] text-xs border border-gray-300 rounded px-2 py-1 bg-gray-100 text-gray-500 cursor-not-allowed opacity-70"
                                                                         value={jt.predecessorIndex === null ? '' : jt.predecessorIndex}
                                                                         onChange={(e) => {
                                                                             const val = e.target.value;
@@ -1173,7 +1173,7 @@ export default function CreateDJ() {
                                                     <button
                                                         type="button"
                                                         onClick={() => removeJobType(index)}
-                                                        className="w-8 h-8 flex items-center justify-center text-red-500 hover:bg-red-100 rounded-lg transition-colors"
+                                                        className="h-8 w-8 flex-shrink-0 flex items-center justify-center text-red-500 hover:bg-red-100 rounded-lg transition-colors"
                                                         title="ลบรายการนี้"
                                                     >
                                                         ✕
@@ -1195,37 +1195,37 @@ export default function CreateDJ() {
                                                                     return (
                                                                         <div
                                                                             key={item.id}
-                                                                            className={`flex items-center gap-3 p-2 rounded-lg border transition-all ${isSelected ? 'border-rose-400 bg-rose-50' : 'border-gray-400'}`}
+                                                                            className={`flex flex-wrap items-start gap-2 p-2 rounded-lg border transition-all ${isSelected ? 'border-rose-400 bg-rose-50' : 'border-gray-400'}`}
                                                                         >
                                                                             <input
                                                                                 type="checkbox"
                                                                                 checked={isSelected}
                                                                                 onChange={(e) => updateJobTypeSubItem(index, item.id, e.target.checked ? 1 : null)}
-                                                                                className="w-4 h-4 text-rose-600 rounded border-gray-300"
+                                                                                className="mt-1 h-4 w-4 text-rose-600 rounded border-gray-300"
                                                                             />
                                                                             <div className="flex-1 min-w-0">
                                                                                 <span className="text-sm text-gray-700">{item.name}</span>
                                                                                 <span className="text-xs text-gray-400 ml-1">({item.defaultSize || '-'})</span>
                                                                             </div>
                                                                             {isSelected && (
-                                                                                <div className="flex items-center gap-1">
+                                                                                <div className="ml-auto flex items-center gap-1">
                                                                                     <button
                                                                                         type="button"
                                                                                         onClick={() => updateJobTypeSubItem(index, item.id, quantity - 1)}
                                                                                         disabled={quantity <= 1}
-                                                                                        className="w-6 h-6 flex items-center justify-center bg-rose-100 text-rose-700 rounded hover:bg-rose-200 disabled:opacity-50"
+                                                                                        className="h-8 w-8 flex items-center justify-center bg-rose-100 text-rose-700 rounded hover:bg-rose-200 disabled:opacity-50"
                                                                                     >−</button>
                                                                                     <input
                                                                                         type="number"
                                                                                         min="1"
                                                                                         value={quantity}
                                                                                         onChange={(e) => updateJobTypeSubItem(index, item.id, parseInt(e.target.value) || 1)}
-                                                                                        className="w-12 h-6 text-center text-sm border border-rose-200 rounded"
+                                                                                        className="h-8 w-14 text-center text-sm border border-rose-200 rounded"
                                                                                     />
                                                                                     <button
                                                                                         type="button"
                                                                                         onClick={() => updateJobTypeSubItem(index, item.id, quantity + 1)}
-                                                                                        className="w-6 h-6 flex items-center justify-center bg-rose-100 text-rose-700 rounded hover:bg-rose-200"
+                                                                                        className="h-8 w-8 flex items-center justify-center bg-rose-100 text-rose-700 rounded hover:bg-rose-200"
                                                                                     >+</button>
                                                                                 </div>
                                                                             )}
@@ -1282,7 +1282,7 @@ export default function CreateDJ() {
 
                                             {/* สรุปรวม */}
                                             <div className="pt-3 border-t border-rose-200">
-                                                <div className="flex flex-wrap justify-between items-center gap-2">
+                                                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-between sm:items-center">
                                                     <span className="font-bold text-rose-800">
                                                         📦 รวมทั้งสิ้น: {selectedJobTypes.reduce((sum, jt) =>
                                                             sum + Object.values(jt.subItems || {}).reduce((a, b) => a + b, 0), 0
@@ -1325,7 +1325,7 @@ export default function CreateDJ() {
                             title="วันส่งงาน (Due Date)"
                             className="text-rose-700"
                         />
-                        <CardBody className="space-y-4">
+                        <CardBody className="!p-4 space-y-4 sm:!p-6">
                             {!formData.jobTypeId && selectedJobTypes.length === 0 ? (
                                 <div className="text-gray-500 text-sm p-4 bg-gray-50 rounded border border-dashed text-center">
                                     กรุณาเลือกประเภทงานก่อน จึงจะสามารถเลือกวันส่งงานได้
@@ -1374,7 +1374,7 @@ export default function CreateDJ() {
                     {/* ส่วนที่ 2: รายละเอียดงาน (Brief) */}
                     < Card >
                         <CardHeader title="รายละเอียดงาน (Brief)" badge="2" />
-                        <CardBody className="space-y-4">
+                        <CardBody className="!p-4 space-y-4 sm:!p-6">
                             <div>
                                 <FormTextarea
                                     label="วัตถุประสงค์และรายละเอียด (Objective & Details)"
@@ -1435,7 +1435,7 @@ export default function CreateDJ() {
                                         <p className="text-xs text-amber-600">กรุณาใส่ลิงค์ Google Drive, Notion หรือเอกสารออนไลน์ที่มีรายละเอียดงาน</p>
                                     </div>
 
-                                    <div className="flex gap-2 items-start">
+                                    <div className="flex flex-col gap-2 items-stretch sm:flex-row sm:items-start">
                                         <div className="flex-1">
                                             <FormInput
                                                 label="ลิงค์รายละเอียด (Brief Link) *"
@@ -1454,7 +1454,7 @@ export default function CreateDJ() {
                                                 }
                                             }}
                                             disabled={!tempBriefLink.trim()}
-                                            className={`mt-6 px-4 py-2.5 rounded-lg flex items-center gap-2 font-medium transition-colors ${tempBriefLink.trim()
+                                            className={`w-full sm:w-auto mt-0 sm:mt-6 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-medium transition-colors ${tempBriefLink.trim()
                                                     ? 'bg-rose-600 text-white hover:bg-rose-700 shadow-sm'
                                                     : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                                                 }`}
@@ -1471,7 +1471,7 @@ export default function CreateDJ() {
                 </div >
 
                 {/* === คอลัมน์ขวา: พรีวิวและดำเนินการ (Info Panels & Actions) === */}
-                < div className="space-y-6" >
+                < div className="space-y-4 md:space-y-6" >
 
                     {/* พรีวิวลำดับการอนุมัติ (Approval Flow Preview) */}
                     < Card >
@@ -1734,13 +1734,13 @@ export default function CreateDJ() {
                                         'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 
                                     return (
-                                        <div className="border border-gray-400 rounded-lg p-3">
+                                        <div className="border border-gray-400 rounded-lg p-2.5 sm:p-3">
                                             {/* Header พร้อมปุ่มเลื่อนเดือน */}
                                             <div className="flex items-center justify-between mb-2">
                                                 <button
                                                     type="button"
                                                     onClick={goToPrevMonth}
-                                                    className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                                                    className="h-8 w-8 sm:h-6 sm:w-6 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
                                                     title="เดือนก่อนหน้า"
                                                 >
                                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1753,7 +1753,7 @@ export default function CreateDJ() {
                                                 <button
                                                     type="button"
                                                     onClick={goToNextMonth}
-                                                    className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                                                    className="h-8 w-8 sm:h-6 sm:w-6 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
                                                     title="เดือนถัดไป"
                                                 >
                                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1763,7 +1763,7 @@ export default function CreateDJ() {
                                             </div>
 
                                             {/* Header วันในสัปดาห์ */}
-                                            <div className="grid grid-cols-7 gap-1 text-center text-xs mb-1">
+                                            <div className="grid grid-cols-7 gap-1 text-center text-[10px] sm:text-xs mb-1">
                                                 <span className="text-gray-400">อา</span>
                                                 <span className="text-gray-400">จ</span>
                                                 <span className="text-gray-400">อ</span>
@@ -1774,14 +1774,14 @@ export default function CreateDJ() {
                                             </div>
 
                                             {/* วันในเดือน */}
-                                            <div className="grid grid-cols-7 gap-1 text-center text-xs">
+                                            <div className="grid grid-cols-7 gap-1 text-center text-[10px] sm:text-xs">
                                                 {daysInMonth.map((day, index) => {
                                                     if (day === null) {
-                                                        return <span key={index} className="p-1 text-gray-300">-</span>;
+                                                        return <span key={index} className="min-h-[1.9rem] p-1 text-gray-300 sm:min-h-[1.5rem]">-</span>;
                                                     }
 
                                                     // กำหนด Style ตามประเภทวัน
-                                                    let className = "p-1 rounded ";
+                                                    let className = "min-h-[1.9rem] p-1 rounded sm:min-h-[1.5rem] ";
 
                                                     if (isDeadline(day)) {
                                                         // วัน Deadline - สีแดง
@@ -1858,7 +1858,7 @@ export default function CreateDJ() {
                     </Card >
 
                     {/* ปุ่มดำเนินการ (Actions Panel) */}
-                    < div className="sticky top-20 space-y-3" >
+                    < div className="space-y-3 pb-2 md:pb-0 lg:sticky lg:top-20" >
                         <Button type="submit" className="w-full h-12 text-lg shadow-lg" disabled={isSubmitting}>
                             {isSubmitting ? (
                                 <span className="flex items-center gap-2">
