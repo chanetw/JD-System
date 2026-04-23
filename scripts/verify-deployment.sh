@@ -1,155 +1,105 @@
 #!/bin/bash
 
 # ===================================================
-# Deployment Verification Script
+# DJ System Production Deployment Verification
 # ===================================================
 
-set -e
+set -euo pipefail
 
-echo "🔍 Verifying DJ System V1 Role Deployment..."
-echo ""
-
-# Colors
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+BACKEND_URL="${BACKEND_URL:-http://localhost:3000}"
+FRONTEND_URL="${FRONTEND_URL:-http://localhost}"
+
 FAILED=0
 
-# ===================================================
-# Test 1: Backend Health
-# ===================================================
-echo -e "${BLUE}Test 1: Backend Health Check${NC}"
+pass() { echo -e "${GREEN}✅ $1${NC}"; }
+fail() { echo -e "${RED}❌ $1${NC}"; FAILED=$((FAILED + 1)); }
+warn() { echo -e "${YELLOW}⚠ $1${NC}"; }
 
-if curl -s http://localhost:5000/api/v2/health | grep -q "ok"; then
-    echo -e "${GREEN}✅ Backend is running and healthy${NC}"
+echo -e "${BLUE}🔍 Verifying DJ System Production Deployment${NC}"
+echo "Backend:  ${BACKEND_URL}"
+echo "Frontend: ${FRONTEND_URL}"
+echo ""
+
+echo -e "${BLUE}Test 1: Docker service state${NC}"
+if docker compose -f docker-compose.prod.yml ps >/dev/null 2>&1; then
+    docker compose -f docker-compose.prod.yml ps
+    pass "docker compose status accessible"
 else
-    echo -e "${RED}❌ Backend health check failed${NC}"
-    FAILED=$((FAILED + 1))
+    fail "cannot read docker compose service state"
 fi
 echo ""
 
-# ===================================================
-# Test 2: Database Connection
-# ===================================================
-echo -e "${BLUE}Test 2: Database Connection${NC}"
-
-echo "Run this command to verify database:"
-echo -e "${YELLOW}psql -h aws-1-ap-south-1.pooler.supabase.com -U postgres.putfusjtlzmvjmcwkefv -d postgres -c \"SELECT COUNT(*) FROM user_roles;\"${NC}"
-echo ""
-
-# ===================================================
-# Test 3: Role Names Verification
-# ===================================================
-echo -e "${BLUE}Test 3: Database Role Names${NC}"
-
-echo "Run this command:"
-echo -e "${YELLOW}psql -h aws-1-ap-south-1.pooler.supabase.com -U postgres.putfusjtlzmvjmcwkefv -d postgres -c \"SELECT DISTINCT role_name FROM user_roles ORDER BY role_name;\"${NC}"
-echo ""
-echo "Expected output:"
-echo "  Admin"
-echo "  Approver"
-echo "  Assignee"
-echo "  Requester"
-echo ""
-
-# ===================================================
-# Test 4: API Endpoint Tests
-# ===================================================
-echo -e "${BLUE}Test 4: API Endpoint Connectivity${NC}"
-
-# Test 1: Health endpoint
-echo -n "  • GET /api/v2/health: "
-if curl -s http://localhost:5000/api/v2/health > /dev/null 2>&1; then
-    echo -e "${GREEN}✅${NC}"
+echo -e "${BLUE}Test 2: Backend health endpoint${NC}"
+if curl -fsS "${BACKEND_URL}/health" >/tmp/dj_backend_health.json 2>/dev/null; then
+    pass "GET /health returned 200"
+    if grep -qi 'connected' /tmp/dj_backend_health.json; then
+        pass "health payload reports database connected"
+    else
+        warn "health payload did not include expected database connected marker"
+    fi
 else
-    echo -e "${RED}❌${NC}"
-    FAILED=$((FAILED + 1))
-fi
-
-# Test 2: Auth endpoints exist
-echo -n "  • Auth endpoints: "
-if curl -s http://localhost:5000/api/v2/auth/login -X OPTIONS > /dev/null 2>&1; then
-    echo -e "${GREEN}✅${NC}"
-else
-    echo -e "${YELLOW}⚠️  (Expected for OPTIONS)${NC}"
-fi
-
-echo ""
-
-# ===================================================
-# Test 5: Frontend Build
-# ===================================================
-echo -e "${BLUE}Test 5: Frontend Build${NC}"
-
-FRONTEND_DIR="$(dirname "$0")/../frontend"
-
-if [ -d "$FRONTEND_DIR/dist" ]; then
-    echo -e "${GREEN}✅ Frontend dist/ directory exists${NC}"
-
-    # Count files
-    FILE_COUNT=$(find "$FRONTEND_DIR/dist" -type f | wc -l)
-    echo "   Files in dist/: $FILE_COUNT"
-else
-    echo -e "${YELLOW}⚠️  Frontend dist/ not found (run: npm run build)${NC}"
+    fail "GET /health failed"
 fi
 echo ""
 
-# ===================================================
-# Test 6: Code Changes
-# ===================================================
-echo -e "${BLUE}Test 6: Code Changes Verification${NC}"
-
-BACKEND_DIR="$(dirname "$0")/../backend/api-server"
-FRONTEND_DIR="$(dirname "$0")/../frontend"
-
-# Check for V1 role names in backend
-echo -n "  • Backend using V1 roles: "
-if grep -r "RoleName.ADMIN\|RoleName.REQUESTER" "$BACKEND_DIR/src/v2" > /dev/null 2>&1; then
-    echo -e "${GREEN}✅${NC}"
+echo -e "${BLUE}Test 3: API readiness endpoints${NC}"
+if curl -fsS "${BACKEND_URL}/api/version" >/dev/null 2>&1; then
+    pass "GET /api/version returned 200"
 else
-    echo -e "${RED}❌${NC}"
-    FAILED=$((FAILED + 1))
+    fail "GET /api/version failed"
 fi
 
-# Check for V1 role names in frontend
-echo -n "  • Frontend using V1 roles: "
-if grep -r "Admin\|Requester\|Approver\|Assignee" "$FRONTEND_DIR/src/types" > /dev/null 2>&1; then
-    echo -e "${GREEN}✅${NC}"
+if curl -fsS -X OPTIONS "${BACKEND_URL}/api/v2/auth/login" >/dev/null 2>&1; then
+    pass "Auth route reachable (/api/v2/auth/login)"
 else
-    echo -e "${RED}❌${NC}"
-    FAILED=$((FAILED + 1))
+    warn "Auth OPTIONS check did not return success (may be policy-dependent)"
 fi
-
 echo ""
 
-# ===================================================
-# Summary
-# ===================================================
+echo -e "${BLUE}Test 4: Frontend and static checks${NC}"
+if curl -fsS "${FRONTEND_URL}/" >/tmp/dj_frontend_index.html 2>/dev/null; then
+    pass "Frontend root reachable"
+else
+    fail "Frontend root is unreachable"
+fi
+
+if curl -fsS "${FRONTEND_URL}/index.html" >/dev/null 2>&1; then
+    pass "index.html reachable"
+else
+    fail "index.html unreachable"
+fi
+echo ""
+
+echo -e "${BLUE}Test 5: Nginx to backend proxy path${NC}"
+if curl -fsS "${FRONTEND_URL}/api/version" >/dev/null 2>&1; then
+    pass "Nginx proxy to backend (/api/version) working"
+else
+    fail "Nginx proxy to backend failed"
+fi
+echo ""
+
+echo -e "${BLUE}Test 6: Upload path probe${NC}"
+UPLOAD_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${FRONTEND_URL}/uploads/" || true)
+if [[ "$UPLOAD_STATUS" == "200" || "$UPLOAD_STATUS" == "403" || "$UPLOAD_STATUS" == "404" ]]; then
+    pass "Uploads route responds (status ${UPLOAD_STATUS})"
+else
+    fail "Uploads route probe failed (status ${UPLOAD_STATUS})"
+fi
+echo ""
+
 echo -e "${BLUE}📋 Verification Summary${NC}"
-echo ""
-
 if [ $FAILED -eq 0 ]; then
-    echo -e "${GREEN}✅ All checks passed!${NC}"
-    echo ""
-    echo "Next steps:"
-    echo "1. Ensure users have re-login (old JWT tokens won't work)"
-    echo "2. Clear browser cache (Cmd+Shift+R or Ctrl+Shift+R)"
-    echo "3. Test each role: Admin, Requester, Approver, Assignee"
-    echo "4. Verify UI shows correct menus per role"
+    echo -e "${GREEN}✅ All production checks passed${NC}"
 else
-    echo -e "${RED}❌ $FAILED check(s) failed${NC}"
-    echo ""
-    echo "Troubleshooting:"
-    echo "1. Is backend running? npm start in backend/api-server/"
-    echo "2. Is database accessible?"
-    echo "3. Did you run npm install?"
+    echo -e "${RED}❌ ${FAILED} check(s) failed${NC}"
+    echo "Hint: run ./scripts/collect-502-diagnostics.sh for incident evidence"
 fi
 
-echo ""
-echo "For detailed testing, see: docs/TESTING-CHECKLIST-V1-ROLES.md"
-echo ""
-
+rm -f /tmp/dj_backend_health.json /tmp/dj_frontend_index.html
 exit $FAILED

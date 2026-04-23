@@ -16,6 +16,7 @@ import crypto from 'crypto';
 
 const router = express.Router();
 const userService = new UserService();
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '30d';
 
 
 /**
@@ -269,7 +270,7 @@ router.post('/login', async (req, res) => {
     };
 
     const accessToken = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
-      expiresIn: '24h'
+      expiresIn: JWT_EXPIRES_IN
     });
 
     // ส่งข้อมูลผู้ใช้กลับ (ไม่รวม password)
@@ -286,7 +287,7 @@ router.post('/login', async (req, res) => {
       data: {
         user: formattedUser,
         token: accessToken,
-        expiresIn: '24h'
+        expiresIn: JWT_EXPIRES_IN
       },
       message: 'เข้าสู่ระบบสำเร็จ'
     });
@@ -387,7 +388,7 @@ router.post('/login-demo', async (req, res) => {
     };
 
     const accessToken = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
-      expiresIn: '24h'
+      expiresIn: JWT_EXPIRES_IN
     });
 
     // 3. Helper: Format User Response
@@ -404,7 +405,7 @@ router.post('/login-demo', async (req, res) => {
       data: {
         user: formattedUser,
         token: accessToken,
-        expiresIn: '24h'
+        expiresIn: JWT_EXPIRES_IN
       }
     });
 
@@ -441,14 +442,14 @@ router.post('/refresh', async (req, res) => {
       email: decoded.email,
       roles: decoded.roles
     }, process.env.JWT_SECRET, {
-      expiresIn: '24h'
+      expiresIn: JWT_EXPIRES_IN
     });
 
     res.json({
       success: true,
       data: {
         token: newToken,
-        expiresIn: '24h'
+        expiresIn: JWT_EXPIRES_IN
       },
       message: 'ต่ออายุ token สำเร็จ'
     });
@@ -682,7 +683,7 @@ router.post('/impersonate', authenticateToken, setRLSContextMiddleware, async (r
     };
 
     const accessToken = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
-      expiresIn: '24h'
+      expiresIn: JWT_EXPIRES_IN
     });
 
     // 6. Format user data สำหรับ Frontend
@@ -699,7 +700,7 @@ router.post('/impersonate', authenticateToken, setRLSContextMiddleware, async (r
           roles: targetUser.userRoles.map(ur => ur.roleName)
         },
         token: accessToken,
-        expiresIn: '24h',
+        expiresIn: JWT_EXPIRES_IN,
         impersonatedBy: currentUser.userId
       },
       message: `สลับเป็น ${targetUser.displayName || targetUser.email} สำเร็จ`

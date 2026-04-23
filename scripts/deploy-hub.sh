@@ -15,6 +15,22 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 COMPOSE_FILE="docker-compose.prod.yml"
+BACKEND_HOST_PORT="${BACKEND_HOST_PORT:-3000}"
+FRONTEND_HOST_PORT="${FRONTEND_HOST_PORT:-80}"
+BACKEND_URL="${BACKEND_URL:-}"
+FRONTEND_URL="${FRONTEND_URL:-}"
+
+if [ -z "$BACKEND_URL" ]; then
+    BACKEND_URL="http://localhost:${BACKEND_HOST_PORT}"
+fi
+
+if [ -z "$FRONTEND_URL" ]; then
+    if [ "$FRONTEND_HOST_PORT" = "80" ]; then
+        FRONTEND_URL="http://localhost"
+    else
+        FRONTEND_URL="http://localhost:${FRONTEND_HOST_PORT}"
+    fi
+fi
 
 # ===================================================
 # ตรวจสอบไฟล์ที่จำเป็น
@@ -91,7 +107,7 @@ echo ""
 echo -e "${BLUE}[6/6] Post-deploy verification...${NC}"
 
 # Health endpoint
-HEALTH=$(curl -sf http://localhost:3000/health 2>/dev/null || echo "FAILED")
+HEALTH=$(curl -sf "${BACKEND_URL}/health" 2>/dev/null || echo "FAILED")
 if echo "$HEALTH" | grep -q '"status"'; then
     echo -e "   Health: ${GREEN}OK ✅${NC}"
 else
@@ -100,11 +116,11 @@ else
 fi
 
 # Version endpoint
-VERSION=$(curl -sf http://localhost/api/version 2>/dev/null || echo "FAILED")
+VERSION=$(curl -sf "${FRONTEND_URL}/api/version" 2>/dev/null || echo "FAILED")
 echo -e "   Version: ${GREEN}${VERSION}${NC}"
 
 # Frontend
-HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" http://localhost/ 2>/dev/null || echo "000")
+HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" "${FRONTEND_URL}/" 2>/dev/null || echo "000")
 if [ "$HTTP_CODE" = "200" ]; then
     echo -e "   Frontend: ${GREEN}200 OK ✅${NC}"
 else

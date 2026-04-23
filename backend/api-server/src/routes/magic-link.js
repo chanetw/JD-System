@@ -10,6 +10,7 @@ import { getDatabase } from '../config/database.js';
 
 const router = express.Router();
 const magicLinkService = new MagicLinkService();
+const MAGIC_LINK_ACCESS_TOKEN_EXPIRES_IN = process.env.MAGIC_LINK_ACCESS_TOKEN_EXPIRES_IN || '7d';
 
 /**
  * POST /api/magic-link/verify
@@ -51,7 +52,7 @@ router.post('/verify', async (req, res) => {
         roles: result.user.userRoles.map(r => r.roleName)
       },
       jwtSecret,
-      { expiresIn: '7d' }
+      { expiresIn: MAGIC_LINK_ACCESS_TOKEN_EXPIRES_IN }
     );
 
     // Log successful magic link login

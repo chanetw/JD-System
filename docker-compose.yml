@@ -14,7 +14,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-dj_system}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "${DEV_POSTGRES_HOST_PORT:-${POSTGRES_PORT:-5433}}:5432"
     volumes:
       - dj-data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -39,9 +39,9 @@ services:
     environment:
       NODE_ENV: development
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-dj_system}
-      ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      ALLOWED_ORIGINS: http://localhost:${DEV_FRONTEND_HOST_PORT:-5173},http://127.0.0.1:${DEV_FRONTEND_HOST_PORT:-5173}
     ports:
-      - "3001:3000"
+      - "${DEV_BACKEND_HOST_PORT:-3001}:3000"
     volumes:
       - ./backend:/workspace
       - dj-backend-node-modules:/workspace/api-server/node_modules
@@ -61,11 +61,11 @@ services:
     working_dir: /app
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173"
     environment:
-      VITE_API_URL: http://localhost:3001/api
+      VITE_API_URL: http://localhost:${DEV_BACKEND_HOST_PORT:-3001}/api
       VITE_FRONTEND_MODE: api_only
       VITE_AUTH_MODE: jwt_only
     ports:
-      - "5173:5173"
+      - "${DEV_FRONTEND_HOST_PORT:-5173}:5173"
     volumes:
       - ./frontend:/app
       - dj-frontend-node-modules:/app/node_modules
