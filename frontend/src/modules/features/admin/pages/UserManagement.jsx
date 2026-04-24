@@ -49,6 +49,40 @@ const useDebounce = (value, delay) => {
     return debouncedValue;
 };
 
+const copyTextToClipboard = async (text) => {
+    if (!text) {
+        throw new Error('No text to copy');
+    }
+
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+    }
+
+    if (typeof document === 'undefined') {
+        throw new Error('Clipboard API unavailable');
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.top = '-9999px';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+
+    try {
+        const copied = document.execCommand('copy');
+        if (!copied) {
+            throw new Error('Copy command was rejected');
+        }
+    } finally {
+        document.body.removeChild(textarea);
+    }
+};
+
 export default function UserManagementNew() {
     const { user } = useAuthStoreV2(); // ดึง current user จาก Auth Store
     const [activeTab, setActiveTab] = useState('active');
@@ -827,7 +861,7 @@ export default function UserManagementNew() {
 
     const handleCopyTemporaryPassword = async () => {
         try {
-            await navigator.clipboard.writeText(resetPasswordModal.temporaryPassword);
+            await copyTextToClipboard(resetPasswordModal.temporaryPassword);
             showAlert('success', 'คัดลอกรหัสผ่านชั่วคราวแล้ว');
         } catch (error) {
             console.error('Copy temporary password error:', error);

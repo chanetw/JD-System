@@ -1337,8 +1337,7 @@ export class ApprovalService extends BaseService {
         where: { id: jobId },
         select: {
           id: true, djId: true, status: true, tenantId: true,
-          assigneeId: true, requesterId: true, subject: true,
-          flowSnapshot: true  // ✅ เพิ่ม flowSnapshot เพื่อหา Approver จาก flow
+          assigneeId: true, requesterId: true, subject: true
         }
       });
 
@@ -1422,17 +1421,7 @@ export class ApprovalService extends BaseService {
           notifyUserId = lastApproval.approverId;
           notifyRole = 'Approver (from approval record)';
         }
-        // Step 2: ถ้าไม่มี ลองหาจาก flowSnapshot (ใช้ Level สุดท้ายก่อนจ่ายงาน)
-        else if (job.flowSnapshot?.levels && job.flowSnapshot.levels.length > 0) {
-          const lastLevel = job.flowSnapshot.levels[job.flowSnapshot.levels.length - 1];
-          if (lastLevel.approvers && lastLevel.approvers.length > 0) {
-            // ใช้ Approver Level สุดท้ายก่อนหน้าที่จะจ่ายงานให้ผู้รับงาน
-            const lastApprover = lastLevel.approvers[0];
-            notifyUserId = lastApprover.id || lastApprover.userId;
-            notifyRole = `Approver Level ${lastLevel.level} (last before assignment: ${lastApprover.name})`;
-          }
-        }
-        // Step 3: ถ้ายังไม่มี fallback ไป Requester
+        // Step 2: ถ้าไม่มี → fallback ไป Requester
         if (!notifyUserId) {
           notifyUserId = job.requesterId;
           notifyRole = 'Requester (no approver in flow)';
@@ -2002,7 +1991,7 @@ export class ApprovalService extends BaseService {
           if (existing) {
             await tx.projectJobAssignment.update({
               where: { id: existing.id },
-              data: { assigneeId: a.assigneeId }
+              data: { assigneeId: a.assigneeId, isActive: true }
             });
           } else {
             await tx.projectJobAssignment.create({

@@ -10,6 +10,7 @@
  */
 
 import { useState } from 'react';
+import { resolveSlaBadgePresentation } from '@shared/utils/slaStatusResolver';
 
 /**
  * @component SLAReportTable
@@ -43,23 +44,24 @@ export default function SLAReportTable({ data = [], isLoading, error, pageSize =
         });
     };
 
-    /**
-     * คำนวณความคลาดเคลื่อน (วัน)
-     */
-    const calculateDeviation = (planned, actual) => {
-        if (!planned || !actual) return null;
-        const plannedDate = new Date(planned);
-        const actualDate = new Date(actual);
-        const diffTime = actualDate - plannedDate;
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return diffDays;
+    const calculateDeviation = (job) => {
+        const slaBadge = resolveSlaBadgePresentation({
+            status: job.status || 'completed',
+            deadline: job.deadline,
+            completedAt: job.completedAt
+        });
+
+        if (slaBadge.key === 'completed_late') {
+            return slaBadge.lateWorkingDays;
+        }
+
+        return 0;
     };
 
     /**
      * แสดงสถานะ SLA
      */
     const getSLAStatus = (deviation) => {
-        if (deviation === null) return { text: '-', color: 'text-gray-500' };
         if (deviation <= 0) return { text: 'ตรงเวลา', color: 'text-green-600' };
         if (deviation <= 3) return { text: 'ล่าช้าน้อย', color: 'text-amber-600' };
         return { text: 'ล่าช้ามาก', color: 'text-red-600' };
@@ -128,7 +130,7 @@ export default function SLAReportTable({ data = [], isLoading, error, pageSize =
                                 เวลาที่ใช้จริง (Actual)
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                ความคลาดเคลื่อน
+                                ความคลาดเคลื่อน (วันทำงาน)
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 สถานะ SLA
@@ -137,7 +139,7 @@ export default function SLAReportTable({ data = [], isLoading, error, pageSize =
                     </thead>
                     <tbody className="divide-y divide-gray-400">
                         {paginatedData.map((job) => {
-                            const deviation = calculateDeviation(job.deadline, job.completedAt);
+                            const deviation = calculateDeviation(job);
                             const slaStatus = getSLAStatus(deviation);
 
                             return (
@@ -172,12 +174,10 @@ export default function SLAReportTable({ data = [], isLoading, error, pageSize =
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
-                                        {deviation !== null && (
-                                            <div className={`text-sm font-medium ${deviation <= 0 ? 'text-green-600' : 'text-red-600'
-                                                }`}>
-                                                {deviation > 0 ? '+' : ''}{deviation} วัน
-                                            </div>
-                                        )}
+                                        <div className={`text-sm font-medium ${deviation <= 0 ? 'text-green-600' : 'text-red-600'
+                                            }`}>
+                                            {deviation > 0 ? '+' : ''}{deviation} วันทำงาน
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <span className={`text-sm font-medium ${slaStatus.color}`}>

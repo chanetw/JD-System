@@ -12,6 +12,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { api } from '@shared/services/apiService';
+import { updateSavedLoginPassword } from '@shared/utils/savedLoginCredentials';
 import Button from '@shared/components/Button';
 import {
     LockClosedIcon,
@@ -24,7 +25,7 @@ import {
 
 export default function ChangePassword() {
     const navigate = useNavigate();
-    const { user, logout } = useAuthStoreV2();
+    const { user } = useAuthStoreV2();
     const [isLoading, setIsLoading] = useState(false);
     const [success, setSuccess] = useState(false);
     const [error, setError] = useState('');
@@ -93,6 +94,7 @@ export default function ChangePassword() {
 
         try {
             await api.changePassword(currentPassword, newPassword);
+            updateSavedLoginPassword(newPassword);
             setSuccess(true);
 
             // If this was a forced password change, update user state

@@ -205,6 +205,7 @@ export const jobService = {
                     slaProgress: slaProgress,
                     shouldStartBy: shouldStartBy ? shouldStartBy.toISOString() : null,
                     startedAt: job.startedAt || null,
+                    completedAt: job.completedAt || null,
                     acceptanceDate: acceptanceDateRaw || null,
                     createdAt: job.createdAt || null,
                     predecessorDjId: job.predecessorDjId || null,

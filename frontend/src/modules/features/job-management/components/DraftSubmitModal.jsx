@@ -81,7 +81,7 @@ const DraftSubmitModal = ({ isOpen, onClose, job, onSuccess, currentUser }) => {
             await Swal.fire({
                 icon: 'success',
                 title: 'ส่ง Draft สำเร็จ!',
-                text: 'ระบบได้แจ้งเตือนไปยัง Requester และ Approver เรียบร้อยแล้ว',
+                text: 'ระบบได้แจ้งเตือนไปยัง Requester และ Approver แล้ว งานจะยังอยู่ในคิวกำลังทำสถานะรอตรวจ Draft',
                 confirmButtonColor: '#e11d48'
             });
 

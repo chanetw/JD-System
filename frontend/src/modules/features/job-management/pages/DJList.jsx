@@ -19,6 +19,7 @@ import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { getUserScopes, getAllowedProjectIds } from '@shared/utils/scopeHelpers';
 import { hasRole } from '@shared/utils/permission.utils';
 import { DJ_LIST_FILTER_OPTIONS, matchesStatusFilter } from '@shared/constants/jobStatus';
+import { resolveSlaBadgePresentation } from '@shared/utils/slaStatusResolver';
 
 // Icons
 import {
@@ -323,21 +324,21 @@ export default function DJList() {
             return <span className="text-xs text-violet-600">ตั้งเวลาส่ง {job.scheduledTime || '08:00'} น.</span>;
         }
 
-        if (!job.deadline) return <span className="text-xs text-gray-400">-</span>;
+        const slaBadge = resolveSlaBadgePresentation({
+            status: job.status,
+            deadline: job.deadline,
+            completedAt: job.completedAt
+        });
 
-        const now = new Date();
-        const deadline = new Date(job.deadline);
-        const diffTime = deadline - now;
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-        if (diffDays < 0) {
-            return <Badge status="overdue" count={Math.abs(diffDays)} />;
-        } else if (diffDays === 0) {
-            return <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">ครบกำหนดวันนี้</span>;
-        } else if (diffDays === 1) {
-            return <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs">พรุ่งนี้</span>;
+        if (slaBadge.key === 'no_deadline') {
+            return <span className="text-xs text-gray-400">-</span>;
         }
-        return <span className="text-xs text-gray-500">อีก {diffDays} วัน</span>;
+
+        if (slaBadge.key === 'overdue') {
+            return <Badge status="overdue" count={Math.abs(slaBadge.dayDiff)} />;
+        }
+
+        return <span className={slaBadge.className}>{slaBadge.text}</span>;
     };
 
     // ============================================

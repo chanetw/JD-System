@@ -310,7 +310,7 @@ export default function JobDetail() {
             return Swal.fire({ icon: 'warning', title: 'กรุณาระบุเหตุผล', confirmButtonColor: '#e11d48' });
         }
         try {
-            await api.rejectJob(job.id, rejectReason, 'return', user?.id || 1);
+            await api.rejectJob(job.id, user?.id || 1, rejectReason);
             await Swal.fire({
                 icon: 'success',
                 title: 'ส่งกลับแก้ไขสำเร็จ',

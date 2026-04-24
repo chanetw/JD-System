@@ -32,6 +32,7 @@ import { FormInput, FormSelect } from '@shared/components/FormInput';
 import TimelineView from '../components/TimelineView';
 import DraftSubmitModal from '@features/job-management/components/DraftSubmitModal';
 import httpClient from '@shared/services/httpClient';
+import { resolveSlaBadgePresentation } from '@shared/utils/slaStatusResolver';
 import Swal from 'sweetalert2';
 
 /**
@@ -49,8 +50,8 @@ const TAB_DESCRIPTIONS = {
     in_progress: {
         icon: '▶️',
         title: 'กำลังทำ',
-        desc: 'งานที่อยู่ระหว่างดำเนินการ รวมงานที่ได้รับมอบหมาย กำลังทำ และรอตรวจ/แก้ไข (งานที่ approved แล้วหรือข้าม flow มาถึงผู้รับงานแล้ว)',
-        statuses: '(approved, assigned, in_progress, correction, rework, returned, pending_dependency)',
+        desc: 'งานที่อยู่ระหว่างดำเนินการ รวมงานที่ได้รับมอบหมาย กำลังทำ รอตรวจ Draft และรอแก้ไข (งานที่ approved แล้วหรือข้าม flow มาถึงผู้รับงานแล้ว)',
+        statuses: '(approved, assigned, in_progress, correction, rework, returned, pending_dependency, draft_review)',
     },
     completed: {
         icon: '✅',
@@ -80,7 +81,7 @@ export default function MyQueue() {
     // Socket.io Integration สำหรับ Real-time Updates
     // =====================================
     const { socket, connected } = useSocket();
-    const { markAsRead } = useNotifications();
+    useNotifications();
 
     // State
     const [activeTab, setActiveTab] = useState('in_progress');
@@ -142,10 +143,10 @@ export default function MyQueue() {
             // =====================================
             // Event: job:assigned - งานใหม่ได้รับมอบหมาย
             // =====================================
-            const handleJobAssigned = (data) => {
+            const handleJobAssigned = () => {
                 // Refresh jobs list เพื่อแสดงงานใหม่
                 // ไม่ต้อง toast ที่นี่เพราะ useNotifications จะจัดการ
-                if (activeTab === 'todo') {
+                if (activeTab === 'in_progress') {
                     fetchJobs();
                 }
             };
@@ -153,7 +154,7 @@ export default function MyQueue() {
             // =====================================
             // Event: job:status-changed - สถานะงานเปลี่ยน
             // =====================================
-            const handleJobStatusChanged = (data) => {
+            const handleJobStatusChanged = () => {
                 // Refresh jobs list เพื่อให้ updated status
                 fetchJobs();
             };
@@ -161,7 +162,7 @@ export default function MyQueue() {
             // =====================================
             // Event: job:completed - งานเสร็จสิ้น
             // =====================================
-            const handleJobCompleted = (data) => {
+            const handleJobCompleted = () => {
                 // Refresh jobs list เพื่อให้ completed status
                 fetchJobs();
             };
@@ -363,7 +364,15 @@ export default function MyQueue() {
      * Helper: แสดงข้อความ SLA
      */
     const renderSLAText = (job) => {
-        if (activeTab === 'done') return <span className="text-gray-500">เสร็จสิ้น</span>;
+        const slaBadge = resolveSlaBadgePresentation({
+            status: job.status,
+            deadline: job.deadline,
+            completedAt: job.completedAt
+        });
+
+        if (slaBadge.key === 'completed_on_time') return <span className="text-green-600 font-medium">เสร็จสิ้น</span>;
+        if (slaBadge.key === 'completed_late') return <span className="text-orange-600 font-medium">{slaBadge.text}</span>;
+
         if (job.hoursRemaining === null) return <span className="text-gray-400">ไม่มี deadline</span>;
 
         const style = job.healthStatus === 'critical' ? 'text-red-600 font-bold'
@@ -388,7 +397,7 @@ export default function MyQueue() {
      * Helper: แสดง SLA Progress Bar
      */
     const renderSLABar = (job) => {
-        if (activeTab === 'done' || job.slaProgress === null) return null;
+        if (activeTab === 'completed' || job.slaProgress === null) return null;
         const pct = job.slaProgress;
         const barColor = job.healthStatus === 'critical' ? 'bg-red-500'
             : job.healthStatus === 'warning' ? 'bg-yellow-400'
@@ -416,7 +425,7 @@ export default function MyQueue() {
         const shouldStartStr = job.shouldStartBy
             ? new Date(job.shouldStartBy).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })
             : null;
-        const isPastShouldStart = job.shouldStartBy && new Date() > new Date(job.shouldStartBy) && activeTab !== 'done';
+        const isPastShouldStart = job.shouldStartBy && new Date() > new Date(job.shouldStartBy) && activeTab !== 'completed';
 
         return (
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mt-1">
@@ -439,7 +448,7 @@ export default function MyQueue() {
      * ลำดับ: urgent → overdue → shouldStart passed → critical → warning → normal
      */
     const getSortWeight = (job) => {
-        if (activeTab === 'done') return 0;
+        if (activeTab === 'completed') return 0;
         const isUrgent = job.priority?.toLowerCase() === 'urgent';
         const isOverdue = job.hoursRemaining !== null && job.hoursRemaining < 0;
         const isPastShouldStart = job.shouldStartBy && new Date() > new Date(job.shouldStartBy);
@@ -480,20 +489,20 @@ export default function MyQueue() {
         });
 
     // แบ่งกลุ่มงาน: urgent, risk (overdue + shouldStart passed), normal
-    const urgentJobs = filteredJobs.filter(j => j.priority?.toLowerCase() === 'urgent' && activeTab !== 'done');
+    const urgentJobs = filteredJobs.filter(j => j.priority?.toLowerCase() === 'urgent' && activeTab !== 'completed');
     const riskJobs = filteredJobs.filter(j => {
         if (j.priority?.toLowerCase() === 'urgent') return false;
-        if (activeTab === 'done') return false;
+        if (activeTab === 'completed') return false;
         return (j.hoursRemaining !== null && j.hoursRemaining < 0) ||
             (j.shouldStartBy && new Date() > new Date(j.shouldStartBy)) ||
             j.healthStatus === 'critical';
     });
     const normalJobs = filteredJobs.filter(j => {
-        if (j.priority?.toLowerCase() === 'urgent' && activeTab !== 'done') return false;
+        if (j.priority?.toLowerCase() === 'urgent' && activeTab !== 'completed') return false;
         const isRisk = (j.hoursRemaining !== null && j.hoursRemaining < 0) ||
             (j.shouldStartBy && new Date() > new Date(j.shouldStartBy)) ||
             j.healthStatus === 'critical';
-        if (isRisk && activeTab !== 'done') return false;
+        if (isRisk && activeTab !== 'completed') return false;
         return true;
     });
 
@@ -752,7 +761,9 @@ function FolderIcon(props) {
 }
 
 function JobCard({ job, activeTab, onView, onStart, onOpenCompleteModal, onOpenDraftModal, onOpenRebriefModal, renderSLAText, renderSLABar, renderDateInfo, getHealthBorderColor }) {
-    const isUrgent = job.priority?.toLowerCase() === 'urgent' && activeTab !== 'done';
+    const isUrgent = job.priority?.toLowerCase() === 'urgent' && activeTab !== 'completed';
+    const isDraftReview = job.status === 'draft_review';
+    const draftReviewReason = 'รอผู้ตรวจพิจารณา Draft ล่าสุด';
     const isPredecessorPending = job.predecessorDjId && job.predecessorStatus &&
         !['completed', 'approved'].includes(job.predecessorStatus);
 
@@ -792,6 +803,9 @@ function JobCard({ job, activeTab, onView, onStart, onOpenCompleteModal, onOpenD
                                 ⛓ รอ {job.predecessorDjId}
                             </span>
                         )}
+                        {isDraftReview && (
+                            <Badge status="draft_review" className="min-w-0" />
+                        )}
                     </div>
 
                     {/* Subject */}
@@ -808,7 +822,7 @@ function JobCard({ job, activeTab, onView, onStart, onOpenCompleteModal, onOpenD
                             <ClockIcon className="w-3.5 h-3.5" />
                             {renderSLAText(job)}
                         </span>
-                        {job.deadline && activeTab !== 'done' && (
+                        {job.deadline && activeTab !== 'completed' && (
                             <span className="text-xs text-gray-400" title="กำหนดส่ง">
                                 📅 {new Date(job.deadline).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}
                             </span>
@@ -817,6 +831,12 @@ function JobCard({ job, activeTab, onView, onStart, onOpenCompleteModal, onOpenD
 
                     {/* Date info: accepted + shouldStartBy */}
                     {renderDateInfo(job)}
+
+                    {isDraftReview && (
+                        <div className="mt-2 text-xs text-purple-700 bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
+                            ⏳ ส่ง Draft แล้ว และอยู่ระหว่างการตรวจสอบ
+                        </div>
+                    )}
 
                     {/* SLA Progress Bar */}
                     {renderSLABar(job)}
@@ -834,10 +854,16 @@ function JobCard({ job, activeTab, onView, onStart, onOpenCompleteModal, onOpenD
                         <span className="text-xs text-gray-400 hidden md:block">{job.requesterName}</span>
                     </div>
 
-                    {activeTab === 'todo' && (
+                    {activeTab === 'in_progress' && (
                         <button
                             onClick={(e) => onStart(job.id, e)}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium rounded-lg shadow-sm transition-colors"
+                            disabled={isDraftReview}
+                            title={isDraftReview ? draftReviewReason : 'เริ่มงาน'}
+                            className={`flex items-center gap-1 px-3 py-1.5 text-white text-xs font-medium rounded-lg shadow-sm transition-colors ${
+                                isDraftReview
+                                    ? 'bg-gray-300 cursor-not-allowed'
+                                    : 'bg-rose-600 hover:bg-rose-700'
+                            }`}
                         >
                             <PlayCircleIcon className="w-3.5 h-3.5" /> เริ่มงาน
                         </button>
@@ -845,7 +871,13 @@ function JobCard({ job, activeTab, onView, onStart, onOpenCompleteModal, onOpenD
                     {activeTab === 'in_progress' && onOpenCompleteModal && (
                         <button
                             onClick={(e) => onOpenCompleteModal(job, e)}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-medium rounded-lg shadow-sm transition-colors"
+                            disabled={isDraftReview}
+                            title={isDraftReview ? draftReviewReason : 'ส่งงาน'}
+                            className={`flex items-center gap-1 px-3 py-1.5 text-white text-xs font-medium rounded-lg shadow-sm transition-colors ${
+                                isDraftReview
+                                    ? 'bg-gray-300 cursor-not-allowed'
+                                    : 'bg-green-500 hover:bg-green-600'
+                            }`}
                         >
                             <CheckCircleIcon className="w-3.5 h-3.5" /> ส่งงาน
                         </button>
@@ -864,7 +896,13 @@ function JobCard({ job, activeTab, onView, onStart, onOpenCompleteModal, onOpenD
                     {onOpenDraftModal && (
                         <button
                             onClick={(e) => onOpenDraftModal(job, e)}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded-lg shadow-sm transition-colors"
+                            disabled={isDraftReview}
+                            title={isDraftReview ? draftReviewReason : 'ส่ง Draft'}
+                            className={`flex items-center gap-1 px-3 py-1.5 text-white text-xs font-medium rounded-lg shadow-sm transition-colors ${
+                                isDraftReview
+                                    ? 'bg-gray-300 cursor-not-allowed'
+                                    : 'bg-blue-500 hover:bg-blue-600'
+                            }`}
                         >
                             <PencilSquareIcon className="w-3.5 h-3.5" /> ส่ง Draft
                         </button>
@@ -872,12 +910,22 @@ function JobCard({ job, activeTab, onView, onStart, onOpenCompleteModal, onOpenD
                     {onOpenRebriefModal && (
                         <button
                             onClick={(e) => onOpenRebriefModal(job, e)}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-lg shadow-sm transition-colors"
+                            disabled={isDraftReview}
+                            title={isDraftReview ? draftReviewReason : 'ขอ Rebrief'}
+                            className={`flex items-center gap-1 px-3 py-1.5 text-white text-xs font-medium rounded-lg shadow-sm transition-colors ${
+                                isDraftReview
+                                    ? 'bg-gray-300 cursor-not-allowed'
+                                    : 'bg-orange-500 hover:bg-orange-600'
+                            }`}
                         >
                             <ArrowPathIcon className="w-3.5 h-3.5" /> ขอ Rebrief
                         </button>
                     )}
                 </div>
+            )}
+
+            {isDraftReview && activeTab === 'in_progress' && (
+                <p className="mt-2 text-xs text-gray-500">ปุ่มดำเนินการถูกปิดชั่วคราว: {draftReviewReason}</p>
             )}
         </div>
     );

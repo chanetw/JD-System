@@ -17,7 +17,7 @@ import LoadingSpinner from '@shared/components/LoadingSpinner';
 import { hasAnyRole } from '@shared/utils/permission.utils';
 import DraftSubmitModal from '@features/job-management/components/DraftSubmitModal';
 import { WORK_STATUS_LABEL, STATUS_COLOR, matchesStatusFilter } from '@shared/constants/jobStatus';
-import { getWorkingDays } from '@shared/utils/slaCalculator';
+import { resolveSlaBadgePresentation } from '@shared/utils/slaStatusResolver';
 
 // ============================================
 // Constants
@@ -426,48 +426,6 @@ function Dashboard() {
         return minDaysRemaining;
     }, []);
 
-    // Helper: สร้าง SLA badge text สำหรับ Parent
-    const getParentSlaText = useCallback((children) => {
-        if (!children || children.length === 0) return '-';
-        
-        const terminalStatuses = ['completed', 'closed', 'cancelled'];
-        const activeChildren = children.filter(c => !terminalStatuses.includes(c.status));
-        
-        if (activeChildren.length === 0) return 'Completed';
-        
-        const now = new Date();
-        let minDaysRemaining = 999999;
-        let hasOverdue = false;
-        let overdueDays = 0;
-        
-        activeChildren.forEach(child => {
-            if (!child.deadline) return;
-            
-            const deadline = new Date(child.deadline);
-            const diffTime = deadline - now;
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            
-            if (diffDays < 0) {
-                hasOverdue = true;
-                if (Math.abs(diffDays) > overdueDays) {
-                    overdueDays = Math.abs(diffDays);
-                }
-            } else {
-                minDaysRemaining = Math.min(minDaysRemaining, diffDays);
-            }
-        });
-        
-        if (hasOverdue) {
-            return `Overdue +${overdueDays}d`;
-        }
-        
-        if (minDaysRemaining === 0) return 'Due today';
-        if (minDaysRemaining === 1) return 'Due tomorrow';
-        if (minDaysRemaining < 999999) return `${minDaysRemaining} days`;
-        
-        return '-';
-    }, []);
-
     const getAssigneeName = useCallback((job) => getPersonDisplayName(job?.assignee), []);
 
     const buildParentViewJobs = useCallback((sourceJobs) => {
@@ -494,7 +452,6 @@ function Dashboard() {
                         job.children = childrenMap[job.id];
                         job.derivedDeadline = getParentDerivedDeadline(childrenMap[job.id]);
                         job.derivedSlaPriority = getParentSlaPriority(childrenMap[job.id]);
-                        job.derivedSlaText = getParentSlaText(childrenMap[job.id]);
                     }
                 } else if (job.parentJobId) {
                     const siblingCount = parentChildCount[job.parentJobId] || 0;
@@ -527,7 +484,6 @@ function Dashboard() {
         calculateParentJobStatus,
         getParentDerivedDeadline,
         getParentSlaPriority,
-        getParentSlaText,
         getAssigneeName,
         statusFilter,
         assigneeFilter
@@ -1247,22 +1203,6 @@ function JobRow({
         completed: 'bg-green-100 text-green-700',
     };
 
-    // Helper function: คำนวณวันทำการจากวันนี้ถึง dueDate
-    const calculateDaysFromToday = useCallback((deadline) => {
-        if (!deadline) return null;
-        
-        const today = new Date();
-        today.setHours(0, 0, 0, 0); // เริ่มต้นวันนี้
-        
-        const dueDate = new Date(deadline);
-        dueDate.setHours(0, 0, 0, 0); // เริ่มต้นวัน due date
-        
-        const diffTime = dueDate - today;
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
-        return diffDays;
-    }, []);
-
     const getSLABadge = useCallback(() => {
         // ถ้าเป็น Parent ให้ใช้ derived SLA (แต่ต้องคำนวณใหม่จากงานย่อยที่นานที่สุด)
         if (isParent && hasChildren && job.children && job.children.length > 0) {
@@ -1274,100 +1214,34 @@ function JobRow({
             }, {});
             
             if (childWithLatestDeadline.deadline) {
-                const daysFromToday = calculateDaysFromToday(childWithLatestDeadline.deadline);
-                
-                if (daysFromToday < 0) {
-                    return (
-                        <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700 font-medium">
-                            เกิน SLA ({Math.abs(daysFromToday)} วัน)
-                        </span>
-                    );
-                }
-                if (daysFromToday === 0) {
-                    return (
-                        <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700 font-medium">
-                            ครบ SLA วันนี้
-                        </span>
-                    );
-                }
-                if (daysFromToday === 1) {
-                    return (
-                        <span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700 font-medium">
-                            อยู่ใน SLA (1 วัน)
-                        </span>
-                    );
-                }
+                const parentSlaBadge = resolveSlaBadgePresentation({
+                    status: job.status,
+                    deadline: childWithLatestDeadline.deadline,
+                    completedAt: job.completedAt,
+                    holidays
+                });
+
                 return (
-                    <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">
-                        อยู่ใน SLA
+                    <span className={parentSlaBadge.className}>
+                        {parentSlaBadge.text}
                     </span>
                 );
             }
         }
-        
-        // งานปกติและงานย่อย
-        if (!job.deadline) {
-            return (
-                <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-700">
-                    ไม่กำหนด
-                </span>
-            );
-        }
-        
-        if (job.status === 'completed') {
-            // ตรวจสอบว่าเสร็จเกิน SLA หรือไม่ โดยใช้ working days
-            if (job.deadline && job.completedAt) {
-                const dueDate = new Date(job.deadline);
-                const completedAt = new Date(job.completedAt);
-                dueDate.setHours(0, 0, 0, 0);
-                completedAt.setHours(0, 0, 0, 0);
-                
-                if (completedAt > dueDate) {
-                    // เสร็จหลัง deadline — คำนวณจำนวน working days ที่เกิน
-                    const overdueDays = getWorkingDays(dueDate, completedAt, holidays) - 1;
-                    return (
-                        <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700 font-medium">
-                            เสร็จแล้ว เกิน SLA ({Math.max(1, overdueDays)} วันทำงาน)
-                        </span>
-                    );
-                }
-            }
-            return (
-                <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700 font-medium">
-                    เสร็จแล้ว
-                </span>
-            );
-        }
-        
-        const daysFromToday = calculateDaysFromToday(job.deadline);
-        
-        if (daysFromToday < 0) {
-            return (
-                <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700 font-medium">
-                    เกิน SLA ({Math.abs(daysFromToday)} วัน)
-                </span>
-            );
-        }
-        if (daysFromToday === 0) {
-            return (
-                <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-700 font-medium">
-                    ครบ SLA วันนี้
-                </span>
-            );
-        }
-        if (daysFromToday === 1) {
-            return (
-                <span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700 font-medium">
-                    อยู่ใน SLA (1 วัน)
-                </span>
-            );
-        }
+
+        const slaBadge = resolveSlaBadgePresentation({
+            status: job.status,
+            deadline: job.deadline,
+            completedAt: job.completedAt,
+            holidays
+        });
+
         return (
-            <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">
-                อยู่ใน SLA
+            <span className={slaBadge.className}>
+                {slaBadge.text}
             </span>
         );
-    }, [calculateDaysFromToday, isParent, hasChildren, job.children, job.deadline, job.status, job.completedAt, holidays]);
+    }, [isParent, hasChildren, job.children, job.status, job.completedAt, job.deadline, holidays]);
 
     const fmtDate = (d) => d
         ? new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })

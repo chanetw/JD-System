@@ -594,8 +594,8 @@ router.get('/', async (req, res) => {
       if (status === 'todo') {
         where.status = { in: ['assigned'] };
       } else if (status === 'in_progress') {
-        // รวม: approved, assigned, in_progress, correction, rework, returned, pending_dependency
-        where.status = { in: ['approved', 'assigned', 'in_progress', 'correction', 'rework', 'returned', 'pending_dependency'] };
+        // รวม: approved, assigned, in_progress, correction, rework, returned, pending_dependency, draft_review
+        where.status = { in: ['approved', 'assigned', 'in_progress', 'correction', 'rework', 'returned', 'pending_dependency', 'draft_review'] };
       } else if (status === 'completed') {
         where.status = { in: ['completed', 'closed'] };
       } else if (status === 'rejected') {
@@ -791,7 +791,7 @@ router.get('/counts', async (req, res) => {
     const tenantId = req.user.tenantId;
 
     const statusGroups = {
-      in_progress: ['approved', 'assigned', 'in_progress', 'correction', 'rework', 'returned', 'pending_dependency'],
+      in_progress: ['approved', 'assigned', 'in_progress', 'correction', 'rework', 'returned', 'pending_dependency', 'draft_review'],
       completed: ['completed', 'closed'],
       rejected: ['rejected', 'rejected_by_assignee', 'assignee_rejected'],
       todo: ['assigned'],
@@ -2577,7 +2577,6 @@ router.post('/:id/request-rejection', async (req, res) => {
         jobTypeId: true,
         requesterId: true,
         priority: true,
-        flowSnapshot: true,
         assignee: {
           select: { id: true, firstName: true, lastName: true }
         },
@@ -2648,22 +2647,7 @@ router.post('/:id/request-rejection', async (req, res) => {
       console.log(`[Jobs] Rejection approver from approval record: userId=${lastApproval.approverId}, step=${lastApproval.stepNumber}`);
     }
 
-    // Step 2: ถ้าไม่มี Approval record → หาจาก flowSnapshot (Level สูงสุดก่อน endprocess)
-    if (approverIds.length === 0 && job.flowSnapshot?.levels && job.flowSnapshot.levels.length > 0) {
-      try {
-        const sortedLevels = [...job.flowSnapshot.levels].sort((a, b) => (b.level || b.stepNumber || 0) - (a.level || a.stepNumber || 0));
-        const lastLevel = sortedLevels[0];
-        if (lastLevel.approvers && lastLevel.approvers.length > 0) {
-          approverIds = lastLevel.approvers.map(a => a.id || a.userId).filter(Boolean);
-          approverLevel = lastLevel.level || lastLevel.stepNumber || null;
-          console.log(`[Jobs] Rejection approver from flowSnapshot level ${approverLevel}: ${approverIds}`);
-        }
-      } catch (snapErr) {
-        console.warn('[Jobs] Could not parse flowSnapshot for rejection request:', snapErr);
-      }
-    }
-
-    // Step 3: ถ้ายังไม่มี → ดึงจาก Approval Flow template (Level สูงสุด)
+    // Step 2: ถ้าไม่มี Approval record → ดึงจาก Approval Flow template (Level สูงสุด)
     if (approverIds.length === 0) {
       try {
         const approvalFlow = await approvalService.getApprovalFlow(job.projectId, job.jobTypeId, job.priority);

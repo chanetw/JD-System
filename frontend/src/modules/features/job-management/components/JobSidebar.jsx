@@ -92,7 +92,6 @@ const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
                                 const isPassed = job.currentLevel > level.level;
                                 const isCurrent = job.currentLevel === level.level;
                                 const isInferredPassed = isPassed && !approval;
-                                const actualApproverName = approval?.approver?.name;
 
                                 return (
                                     <div key={i} className="relative flex items-start gap-4">
@@ -140,9 +139,6 @@ const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
                                                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 rounded-full text-[10px] font-medium border border-green-100">
                                                                     <CheckIcon className="w-3 h-3" /> {isInferredPassed ? 'Passed (Legacy)' : 'Approved'}
                                                                 </span>
-                                                                {isInferredPassed && (
-                                                                    <span className="text-[10px] text-amber-600">ไม่มี approval record เก่าในฐานข้อมูล</span>
-                                                                )}
                                                             </div>
                                                         ))
                                                     ) : (

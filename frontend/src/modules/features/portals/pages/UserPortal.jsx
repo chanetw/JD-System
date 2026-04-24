@@ -22,6 +22,7 @@ import { adminService } from '@shared/services/modules/adminService';
 import httpClient from '@shared/services/httpClient';
 import { JOB_ICONS } from '@shared/constants/jobIcons';
 import UserProfileMenu from '@shared/components/UserProfileMenu';
+import { resolveSlaBadgePresentation } from '@shared/utils/slaStatusResolver';
 
 // Icons
 import {
@@ -141,21 +142,14 @@ export default function UserPortal() {
 
     // Helper: Calculate SLA
     const calculateSLA = (job) => {
-        if (!job.deadline) return null;
-        
-        const now = new Date();
-        const deadline = new Date(job.deadline);
-        const diffTime = deadline - now;
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
-        if (diffDays < 0) {
-            return <span className="text-xs text-red-600">เกิน {Math.abs(diffDays)} วัน</span>;
-        } else if (diffDays === 0) {
-            return <span className="text-xs text-orange-600">วันนี้</span>;
-        } else if (diffDays === 1) {
-            return <span className="text-xs text-yellow-600">พรุ่งนี้</span>;
-        }
-        return <span className="text-xs text-slate-500">อีก {diffDays} วัน</span>;
+        const slaBadge = resolveSlaBadgePresentation({
+            status: job.status,
+            deadline: job.deadline,
+            completedAt: job.completedAt
+        });
+
+        if (slaBadge.key === 'no_deadline') return null;
+        return <span className="text-xs text-slate-600">{slaBadge.text}</span>;
     };
 
     // Helper: Format date to Thai

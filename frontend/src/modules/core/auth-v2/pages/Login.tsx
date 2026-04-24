@@ -9,21 +9,27 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuthStoreV2 } from '../../stores/authStoreV2';
 import { getDefaultHomeRoute } from '@shared/utils/permission.utils';
 import { consumeSessionUpdateNotice } from '@shared/services/socketService';
+import {
+  clearSavedLoginCredentials,
+  clearSavedLoginPassword,
+  getSavedLoginCredentials,
+  saveLoginCredentials,
+} from '@shared/utils/savedLoginCredentials';
 
 const LoginV2: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { login, user, isAuthenticated, isLoading, error, clearError } = useAuthStoreV2();
+  const [savedCredentialsState, setSavedCredentialsState] = useState(() => getSavedLoginCredentials());
 
   // Form state
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState(() => savedCredentialsState?.email || '');
+  const [password, setPassword] = useState(() => savedCredentialsState?.password || '');
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginNotice, setLoginNotice] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
-  const [rememberMe, setRememberMe] = useState(() => localStorage.getItem('dj_remember') !== 'false');
-  const [showRememberConditions, setShowRememberConditions] = useState(false);
+  const [saveCredentials, setSaveCredentials] = useState(() => Boolean(savedCredentialsState?.enabled));
 
   const getAuthErrorType = (message?: string | null): 'user' | 'password' | 'credential' | null => {
     const normalized = String(message || '').toLowerCase();
@@ -87,6 +93,20 @@ const LoginV2: React.FC = () => {
   const authErrorType = getAuthErrorType(displayedError);
   const isEmailErrorActive = Boolean(fieldErrors.email) || authErrorType === 'user' || authErrorType === 'credential';
   const isPasswordErrorActive = Boolean(fieldErrors.password) || authErrorType === 'password' || authErrorType === 'credential';
+  const hasSavedCredentials = Boolean(
+    savedCredentialsState?.enabled && (savedCredentialsState.email || savedCredentialsState.password)
+  );
+
+  const handleClearSavedCredentials = () => {
+    clearSavedLoginCredentials();
+    setSavedCredentialsState(null);
+    setSaveCredentials(false);
+    setEmail('');
+    setPassword('');
+    setLoginNotice('ล้างชื่อผู้ใช้และรหัสผ่านที่บันทึกไว้แล้ว');
+    setLoginError(null);
+    setFieldErrors({});
+  };
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
@@ -99,12 +119,22 @@ const LoginV2: React.FC = () => {
       return;
     }
 
+    const wasUsingSavedPassword = Boolean(savedCredentialsState?.password) && password === savedCredentialsState.password;
+
     try {
-      // Save remember-me preference
-      localStorage.setItem('dj_remember', rememberMe ? 'true' : 'false');
+      // Keep session persistence enabled now that the old remember-me toggle is removed from the UI.
+      localStorage.setItem('dj_remember', 'true');
       sessionStorage.setItem('dj_session_active', '1');
 
       const user = await login(email.trim(), password);
+
+      if (saveCredentials) {
+        const saved = saveLoginCredentials({ email: email.trim(), password });
+        setSavedCredentialsState(saved);
+      } else {
+        clearSavedLoginCredentials();
+        setSavedCredentialsState(null);
+      }
 
       // If user must change password (forced change after approval), redirect to that page
       if (user?.mustChangePassword) {
@@ -116,9 +146,17 @@ const LoginV2: React.FC = () => {
     } catch (err) {
       // Set local error state for guaranteed display
       const msg = err instanceof Error ? err.message : 'เข้าสู่ระบบไม่สำเร็จ';
-      setLoginError(msg);
-
       const errorType = getAuthErrorType(msg);
+
+      if (wasUsingSavedPassword && (errorType === 'password' || errorType === 'credential')) {
+        const updated = clearSavedLoginPassword();
+        setSavedCredentialsState(updated);
+        setPassword('');
+        setLoginError('รหัสผ่านที่บันทึกไว้ใช้ไม่ได้แล้ว กรุณากรอกรหัสผ่านใหม่');
+      } else {
+        setLoginError(msg);
+      }
+
       if (errorType === 'user') {
         setFieldErrors({
           email: 'ชื่อผู้ใช้ (อีเมล) ไม่ถูกต้อง',
@@ -271,47 +309,37 @@ const LoginV2: React.FC = () => {
             </div>
           </div>
 
-          {/* Remember Login */}
-          <div>
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center min-w-0">
+          <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start min-w-0">
                 <input
-                  id="rememberMe"
-                  name="rememberMe"
+                  id="saveCredentials"
+                  name="saveCredentials"
                   type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="h-4 w-4 text-rose-600 border-slate-300 rounded focus:ring-rose-500 cursor-pointer"
+                  checked={saveCredentials}
+                  onChange={(e) => setSaveCredentials(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 text-rose-600 border-slate-300 rounded focus:ring-rose-500 cursor-pointer"
                 />
-                <label htmlFor="rememberMe" className="ml-2 block text-sm text-slate-600 cursor-pointer select-none">
-                  จำการเข้าสู่ระบบ
-                </label>
+                <div className="ml-2 min-w-0">
+                  <label htmlFor="saveCredentials" className="block text-sm text-slate-700 cursor-pointer select-none font-medium">
+                    จำชื่อผู้ใช้และรหัสผ่านบนอุปกรณ์นี้
+                  </label>
+                  <p className="mt-1 text-xs text-slate-600">
+                    ข้อมูลนี้จะถูกเก็บไว้บนอุปกรณ์นี้จนกว่าคุณจะลบเอง แม้ logout หรือปิดเบราว์เซอร์แล้ว
+                  </p>
+                </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setShowRememberConditions((prev) => !prev)}
-                className="text-xs font-medium text-rose-700 hover:text-rose-800 underline underline-offset-2"
-                aria-expanded={showRememberConditions}
-                aria-controls="remember-conditions"
-              >
-                {showRememberConditions ? 'ซ่อนเงื่อนไข' : 'ดูเงื่อนไข'}
-              </button>
+              {hasSavedCredentials && (
+                <button
+                  type="button"
+                  onClick={handleClearSavedCredentials}
+                  className="shrink-0 text-xs font-medium text-rose-700 hover:text-rose-800 underline underline-offset-2"
+                >
+                  ล้างข้อมูลที่บันทึกไว้
+                </button>
+              )}
             </div>
-
-            {showRememberConditions && (
-              <div
-                id="remember-conditions"
-                className="mt-2 rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-slate-700"
-              >
-                <ul className="list-disc pl-4 space-y-1">
-                  <li>ระบบจะจำการเข้าสู่ระบบของอุปกรณ์นี้ ไม่ได้เก็บรหัสผ่านจริง</li>
-                  <li>ถ้าไม่เลือก ตัวระบบจะให้เข้าสู่ระบบใหม่เมื่อปิดเบราว์เซอร์</li>
-                  <li>หากกดออกจากระบบ หรือเคลียร์ข้อมูลเบราว์เซอร์ ต้องเข้าสู่ระบบใหม่</li>
-                  <li>เมื่อโทเค็นหมดอายุ ระบบอาจขอให้ยืนยันตัวตนอีกครั้ง</li>
-                </ul>
-              </div>
-            )}
           </div>
 
           {/* Submit Button */}

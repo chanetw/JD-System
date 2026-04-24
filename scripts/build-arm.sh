@@ -161,7 +161,7 @@ if [[ "$TARGET" == "all" || "$TARGET" == "backend" ]]; then
         ${BUILD_OUTPUT_FLAG} \
         -f "${PROJECT_DIR}/backend/api-server/Dockerfile" \
         -t "${BACKEND_IMAGE}" \
-        "${BACKEND_EXTRA_TAG_ARGS[@]}" \
+        ${BACKEND_EXTRA_TAG_ARGS[@]+"${BACKEND_EXTRA_TAG_ARGS[@]}"} \
         "${PROJECT_DIR}/backend"
     echo -e "${GREEN}✅ Backend built: ${BACKEND_IMAGE}${NC}"
     if [[ -n "$RELEASE_TAG" ]]; then
@@ -187,7 +187,7 @@ if [[ "$TARGET" == "all" || "$TARGET" == "frontend" ]]; then
         --build-arg "VITE_FRONTEND_MODE=api_only" \
         --build-arg "VITE_AUTH_MODE=jwt_only" \
         -t "${FRONTEND_IMAGE}" \
-        "${FRONTEND_EXTRA_TAG_ARGS[@]}" \
+        ${FRONTEND_EXTRA_TAG_ARGS[@]+"${FRONTEND_EXTRA_TAG_ARGS[@]}"} \
         "${PROJECT_DIR}/frontend"
     echo -e "${GREEN}✅ Frontend built: ${FRONTEND_IMAGE}${NC}"
     if [[ -n "$RELEASE_TAG" ]]; then

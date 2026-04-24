@@ -105,6 +105,8 @@ export default function AdminApprovalFlow() {
     const [isSavingAll, setIsSavingAll] = useState(false);
     /** มีการแก้ไขรายการ Skip Approval ในเครื่องหรือไม่ */
     const [hasLocalSkipSelectionChanges, setHasLocalSkipSelectionChanges] = useState(false);
+    /** สถานะกำลัง Refresh Job Assignments สำหรับ Skip Approval */
+    const [isRefreshingAssignments, setIsRefreshingAssignments] = useState(false);
 
     // === ทีมงานที่เกี่ยวข้องกับโครงการ (States: Responsible Team) ===
     /** รวมรายการผู้ใช้งานทุกคน (เพื่อการกรองตามขอบเขต) */
@@ -373,15 +375,20 @@ export default function AdminApprovalFlow() {
      * @async
      * @function fetchJobAssignments
      */
-    const fetchJobAssignments = useCallback(async () => {
+    const fetchJobAssignments = useCallback(async (showLoading = false) => {
         if (selectedProject?.id) {
             try {
+                if (showLoading) setIsRefreshingAssignments(true);
                 const assignments = await adminService.getProjectJobAssignments(selectedProject.id);
                 setProjectJobAssignments(assignments || []);
                 console.log('[ApprovalFlow] ✅ Refreshed job assignments:', assignments?.length || 0);
+                if (showLoading) showToast('อัพเดทข้อมูลเสร็จสิ้น', 'success');
             } catch (error) {
                 console.error('[ApprovalFlow] Error fetching job assignments:', error);
                 setProjectJobAssignments([]);
+                if (showLoading) showToast('ไม่สามารถอัพเดทข้อมูลได้', 'error');
+            } finally {
+                if (showLoading) setIsRefreshingAssignments(false);
             }
         }
     }, [selectedProject?.id]);
@@ -795,7 +802,7 @@ export default function AdminApprovalFlow() {
                             const flow = allApprovalFlows.find(f => f.projectId === project.id && f.jobTypeId === null);
                             const color = PROJECT_COLORS[index % PROJECT_COLORS.length];
                             const approverCount = flow?.levels?.length || 0;
-                            const hasAssignee = flow?.defaultAssignee ? 1 : 0;
+                            const hasAssignee = flow?.autoAssignUserId ? 1 : 0;
 
                             return (
                                 <div
@@ -1334,12 +1341,32 @@ export default function AdminApprovalFlow() {
                                                 {/* SECTION 2: เลือกงานที่ต้องการข้ามการอนุมัติ */}
                                                 {/* ============================================ */}
                                                 <div className="mb-8">
-                                                    <div className="flex items-center gap-3 mb-4">
-                                                        <div className="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center text-sm font-bold">2</div>
-                                                        <div>
-                                                            <h4 className="font-bold text-gray-900">เลือกงานที่ต้องการข้ามการอนุมัติ (Skip Approval)</h4>
-                                                            <p className="text-xs text-gray-500">งานที่เลือกจะส่งตรงไปยังผู้รับงานโดยไม่ต้องรอการอนุมัติ</p>
+                                                    <div className="flex items-center justify-between gap-3 mb-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center text-sm font-bold">2</div>
+                                                            <div>
+                                                                <h4 className="font-bold text-gray-900">เลือกงานที่ต้องการข้ามการอนุมัติ (Skip Approval)</h4>
+                                                                <p className="text-xs text-gray-500">งานที่เลือกจะส่งตรงไปยังผู้รับงานโดยไม่ต้องรอการอนุมัติ</p>
+                                                            </div>
                                                         </div>
+                                                        <button
+                                                            onClick={() => fetchJobAssignments(true)}
+                                                            disabled={isRefreshingAssignments}
+                                                            className="px-3 py-2 text-xs font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2 whitespace-nowrap"
+                                                            title="อัพเดทข้อมูลผู้รับงานล่าสุด"
+                                                        >
+                                                            {isRefreshingAssignments ? (
+                                                                <>
+                                                                    <span className="inline-block animate-spin">⟳</span>
+                                                                    <span>กำลังอัพเดท...</span>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <span>⟳</span>
+                                                                    <span>Refresh</span>
+                                                                </>
+                                                            )}
+                                                        </button>
                                                     </div>
 
                                                     <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl p-5 border border-emerald-200">

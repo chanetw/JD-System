@@ -8,6 +8,7 @@
 import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStoreV2 } from '../../stores/authStoreV2';
+import { updateSavedLoginPassword } from '@shared/utils/savedLoginCredentials';
 
 const ForceChangePassword: React.FC = () => {
   const navigate = useNavigate();
@@ -71,6 +72,8 @@ const ForceChangePassword: React.FC = () => {
       if (!response.ok || !data.success) {
         throw new Error(data.error || 'Failed to change password');
       }
+
+      updateSavedLoginPassword(newPassword);
 
       // Clear mustChangePassword flag in store then redirect
       if (user) {
