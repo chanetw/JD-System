@@ -10,7 +10,7 @@ const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
     const isAssignee = String(job.assigneeId) === String(currentUser?.id);
     
     // สถานะที่ไม่ควรให้เปลี่ยนผู้รับผิดชอบ
-    const lockedStatuses = ['draft_review', 'completed', 'pending_rebrief', 'rejected', 'pending_rejection', 'closed'];
+    const lockedStatuses = ['draft_review', 'completed', 'pending_rebrief', 'rejected', 'closed'];
     const isStatusLocked = lockedStatuses.includes(job.status);
     
     const canReassign = (isAdmin || isManager || isAssignee) && !isStatusLocked;

@@ -75,6 +75,11 @@ const upload = multer({
 function uploadSingleFile(req, res, next) {
   upload.single('file')(req, res, (err) => {
     if (!err) {
+      // Multer decodes multipart filenames as latin1 by default.
+      // Re-encode back to get the correct UTF-8 string (fixes Thai/Unicode filenames).
+      if (req.file) {
+        req.file.originalname = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+      }
       return next();
     }
 
@@ -189,7 +194,7 @@ router.post('/upload', uploadSingleFile, async (req, res) => {
  */
 router.get('/files', async (req, res) => {
   try {
-    const { folder, jobId, projectId } = req.query;
+    const { folder, jobId, projectId, includeUnlinked } = req.query;
     const userId = req.user.userId;
     const userRoles = req.user.roles || [];
 
@@ -201,6 +206,12 @@ router.get('/files', async (req, res) => {
     const whereCondition = {
       tenantId: req.user.tenantId
     };
+
+    // Default behavior for portal/gallery: show only files already linked to a job
+    // (pre-submit uploads/orphan files should not be visible)
+    if (!jobId && String(includeUnlinked ?? 'false').toLowerCase() !== 'true') {
+      whereCondition.jobId = { not: null };
+    }
 
     if (jobId) {
       whereCondition.jobId = parseInt(jobId);

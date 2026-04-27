@@ -35,7 +35,6 @@ enum JobStatus {
   rejected
   rejected_by_assignee     // Assignee rejected (approved by Approver)
   cancelled                // Cancelled due to parent/chain rejection
-  pending_rejection        // Assignee requested rejection, waiting approval
   partially_completed      // Parent job completed (some children rejected)
   completed
   closed
@@ -79,7 +78,6 @@ model Tenant {
   userRequests         UserRequest[]
   userScopeAssignments UserScopeAssignment[]
   budJobAssignments    BudJobAssignment[]
-  rejectionRequests         RejectionRequest[] // ✅ NEW
   userRegistrationRequests  UserRegistrationRequest[]
 
   @@map("tenants")
@@ -143,9 +141,6 @@ model User {
   autoAssignFlows      ApprovalFlow[]         @relation("FlowAutoAssign")
   // Scope assignments (project/bud level access)
   scopeAssignments     UserScopeAssignment[]
-  // ✅ NEW: Rejection requests
-  rejectionRequestsCreated  RejectionRequest[] @relation("RejectionRequester")
-  rejectionRequestsApproved RejectionRequest[] @relation("RejectionApprover")
   // Magic link tokens
   magicLinkTokens           MagicLinkToken[]
 
@@ -368,7 +363,6 @@ model Job {
   slaShiftLogs    SlaShiftLog[]    @relation("SlaShiftLogs")
   urgentJobShifts SlaShiftLog[]    @relation("UrgentJobShifts")
   jobActivities   JobActivity[]
-  rejectionRequests RejectionRequest[] // ✅ NEW: Rejection requests from assignees
 
   @@unique([tenantId, djId])
   @@index([tenantId])
@@ -856,47 +850,6 @@ model UserScopeAssignment {
   @@index([userId])
   @@index([tenantId])
   @@map("user_scope_assignments")
-}
-
-// ========================================
-// ✅ NEW: REJECTION REQUEST MODEL
-// ========================================
-
-model RejectionRequest {
-  id               Int      @id @default(autoincrement())
-  jobId            Int      @map("job_id")
-  requestedBy      Int      @map("requested_by")
-  reason           String   @db.Text
-  status           String   @default("pending") @db.VarChar(50) // pending, approved, denied, auto_approved
-
-  // Approval flow info
-  approverLevel    Int?     @map("approver_level")
-  approverIds      Int[]    @default([]) @map("approver_ids")
-  approvalLogic    String?  @map("approval_logic") @db.VarChar(10) // ALL or ANY
-
-  // Approval result
-  approvedBy       Int?     @map("approved_by")
-  approvedAt       DateTime? @map("approved_at") @db.Timestamptz
-
-  // Auto-close timeout (24h default)
-  autoCloseAt      DateTime? @map("auto_close_at") @db.Timestamptz
-  autoCloseEnabled Boolean   @default(false) @map("auto_close_enabled")
-
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
-  tenantId         Int      @map("tenant_id")
-
-  // Relations
-  job              Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  requester        User     @relation("RejectionRequester", fields: [requestedBy], references: [id], onDelete: Cascade)
-  approver         User?    @relation("RejectionApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
-  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  @@index([jobId])
-  @@index([requestedBy])
-  @@index([status])
-  @@index([tenantId])
-  @@index([autoCloseAt, status], name: "idx_auto_close")
-  @@map("rejection_requests")
 }
 
 model UserRegistrationRequest {

@@ -20,7 +20,9 @@ import LoadingSpinner from '@shared/components/LoadingSpinner';
 import Modal from '@shared/components/Modal';
 import { calculateDueDate, formatDateToThai, addWorkDays } from '@shared/utils/slaCalculator';
 import { getAccessibleProjects, hasRole, isAdmin } from '@shared/utils/permission.utils';
-import { XMarkIcon, ClockIcon, LinkIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, ClockIcon, LinkIcon, TrashIcon, PaperClipIcon } from '@heroicons/react/24/outline';
+import Swal from 'sweetalert2';
+import { fileUploadService } from '@shared/services/modules/fileUploadService';
 import AcceptanceDatePicker from '../components/AcceptanceDatePicker'; // New Component
 
 /**
@@ -177,6 +179,18 @@ export default function CreateDJ() {
     const [showBriefLinkInput, setShowBriefLinkInput] = useState(false);
     /** เก็บลิงค์ชั่วคราวก่อนกดปุ่ม แนบลิงค์ */
     const [tempBriefLink, setTempBriefLink] = useState('');
+    /** ไฟล์แนบ Brief ที่อัปโหลดแล้ว */
+    const [briefFiles, setBriefFiles] = useState([]);
+    /** สถานะกำลังอัปโหลดไฟล์ Brief */
+    const [uploadingBrief, setUploadingBrief] = useState(false);
+
+    // Brief file constraints
+    const BRIEF_MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10MB รวม
+    const BRIEF_ALLOWED_TYPES = [
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp'
+    ];
 
     // === สถานะการตรวจสอบและแจ้งเตือน (States: Validation & Feedback) ===
     /** รายการข้อผิดพลาดที่พบจากฟอร์ม */
@@ -777,9 +791,9 @@ export default function CreateDJ() {
         if (!formData.jobType && selectedJobTypes.length === 0) newErrors.push("กรุณาเลือกประเภทงาน (Job Type)");
         if (!formData.subject) newErrors.push("กรุณาระบุหัวข้องาน (Subject)");
         // Objective ไม่บังคับแล้ว (ลบ validation 20 ตัวอักษร)
-        // ต้องมี briefLink ถึงจะส่งงานได้
-        if (!formData.briefLink) {
-            newErrors.push("กรุณาใส่ลิงค์รายละเอียด (Brief Link) เพื่อส่งงาน");
+        // ต้องมี briefLink หรือ briefFiles อย่างน้อยหนึ่งอย่างถึงจะส่งงานได้
+        if (!formData.briefLink && briefFiles.length === 0) {
+            newErrors.push("กรุณาใส่ลิงค์รายละเอียด (Brief Link) หรือแนบไฟล์ Brief เพื่อส่งงาน");
         }
 
         setErrors(newErrors);
@@ -855,7 +869,8 @@ export default function CreateDJ() {
                     headline: formData.headline || '',
                     subHeadline: formData.subHeadline || '',
                     description: formData.description || formData.objective || '',
-                    briefLink: formData.briefLink || null
+                    briefLink: formData.briefLink || null,
+                    briefFiles: briefFiles.length > 0 ? briefFiles : []
                 },
                 requesterId: user?.id,
                 tenantId: user?.tenant_id || 1,
@@ -936,11 +951,77 @@ export default function CreateDJ() {
     };
 
     // Calculate Completion %
+    const handleBriefFileUpload = async (e) => {
+        const files = Array.from(e.target.files);
+        if (!files.length) return;
+
+        // Client-side validation: type check
+        const invalidType = files.filter(f => !BRIEF_ALLOWED_TYPES.includes(f.type));
+        if (invalidType.length > 0) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'ประเภทไฟล์ไม่รองรับ',
+                    html: `ไฟล์ต่อไปนี้ไม่สามารถแนบได้:<br><ul style="text-align:left;margin-top:8px">${invalidType.map(f => `<li>${f.name}</li>`).join('')}</ul><br>รองรับเฉพาะ PDF, PPTX, JPG, PNG, GIF, WEBP`,
+                    confirmButtonColor: '#e11d48'
+                });
+            e.target.value = '';
+            return;
+        }
+
+        // Client-side validation: total size check (existing + new)
+        const existingSize = briefFiles.reduce((sum, f) => sum + (f.fileSize || 0), 0);
+        const newSize = files.reduce((sum, f) => sum + f.size, 0);
+        if (existingSize + newSize > BRIEF_MAX_TOTAL_SIZE) {
+            const totalMB = ((existingSize + newSize) / 1024 / 1024).toFixed(1);
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'ขนาดไฟล์รวมเกินกำหนด',
+                    text: `ขนาดรวม ${totalMB}MB เกินขีดจำกัด 10MB กรุณาลดขนาดไฟล์ก่อนเพิ่มใหม่`,
+                    confirmButtonColor: '#e11d48'
+                });
+            e.target.value = '';
+            return;
+        }
+
+        setUploadingBrief(true);
+        try {
+            for (const file of files) {
+                const result = await fileUploadService.uploadFile(file, {
+                    tenantId: user?.tenant_id || 1,
+                    userId: user?.id,
+                    attachmentType: 'brief'
+                });
+                if (result.success && result.data) {
+                    setBriefFiles(prev => [...prev, {
+                        id: result.data.id,
+                            name: file.name,
+                        url: result.data.publicUrl || result.data.filePath,
+                        fileSize: result.data.fileSize
+                    }]);
+                } else {
+                        Swal.fire({
+                            icon: 'error',
+                            title: `อัปโหลดไม่สำเร็จ`,
+                            text: `ไม่สามารถอัปโหลด "${file.name}" ได้: ${result.error || 'เกิดข้อผิดพลาด'}`,
+                            confirmButtonColor: '#e11d48'
+                        });
+                }
+            }
+        } finally {
+            setUploadingBrief(false);
+            e.target.value = '';
+        }
+    };
+
+    const handleBriefFileRemove = (fileId) => {
+        setBriefFiles(prev => prev.filter(f => f.id !== fileId));
+    };
+
     const calculateCompletion = () => {
         const fields = ['project', 'jobType', 'subject'];
         const filled = fields.filter(f => formData[f]).length;
-        const hasBriefLink = formData.briefLink ? 1 : 0;
-        return Math.round(((filled + hasBriefLink) / (fields.length + 1)) * 100);
+        const hasBrief = (formData.briefLink || briefFiles.length > 0) ? 1 : 0;
+        return Math.round(((filled + hasBrief) / (fields.length + 1)) * 100);
     };
 
     return (
@@ -1392,12 +1473,20 @@ export default function CreateDJ() {
                         </CardBody>
                     </Card >
 
-                    {/* ส่วนที่ 3: ลิงค์รายละเอียด (Brief Link) - บังคับกรอก */}
+                    {/* ส่วนที่ 3: Brief Link หรือ ไฟล์แนบ */}
                     < Card >
-                        <CardHeader title="ลิงค์รายละเอียด (Brief Link)" badge="3" />
+                        <CardHeader title="รายละเอียด Brief (Brief Link / ไฟล์แนบ)" badge="3" />
                         <CardBody className="space-y-4">
+                            {/* Notice - แสดงเมื่อยังไม่มีทั้งลิงค์และไฟล์ */}
+                            {!formData.briefLink && briefFiles.length === 0 && (
+                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                                    <p className="text-sm text-amber-800 font-medium mb-1">⚠️ จำเป็นต้องระบุอย่างน้อยหนึ่งอย่างเพื่อส่งงาน</p>
+                                    <p className="text-xs text-amber-600">ใส่ลิงค์ (Google Drive, Notion) หรือแนบไฟล์ Brief (PDF, PPTX, รูปภาพ — รวมไม่เกิน 10MB)</p>
+                                </div>
+                            )}
+
+                            {/* Brief Link */}
                             {formData.briefLink ? (
-                                /* Brief Link - แสดงเป็น Card เมื่อมีลิงค์ */
                                 <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center text-green-600">
@@ -1405,66 +1494,94 @@ export default function CreateDJ() {
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm font-medium text-green-800">✓ แนบลิงค์เรียบร้อยแล้ว</p>
-                                            <a
-                                                href={formData.briefLink}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-xs text-green-600 hover:underline truncate block"
-                                            >
+                                            <a href={formData.briefLink} target="_blank" rel="noopener noreferrer"
+                                                className="text-xs text-green-600 hover:underline truncate block">
                                                 {formData.briefLink}
                                             </a>
                                         </div>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setFormData(prev => ({ ...prev, briefLink: '' }));
-                                            setTempBriefLink(formData.briefLink); // เอาลิงค์เดิมกลับมาแก้ได้ง่ายๆ
-                                        }}
-                                        className="text-gray-400 hover:text-red-500 ml-2"
-                                        title="แก้ไขลิงค์"
-                                    >
+                                    <button type="button"
+                                        onClick={() => { setFormData(prev => ({ ...prev, briefLink: '' })); setTempBriefLink(formData.briefLink); }}
+                                        className="text-gray-400 hover:text-red-500 ml-2" title="แก้ไขลิงค์">
                                         <TrashIcon className="w-5 h-5" />
                                     </button>
                                 </div>
                             ) : (
-                                /* Brief Link Input - แสดงตอนยังไม่มีลิงค์ */
-                                <div className="space-y-3">
-                                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                                        <p className="text-sm text-amber-800 font-medium mb-2">⚠️ จำเป็นต้องใส่ลิงค์เพื่อส่งงาน</p>
-                                        <p className="text-xs text-amber-600">กรุณาใส่ลิงค์ Google Drive, Notion หรือเอกสารออนไลน์ที่มีรายละเอียดงาน</p>
+                                <div className="flex flex-col gap-2 items-stretch sm:flex-row sm:items-start">
+                                    <div className="flex-1">
+                                        <FormInput
+                                            label="ลิงค์รายละเอียด (Brief Link)"
+                                            name="tempBriefLink"
+                                            type="url"
+                                            placeholder="https://drive.google.com/..."
+                                            value={tempBriefLink}
+                                            onChange={(e) => setTempBriefLink(e.target.value)}
+                                        />
                                     </div>
-
-                                    <div className="flex flex-col gap-2 items-stretch sm:flex-row sm:items-start">
-                                        <div className="flex-1">
-                                            <FormInput
-                                                label="ลิงค์รายละเอียด (Brief Link) *"
-                                                name="tempBriefLink"
-                                                type="url"
-                                                placeholder="https://drive.google.com/..."
-                                                value={tempBriefLink}
-                                                onChange={(e) => setTempBriefLink(e.target.value)}
-                                            />
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                if (tempBriefLink.trim()) {
-                                                    setFormData(prev => ({ ...prev, briefLink: tempBriefLink.trim() }));
-                                                }
-                                            }}
-                                            disabled={!tempBriefLink.trim()}
-                                            className={`w-full sm:w-auto mt-0 sm:mt-6 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-medium transition-colors ${tempBriefLink.trim()
-                                                    ? 'bg-rose-600 text-white hover:bg-rose-700 shadow-sm'
-                                                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                                                }`}
-                                        >
-                                            <LinkIcon className="w-4 h-4" />
-                                            แนบลิงค์
-                                        </button>
-                                    </div>
+                                    <button type="button"
+                                        onClick={() => { if (tempBriefLink.trim()) setFormData(prev => ({ ...prev, briefLink: tempBriefLink.trim() })); }}
+                                        disabled={!tempBriefLink.trim()}
+                                        className={`w-full sm:w-auto mt-0 sm:mt-6 px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 font-medium transition-colors ${
+                                            tempBriefLink.trim() ? 'bg-rose-600 text-white hover:bg-rose-700 shadow-sm' : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                        }`}>
+                                        <LinkIcon className="w-4 h-4" />
+                                        แนบลิงค์
+                                    </button>
                                 </div>
                             )}
+
+                            {/* Divider */}
+                            <div className="flex items-center gap-3">
+                                <div className="flex-1 border-t border-gray-200" />
+                                <span className="text-xs text-gray-400 font-medium">หรือ</span>
+                                <div className="flex-1 border-t border-gray-200" />
+                            </div>
+
+                            {/* Brief File Upload */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    <PaperClipIcon className="w-4 h-4 inline mr-1" />
+                                    แนบไฟล์ Brief
+                                    <span className="ml-1 text-xs font-normal text-gray-400">(PDF, PPTX, รูปภาพ — รวมทุกไฟล์ไม่เกิน 10MB)</span>
+                                </label>
+
+                                {briefFiles.length > 0 && (
+                                    <ul className="mb-3 space-y-2">
+                                        {briefFiles.map(file => (
+                                            <li key={file.id} className="flex items-center justify-between gap-3 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <PaperClipIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                                    <span className="truncate text-gray-700">{file.name}</span>
+                                                </div>
+                                                <button type="button" onClick={() => handleBriefFileRemove(file.id)}
+                                                    className="text-gray-400 hover:text-red-500 flex-shrink-0">
+                                                    <XMarkIcon className="w-4 h-4" />
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+
+                                <label className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition-colors text-sm font-medium ${
+                                    uploadingBrief
+                                        ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400'
+                                }`}>
+                                    <input
+                                        type="file"
+                                        multiple
+                                        accept=".pdf,.pptx,.jpg,.jpeg,.png,.gif,.webp"
+                                        className="hidden"
+                                        onChange={handleBriefFileUpload}
+                                        disabled={uploadingBrief}
+                                    />
+                                    {uploadingBrief ? (
+                                        <><span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />กำลังอัปโหลด...</>
+                                    ) : (
+                                        <><PaperClipIcon className="w-4 h-4" />เลือกไฟล์แนบ</>
+                                    )}
+                                </label>
+                            </div>
 
                         </CardBody>
                     </Card >

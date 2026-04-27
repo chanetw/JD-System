@@ -15,6 +15,6 @@ export const routes = [
             </ProtectedRoute>
         ),
         title: 'Dashboard',
-        roles: ['admin', 'manager', 'supervisor', 'requester', 'assignee']
+        roles: ['admin', 'manager', 'supervisor', 'requester', 'assignee', 'approver']
     }
 ];

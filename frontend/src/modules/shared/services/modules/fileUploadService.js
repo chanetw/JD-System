@@ -49,14 +49,15 @@ export const fileUploadService = {
      * @param {number} options.userId - Uploader user ID
      * @param {string} options.attachmentType - Type of attachment (e.g., 'CI Guideline', 'Logo Pack')
      * @param {Function} options.onProgress - Progress callback (0-100)
+     * @param {number} [options.maxFileSize] - Override max file size in bytes (default: 50MB)
      * @returns {Promise<{success: boolean, data?: Object, error?: string}>}
      */
     uploadFile: async (file, options = {}) => {
-        const { jobId, tenantId, userId, attachmentType, onProgress } = options;
+        const { jobId, tenantId, userId, attachmentType, onProgress, maxFileSize } = options;
 
         try {
-            // Validate file
-            const validation = fileUploadService.validateFile(file);
+            // Validate file (pass maxFileSize override if provided)
+            const validation = fileUploadService.validateFile(file, maxFileSize);
             if (!validation.valid) {
                 return { success: false, error: validation.error };
             }
@@ -350,14 +351,16 @@ export const fileUploadService = {
     /**
      * Validate file before upload
      * @param {File} file - File to validate
+     * @param {number} [maxSizeBytes] - Override max size in bytes (default: global MAX_FILE_SIZE 50MB)
      * @returns {{valid: boolean, error?: string}}
      */
-    validateFile: (file) => {
+    validateFile: (file, maxSizeBytes) => {
+        const effectiveMaxSize = maxSizeBytes || MAX_FILE_SIZE;
         // Check file size
-        if (file.size > MAX_FILE_SIZE) {
+        if (file.size > effectiveMaxSize) {
             return {
                 valid: false,
-                error: `ไฟล์ขนาดใหญ่เกินไป (สูงสุด ${MAX_FILE_SIZE / (1024 * 1024)}MB)`
+                error: `ไฟล์ขนาดใหญ่เกินไป (สูงสุด ${effectiveMaxSize / (1024 * 1024)}MB)`
             };
         }
 

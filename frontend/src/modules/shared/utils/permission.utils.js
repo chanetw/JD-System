@@ -149,23 +149,23 @@ export const ROLE_V2_BADGE_COLORS = {
 export const hasRole = (user, roleName) => {
     if (!user) return false;
 
-    const target = roleName.toLowerCase();
+    const target = normalizeRoleName(roleName).toLowerCase();
 
     // ✅ Multi-Role: ตรวจสอบจาก roles array (case-insensitive)
     if (user.roles && Array.isArray(user.roles)) {
         return user.roles.some(r => {
             const name = (typeof r === 'string' ? r : r.name) || '';
-            return name.toLowerCase() === target && r.isActive !== false;
+            return normalizeRoleName(name).toLowerCase() === target && r.isActive !== false;
         });
     }
 
     // ✅ Check roleName property (V2 Auth System)
     if (user.roleName) {
-        return user.roleName.toLowerCase() === target;
+        return normalizeRoleName(user.roleName).toLowerCase() === target;
     }
 
     // ⚠️ Legacy fallback: ตรวจสอบจาก role field เดิม (case-insensitive)
-    return user.role?.toLowerCase() === target;
+    return normalizeRoleName(user.role).toLowerCase() === target;
 };
 
 /**
@@ -260,8 +260,9 @@ export const getRoleScopes = (user, roleName) => {
 
     // ✅ Multi-Role
     if (user.roles && Array.isArray(user.roles)) {
+        const targetRole = normalizeRoleName(roleName);
         const role = user.roles.find(r =>
-            r.name === roleName &&
+            normalizeRoleName(r.name) === targetRole &&
             r.isActive !== false
         );
         return role?.scopes || [];

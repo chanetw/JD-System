@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
 import { api } from '@shared/services/apiService';
@@ -30,6 +30,10 @@ import {
 export default function DJList() {
     // === Auth State ===
     const { user } = useAuthStoreV2();
+    const [searchParams, setSearchParams] = useSearchParams();
+
+    // === My Jobs Mode (จาก URL param ?myJobs=true) ===
+    const [myJobsOnly, setMyJobsOnly] = useState(() => searchParams.get('myJobs') === 'true');
 
     // === สถานะข้อมูล (Data Management States) ===
     const [jobs, setJobs] = useState([]);          // ข้อมูลงานต้นฉบับทั้งหมดจาก API
@@ -126,11 +130,16 @@ export default function DJList() {
     // ============================================
     useEffect(() => {
         applyFiltersAndSearch();
-    }, [jobs, filters, searchQuery, sortBy]);
+    }, [jobs, filters, searchQuery, sortBy, myJobsOnly]);
 
     /** ประมวลผลการคัดกรอง การค้นหา และการจัดเรียงข้อมูล */
     const applyFiltersAndSearch = () => {
         let result = [...jobs];
+
+        // 0. My Jobs filter — แสดงเฉพาะงานที่ user เป็น requester หรือ assignee
+        if (myJobsOnly && user?.id) {
+            result = result.filter(j => j.requesterId === user.id || j.assigneeId === user.id);
+        }
 
         // 1. นำ Filters มาใช้งาน
         if (filters.project) {
@@ -299,6 +308,8 @@ export default function DJList() {
         });
         setSearchQuery('');
         setIncludeCompleted(false);
+        setMyJobsOnly(false);
+        setSearchParams({});
     };
 
     // ============================================
@@ -371,6 +382,21 @@ export default function DJList() {
                     </Link>
                 )}
             </div>
+
+            {/* My Jobs Banner */}
+            {myJobsOnly && (
+                <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
+                    <span className="text-sm font-medium text-indigo-700">
+                        กำลังแสดงเฉพาะงานของคุณ (งานที่คุณเปิดหรือได้รับมอบหมาย)
+                    </span>
+                    <button
+                        onClick={() => { setMyJobsOnly(false); setSearchParams({}); }}
+                        className="text-xs text-indigo-500 hover:text-indigo-700 underline"
+                    >
+                        แสดงงานทั้งหมด
+                    </button>
+                </div>
+            )}
 
             {/* Search Bar */}
             <div className="bg-white rounded-xl border border-gray-400 shadow-sm p-4">
@@ -717,7 +743,7 @@ function JobRow({
         // งานปกติ (ไม่ใช่ parent/child) — แยกตามตาราง Mapping
         // สถานะอนุมัติ: pending → รออนุมัติ, approved/assigned/in_progress/completed → อนุมัติแล้ว, rejected → ไม่อนุมัติ
         // สถานะงาน: approved → ยังไม่มอบหมาย, assigned → ได้รับมอบหมาย, in_progress → กำลังทำ, completed → เสร็จแล้ว
-        if (status?.includes('pending') && status !== 'pending_dependency' && status !== 'pending_rejection') {
+        if (status?.includes('pending') && status !== 'pending_dependency') {
             displayApprovalStatus = status; // pending_approval, pending_level_2, etc.
             displayJobStatus = status;      // Badge จะแสดง "-" ผ่าน workTexts
         } else if (['approved', 'assigned', 'in_progress', 'completed', 'rejected_by_assignee'].includes(status)) {

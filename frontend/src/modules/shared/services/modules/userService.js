@@ -2,6 +2,7 @@
 import { supabase } from '../supabaseClient';
 import { handleResponse, generateOTP } from '../utils';
 import httpClient from '../httpClient';
+import { normalizeRoleName } from '@shared/utils/permission.utils';
 
 export const userService = {
     // --- Users CRUD ---
@@ -71,11 +72,11 @@ export const userService = {
                 // Correctly map roles to objects expected by permission.utils.js
                 // Each role should have its own scopes based on roleType in scopeAssignments
                 const userRoles = (u.userRoles || []).map(r => {
-                    const roleName = r.roleName;
+                    const roleName = normalizeRoleName(r.roleName);
 
                     // Filter scopes that belong to this role
                     const roleScopes = scopes.filter(s => {
-                        const sRoleType = s.roleType || s.role_type;
+                        const sRoleType = normalizeRoleName(s.roleType || s.role_type);
                         return sRoleType === roleName;
                     }).map(s => ({
                         level: s.scopeLevel || s.scope_level,
@@ -98,7 +99,7 @@ export const userService = {
                     
                     email: u.email,
                     roles: userRoles, // Return complete role objects with scopes
-                    role: u.userRoles?.[0]?.roleName || null,
+                    role: normalizeRoleName(u.userRoles?.[0]?.roleName) || null,
                     avatar: u.avatarUrl,
                     isActive: u.isActive,
                     tenantId: u.tenantId,

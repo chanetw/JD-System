@@ -7,9 +7,6 @@ import {
   createJobCompletionEmail,
   createDraftSubmissionEmail,
   createJobExtensionEmail,
-  createRejectionRequestEmail,
-  createRejectionApprovedEmail,
-  createRejectionDeniedEmail,
   createPasswordResetEmail,
   createForgotPasswordEmail,
 } from '../src/utils/emailTemplates.js';
@@ -123,37 +120,7 @@ function buildTemplatePayloads() {
       }),
     },
     {
-      subject: `TEMPLATE TEST [8/11] Rejection Request - ${nowLabel}`,
-      html: createRejectionRequestEmail({
-        djId: sample.djId,
-        subject: sample.subject,
-        assigneeName: 'ชเนศวร์',
-        reason: sample.reason,
-        magicLink: sample.magicLink,
-        approverName: 'ชเนศวร์',
-      }),
-    },
-    {
-      subject: `TEMPLATE TEST [9/11] Rejection Approved - ${nowLabel}`,
-      html: createRejectionApprovedEmail({
-        djId: sample.djId,
-        subject: sample.subject,
-        magicLink: sample.magicLink,
-        userName: 'ชเนศวร์',
-      }),
-    },
-    {
-      subject: `TEMPLATE TEST [10/11] Rejection Denied - ${nowLabel}`,
-      html: createRejectionDeniedEmail({
-        djId: sample.djId,
-        subject: sample.subject,
-        reason: sample.reason,
-        magicLink: sample.magicLink,
-        userName: 'ชเนศวร์',
-      }),
-    },
-    {
-      subject: `TEMPLATE TEST [11/11] Password Reset - ${nowLabel}`,
+      subject: `TEMPLATE TEST [8/8] Password Reset - ${nowLabel}`,
       html: createPasswordResetEmail({
         userName: 'ชเนศวร์',
         newPassword: sample.newPassword,

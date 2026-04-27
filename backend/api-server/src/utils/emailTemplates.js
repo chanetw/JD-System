@@ -311,79 +311,6 @@ export function createJobExtensionEmail({ djId, subject, assigneeName, extension
 }
 
 /**
- * สร้าง Email สำหรับขอปฏิเสธงาน
- */
-export function createRejectionRequestEmail({ djId, subject, assigneeName, reason, magicLink, approverName }) {
-  const content = `
-    <h2>คำขอปฏิเสธงาน</h2>
-    <div class="info-box">
-      <p><strong>รหัสงาน:</strong> ${djId}</p>
-      <p><strong>หัวข้อ:</strong> ${subject}</p>
-      <p><strong>ผู้ขอ:</strong> ${assigneeName}</p>
-      <p><strong>เหตุผล:</strong> ${reason}</p>
-    </div>
-    <p>เรียน คุณ${approverName ? approverName : ''},</p>
-    <p>ผู้รับงานขอปฏิเสธงานนี้ กรุณาพิจารณาคำขอในระบบ</p>
-  `;
-
-  return createEmailTemplate({
-    title: `⚠️ ขอปฏิเสธงาน: ${djId}`,
-    heading: `⚠️ คำขอปฏิเสธงาน`,
-    content,
-    buttonText: '🔐 พิจารณาคำขอ (ไม่ต้อง Login)',
-    buttonUrl: magicLink
-  });
-}
-
-/**
- * สร้าง Email สำหรับอนุมัติคำขอปฏิเสธ
- */
-export function createRejectionApprovedEmail({ djId, subject, magicLink, userName }) {
-  const content = `
-    <h2>คำขอปฏิเสธงานได้รับอนุมัติ</h2>
-    <div class="info-box">
-      <p><strong>รหัสงาน:</strong> ${djId}</p>
-      <p><strong>หัวข้อ:</strong> ${subject}</p>
-    </div>
-    <p>เรียน คุณ${userName ? userName : ''},</p>
-    <p>คำขอปฏิเสธงานได้รับการอนุมัติแล้ว งานถูกยกเลิกเรียบร้อย</p>
-  `;
-
-  return createEmailTemplate({
-    title: `✅ คำขอปฏิเสธงาน ${djId} ได้รับอนุมัติ`,
-    heading: `✅ คำขอปฏิเสธได้รับอนุมัติ`,
-    content,
-    buttonText: '🔐 ดูรายละเอียด (ไม่ต้อง Login)',
-    buttonUrl: magicLink
-  });
-}
-
-/**
- * สร้าง Email สำหรับปฏิเสธคำขอปฏิเสธ
- */
-export function createRejectionDeniedEmail({ djId, subject, reason, magicLink, userName }) {
-  const content = `
-    <h2>คำขอปฏิเสธงานไม่ได้รับอนุมัติ</h2>
-    <div class="info-box">
-      <p><strong>รหัสงาน:</strong> ${djId}</p>
-      <p><strong>หัวข้อ:</strong> ${subject}</p>
-      <p><strong>เหตุผล:</strong> ${reason}</p>
-    </div>
-    <p>เรียน คุณ${userName ? userName : ''},</p>
-    <p>คำขอปฏิเสธงานไม่ได้รับอนุมัติ กรุณาทำงานต่อ</p>
-    <p>หากต้องการเวลาเพิ่ม กรุณาขอ Extend Deadline แทน</p>
-  `;
-
-  return createEmailTemplate({
-    title: `❌ คำขอปฏิเสธงาน ${djId} ไม่ได้รับอนุมัติ`,
-    heading: `❌ คำขอปฏิเสธไม่ได้รับอนุมัติ`,
-    content,
-    buttonText: '🔐 ทำงานต่อ (ไม่ต้อง Login)',
-    buttonUrl: magicLink
-  });
-}
-
-/**
  * สร้าง Email สำหรับรีเซตพาสโดย Admin
  */
 export function createPasswordResetEmail({ userName, newPassword, loginUrl }) {
@@ -624,9 +551,6 @@ export default {
   createJobCompletionEmail,
   createDraftSubmissionEmail,
   createJobExtensionEmail,
-  createRejectionRequestEmail,
-  createRejectionApprovedEmail,
-  createRejectionDeniedEmail,
   createPasswordResetEmail,
   createForgotPasswordEmail,
   createUserCreatedEmail,

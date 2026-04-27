@@ -34,7 +34,7 @@ export default function Sidebar({ isMobileOpen = false, onClose = () => {} }) {
     const canAccessAnalytics = isAdmin || isViewer;
     const isApprover = checkIsApprover(user) || isAdmin;
     const shouldPrioritizeMyQueue = isAssignee && !isAdmin && !checkIsApprover(user) && !hasAnyRole(user, ['Requester']);
-    const dashboardPath = hasAnyRole(user, ['Admin', 'Requester', 'Assignee', 'manager', 'supervisor'])
+    const dashboardPath = (hasAnyRole(user, ['Admin', 'Requester', 'Assignee', 'manager', 'supervisor']) || isApprover)
         ? '/dashboard'
         : getDefaultHomeRoute(user);
 

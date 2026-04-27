@@ -15,10 +15,59 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 COMPOSE_FILE="docker-compose.prod.yml"
+DEFAULT_BACKEND_IMAGE="chanetw/dj-system-backend:latest"
+DEFAULT_FRONTEND_IMAGE="chanetw/dj-system-frontend:latest"
 BACKEND_HOST_PORT="${BACKEND_HOST_PORT:-3000}"
 FRONTEND_HOST_PORT="${FRONTEND_HOST_PORT:-80}"
 BACKEND_URL="${BACKEND_URL:-}"
 FRONTEND_URL="${FRONTEND_URL:-}"
+BACKEND_IMAGE="${BACKEND_IMAGE:-$DEFAULT_BACKEND_IMAGE}"
+FRONTEND_IMAGE="${FRONTEND_IMAGE:-$DEFAULT_FRONTEND_IMAGE}"
+ALLOW_LATEST_IMAGE="false"
+
+usage() {
+    cat <<'EOF'
+Usage: ./scripts/deploy-hub.sh [options]
+
+Options:
+  --release-tag <tag>               Use chanetw/dj-system-backend:<tag> and frontend:<tag>
+  --backend-image <name:tag>        Override backend image reference
+  --frontend-image <name:tag>       Override frontend image reference
+  --allow-latest-image              Allow :latest tags (not recommended for prod)
+  -h, --help                        Show this help
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --release-tag)
+            BACKEND_IMAGE="chanetw/dj-system-backend:$2"
+            FRONTEND_IMAGE="chanetw/dj-system-frontend:$2"
+            shift 2
+            ;;
+        --backend-image)
+            BACKEND_IMAGE="$2"
+            shift 2
+            ;;
+        --frontend-image)
+            FRONTEND_IMAGE="$2"
+            shift 2
+            ;;
+        --allow-latest-image)
+            ALLOW_LATEST_IMAGE="true"
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}❌ Unknown option: $1${NC}"
+            usage
+            exit 1
+            ;;
+    esac
+done
 
 if [ -z "$BACKEND_URL" ]; then
     BACKEND_URL="http://localhost:${BACKEND_HOST_PORT}"
@@ -32,10 +81,28 @@ if [ -z "$FRONTEND_URL" ]; then
     fi
 fi
 
+validate_image_ref() {
+    local service="$1"
+    local image="$2"
+
+    if [[ -z "$image" || "$image" != *:* ]]; then
+        echo -e "${RED}❌ ${service} image must include an explicit tag or digest (got: ${image})${NC}"
+        exit 1
+    fi
+
+    if [[ "$ALLOW_LATEST_IMAGE" != "true" && "$image" == *":latest" ]]; then
+        echo -e "${RED}❌ ${service} image uses :latest: ${image}${NC}"
+        echo "Use --release-tag <tag> or --${service}-image <repo:tag> for production deploys."
+        exit 1
+    fi
+}
+
 # ===================================================
 # ตรวจสอบไฟล์ที่จำเป็น
 # ===================================================
 echo -e "${BLUE}[1/6] Pre-flight checks...${NC}"
+echo -e "${BLUE}   Backend image: ${BACKEND_IMAGE}${NC}"
+echo -e "${BLUE}   Frontend image: ${FRONTEND_IMAGE}${NC}"
 
 if [ ! -f "$COMPOSE_FILE" ]; then
     echo -e "${RED}❌ $COMPOSE_FILE not found. Run from project root.${NC}"
@@ -46,6 +113,10 @@ if ! docker compose version &>/dev/null; then
     echo -e "${RED}❌ docker compose not available.${NC}"
     exit 1
 fi
+
+validate_image_ref "backend" "$BACKEND_IMAGE"
+validate_image_ref "frontend" "$FRONTEND_IMAGE"
+export BACKEND_IMAGE FRONTEND_IMAGE
 
 echo -e "${GREEN}✅ Pre-flight OK${NC}"
 
@@ -60,7 +131,7 @@ docker compose -f "$COMPOSE_FILE" ps 2>/dev/null || echo "(no containers running
 # Pull images ใหม่ (เฉพาะ backend + frontend)
 # ===================================================
 echo ""
-echo -e "${BLUE}[3/6] Pulling latest images (backend + frontend only)...${NC}"
+echo -e "${BLUE}[3/6] Pulling release images (backend + frontend only)...${NC}"
 docker compose -f "$COMPOSE_FILE" pull backend frontend
 echo -e "${GREEN}✅ Images pulled${NC}"
 
@@ -140,8 +211,8 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${GREEN}   Deploy complete! 🚀${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
-echo -e "   Images:    chanetw/dj-system-backend:latest"
-echo -e "              chanetw/dj-system-frontend:latest"
+echo -e "   Images:    ${BACKEND_IMAGE}"
+echo -e "              ${FRONTEND_IMAGE}"
 echo -e "   Database:  ${GREEN}untouched${NC} (dj-data-prod volume)"
 echo -e "   Uploads:   ${GREEN}preserved${NC} (dj-files-prod volume)"
 echo ""

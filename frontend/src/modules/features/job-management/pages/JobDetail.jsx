@@ -8,11 +8,12 @@
  * - Clean Architecture
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api } from '@shared/services/apiService';
 import httpClient from '@shared/services/httpClient';
 import Swal from 'sweetalert2';
+import { fileUploadService } from '@shared/services/modules/fileUploadService';
 import { adminService } from '@shared/services/modules/adminService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { ROLE_V1_DISPLAY, getJobRole, JOB_ROLE_THEMES } from '@shared/utils/permission.utils';
@@ -29,7 +30,9 @@ import {
     DocumentTextIcon,
     ChatBubbleLeftRightIcon,
     ClockIcon,
-    QueueListIcon
+    QueueListIcon,
+    PaperClipIcon,
+    LinkIcon
 } from '@heroicons/react/24/outline';
 
 // Components
@@ -45,10 +48,8 @@ import JobDeliveryCard from '../components/JobDeliveryCard';
 import ExtendDueDateModal from '../components/ExtendDueDateModal';
 import JobChainStatus from '../components/JobChainStatus';
 import ParentJobChildrenList from '../components/ParentJobChildrenList';
-import RejectionRequestModal from '../components/RejectionRequestModal';
 import DraftSubmitModal from '../components/DraftSubmitModal';
 import DraftCard from '../components/DraftCard';
-import RejectionApprovalCard from '../components/RejectionApprovalCard';
 import JobAssigneeInfo from '../components/JobAssigneeInfo';
 
 const isUserActive = (user) => {
@@ -82,6 +83,10 @@ export default function JobDetail() {
     const [showCompleteModal, setShowCompleteModal] = useState(false);
     const [completeNote, setCompleteNote] = useState('');
     const [finalLink, setFinalLink] = useState('');
+    const [completeUploadedFiles, setCompleteUploadedFiles] = useState([]);
+    const [completeUploadingFile, setCompleteUploadingFile] = useState(false);
+    const completeFileInputRef = useRef(null);
+    const COMPLETE_MAX_TOTAL = 10 * 1024 * 1024; // 10MB รวม
     const [showAssigneeRejectModal, setShowAssigneeRejectModal] = useState(false);
     const [assigneeRejectReason, setAssigneeRejectReason] = useState('');
     const [showDenyRejectionModal, setShowDenyRejectionModal] = useState(false);
@@ -91,7 +96,6 @@ export default function JobDetail() {
     const [confirmRejectionCcEmails, setConfirmRejectionCcEmails] = useState([]);
     const [newCcEmail, setNewCcEmail] = useState('');
     const [showExtendModal, setShowExtendModal] = useState(false); // เพิ่ม Extend Modal state
-    const [showRejectionRequestModal, setShowRejectionRequestModal] = useState(false); // NEW: Rejection Request Modal
     
     // Draft Submit States
     const [showDraftModal, setShowDraftModal] = useState(false);
@@ -202,7 +206,7 @@ export default function JobDetail() {
                 } else {
                     // approved, assigned, in_progress, pending_close, completed, closed,
                     // pending_rebrief, rebrief_submitted, correction, rework, returned,
-                    // draft_review, pending_rejection, assignee_rejected, cancelled ฯลฯ
+                    // draft_review, assignee_rejected, cancelled ฯลฯ
                     // ทั้งหมดถือว่าผ่านอนุมัติแล้ว → Approval Chain แสดง "อนุมัติครบ"
                     jobData.currentLevel = 999;
                 }
@@ -325,23 +329,94 @@ export default function JobDetail() {
         }
     };
 
+    const handleCompleteFileChange = async (e) => {
+        const files = Array.from(e.target.files);
+        if (!files.length) return;
+
+        const existingSize = completeUploadedFiles.reduce((sum, f) => sum + (f.fileSize || 0), 0);
+        const newSize = files.reduce((sum, f) => sum + f.size, 0);
+        if (existingSize + newSize > COMPLETE_MAX_TOTAL) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'ขนาดไฟล์รวมเกินกำหนด',
+                text: `ขนาดรวม ${((existingSize + newSize) / 1024 / 1024).toFixed(1)}MB เกินขีดจำกัด 10MB สำหรับไฟล์ส่งมอบ`,
+                confirmButtonColor: '#e11d48'
+            });
+            e.target.value = '';
+            return;
+        }
+
+        setCompleteUploadingFile(true);
+        try {
+            const result = await fileUploadService.uploadMultipleFiles(files, {
+                jobId: job?.id,
+                tenantId: user?.tenantId,
+                userId: user?.id,
+                attachmentType: 'complete',
+                maxFileSize: COMPLETE_MAX_TOTAL
+            });
+            if (result.successfulFiles?.length) {
+                setCompleteUploadedFiles(prev => [...prev, ...result.successfulFiles]);
+            }
+            if (result.errors?.length) {
+                Swal.fire({ icon: 'warning', title: 'บางไฟล์ไม่สามารถอัปโหลดได้', text: result.errors.join('\n'), confirmButtonColor: '#e11d48' });
+            }
+        } catch (err) {
+            Swal.fire({ icon: 'error', title: 'อัปโหลดไฟล์ไม่สำเร็จ', text: err.message, confirmButtonColor: '#e11d48' });
+        } finally {
+            setCompleteUploadingFile(false);
+            e.target.value = '';
+        }
+    };
+
+    const handleCompleteRemoveFile = async (fileId) => {
+        const result = await fileUploadService.deleteFile(fileId, user?.id);
+        if (!result.success) {
+            Swal.fire({ icon: 'error', title: 'ลบไฟล์ไม่สำเร็จ', text: result.error || 'ไม่สามารถลบไฟล์นี้ได้', confirmButtonColor: '#e11d48' });
+            return;
+        }
+        setCompleteUploadedFiles(prev => prev.filter(f => f.id !== fileId));
+    };
+
+    const handleCloseCompleteModal = async () => {
+        if (completeUploadedFiles.length > 0) {
+            await Promise.allSettled(
+                completeUploadedFiles.map(f => fileUploadService.deleteFile(f.id, user?.id))
+            );
+        }
+        setShowCompleteModal(false);
+        setFinalLink('');
+        setCompleteNote('');
+        setCompleteUploadedFiles([]);
+    };
+
     const handleCompleteJob = async () => {
-        if (!finalLink.trim()) {
+        if (!finalLink.trim() && completeUploadedFiles.length === 0) {
             return Swal.fire({
                 icon: 'warning',
-                title: 'กรุณาระบุลิงก์ผลงาน',
-                text: 'จำเป็นต้องแนบลิงก์ผลงานก่อนส่งงาน',
+                title: 'กรุณาระบุลิงก์หรือแนบไฟล์',
+                text: 'ต้องการลิงก์ผลงาน หรือแนบเอกสารส่งมอบอย่างน้อย 1 ไฟล์',
                 confirmButtonColor: '#e11d48'
             });
         }
-        if (isCompleting) return; // ป้องกันการกดซ้ำ
-        
+        if (isCompleting) return;
+
         setIsCompleting(true);
         try {
-            await api.completeJob(job.id, {
-                note: completeNote,
-                attachments: [{ name: 'Final Link', url: finalLink }]
+            const attachments = [];
+            if (finalLink.trim()) {
+                attachments.push({ name: 'Final Link', url: finalLink.trim() });
+            }
+            completeUploadedFiles.forEach(f => {
+                attachments.push({
+                    fileId: f.id,
+                    name: f.file_name || f.fileName,
+                    filePath: f.file_path || f.filePath,
+                    publicUrl: f.publicUrl
+                });
             });
+
+            await api.completeJob(job.id, { note: completeNote, attachments });
             await Swal.fire({
                 icon: 'success',
                 title: 'ส่งมอบงานสำเร็จ!',
@@ -349,7 +424,8 @@ export default function JobDetail() {
                 confirmButtonColor: '#e11d48'
             });
             setShowCompleteModal(false);
-            loadJob();
+            setCompleteUploadedFiles([]);
+            navigate('/assignee/my-queue?tab=completed');
         } catch (err) {
             Swal.fire({
                 icon: 'error',
@@ -376,7 +452,7 @@ export default function JobDetail() {
             });
             setShowAssigneeRejectModal(false);
             setAssigneeRejectReason('');
-            loadJob();
+            navigate('/assignee/my-queue?tab=rejected');
         } catch (err) {
             Swal.fire({ icon: 'error', title: 'ปฏิเสธงานไม่สำเร็จ', text: err.message, confirmButtonColor: '#e11d48' });
         }
@@ -454,54 +530,6 @@ export default function JobDetail() {
                 text: err.response?.data?.message || err.message,
                 confirmButtonColor: '#e11d48'
             });
-        }
-    };
-
-    // ============================================
-    // NEW: Rejection Request Handlers (rejection_requests table system)
-    // ============================================
-    const handleRequestRejection = async (reason) => {
-        try {
-            const response = await httpClient.post(`/jobs/${job.id}/request-rejection`, { reason });
-            await Swal.fire({
-                icon: 'success',
-                title: 'ส่งคำขอปฏิเสธเรียบร้อย',
-                html: 'คำขอของคุณถูกส่งไปยัง Approver<br/><small class="text-gray-500">หาก Approver ไม่ตอบกลับภายใน 24 ชม. ระบบจะอนุมัติอัตโนมัติ</small>',
-                confirmButtonColor: '#e11d48'
-            });
-            loadJob();
-        } catch (err) {
-            throw new Error(err.response?.data?.message || err.message || 'ไม่สามารถส่งคำขอได้');
-        }
-    };
-
-    const handleApproveRejectionRequest = async (requestId, comment) => {
-        try {
-            await httpClient.post(`/jobs/rejection-requests/${requestId}/approve`, { comment });
-            await Swal.fire({
-                icon: 'success',
-                title: 'อนุมัติคำขอปฏิเสธเรียบร้อย',
-                text: 'งานถูกปฏิเสธแล้ว',
-                confirmButtonColor: '#e11d48'
-            });
-            loadJob();
-        } catch (err) {
-            throw new Error(err.response?.data?.message || err.message || 'ไม่สามารถอนุมัติคำขอได้');
-        }
-    };
-
-    const handleDenyRejectionRequest = async (requestId, reason) => {
-        try {
-            await httpClient.post(`/jobs/rejection-requests/${requestId}/deny`, { reason });
-            await Swal.fire({
-                icon: 'info',
-                title: 'ไม่อนุมัติคำขอปฏิเสธ',
-                text: 'Assignee ต้องทำงานต่อ',
-                confirmButtonColor: '#e11d48'
-            });
-            loadJob();
-        } catch (err) {
-            throw new Error(err.response?.data?.message || err.message || 'ไม่สามารถปฏิเสธคำขอได้');
         }
     };
 
@@ -722,7 +750,7 @@ export default function JobDetail() {
                                     onManualAssign={handleManualAssign}
                                     onConfirmClose={handleConfirmClose}
                                     onRequestRevision={onRequestRevision}
-                                    onOpenAssigneeRejectModal={() => setShowRejectionRequestModal(true)} // เปิด modal ตัวใหม่
+                                    onOpenAssigneeRejectModal={() => setShowAssigneeRejectModal(true)}
                                     onConfirmAssigneeRejection={openConfirmRejectionModal}
                                     onDenyRejection={() => setShowDenyRejectionModal(true)}
                                     onOpenExtendModal={() => setShowExtendModal(true)}
@@ -732,18 +760,8 @@ export default function JobDetail() {
                                     onOpenSubmitRebriefModal={() => setShowSubmitRebriefModal(true)}
                                 />
 
-                                {/* 🚨 Rejection Alert - แสดงตาม Role:
-                                     - Approver/Admin → ซ่อน alert นี้ ไปแสดง RejectionApprovalCard แทน
-                                     - Assignee/คนอื่น → แสดง alert นี้เพื่อแจ้งสถานะ (ไม่มีปุ่มอนุมัติ) */}
-                                {(job.status === 'assignee_rejected' || job.status === 'pending_rejection') && (() => {
-                                    const normalizedRoles = (user?.roles || []).map(r =>
-                                        (typeof r === 'string' ? r : r?.name || '').toLowerCase()
-                                    );
-                                    const isAdminRole = normalizedRoles.includes('admin');
-                                    const isApproverRole = normalizedRoles.includes('approver');
-                                    // Approver และ Admin เห็น RejectionApprovalCard แทน ไม่แสดง alert นี้
-                                    if (isApproverRole || isAdminRole) return null;
-
+                                  {/* Rejection Alert สำหรับ flow ปฏิเสธงานแบบเดิม */}
+                                {job.status === 'assignee_rejected' && (() => {
                                     return (
                                         <div className="bg-gradient-to-r from-orange-50 to-amber-50 border-l-4 border-orange-500 rounded-lg p-5 shadow-sm mb-6">
                                             <div className="flex items-start gap-4">
@@ -766,7 +784,7 @@ export default function JobDetail() {
                                                         </p>
                                                         <p className="text-sm text-gray-700">เนื่องจาก</p>
                                                         <p className="text-sm text-gray-900 font-medium pl-4 border-l-2 border-orange-300">
-                                                            <span className="text-gray-700">เหตุผล:</span> {job.rejectionRequest?.reason || job.rejectionComment || 'ไม่ระบุเหตุผล'}
+                                                            <span className="text-gray-700">เหตุผล:</span> {job.rejectionComment || 'ไม่ระบุเหตุผล'}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -797,23 +815,6 @@ export default function JobDetail() {
 
                                 {/* Parent Job Assignees (aggregated assignees from all children) */}
                                 <ParentJobAssignees job={job} />
-
-                                {/* Rejection Request Card - แสดงเฉพาะ Approver และ Admin เท่านั้น */}
-                                {job.rejectionRequest && job.rejectionRequest.status === 'pending' && (() => {
-                                    const normalizedRoles = (user?.roles || []).map(r =>
-                                        (typeof r === 'string' ? r : r?.name || '').toLowerCase()
-                                    );
-                                    const isAdminRole = normalizedRoles.includes('admin');
-                                    const isApproverRole = normalizedRoles.includes('approver');
-                                    if (!isApproverRole && !isAdminRole) return null;
-                                    return (
-                                        <RejectionApprovalCard
-                                            rejectionRequest={job.rejectionRequest}
-                                            onApprove={handleApproveRejectionRequest}
-                                            onDeny={handleDenyRejectionRequest}
-                                        />
-                                    );
-                                })()}
 
                                 {/* Comments Section (Embedded in Overview) */}
                                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col mt-6" style={{ maxHeight: '450px' }}>
@@ -874,26 +875,108 @@ export default function JobDetail() {
             {/* Complete Modal */}
             {showCompleteModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg p-6 max-w-md w-full">
-                        <h3 className="text-lg font-bold mb-4 text-green-600">ส่งงาน (Complete)</h3>
-                        <label className="block mb-2 text-sm">ลิงก์ผลงาน (Final Link)*</label>
-                        <input
-                            type="text"
-                            className="w-full border rounded p-2 mb-4"
-                            value={finalLink}
-                            onChange={e => setFinalLink(e.target.value)}
-                            placeholder="https://..."
-                        />
-                        <label className="block mb-2 text-sm">หมายเหตุ (Optional)</label>
-                        <textarea
-                            className="w-full border rounded p-2 mb-4"
-                            rows={3}
-                            value={completeNote}
-                            onChange={e => setCompleteNote(e.target.value)}
-                        />
-                        <div className="flex gap-2 justify-end">
-                            <Button variant="ghost" onClick={() => setShowCompleteModal(false)} disabled={isCompleting}>ยกเลิก</Button>
-                            <Button variant="primary" onClick={handleCompleteJob} disabled={isCompleting}>
+                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
+                            <h3 className="text-lg font-bold text-green-600">✅ ส่งงาน (Complete)</h3>
+                            <button onClick={handleCloseCompleteModal} disabled={isCompleting} className="text-gray-400 hover:text-gray-600 disabled:opacity-50">
+                                <XMarkIcon className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        {/* Body */}
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm text-gray-500">
+                                ระบุลิงก์ผลงาน หรือแนบไฟล์ส่งมอบ <span className="font-medium text-gray-700">(อย่างใดอย่างหนึ่ง)</span>
+                            </p>
+
+                            {/* Link */}
+                            <div>
+                                <label className="block mb-1.5 text-sm font-medium text-gray-700 flex items-center gap-1.5">
+                                    <LinkIcon className="w-4 h-4 text-gray-400" />
+                                    ลิงก์ผลงาน <span className="font-normal text-gray-400">(ไม่บังคับ)</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent disabled:bg-gray-50"
+                                    value={finalLink}
+                                    onChange={e => setFinalLink(e.target.value)}
+                                    placeholder="https://drive.google.com/... หรือ https://figma.com/..."
+                                    disabled={isCompleting}
+                                />
+                            </div>
+
+                            {/* File Upload */}
+                            <div>
+                                <label className="block mb-1.5 text-sm font-medium text-gray-700 flex items-center gap-1.5">
+                                    <PaperClipIcon className="w-4 h-4 text-gray-400" />
+                                    ไฟล์ส่งมอบ <span className="font-normal text-gray-400">(ไม่บังคับ, รวมไม่เกิน 10MB)</span>
+                                </label>
+                                <div
+                                    onClick={() => !isCompleting && !completeUploadingFile && completeFileInputRef.current?.click()}
+                                    className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
+                                        isCompleting || completeUploadingFile
+                                            ? 'opacity-50 cursor-not-allowed border-gray-200 bg-gray-50'
+                                            : 'cursor-pointer border-gray-300 hover:border-green-400 hover:bg-green-50/30'
+                                    }`}
+                                >
+                                    <input
+                                        ref={completeFileInputRef}
+                                        type="file"
+                                        multiple
+                                        className="hidden"
+                                        onChange={handleCompleteFileChange}
+                                        disabled={isCompleting || completeUploadingFile}
+                                    />
+                                    {completeUploadingFile ? (
+                                        <p className="text-sm text-gray-500">⏳ กำลังอัปโหลด...</p>
+                                    ) : (
+                                        <p className="text-sm text-gray-500">คลิกหรือลากไฟล์มาวางที่นี่</p>
+                                    )}
+                                </div>
+                                {completeUploadedFiles.length > 0 && (
+                                    <ul className="space-y-1.5 mt-2">
+                                        {completeUploadedFiles.map(f => (
+                                            <li key={f.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border border-gray-200 text-sm">
+                                                <PaperClipIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                                <span className="flex-1 truncate text-gray-700">{f.file_name || f.fileName}</span>
+                                                <button
+                                                    onClick={() => handleCompleteRemoveFile(f.id)}
+                                                    disabled={isCompleting}
+                                                    className="text-gray-400 hover:text-red-500 flex-shrink-0 disabled:opacity-50"
+                                                >
+                                                    <XMarkIcon className="w-4 h-4" />
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+
+                            {/* Note */}
+                            <div>
+                                <label className="block mb-1.5 text-sm font-medium text-gray-700">
+                                    หมายเหตุ <span className="font-normal text-gray-400">(ไม่บังคับ)</span>
+                                </label>
+                                <textarea
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent disabled:bg-gray-50"
+                                    rows={3}
+                                    value={completeNote}
+                                    onChange={e => setCompleteNote(e.target.value)}
+                                    disabled={isCompleting}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="flex gap-2 px-6 py-4 border-t border-gray-200 sticky bottom-0 bg-white">
+                            <Button variant="ghost" onClick={handleCloseCompleteModal} disabled={isCompleting} className="flex-1">ยกเลิก</Button>
+                            <Button
+                                variant="primary"
+                                onClick={handleCompleteJob}
+                                disabled={isCompleting || completeUploadingFile || (!finalLink.trim() && completeUploadedFiles.length === 0)}
+                                className="flex-1"
+                            >
                                 {isCompleting ? (
                                     <>
                                         <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -1149,14 +1232,6 @@ export default function JobDetail() {
                         type: 'success'
                     });
                 }}
-            />
-
-            {/* NEW: Rejection Request Modal (uses rejection_requests table) */}
-            <RejectionRequestModal
-                isOpen={showRejectionRequestModal}
-                onClose={() => setShowRejectionRequestModal(false)}
-                job={job}
-                onSubmit={handleRequestRejection}
             />
 
             {/* Draft Submit Modal */}

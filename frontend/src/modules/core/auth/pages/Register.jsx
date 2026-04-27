@@ -208,6 +208,15 @@ export default function Register() {
                     {step === 1 ? (
                         /* Step 1: Registration Form */
                         <form onSubmit={handleSubmit} className="space-y-4">
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                                <p className="text-sm font-medium text-amber-800">
+                                    กรุณากรอกข้อมูลในแบบฟอร์มเป็นภาษาไทย
+                                </p>
+                                <p className="mt-1 text-xs text-amber-700">
+                                    เพื่อความถูกต้องของข้อมูลในระบบ โปรดใช้ชื่อ-นามสกุล และรายละเอียดหน่วยงานเป็นภาษาไทย
+                                </p>
+                            </div>
+
                             {/* Title & Name Row */}
                             <div className="grid grid-cols-4 gap-3">
                                 <div>

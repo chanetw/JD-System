@@ -21,7 +21,8 @@ import {
   createEmailTemplate,
   createJobApprovalEmail,
   createJobRejectionEmail,
-  createJobCompletionEmail
+  createJobCompletionEmail,
+  createJobAssignmentEmail
 } from '../utils/emailTemplates.js';
 
 export class ApprovalService extends BaseService {
@@ -1236,10 +1237,15 @@ export class ApprovalService extends BaseService {
         }
       });
 
-      // ✅ NEW: Insert the final links/files into MediaFile table 
-      // so they can be shown in MediaPortal / UserPortal.
+      // Insert final links/files into MediaFile table for MediaPortal / UserPortal.
+      // - If attachment has fileId → file was already inserted by /storage/upload, skip to avoid duplicate
+      // - If attachment has url (link-only) → create MediaFile with type=link
       if (attachments && Array.isArray(attachments) && attachments.length > 0) {
         const mediaFilePromises = attachments.map(async (acc) => {
+          if (acc.fileId) {
+            // Uploaded file: MediaFile already created by /api/storage/upload — skip
+            return Promise.resolve();
+          }
           if (acc.url) {
             return this.prisma.mediaFile.create({
               data: {
@@ -2129,7 +2135,15 @@ export class ApprovalService extends BaseService {
    * @param {string} params.priority - Job priority ('normal', 'urgent')
    * @returns {Promise<Object>} - { autoApproved, newStatus, isFinal, approvalId }
    */
-  async autoApproveIfRequesterIsApprover({ jobId, requesterId, projectId, jobTypeId, tenantId, priority = 'normal' }) {
+  async autoApproveIfRequesterIsApprover({
+    jobId,
+    requesterId,
+    projectId,
+    jobTypeId,
+    tenantId,
+    priority = 'normal',
+    sendAssigneeNotification = true
+  }) {
     try {
       // 1. ดึง approval flow
       const flow = await this.getApprovalFlow(projectId, jobTypeId, priority);
@@ -2227,6 +2241,77 @@ export class ApprovalService extends BaseService {
           ...(isFinal && newStatus !== 'pending_dependency' ? { startedAt: new Date() } : {})
         }
       });
+
+      // 5.2 Auto-approve reached final and already has assignee → notify + email assignee
+      if (sendAssigneeNotification && isFinal && newStatus === 'in_progress') {
+        try {
+          const jobWithAssignee = await this.prisma.job.findUnique({
+            where: { id: jobId },
+            select: {
+              id: true,
+              tenantId: true,
+              djId: true,
+              subject: true,
+              priority: true,
+              dueDate: true,
+              assigneeId: true,
+              requester: { select: { firstName: true, lastName: true } },
+              assignee: { select: { id: true, email: true, firstName: true, lastName: true } }
+            }
+          });
+
+          if (jobWithAssignee?.assigneeId && jobWithAssignee?.assignee?.email) {
+            const magicLink = await this.magicLinkService.createJobActionLink({
+              userId: jobWithAssignee.assigneeId,
+              jobId: jobWithAssignee.id,
+              action: 'view',
+              djId: jobWithAssignee.djId
+            });
+
+            await this.notificationService.sendNotification({
+              tenantId: jobWithAssignee.tenantId || tenantId,
+              userIds: [jobWithAssignee.assigneeId],
+              type: 'job_assigned',
+              title: `👤 งาน ${jobWithAssignee.djId} ถูกอนุมัติอัตโนมัติและมอบหมายแล้ว`,
+              message: `งาน "${jobWithAssignee.subject}" ได้รับการอนุมัติอัตโนมัติและเริ่มทำงานแล้ว`,
+              link: `/jobs/${jobWithAssignee.id}`,
+              sendEmail: true,
+              emailData: {
+                assigneeName: `${jobWithAssignee.assignee.firstName || ''} ${jobWithAssignee.assignee.lastName || ''}`.trim(),
+                jobId: jobWithAssignee.djId,
+                jobSubject: jobWithAssignee.subject,
+                requesterName: `${jobWithAssignee.requester?.firstName || ''} ${jobWithAssignee.requester?.lastName || ''}`.trim(),
+                priority: jobWithAssignee.priority || 'normal',
+                deadline: jobWithAssignee.dueDate?.toLocaleDateString('th-TH') || null,
+                magicLink,
+                buttonText: '🔐 เริ่มทำงานทันที (ไม่ต้อง Login)'
+              }
+            });
+
+            // Optional: send same content to test mailbox when configured.
+            const testEmail = String(process.env.AUTO_APPROVAL_TEST_EMAIL || '').trim();
+            if (testEmail) {
+              const EmailService = (await import('./emailService.js')).default || (await import('./emailService.js')).EmailService;
+              const emailService = new EmailService();
+              const html = createJobAssignmentEmail({
+                djId: jobWithAssignee.djId,
+                subject: jobWithAssignee.subject,
+                priority: jobWithAssignee.priority || 'normal',
+                dueDate: jobWithAssignee.dueDate?.toLocaleDateString('th-TH') || null,
+                magicLink,
+                assigneeName: `${jobWithAssignee.assignee.firstName || ''} ${jobWithAssignee.assignee.lastName || ''}`.trim()
+              });
+              await emailService.sendEmail(
+                testEmail,
+                `[TEST] Auto-Approved Assignment: ${jobWithAssignee.djId}`,
+                html
+              );
+            }
+          }
+        } catch (notifyErr) {
+          console.warn('[AutoApprove] Assignee notification failed (non-blocking):', notifyErr.message);
+        }
+      }
 
       // 6. Log activity พร้อม detail ครบถ้วน (non-blocking)
       // บันทึก: Level ที่อนุมัติ, จำนวน Level ทั้งหมด, สถานะใหม่, และ Auto-approval indicator

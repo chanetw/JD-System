@@ -31,10 +31,6 @@ const ACTION_META_MAP = {
 
     rejected: { label: 'ส่งกลับแก้ไข', stage: 'Rejected', tone: 'negative' },
     job_rejected: { label: 'ส่งกลับแก้ไข', stage: 'Rejected', tone: 'negative' },
-    rejection_requested: { label: 'ขอปฏิเสธงาน', stage: 'Rejection', tone: 'negative' },
-    rejection_approved: { label: 'อนุมัติคำขอปฏิเสธ', stage: 'Rejection', tone: 'positive' },
-    rejection_denied: { label: 'ไม่อนุมัติคำขอปฏิเสธ', stage: 'Rejection', tone: 'negative' },
-    rejection_auto_approved: { label: 'ปฏิเสธอัตโนมัติ', stage: 'Rejection', tone: 'neutral' },
     job_rejected_by_assignee: { label: 'ผู้รับงานปฏิเสธ', stage: 'Rejection', tone: 'negative' },
     assignee_rejection_confirmed: { label: 'ยืนยันปฏิเสธผู้รับงาน', stage: 'Rejection', tone: 'positive' },
     assignee_rejection_denied: { label: 'ไม่ยืนยันปฏิเสธผู้รับงาน', stage: 'Rejection', tone: 'negative' },
@@ -102,7 +98,6 @@ const POST_APPROVAL_STATUSES = new Set([
     'rework',
     'returned',
     'draft_review',
-    'pending_rejection',
     'assignee_rejected',
     'rejected_by_assignee',
     'cancelled'

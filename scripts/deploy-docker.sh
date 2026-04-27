@@ -16,12 +16,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 COMPOSE_FILE="$PROJECT_DIR/docker-compose.prod.yml"
 ENV_FILE="$PROJECT_DIR/backend/api-server/.env.production"
+DEFAULT_BACKEND_IMAGE="chanetw/dj-system-backend:latest"
+DEFAULT_FRONTEND_IMAGE="chanetw/dj-system-frontend:latest"
 
 DEPLOY_TARGET="all"
 ACTION="build"
 USE_LOCAL_DB="false"
 ALLOW_MIGRATION_FAILURE="false"
+ALLOW_LATEST_IMAGE="false"
 WAIT_TIMEOUT=120
+BACKEND_IMAGE="${BACKEND_IMAGE:-$DEFAULT_BACKEND_IMAGE}"
+FRONTEND_IMAGE="${FRONTEND_IMAGE:-$DEFAULT_FRONTEND_IMAGE}"
 
 BACKEND_HOST_PORT="${BACKEND_HOST_PORT:-3000}"
 FRONTEND_HOST_PORT="${FRONTEND_HOST_PORT:-80}"
@@ -34,14 +39,18 @@ Usage: ./scripts/deploy-docker.sh [options]
 Options:
   --target <all|backend|frontend>   Deploy scope (default: all)
   --action <build|pull>             Build locally or pull from registry (default: build)
+  --release-tag <tag>               Use chanetw/dj-system-backend:<tag> and frontend:<tag>
+  --backend-image <name:tag>        Override backend image reference for pull mode
+  --frontend-image <name:tag>       Override frontend image reference for pull mode
   --with-local-db                   Start local postgres service before backend deploy
   --allow-migration-failure         Continue deploy even if migrate deploy fails
+  --allow-latest-image              Allow :latest in pull mode (not recommended for prod)
   --timeout <seconds>               Health wait timeout (default: 120)
   -h, --help                        Show this help
 
 Examples:
-  ./scripts/deploy-docker.sh --target backend --action pull
-  ./scripts/deploy-docker.sh --target frontend --action pull
+  ./scripts/deploy-docker.sh --target backend --action pull --release-tag v2026.04.27
+  ./scripts/deploy-docker.sh --target frontend --action pull --frontend-image chanetw/dj-system-frontend:v2026.04.27
   ./scripts/deploy-docker.sh --target all --action build --with-local-db
 EOF
 }
@@ -56,12 +65,29 @@ while [[ $# -gt 0 ]]; do
             ACTION="$2"
             shift 2
             ;;
+        --release-tag)
+            BACKEND_IMAGE="chanetw/dj-system-backend:$2"
+            FRONTEND_IMAGE="chanetw/dj-system-frontend:$2"
+            shift 2
+            ;;
+        --backend-image)
+            BACKEND_IMAGE="$2"
+            shift 2
+            ;;
+        --frontend-image)
+            FRONTEND_IMAGE="$2"
+            shift 2
+            ;;
         --with-local-db)
             USE_LOCAL_DB="true"
             shift
             ;;
         --allow-migration-failure)
             ALLOW_MIGRATION_FAILURE="true"
+            shift
+            ;;
+        --allow-latest-image)
+            ALLOW_LATEST_IMAGE="true"
             shift
             ;;
         --timeout)
@@ -97,6 +123,8 @@ fi
 
 echo -e "${BLUE}🚀 DJ System - Docker Production Deploy${NC}"
 echo -e "${BLUE}Target: ${DEPLOY_TARGET} | Action: ${ACTION} | Local DB: ${USE_LOCAL_DB}${NC}"
+echo -e "${BLUE}Backend image: ${BACKEND_IMAGE}${NC}"
+echo -e "${BLUE}Frontend image: ${FRONTEND_IMAGE}${NC}"
 echo ""
 
 require_env_var() {
@@ -147,6 +175,22 @@ wait_for_health() {
     exit 1
 }
 
+validate_image_ref() {
+    local service="$1"
+    local image="$2"
+
+    if [[ -z "$image" || "$image" != *:* ]]; then
+        echo -e "${RED}❌ ${service} image must include an explicit tag or digest (got: ${image})${NC}"
+        exit 1
+    fi
+
+    if [[ "$ACTION" == "pull" && "$ALLOW_LATEST_IMAGE" != "true" && "$image" == *":latest" ]]; then
+        echo -e "${RED}❌ ${service} image uses :latest in pull mode: ${image}${NC}"
+        echo "Use --release-tag <tag> or --${service}-image <repo:tag> for production deploys."
+        exit 1
+    fi
+}
+
 echo -e "${BLUE}📋 Step 1: Preflight validation${NC}"
 if [ ! -f "$ENV_FILE" ]; then
     echo -e "${RED}❌ Missing file: backend/api-server/.env.production${NC}"
@@ -166,6 +210,12 @@ fi
 validate_port "BACKEND_HOST_PORT" "$BACKEND_HOST_PORT"
 validate_port "FRONTEND_HOST_PORT" "$FRONTEND_HOST_PORT"
 validate_port "POSTGRES_PORT" "$POSTGRES_PORT"
+if [[ "$DEPLOY_TARGET" == "all" || "$DEPLOY_TARGET" == "backend" ]]; then
+    validate_image_ref "backend" "$BACKEND_IMAGE"
+fi
+if [[ "$DEPLOY_TARGET" == "all" || "$DEPLOY_TARGET" == "frontend" ]]; then
+    validate_image_ref "frontend" "$FRONTEND_IMAGE"
+fi
 
 JWT_SECRET_VALUE="$(get_env_value JWT_SECRET)"
 if (( ${#JWT_SECRET_VALUE} < 32 )); then
@@ -182,6 +232,7 @@ echo -e "${GREEN}✅ Preflight passed${NC}"
 echo ""
 
 cd "$PROJECT_DIR"
+export BACKEND_IMAGE FRONTEND_IMAGE
 
 echo -e "${BLUE}📦 Step 2: Prepare images (${ACTION})${NC}"
 if [[ "$ACTION" == "build" ]]; then

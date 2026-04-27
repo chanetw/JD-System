@@ -35,7 +35,7 @@ services:
   # Backend API + Socket.io
   # ==========================================
   backend:
-    image: chanetw/dj-system-backend:latest
+    image: ${BACKEND_IMAGE:-chanetw/dj-system-backend:latest}
     build:
       context: ./backend
       dockerfile: api-server/Dockerfile
@@ -72,7 +72,7 @@ services:
   # Frontend (React + Nginx)
   # ==========================================
   frontend:
-    image: chanetw/dj-system-frontend:latest
+    image: ${FRONTEND_IMAGE:-chanetw/dj-system-frontend:latest}
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -92,7 +92,7 @@ services:
     mem_limit: 256m
     cpus: 0.5
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/index.html"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/index.html"]
       interval: 15s
       timeout: 10s
       retries: 5

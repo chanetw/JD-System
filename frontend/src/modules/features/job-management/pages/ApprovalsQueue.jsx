@@ -24,7 +24,6 @@ import {
     EyeIcon,
     FunnelIcon,
     ClockIcon,
-    InboxIcon,
     CheckBadgeIcon,
     ExclamationTriangleIcon,
     ArrowPathIcon,
@@ -37,7 +36,7 @@ import {
  */
 export default function ApprovalsQueue() {
     // === สถานะ UI (UI States) ===
-    const [activeTab, setActiveTab] = useState('waiting');         // แท็บที่เลือกอยู่ (waiting, returned, history)
+    const [activeTab, setActiveTab] = useState('waiting');         // แท็บที่เลือกอยู่ (waiting, approved, not_approved)
     const [showRejectModal, setShowRejectModal] = useState(false); // ควบคุมการแสดงหน้าต่างแจ้งปฏิเสธ
     const [showApproveModal, setShowApproveModal] = useState(false); // ควบคุมการแสดงหน้าต่างยืนยันการอนุมัติ
     const [selectedJobId, setSelectedJobId] = useState(null);      // DJ-ID ที่กำลังดำเนินการ
@@ -125,7 +124,7 @@ export default function ApprovalsQueue() {
     /** Count สำหรับ Tab badge — ตรงกับ filter logic จริง */
     const waitingCount = jobs.filter(j => {
         if (j.isParent) return false;
-        const isPending = j.status === 'pending_approval' || j.status?.startsWith('pending_level_') || j.status === 'assignee_rejected' || j.status === 'pending_rejection';
+        const isPending = j.status === 'pending_approval' || j.status?.startsWith('pending_level_') || j.status === 'assignee_rejected';
         if (!isPending) return false;
         if (j.isCurrentApprover === false) return false;
         return true;
@@ -134,15 +133,13 @@ export default function ApprovalsQueue() {
     const urgentCount = jobs.filter(j => {
         if (j.isParent) return false;
         if (j.priority !== 'urgent') return false;
-        const isPending = j.status === 'pending_approval' || j.status?.startsWith('pending_level_') || j.status === 'pending_rejection';
+        const isPending = j.status === 'pending_approval' || j.status?.startsWith('pending_level_');
         if (!isPending) return false;
         if (j.isCurrentApprover === false) return false;
         return true;
     }).length;
-    const returnedCount = jobs.filter(j =>
-        (j.status === 'returned' || j.status === 'rejected') &&
-        ['returned', 'rejected'].includes(j.historyData?.action)
-    ).length;
+    const approvedCount = jobs.filter(j => j.historyData?.category === 'approved').length;
+    const notApprovedCount = jobs.filter(j => j.historyData?.category === 'not_approved').length;
 
     /** การคัดกรองข้อมูลตามแท็บสถานะ (Tab Filtering) */
     const filteredJobs = jobs.filter(job => {
@@ -151,24 +148,19 @@ export default function ApprovalsQueue() {
             if (job.isParent) return false;
             const isPending = job.status === 'pending_approval' ||
                 job.status?.startsWith('pending_level_') ||
-                job.status === 'assignee_rejected' ||
-                job.status === 'pending_rejection';
+                job.status === 'assignee_rejected';
             if (!isPending) return false;
             // ✅ เฉพาะงานที่ user เป็น approver ของ current level เท่านั้น
             if (job.isCurrentApprover === false) return false;
             return true;
         }
-        if (activeTab === 'returned') {
-            // ✅ แสดงเฉพาะงานที่สถานะปัจจุบันเป็น returned หรือ rejected 
-            // และ User ปัจจุบันเป็นคน Action ล่าสุด (ตีกลับ/ปฏิเสธ) เอาไว้
-            return (job.status === 'returned' || job.status === 'rejected') &&
-                ['returned', 'rejected'].includes(job.historyData?.action);
+        if (activeTab === 'approved') {
+            // ✅ งานที่ User นี้เคยอนุมัติแล้ว
+            return job.historyData?.category === 'approved';
         }
-        if (activeTab === 'history') {
-            // ✅ แสดงทุกงานที่ User นี้มี historyData (ซึ่งมีทั้งอนุมัติ/ตีกลับ/ปฏิเสธมาแล้ว)
-            // โดยไม่ต้องเช็คว่าสถานะปัจจุบันเป็นอะไร 
-            // (หรือจะเช็คว่า historyData มี action อยู่ก็เพียงพอ)
-            return !!job.historyData;
+        if (activeTab === 'not_approved') {
+            // ✅ งานที่ User นี้เคยปฏิเสธหรือตีกลับ
+            return job.historyData?.category === 'not_approved';
         }
         return false;
     });
@@ -292,17 +284,18 @@ export default function ApprovalsQueue() {
                         icon={<ClockIcon className="w-5 h-5" />}
                     />
                     <TabButton
-                        active={activeTab === 'returned'}
-                        onClick={() => setActiveTab('returned')}
-                        count={returnedCount}
-                        label="ตีกลับ / ปฏิเสธ"
-                        icon={<ArrowPathIcon className="w-5 h-5" />}
+                        active={activeTab === 'approved'}
+                        onClick={() => setActiveTab('approved')}
+                        count={approvedCount}
+                        label="อนุมัติแล้ว"
+                        icon={<CheckBadgeIcon className="w-5 h-5" />}
                     />
                     <TabButton
-                        active={activeTab === 'history'}
-                        onClick={() => setActiveTab('history')}
-                        label="ประวัติงาน"
-                        icon={<InboxIcon className="w-5 h-5" />}
+                        active={activeTab === 'not_approved'}
+                        onClick={() => setActiveTab('not_approved')}
+                        count={notApprovedCount}
+                        label="ไม่อนุมัติ"
+                        icon={<XMarkIcon className="w-5 h-5" />}
                     />
                 </nav>
             </div>
@@ -324,10 +317,10 @@ export default function ApprovalsQueue() {
                     color="red"
                 />
                 <StatCard
-                    label="งานตีกลับ"
-                    value={returnedCount}
-                    icon={<ArrowPathIcon className="w-5 h-5 text-orange-600" />}
-                    color="orange"
+                    label="อนุมัติแล้ว"
+                    value={approvedCount}
+                    icon={<CheckBadgeIcon className="w-5 h-5 text-green-600" />}
+                    color="green"
                 />
             </div>
 
@@ -345,7 +338,7 @@ export default function ApprovalsQueue() {
                                 <Th>ประเภท</Th>
                                 <Th>ผู้เปิดงาน</Th>
                                 <Th>สถานะ</Th>
-                                {activeTab === 'history' ? (
+                                {(activeTab === 'approved' || activeTab === 'not_approved') ? (
                                     <>
                                         <Th>วันที่ดำเนินการ</Th>
                                         <Th>ความคิดเห็น</Th>
@@ -704,14 +697,14 @@ function AccordionRow({ sequence, pkId, id, project, bud, type, subject, request
                         )}
                     </div>
                 </td>
-                {activeTab === 'history' ? (
+                {(activeTab === 'approved' || activeTab === 'not_approved') ? (
                     <>
                         <td className="px-4 py-4">
                             <div className="text-sm text-gray-900">
                                 {historyData?.actionDate ? new Date(historyData.actionDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
                             </div>
-                            <div className="text-xs text-gray-500 mt-1">
-                                {historyData?.action === 'approved' ? 'อนุมัติ' : historyData?.action === 'rejected' ? 'ปฏิเสธ' : historyData?.action === 'returned' ? 'ตีกลับ' : '-'}
+                            <div className={`text-xs mt-1 font-medium ${historyData?.action === 'approved' ? 'text-green-600' : 'text-red-500'}`}>
+                                {historyData?.action === 'approved' ? '✓ อนุมัติ' : historyData?.action === 'rejected' ? '✗ ปฏิเสธ' : historyData?.action === 'returned' ? '↩ ตีกลับ' : '-'}
                             </div>
                         </td>
                         <td className="px-4 py-4">

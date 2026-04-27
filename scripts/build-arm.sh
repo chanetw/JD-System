@@ -19,9 +19,12 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 REGISTRY="${REGISTRY:-chanetw}"
-BACKEND_IMAGE="${BACKEND_IMAGE:-${REGISTRY}/dj-system-backend:latest}"
-FRONTEND_IMAGE="${FRONTEND_IMAGE:-${REGISTRY}/dj-system-frontend:latest}"
+DEFAULT_BACKEND_REPO="${REGISTRY}/dj-system-backend"
+DEFAULT_FRONTEND_REPO="${REGISTRY}/dj-system-frontend"
+BACKEND_IMAGE="${BACKEND_IMAGE:-${DEFAULT_BACKEND_REPO}:latest}"
+FRONTEND_IMAGE="${FRONTEND_IMAGE:-${DEFAULT_FRONTEND_REPO}:latest}"
 RELEASE_TAG="${RELEASE_TAG:-}"
+TAG_LATEST="false"
 PUSH_MODE="false"
 TARGET="all"
 
@@ -34,14 +37,15 @@ Options:
   --platforms <list>                Comma-separated platform list (default: linux/amd64,linux/arm64)
   --backend-image <name:tag>        Backend image tag
   --frontend-image <name:tag>       Frontend image tag
-    --release-tag <tag>               Add additional tag for both images (e.g. 2026.04.23-abc123)
+  --release-tag <tag>               Use this immutable tag for both images (e.g. v2026.04.27)
+  --tag-latest                      Also publish :latest in addition to --release-tag
   --push                            Push manifest/images to registry (requires docker login)
   -h, --help                        Show this help
 
 Examples:
-  ./scripts/build-arm.sh --push
-    ./scripts/build-arm.sh --push --release-tag 2026.04.23-abc123
-  ./scripts/build-arm.sh --target backend --backend-image chanetw/dj-system-backend:2026.04.22-a1b2c3d
+  ./scripts/build-arm.sh --push --release-tag v2026.04.27
+  ./scripts/build-arm.sh --push --release-tag v2026.04.27 --tag-latest
+  ./scripts/build-arm.sh --target backend --backend-image chanetw/dj-system-backend:v2026.04.27
   ./scripts/build-arm.sh --platforms linux/arm64 --target frontend
 EOF
 }
@@ -67,6 +71,10 @@ while [[ $# -gt 0 ]]; do
         --release-tag)
             RELEASE_TAG="$2"
             shift 2
+            ;;
+        --tag-latest)
+            TAG_LATEST="true"
+            shift
             ;;
         --push)
             PUSH_MODE="true"
@@ -96,12 +104,28 @@ echo -e "${BLUE}Push mode: ${PUSH_MODE}${NC}"
 if [[ -n "${RELEASE_TAG}" ]]; then
     echo -e "${BLUE}Release tag: ${RELEASE_TAG}${NC}"
 fi
+echo -e "${BLUE}Tag latest: ${TAG_LATEST}${NC}"
 echo ""
 
 strip_tag() {
     local image="$1"
     echo "${image%%:*}"
 }
+
+has_custom_image_ref() {
+    local image="$1"
+    local default_repo="$2"
+    [[ "$image" != "${default_repo}:latest" ]]
+}
+
+if [[ -n "$RELEASE_TAG" ]]; then
+    if ! has_custom_image_ref "$BACKEND_IMAGE" "$DEFAULT_BACKEND_REPO"; then
+        BACKEND_IMAGE="${DEFAULT_BACKEND_REPO}:${RELEASE_TAG}"
+    fi
+    if ! has_custom_image_ref "$FRONTEND_IMAGE" "$DEFAULT_FRONTEND_REPO"; then
+        FRONTEND_IMAGE="${DEFAULT_FRONTEND_REPO}:${RELEASE_TAG}"
+    fi
+fi
 
 # ===================================================
 # ตรวจสอบ buildx
@@ -153,8 +177,8 @@ if [[ "$TARGET" == "all" || "$TARGET" == "backend" ]]; then
     echo -e "${BLUE}[2/4] Building Backend (${BACKEND_IMAGE})...${NC}"
     BACKEND_REPO="$(strip_tag "$BACKEND_IMAGE")"
     BACKEND_EXTRA_TAG_ARGS=()
-    if [[ -n "$RELEASE_TAG" ]]; then
-        BACKEND_EXTRA_TAG_ARGS+=("-t" "${BACKEND_REPO}:${RELEASE_TAG}")
+    if [[ "$TAG_LATEST" == "true" ]]; then
+        BACKEND_EXTRA_TAG_ARGS+=("-t" "${BACKEND_REPO}:latest")
     fi
     docker buildx build \
         --platform "${PLATFORMS}" \
@@ -164,8 +188,8 @@ if [[ "$TARGET" == "all" || "$TARGET" == "backend" ]]; then
         ${BACKEND_EXTRA_TAG_ARGS[@]+"${BACKEND_EXTRA_TAG_ARGS[@]}"} \
         "${PROJECT_DIR}/backend"
     echo -e "${GREEN}✅ Backend built: ${BACKEND_IMAGE}${NC}"
-    if [[ -n "$RELEASE_TAG" ]]; then
-        echo -e "${GREEN}✅ Backend tagged: ${BACKEND_REPO}:${RELEASE_TAG}${NC}"
+    if [[ "$TAG_LATEST" == "true" ]]; then
+        echo -e "${GREEN}✅ Backend tagged: ${BACKEND_REPO}:latest${NC}"
     fi
 fi
 
@@ -177,8 +201,8 @@ if [[ "$TARGET" == "all" || "$TARGET" == "frontend" ]]; then
     echo -e "${BLUE}[3/4] Building Frontend (${FRONTEND_IMAGE})...${NC}"
     FRONTEND_REPO="$(strip_tag "$FRONTEND_IMAGE")"
     FRONTEND_EXTRA_TAG_ARGS=()
-    if [[ -n "$RELEASE_TAG" ]]; then
-        FRONTEND_EXTRA_TAG_ARGS+=("-t" "${FRONTEND_REPO}:${RELEASE_TAG}")
+    if [[ "$TAG_LATEST" == "true" ]]; then
+        FRONTEND_EXTRA_TAG_ARGS+=("-t" "${FRONTEND_REPO}:latest")
     fi
     docker buildx build \
         --platform "${PLATFORMS}" \
@@ -190,8 +214,8 @@ if [[ "$TARGET" == "all" || "$TARGET" == "frontend" ]]; then
         ${FRONTEND_EXTRA_TAG_ARGS[@]+"${FRONTEND_EXTRA_TAG_ARGS[@]}"} \
         "${PROJECT_DIR}/frontend"
     echo -e "${GREEN}✅ Frontend built: ${FRONTEND_IMAGE}${NC}"
-    if [[ -n "$RELEASE_TAG" ]]; then
-        echo -e "${GREEN}✅ Frontend tagged: ${FRONTEND_REPO}:${RELEASE_TAG}${NC}"
+    if [[ "$TAG_LATEST" == "true" ]]; then
+        echo -e "${GREEN}✅ Frontend tagged: ${FRONTEND_REPO}:latest${NC}"
     fi
 fi
 
@@ -204,14 +228,14 @@ if [[ "$PUSH_MODE" == "true" ]]; then
     echo -e "${GREEN}✅ Multi-arch images pushed to registry${NC}"
     if [[ "$TARGET" == "all" || "$TARGET" == "backend" ]]; then
         echo "   Backend:  ${BACKEND_IMAGE}"
-        if [[ -n "$RELEASE_TAG" ]]; then
-            echo "             $(strip_tag "$BACKEND_IMAGE"):${RELEASE_TAG}"
+        if [[ "$TAG_LATEST" == "true" ]]; then
+            echo "             $(strip_tag "$BACKEND_IMAGE"):latest"
         fi
     fi
     if [[ "$TARGET" == "all" || "$TARGET" == "frontend" ]]; then
         echo "   Frontend: ${FRONTEND_IMAGE}"
-        if [[ -n "$RELEASE_TAG" ]]; then
-            echo "             $(strip_tag "$FRONTEND_IMAGE"):${RELEASE_TAG}"
+        if [[ "$TAG_LATEST" == "true" ]]; then
+            echo "             $(strip_tag "$FRONTEND_IMAGE"):latest"
         fi
     fi
 else
@@ -223,5 +247,10 @@ echo -e "${GREEN}✅ Build complete${NC}"
 echo ""
 echo -e "${YELLOW}📋 Next Steps:${NC}"
 echo "   1. Login registry: docker login"
-echo "   2. Deploy backend:  ./scripts/deploy-docker.sh --target backend --action pull"
-echo "   3. Deploy frontend: ./scripts/deploy-docker.sh --target frontend --action pull"
+if [[ -n "$RELEASE_TAG" ]]; then
+    echo "   2. Deploy backend:  ./scripts/deploy-docker.sh --target backend --action pull --release-tag ${RELEASE_TAG}"
+    echo "   3. Deploy frontend: ./scripts/deploy-docker.sh --target frontend --action pull --release-tag ${RELEASE_TAG}"
+else
+    echo "   2. Deploy backend:  ./scripts/deploy-docker.sh --target backend --action pull --backend-image ${BACKEND_IMAGE}"
+    echo "   3. Deploy frontend: ./scripts/deploy-docker.sh --target frontend --action pull --frontend-image ${FRONTEND_IMAGE}"
+fi

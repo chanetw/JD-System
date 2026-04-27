@@ -141,10 +141,12 @@ export const jobService = {
             }
 
             const data = response.data.data || [];
+            const serverNowRaw = response.data?.meta?.serverNow;
+            const serverNow = serverNowRaw ? new Date(serverNowRaw) : null;
+            const now = serverNow && !Number.isNaN(serverNow.getTime()) ? serverNow : new Date();
 
             // คำนวณ Health Status และ SLA metadata สำหรับแต่ละงาน
             return data.map(job => {
-                const now = new Date();
                 const isDone = filterStatus === 'done' || ['completed', 'closed', 'approved'].includes(job.status);
 
                 // Deadline: ใช้ dueDate จาก API, fallback เป็น null (ไม่ใช้ new Date() เพราะจะทำให้ hoursRemaining = 0)

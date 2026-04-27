@@ -24,9 +24,6 @@ import {
   createJobApprovalEmail,
   createJobAssignmentEmail,
   createJobExtensionEmail,
-  createRejectionRequestEmail,
-  createRejectionApprovedEmail,
-  createRejectionDeniedEmail,
   createEmailTemplate
 } from '../utils/emailTemplates.js';
 import { buildFrontendUrl } from '../utils/frontendUrl.js';
@@ -37,6 +34,7 @@ const approvalService = new ApprovalService();
 const jobService = new JobService();
 const notificationService = new NotificationService();
 const magicLinkService = new MagicLinkService();
+const APP_TIMEZONE = process.env.APP_TIMEZONE || 'Asia/Bangkok';
 
 const router = express.Router();
 
@@ -126,6 +124,47 @@ const findForwardChainJob = (jobsMap, currentJob) => {
   }
 
   return null;
+};
+
+const getDatePartsInTimeZone = (date, timeZone = APP_TIMEZONE) => {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
+  const parts = formatter.formatToParts(date);
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+
+  return {
+    year: Number(values.year),
+    month: Number(values.month),
+    day: Number(values.day),
+    hour: Number(values.hour),
+    minute: Number(values.minute),
+    second: Number(values.second)
+  };
+};
+
+const getTimeZoneOffsetMinutes = (date, timeZone = APP_TIMEZONE) => {
+  const tz = getDatePartsInTimeZone(date, timeZone);
+  const asUtc = Date.UTC(tz.year, tz.month - 1, tz.day, tz.hour, tz.minute, tz.second);
+  return Math.round((asUtc - date.getTime()) / 60000);
+};
+
+const getDayBoundsInTimeZone = (baseDate = new Date(), timeZone = APP_TIMEZONE) => {
+  const tz = getDatePartsInTimeZone(baseDate, timeZone);
+  const utcMidnight = Date.UTC(tz.year, tz.month - 1, tz.day, 0, 0, 0, 0);
+  const offsetMinutes = getTimeZoneOffsetMinutes(new Date(utcMidnight), timeZone);
+  const dayStart = new Date(utcMidnight - offsetMinutes * 60 * 1000);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000 - 1);
+
+  return { dayStart, dayEnd };
 };
 
 const buildJobChainContext = async (job, prisma) => {
@@ -274,7 +313,6 @@ router.get('/', async (req, res) => {
                 { status: 'pending_approval' },
                 { status: { startsWith: 'pending_level_' } },
                 { status: 'pending_dependency' },  // ✅ Sequential jobs waiting for predecessor
-                { status: 'pending_rejection' },   // ✅ Request to cancel job
                 { status: 'rejected' },
                 { status: 'returned' },
                 // Include jobs this user has already approved (for history)
@@ -414,10 +452,10 @@ router.get('/', async (req, res) => {
               continue;
             }
 
-            // If job is rejected/returned/pending_rejection, skip current level check (active participant)
-            if (['rejected', 'returned', 'pending_rejection'].includes(job.status)) {
+            // If job is rejected/returned, skip current level check (active participant)
+            if (['rejected', 'returned'].includes(job.status)) {
               validJobIds.push(job.id);
-              currentApproverJobIds.add(job.id); // rejected/returned/pending_rejection = active participant
+              currentApproverJobIds.add(job.id); // rejected/returned = active participant
               continue;
             }
             // pending_dependency = waiting for predecessor, include but NOT as current approver
@@ -523,7 +561,6 @@ router.get('/', async (req, res) => {
                 { status: 'pending_approval' },
                 { status: { startsWith: 'pending_level_' } },
                 { status: 'pending_dependency' },
-                { status: 'pending_rejection' },
                 { status: 'rejected' },
                 { status: 'returned' },
                 { status: 'approved' },
@@ -544,8 +581,7 @@ router.get('/', async (req, res) => {
           allJobs.forEach(job => {
             if (job.status === 'pending_approval' ||
               job.status?.startsWith('pending_level_') ||
-              job.status === 'assignee_rejected' ||
-              job.status === 'pending_rejection') {
+              job.status === 'assignee_rejected') {
               currentApproverJobIds.add(job.id);
             }
           });
@@ -565,6 +601,10 @@ router.get('/', async (req, res) => {
         return res.json({
           success: true,
           data: [],
+          meta: {
+            serverNow: new Date().toISOString(),
+            serverTimezone: APP_TIMEZONE
+          },
           pagination: { page: parseInt(page), limit: parseInt(limit), total: 0, totalPages: 0 }
         });
       }
@@ -705,7 +745,8 @@ router.get('/', async (req, res) => {
           historyData = {
             actionDate: userApproval.approvedAt || userApproval.createdAt,
             comment: userApproval.comment,
-            action: userApproval.status
+            action: userApproval.status,
+            category: userApproval.status === 'approved' ? 'approved' : 'not_approved'
           };
         }
       }
@@ -760,6 +801,10 @@ router.get('/', async (req, res) => {
     res.json({
       success: true,
       data: transformed,
+      meta: {
+        serverNow: new Date().toISOString(),
+        serverTimezone: APP_TIMEZONE
+      },
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -855,13 +900,11 @@ function buildDashboardRoleFilter(roles, userId) {
         break;
       case 'approver':
         conditions.push({
-          OR: [
-            { status: 'pending_approval' },
-            { status: { startsWith: 'pending_level_' } },
-            { status: 'pending_rejection' },
-            { status: 'rejected' },
-            { status: 'returned' }
-          ]
+          approvals: {
+            some: {
+              approverId: userId
+            }
+          }
         });
         break;
       case 'admin':
@@ -894,11 +937,7 @@ router.get('/dashboard-stats', async (req, res) => {
     const { status, assignee } = req.query;
     console.log(`[Dashboard Stats] Params: role=${roleParam}, status=${status}, assignee=${assignee}`);
 
-    const now = new Date();
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(now);
-    todayEnd.setHours(23, 59, 59, 999);
+    const { dayStart: todayStart, dayEnd: todayEnd } = getDayBoundsInTimeZone(new Date(), APP_TIMEZONE);
 
     // สร้าง role filter
     const roleFilter = buildDashboardRoleFilter(roleParam, userId);
@@ -941,6 +980,12 @@ router.get('/dashboard-stats', async (req, res) => {
     }
 
     const EXCLUDED_STATUSES = ['completed', 'closed', 'cancelled'];
+    const OVERDUE_EXCLUDED_STATUSES = [
+      ...EXCLUDED_STATUSES,
+      'rejected',
+      'rejected_by_assignee',
+      'assignee_rejected'
+    ];
 
     // ดึงทุก count ด้วย Promise.all ใน parallel
     const [
@@ -970,7 +1015,7 @@ router.get('/dashboard-stats', async (req, res) => {
         where: {
           ...baseWhere,
           dueDate: { lt: todayStart },
-          status: { notIn: EXCLUDED_STATUSES }
+          status: { notIn: OVERDUE_EXCLUDED_STATUSES }
         }
       }),
       // งานทั้งหมด
@@ -990,7 +1035,7 @@ router.get('/dashboard-stats', async (req, res) => {
       prisma.job.count({
         where: {
           ...baseWhere,
-          status: { in: ['pending_approval', 'pending_rejection'] }
+          status: { in: ['pending_approval', 'assignee_rejected'] }
         }
       }),
       // myJobs = งานที่ requesterId = userId เสมอ (ใช้เป็น KPI ส่วนตัว)
@@ -1099,17 +1144,19 @@ router.get('/dashboard-jobs', async (req, res) => {
     const skip = (page - 1) * limit;
 
     // คำนวณช่วงวันที่สำหรับ filter
-    const now = new Date();
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(now);
-    todayEnd.setHours(23, 59, 59, 999);
+    const { dayStart: todayStart, dayEnd: todayEnd } = getDayBoundsInTimeZone(new Date(), APP_TIMEZONE);
 
     // สร้าง role filter
     const roleFilter = buildDashboardRoleFilter(roleParam, userId);
 
     // สร้าง where clause ตามประเภท (ไม่รวม Parent Jobs ให้ตัวเลขตรงกับ stats)
     const EXCLUDED_STATUSES = ['completed', 'closed', 'cancelled'];
+    const OVERDUE_EXCLUDED_STATUSES = [
+      ...EXCLUDED_STATUSES,
+      'rejected',
+      'rejected_by_assignee',
+      'assignee_rejected'
+    ];
     let where = roleFilter
       ? { tenantId, isParent: false, ...roleFilter }
       : { tenantId, isParent: false };
@@ -1172,6 +1219,44 @@ router.get('/dashboard-jobs', async (req, res) => {
       };
     }
 
+    // Overdue panel must always exclude rejected statuses, regardless of status filter.
+    if (type === 'overdue') {
+      if (typeof where.status === 'string') {
+        if (OVERDUE_EXCLUDED_STATUSES.includes(where.status)) {
+          return res.json({
+            success: true,
+            data: {
+              jobs: [],
+              total: 0,
+              page,
+              limit,
+              hasMore: false
+            }
+          });
+        }
+      } else if (where.status?.in && Array.isArray(where.status.in)) {
+        const filteredStatuses = where.status.in.filter(s => !OVERDUE_EXCLUDED_STATUSES.includes(s));
+        if (filteredStatuses.length === 0) {
+          return res.json({
+            success: true,
+            data: {
+              jobs: [],
+              total: 0,
+              page,
+              limit,
+              hasMore: false
+            }
+          });
+        }
+        where.status = { in: filteredStatuses };
+      } else {
+        const existingNotIn = Array.isArray(where.status?.notIn) ? where.status.notIn : [];
+        where.status = {
+          notIn: [...new Set([...existingNotIn, ...OVERDUE_EXCLUDED_STATUSES])]
+        };
+      }
+    }
+
     // ดึงข้อมูลและนับ total พร้อมกัน
     const [jobs, total] = await Promise.all([
       prisma.job.findMany({
@@ -1203,7 +1288,7 @@ router.get('/dashboard-jobs', async (req, res) => {
     const transformedJobs = jobs.map(job => {
       const dueDateObj = job.dueDate ? new Date(job.dueDate) : null;
       const isOverdue = dueDateObj && dueDateObj < todayStart &&
-        !EXCLUDED_STATUSES.includes(job.status);
+        !OVERDUE_EXCLUDED_STATUSES.includes(job.status);
       const overdueDays = isOverdue
         ? Math.floor((todayStart - dueDateObj) / (1000 * 60 * 60 * 24))
         : 0;
@@ -1574,7 +1659,8 @@ router.post('/', async (req, res) => {
         projectId: parseInt(projectId),
         jobTypeId: parseInt(jobTypeId),
         tenantId,
-        priority: priority
+        priority: priority,
+        sendAssigneeNotification: false
       });
 
       if (autoApproveResult.autoApproved) {
@@ -1967,27 +2053,6 @@ router.get('/:id', async (req, res) => {
             status: true
           }
         },
-        // Include pending rejection request
-        rejectionRequests: {
-          where: { status: 'pending' },
-          select: {
-            id: true,
-            reason: true,
-            status: true,
-            autoCloseAt: true,
-            autoCloseEnabled: true,
-            createdAt: true,
-            requester: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                displayName: true
-              }
-            }
-          },
-          take: 1
-        }
       }
     });
 
@@ -2164,21 +2229,6 @@ router.get('/:id', async (req, res) => {
           avatar: c.user?.avatarUrl
         }
       })) || [],
-
-      // NEW: Pending Rejection Request for Approver Action
-      rejectionRequest: job.rejectionRequests && job.rejectionRequests.length > 0 ? {
-        id: job.rejectionRequests[0].id,
-        reason: job.rejectionRequests[0].reason,
-        status: job.rejectionRequests[0].status,
-        autoCloseAt: job.rejectionRequests[0].autoCloseAt,
-        autoCloseEnabled: job.rejectionRequests[0].autoCloseEnabled,
-        createdAt: job.rejectionRequests[0].createdAt,
-        requester: job.rejectionRequests[0].requester ? {
-          id: job.rejectionRequests[0].requester.id,
-          name: job.rejectionRequests[0].requester.displayName || `${job.rejectionRequests[0].requester.firstName || ''} ${job.rejectionRequests[0].requester.lastName || ''}`.trim()
-        } : null
-      } : null,
-
       // Activities for history log (using ActivityLog model)
       activities: job.activityLogs?.map(a => ({
         id: a.id,
@@ -2206,11 +2256,6 @@ router.get('/:id', async (req, res) => {
           avatar: a.approver.avatarUrl
         }
       })) || [],
-      // flowSnapshot: ข้อมูล ApprovalFlow template สำหรับ render UI
-      // Frontend ใช้ค่านี้เพื่อแสดง Timeline ของ Approval Flow
-      // หมายเหตุ: ApprovalFlow model เก็บขั้นตอนการอนุมัติใน field `approverSteps` (ชื่อใน DB)
-      // แต่ Frontend component (JobApprovalFlow.jsx) รับข้อมูลในรูปแบบ `levels` (ชื่อที่ Front ใช้)
-      // ดังนั้นต้อง map approverSteps → levels ตรงนี้
       flowSnapshot: approvalFlow ? {
         levels: Array.isArray(approvalFlow.approverSteps) ? approvalFlow.approverSteps : [],
         skipApproval: approvalFlow.skipApproval || false,
@@ -2218,9 +2263,8 @@ router.get('/:id', async (req, res) => {
       } : null
     };
 
-    // 🔍 Debug: Log rejection details if status is assignee_rejected
     if (job.status === 'assignee_rejected') {
-      console.log('[Jobs GET/:id] 🔍 Assignee Rejection Debug:', {
+      console.log('[Jobs GET/:id] Assignee Rejection Debug:', {
         jobId: job.id,
         djId: job.djId,
         status: job.status,
@@ -2237,996 +2281,12 @@ router.get('/:id', async (req, res) => {
       data: transformed
     });
 
-
   } catch (error) {
     console.error('[Jobs] Get job by ID error:', error);
     res.status(500).json({
       success: false,
       error: 'GET_JOB_FAILED',
       message: 'ไม่สามารถดึงข้อมูลงานได้'
-    });
-  }
-});
-
-
-/**
- * POST /api/jobs/:id/approve
- * อนุมัติงาน (Web Action)
- */
-router.post('/:id/approve', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { comment } = req.body;
-    const userId = req.user.userId;
-    const ipAddress = req.ip || req.connection.remoteAddress || 'unknown';
-
-    const result = await approvalService.approveJobViaWeb({
-      jobId: parseInt(id),
-      approverId: userId,
-      comment,
-      ipAddress
-    });
-
-    // ✅ NEW: Handle Urgent Job Rescheduling - Trigger เมื่ออนุมัติครบทุก level
-    if (result.success) {
-      try {
-        const prisma = getDatabase();
-        const jobId = parseInt(id);
-
-        // Get job details
-        const job = await prisma.job.findUnique({
-          where: { id: jobId },
-          select: {
-            id: true,
-            djId: true,
-            priority: true,
-            assigneeId: true,
-            dueDate: true,
-            status: true,
-            tenantId: true
-          }
-        });
-
-        // If urgent job, check if final approval and reschedule
-        if (job && job.priority === 'urgent' && job.assigneeId && job.dueDate) {
-          // ตรวจสอบว่าผ่านการอนุมัติครบหรือไม่
-          const approvalRecords = await prisma.approval.findMany({
-            where: { jobId: job.id },
-            orderBy: { level: 'asc' }
-          });
-
-          // ถ้ามี approval records และ level สุดท้ายอนุมัติแล้ว
-          const isFinalApproved = approvalRecords.length > 0 &&
-            approvalRecords.every(a => a.status === 'approved');
-
-          // หรือถ้าเป็นงานที่ skip approval (status = 'assigned' หรือ 'approved' โดยตรง)
-          const isSkipApproval = ['assigned', 'approved'].includes(job.status) &&
-            approvalRecords.length === 0;
-
-          if (isFinalApproved || isSkipApproval) {
-            console.log(`[Jobs] 🚨 Urgent job ${job.djId} passed final approval - triggering reschedule`);
-
-            const rescheduleResult = await chainService.rescheduleForUrgent(job, prisma);
-
-            if (rescheduleResult.rescheduled > 0) {
-              console.log(
-                `[Jobs] ✅ Urgent Job Rescheduled: ${rescheduleResult.rescheduled} jobs extended +${rescheduleResult.shiftDays} working days`,
-                { affected: rescheduleResult.affected.map(a => a.djId) }
-              );
-
-              // Append reschedule info to result
-              result.rescheduled = rescheduleResult;
-            } else {
-              console.log(`[Jobs] ℹ️  No jobs to reschedule for urgent job ${job.djId}`);
-            }
-          } else {
-            console.log(`[Jobs] ⏸️  Urgent job ${job.djId} not yet final approved - skip reschedule`);
-          }
-        }
-      } catch (rescheduleError) {
-        console.warn('[Jobs] Urgent Reschedule Warning (non-blocking):', rescheduleError);
-        // Don't fail approval, just log warning
-      }
-    }
-
-    if (result.success) {
-      res.json(result);
-    } else {
-      res.status(400).json(result);
-    }
-  } catch (error) {
-    console.error('[Jobs] Approve error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'APPROVE_FAILED',
-      message: 'ไม่สามารถอนุมัติงานได้'
-    });
-  }
-});
-
-/**
- * POST /api/jobs/:id/reject
- * ปฏิเสธงาน (Web Action)
- */
-router.post('/:id/reject', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { comment } = req.body;
-    const userId = req.user.userId;
-    const tenantId = req.user.tenantId;
-    const ipAddress = req.ip || req.connection.remoteAddress || 'unknown';
-    const prisma = getDatabase();
-
-    const result = await approvalService.rejectJobViaWeb({
-      jobId: parseInt(id),
-      approverId: userId,
-      comment,
-      ipAddress
-    });
-
-    // ✅ NEW: Cancel chained/child jobs when job is rejected
-    if (result.success) {
-      try {
-        // Get job details to check for chains/children
-        const job = await prisma.job.findUnique({
-          where: { id: parseInt(id) },
-          select: {
-            djId: true,
-            isParent: true,
-            nextJobId: true
-          }
-        });
-
-        let cancelledJobIds = [];
-
-        if (job) {
-          if (job.isParent) {
-            // Cancel all child jobs
-            cancelledJobIds = await jobChainService.cancelChildJobs(
-              parseInt(id),
-              tenantId,
-              `Parent job (${job.djId}) rejected by approver`,
-              userId
-            );
-            console.log(`[Jobs] Cancelled ${cancelledJobIds.length} child jobs after parent rejection`);
-          } else if (job.nextJobId) {
-            // Cancel downstream chain
-            cancelledJobIds = await jobChainService.cancelChainedJobs(
-              parseInt(id),
-              tenantId,
-              `Previous job (${job.djId}) rejected by approver`,
-              userId
-            );
-            console.log(`[Jobs] Cancelled ${cancelledJobIds.length} downstream jobs in chain`);
-          }
-
-          // Add cancelled jobs info to result
-          if (cancelledJobIds.length > 0) {
-            result.cancelledJobs = cancelledJobIds.length;
-          }
-        }
-      } catch (chainErr) {
-        console.error('[Jobs] Chain cancellation warning (non-blocking):', chainErr);
-        // Don't fail the rejection if chain cancellation fails
-      }
-
-      res.json(result);
-    } else {
-      res.status(400).json(result);
-    }
-  } catch (error) {
-    console.error('[Jobs] Reject error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'REJECT_FAILED',
-      message: 'ไม่สามารถปฏิเสธงานได้'
-    });
-  }
-});
-
-/**
- * POST /api/jobs/:id/reject-by-assignee
- * Assignee ปฏิเสธงาน - ส่งกลับให้ Approver คนสุดท้ายพิจารณา
- */
-router.post('/:id/reject-by-assignee', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { comment } = req.body;
-    const userId = req.user.userId;
-
-    const result = await approvalService.rejectJobByAssignee({
-      jobId: parseInt(id),
-      assigneeId: userId,
-      comment
-    });
-
-    if (result.success) {
-      res.json(result);
-    } else {
-      res.status(400).json(result);
-    }
-  } catch (error) {
-    console.error('[Jobs] Reject by assignee error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'REJECT_BY_ASSIGNEE_FAILED',
-      message: 'ไม่สามารถปฏิเสธงานได้'
-    });
-  }
-});
-
-/**
- * POST /api/jobs/:id/confirm-assignee-rejection
- * Approver ยืนยันการปฏิเสธของ Assignee → งานเปลี่ยนเป็น rejected แจ้ง Requester + CC emails
- *
- * Body: {
- *   comment?: string,
- *   ccEmails?: string[] // Optional CC email list
- * }
- */
-router.post('/:id/confirm-assignee-rejection', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { comment, ccEmails } = req.body;
-    const userId = req.user.userId;
-
-    const result = await approvalService.confirmAssigneeRejection({
-      jobId: parseInt(id),
-      approverId: userId,
-      comment,
-      ccEmails: ccEmails || []
-    });
-
-    if (result.success) {
-      res.json(result);
-    } else {
-      res.status(400).json(result);
-    }
-  } catch (error) {
-    console.error('[Jobs] Confirm assignee rejection error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'CONFIRM_REJECTION_FAILED',
-      message: 'ไม่สามารถยืนยันการปฏิเสธได้'
-    });
-  }
-});
-
-/**
- * POST /api/jobs/:id/deny-assignee-rejection
- * Approver ไม่อนุมัติการปฏิเสธ → สั่งให้ Assignee ทำงานต่อ + แนะนำให้ Extend
- *
- * Body: {
- *   reason: string // Required - เหตุผลที่ไม่อนุมัติการปฏิเสธ
- * }
- */
-router.post('/:id/deny-assignee-rejection', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { reason } = req.body;
-    const userId = req.user.userId;
-
-    // Validation
-    if (!reason || reason.trim().length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'REASON_REQUIRED',
-        message: 'กรุณาระบุเหตุผลที่ไม่อนุมัติการปฏิเสธ'
-      });
-    }
-
-    const result = await approvalService.denyAssigneeRejection({
-      jobId: parseInt(id),
-      approverId: userId,
-      reason: reason.trim()
-    });
-
-    if (result.success) {
-      res.json(result);
-    } else {
-      res.status(400).json(result);
-    }
-  } catch (error) {
-    console.error('[Jobs] Deny assignee rejection error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'DENY_REJECTION_FAILED',
-      message: 'ไม่สามารถปฏิเสธคำขอยกเลิกได้'
-    });
-  }
-});
-
-/**
- * POST /api/jobs/:id/request-rejection
- * Assignee ขอปฏิเสธงาน - สร้าง rejection_request รอ Approver อนุมัติ
- *
- * ระบบใหม่: ใช้ rejection_requests table พร้อม auto-close timeout (24h)
- * - Assignee ส่งคำขอปฏิเสธพร้อมเหตุผล
- * - Approver จะได้รับการแจ้งเตือน
- * - ถ้า Approver ไม่ตอบกลับภายใน 24h → auto-approve
- *
- * @body {string} reason - เหตุผลในการขอปฏิเสธ (Required)
- */
-router.post('/:id/request-rejection', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { reason } = req.body;
-    const userId = req.user.userId;
-    const tenantId = req.user.tenantId;
-    const prisma = getDatabase();
-
-    // Validation
-    if (!reason || reason.trim().length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'REASON_REQUIRED',
-        message: 'กรุณาระบุเหตุผลในการขอปฏิเสธงาน'
-      });
-    }
-
-    // Get job details
-    const job = await prisma.job.findUnique({
-      where: { id: parseInt(id), tenantId },
-      select: {
-        id: true,
-        djId: true,
-        subject: true,
-        status: true,
-        assigneeId: true,
-        projectId: true,
-        jobTypeId: true,
-        requesterId: true,
-        priority: true,
-        assignee: {
-          select: { id: true, firstName: true, lastName: true }
-        },
-        approvals: {
-          where: { status: 'approved' },
-          select: { id: true, approverId: true, stepNumber: true },
-          orderBy: { stepNumber: 'desc' },
-          take: 1
-        }
-      }
-    });
-
-    if (!job) {
-      return res.status(404).json({
-        success: false,
-        error: 'JOB_NOT_FOUND',
-        message: 'ไม่พบงานที่ระบุ'
-      });
-    }
-
-    // Check if user is the assignee or admin
-    if (!hasAdminPrivileges(req.user) && !isSameUserId(job.assigneeId, userId)) {
-      return res.status(403).json({
-        success: false,
-        error: 'INSUFFICIENT_PERMISSIONS',
-        message: 'คุณไม่ได้เป็นผู้รับผิดชอบงานนี้'
-      });
-    }
-
-    // Check if job can be rejected
-    const validStatuses = ['in_progress', 'assigned', 'rework'];
-    if (!validStatuses.includes(job.status)) {
-      return res.status(400).json({
-        success: false,
-        error: 'INVALID_STATUS',
-        message: `ไม่สามารถขอปฏิเสธงานในสถานะ ${job.status} ได้`
-      });
-    }
-
-    // Check if there's already a pending rejection request
-    const existingRequest = await prisma.rejectionRequest.findFirst({
-      where: {
-        jobId: parseInt(id),
-        status: 'pending',
-        tenantId
-      }
-    });
-
-    if (existingRequest) {
-      return res.status(400).json({
-        success: false,
-        error: 'REJECTION_REQUEST_EXISTS',
-        message: 'มีคำขอปฏิเสธงานนี้อยู่แล้ว กรุณารอการพิจารณา'
-      });
-    }
-
-    // หาผู้อนุมัติสำหรับ rejection request:
-    // ใช้คนที่อนุมัติงานล่าสุด (stepNumber สูงสุด) ก่อน endprocess/assign
-    let approverIds = [];
-    let approverLevel = null;
-    let approvalLogic = 'ANY';
-
-    // Step 1: ลองหาจาก Approval record จริง (คนที่อนุมัติงานล่าสุด)
-    if (job.approvals && job.approvals.length > 0) {
-      const lastApproval = job.approvals[0]; // ถูก order by stepNumber desc แล้ว
-      approverIds = [lastApproval.approverId];
-      approverLevel = lastApproval.stepNumber;
-      console.log(`[Jobs] Rejection approver from approval record: userId=${lastApproval.approverId}, step=${lastApproval.stepNumber}`);
-    }
-
-    // Step 2: ถ้าไม่มี Approval record → ดึงจาก Approval Flow template (Level สูงสุด)
-    if (approverIds.length === 0) {
-      try {
-        const approvalFlow = await approvalService.getApprovalFlow(job.projectId, job.jobTypeId, job.priority);
-        if (approvalFlow && approvalFlow.approverSteps && approvalFlow.approverSteps.length > 0) {
-          const sortedSteps = [...approvalFlow.approverSteps].sort((a, b) => (b.stepNumber || 0) - (a.stepNumber || 0));
-          const lastStep = sortedSteps[0];
-          if (lastStep.approvers && Array.isArray(lastStep.approvers)) {
-            approverIds = lastStep.approvers.map(a => a.id || a.userId).filter(Boolean);
-            approverLevel = lastStep.stepNumber || null;
-            console.log(`[Jobs] Rejection approver from flow template step ${approverLevel}: ${approverIds}`);
-          }
-        }
-      } catch (flowErr) {
-        console.warn('[Jobs] Could not get approval flow for rejection request:', flowErr);
-      }
-    }
-
-    // Fallback: ถ้าไม่มีอะไรเลย → ใช้ requesterId
-    if (approverIds.length === 0) {
-      approverIds = [job.requesterId];
-      approvalLogic = 'ANY';
-      console.warn(`[Jobs] Rejection approver fallback to requesterId=${job.requesterId}`);
-    }
-
-    // Calculate auto-close time: 1 วันทำงาน (ข้ามเสาร์-อาทิตย์ และวันหยุดนักขัตฤกษ์)
-    const autoCloseAt = await calculateNextWorkingDay(new Date(), tenantId);
-
-    // Create rejection request
-    const rejectionRequest = await prisma.rejectionRequest.create({
-      data: {
-        jobId: parseInt(id),
-        requestedBy: userId,
-        reason: reason.trim(),
-        status: 'pending',
-        approverLevel,
-        approverIds,
-        approvalLogic,
-        autoCloseAt,
-        autoCloseEnabled: true,
-        tenantId
-      }
-    });
-
-    // Update job status to pending_rejection
-    await prisma.job.update({
-      where: { id: parseInt(id) },
-      data: { status: 'pending_rejection' }
-    });
-
-    // Log activity
-    await prisma.activityLog.create({
-      data: {
-        jobId: parseInt(id),
-        userId,
-        action: 'rejection_requested',
-        message: 'Assignee ขอปฏิเสธงาน',
-        detail: {
-          reason: reason.trim(),
-          rejectionRequestId: rejectionRequest.id,
-          autoCloseAt: autoCloseAt.toISOString()
-        }
-      }
-    }).catch(err => console.error('[Jobs] Failed to log activity:', err));
-
-    // Notify Approver(s)
-    try {
-      for (const approverId of approverIds) {
-        await notificationService.createNotification({
-          tenantId,
-          userId: approverId,
-          type: 'rejection_requested',
-          title: `⚠️ Assignee ขอปฏิเสธงาน: ${job.djId}`,
-          message: `ผู้รับงานขอปฏิเสธงาน "${job.subject || ''}" เหตุผล: ${reason.trim()}`,
-          link: `/jobs/${id}`
-        }).catch(err => console.warn('[RequestRejection] Noti failed:', err.message));
-      }
-
-      // Email Approver(s) with Magic Link
-      const approverUsers = await prisma.user.findMany({
-        where: { id: { in: approverIds } },
-        select: { id: true, email: true, firstName: true, lastName: true }
-      });
-      const emailService = new EmailService();
-      await Promise.allSettled(
-        approverUsers.filter(a => a.email).map(async (a) => {
-          const magicLink = await magicLinkService.createJobActionLink({
-            userId: a.id,
-            jobId: Number(id),
-            action: 'view',
-            djId: job.djId
-          });
-          const emailHtml = createRejectionRequestEmail({
-            djId: job.djId,
-            subject: job.subject || '',
-            assigneeName: `${job.assignee?.firstName || 'ผู้รับงาน'} ${job.assignee?.lastName || ''}`,
-            reason: reason.trim(),
-            magicLink,
-            approverName: `${a.firstName} ${a.lastName}`
-          });
-          return emailService.sendEmail(a.email, `⚠️ Assignee ขอปฏิเสธงาน: ${job.djId}`, emailHtml)
-            .catch(err => console.warn('[RequestRejection] Email failed:', err.message));
-        })
-      );
-    } catch (notiErr) {
-      console.warn('[RequestRejection] Notification failed (non-blocking):', notiErr.message);
-    }
-
-    res.json({
-      success: true,
-      message: 'ส่งคำขอปฏิเสธงานเรียบร้อย รอการพิจารณา',
-      data: {
-        rejectionRequestId: rejectionRequest.id,
-        status: 'pending',
-        autoCloseAt: autoCloseAt.toISOString()
-      }
-    });
-
-  } catch (error) {
-    console.error('[Jobs] Request rejection error:', error.message);
-    console.error('[Jobs] Request rejection stack:', error.stack?.split('\n').slice(0, 5).join('\n'));
-    res.status(500).json({
-      success: false,
-      error: 'REQUEST_REJECTION_FAILED',
-      message: 'ไม่สามารถส่งคำขอปฏิเสธงานได้',
-      debug: process.env.NODE_ENV !== 'production' ? error.message : undefined
-    });
-  }
-});
-
-/**
- * POST /api/rejection-requests/:id/approve
- * Approver อนุมัติคำขอปฏิเสธจาก Assignee
- *
- * - อัปเดตสถานะ rejection_request เป็น 'approved'
- * - เปลี่ยนสถานะงานเป็น 'rejected_by_assignee'
- * - ยกเลิกงานที่เชื่อมโยง (chain/children)
- *
- * @body {string} comment - ความเห็นจาก Approver (Optional)
- */
-router.post('/rejection-requests/:id/approve', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { comment } = req.body;
-    const userId = req.user.userId;
-    const tenantId = req.user.tenantId;
-    const prisma = getDatabase();
-
-    // Get rejection request
-    const rejectionRequest = await prisma.rejectionRequest.findUnique({
-      where: { id: parseInt(id) },
-      include: {
-        job: {
-          select: {
-            id: true,
-            djId: true,
-            status: true,
-            isParent: true,
-            nextJobId: true,
-            parentJobId: true
-          }
-        }
-      }
-    });
-
-    if (!rejectionRequest) {
-      return res.status(404).json({
-        success: false,
-        error: 'REQUEST_NOT_FOUND',
-        message: 'ไม่พบคำขอปฏิเสธที่ระบุ'
-      });
-    }
-
-    // Check tenant
-    if (rejectionRequest.tenantId !== tenantId) {
-      return res.status(403).json({
-        success: false,
-        error: 'INSUFFICIENT_PERMISSIONS',
-        message: 'คุณไม่มีสิทธิ์เข้าถึงคำขอนี้'
-      });
-    }
-
-    // Check if user is in approver list
-    let approvers = rejectionRequest.approverIds;
-    if (typeof approvers === 'string') {
-      try {
-        approvers = JSON.parse(approvers);
-      } catch (e) {
-        approvers = [];
-      }
-    }
-    if (!Array.isArray(approvers)) {
-      approvers = [];
-    }
-
-    // แปลง userId และ approver id ให้เป็น string เพื่อเทียบอย่างปลอดภัย
-    const isApprover = approvers.some(id => String(id) === String(userId));
-
-    if (!isApprover) {
-      return res.status(403).json({
-        success: false,
-        error: 'NOT_APPROVER',
-        message: 'คุณไม่ใช่ผู้อนุมัติสำหรับคำขอนี้'
-      });
-    }
-
-    // Check if request is still pending
-    if (rejectionRequest.status !== 'pending') {
-      return res.status(400).json({
-        success: false,
-        error: 'REQUEST_ALREADY_PROCESSED',
-        message: `คำขอนี้ถูกดำเนินการแล้ว (${rejectionRequest.status})`
-      });
-    }
-
-    // Update rejection request to approved
-    await prisma.rejectionRequest.update({
-      where: { id: parseInt(id) },
-      data: {
-        status: 'approved',
-        approvedBy: userId,
-        approvedAt: new Date()
-      }
-    });
-
-    // Update job status to rejected_by_assignee
-    await prisma.job.update({
-      where: { id: rejectionRequest.jobId },
-      data: { status: 'rejected_by_assignee' }
-    });
-
-    // Log activity
-    await prisma.activityLog.create({
-      data: {
-        jobId: rejectionRequest.jobId,
-        userId,
-        action: 'rejection_approved',
-        message: 'Approver อนุมัติคำขอปฏิเสธจาก Assignee',
-        detail: {
-          rejectionRequestId: rejectionRequest.id,
-          comment: comment || null
-        }
-      }
-    }).catch(err => console.error('[Jobs] Failed to log activity:', err));
-
-    // Optional: Add comment if provided
-    if (comment && comment.trim().length > 0) {
-      await prisma.jobComment.create({
-        data: {
-          jobId: rejectionRequest.jobId,
-          userId,
-          comment: comment.trim(),
-          tenantId
-        }
-      }).catch(err => console.error('[Jobs] Failed to create comment:', err));
-    }
-
-    // Cancel chained jobs (if any)
-    let cancelledJobIds = [];
-    try {
-      if (rejectionRequest.job.isParent) {
-        // Cancel all child jobs
-        cancelledJobIds = await jobChainService.cancelChildJobs(
-          rejectionRequest.jobId,
-          tenantId,
-          `Parent job (${rejectionRequest.job.djId}) rejected by assignee`,
-          userId
-        );
-      } else if (rejectionRequest.job.nextJobId) {
-        // Cancel downstream chain
-        cancelledJobIds = await jobChainService.cancelChainedJobs(
-          rejectionRequest.jobId,
-          tenantId,
-          `Previous job (${rejectionRequest.job.djId}) rejected by assignee`,
-          userId
-        );
-      }
-    } catch (chainErr) {
-      console.error('[Jobs] Chain cancellation warning (non-blocking):', chainErr);
-    }
-
-    // ✅ NEW: Check Parent Job Closure (Partial Rejection Support)
-    try {
-      if (rejectionRequest.job.parentJobId) {
-        // This is a child job, check if parent can be closed
-        const closureCheck = await jobChainService.checkParentJobClosure(
-          rejectionRequest.job.parentJobId,
-          tenantId
-        );
-
-        if (closureCheck.canClose) {
-          // Update parent job status
-          await prisma.job.update({
-            where: { id: rejectionRequest.job.parentJobId },
-            data: { status: closureCheck.newStatus }
-          });
-
-          // Log activity on parent job
-          await prisma.activityLog.create({
-            data: {
-              jobId: rejectionRequest.job.parentJobId,
-              userId,
-              action: 'parent_job_closed',
-              message: closureCheck.newStatus === 'partially_completed'
-                ? 'Parent job partially completed: บาง child jobs ถูกปฏิเสธ'
-                : `Parent job status updated: ${closureCheck.reason}`,
-              detail: {
-                closureReason: closureCheck.reason,
-                stats: closureCheck.stats,
-                triggeredByRejection: true
-              }
-            }
-          }).catch(err => console.error('[Jobs] Failed to log parent closure:', err));
-
-          console.log(
-            `[Jobs] Parent Job Closure (after rejection): Parent ${rejectionRequest.job.parentJobId} → ${closureCheck.newStatus}`,
-            closureCheck.stats
-          );
-        }
-      }
-    } catch (closureError) {
-      console.error('[Jobs] Parent job closure check failed (non-blocking):', closureError);
-      // Don't fail the request
-    }
-
-    // Notify Requester + Assignee
-    try {
-      const jobDetail = await prisma.job.findUnique({
-        where: { id: rejectionRequest.jobId },
-        select: { djId: true, subject: true, requesterId: true, assigneeId: true, tenantId: true }
-      });
-      if (jobDetail) {
-        const notiTargets = [jobDetail.requesterId, rejectionRequest.requestedBy].filter(Boolean);
-        const uniqueTargets = [...new Set(notiTargets)];
-        for (const targetId of uniqueTargets) {
-          await notificationService.createNotification({
-            tenantId,
-            userId: targetId,
-            type: 'rejection_approved',
-            title: `✅ คำขอปฏิเสธงาน ${jobDetail.djId} ได้รับอนุมัติ`,
-            message: `คำขอปฏิเสธงาน "${jobDetail.subject || ''}" ได้รับการอนุมัติแล้ว งานถูกยกเลิก`,
-            link: `/jobs/${rejectionRequest.jobId}`
-          }).catch(err => console.warn('[ApproveRejReq] Noti failed:', err.message));
-        }
-
-        // Email with Magic Link
-        const emailService = new EmailService();
-        const targetUsers = await prisma.user.findMany({
-          where: { id: { in: uniqueTargets } },
-          select: { id: true, email: true, firstName: true, lastName: true }
-        });
-        await Promise.allSettled(
-          targetUsers.filter(u => u.email).map(async (u) => {
-            const magicLink = await magicLinkService.createJobActionLink({
-              userId: u.id,
-              jobId: rejectionRequest.jobId,
-              action: 'view',
-              djId: jobDetail.djId
-            });
-            const emailHtml = createRejectionApprovedEmail({
-              djId: jobDetail.djId,
-              subject: jobDetail.subject || '',
-              magicLink,
-              userName: `${u.firstName} ${u.lastName}`
-            });
-            return emailService.sendEmail(u.email, `✅ คำขอปฏิเสธงาน ${jobDetail.djId} ได้รับอนุมัติ`, emailHtml)
-              .catch(err => console.warn('[ApproveRejReq] Email failed:', err.message));
-          })
-        );
-      }
-    } catch (notiErr) {
-      console.warn('[ApproveRejReq] Notification failed (non-blocking):', notiErr.message);
-    }
-
-    res.json({
-      success: true,
-      message: 'อนุมัติคำขอปฏิเสธเรียบร้อย',
-      data: {
-        jobId: rejectionRequest.jobId,
-        status: 'rejected_by_assignee',
-        cancelledJobs: cancelledJobIds.length
-      }
-    });
-
-  } catch (error) {
-    console.error('[Jobs] Approve rejection request error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'APPROVE_REJECTION_FAILED',
-      message: 'ไม่สามารถอนุมัติคำขอปฏิเสธได้'
-    });
-  }
-});
-
-/**
- * POST /api/rejection-requests/:id/deny
- * Approver ปฏิเสธคำขอปฏิเสธจาก Assignee - สั่งให้ทำงานต่อ
- *
- * - อัปเดตสถานะ rejection_request เป็น 'denied'
- * - เปลี่ยนสถานะงานกลับเป็น 'in_progress'
- * - แนะนำให้ Assignee ขอ Extend deadline
- *
- * @body {string} reason - เหตุผลที่ไม่อนุมัติ (Required)
- */
-router.post('/rejection-requests/:id/deny', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { reason } = req.body;
-    const userId = req.user.userId;
-    const tenantId = req.user.tenantId;
-    const prisma = getDatabase();
-
-    // Validation
-    if (!reason || reason.trim().length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'REASON_REQUIRED',
-        message: 'กรุณาระบุเหตุผลที่ไม่อนุมัติคำขอปฏิเสธ'
-      });
-    }
-
-    // Get rejection request
-    const rejectionRequest = await prisma.rejectionRequest.findUnique({
-      where: { id: parseInt(id) },
-      include: {
-        job: {
-          select: {
-            id: true,
-            djId: true,
-            status: true
-          }
-        }
-      }
-    });
-
-    if (!rejectionRequest) {
-      return res.status(404).json({
-        success: false,
-        error: 'REQUEST_NOT_FOUND',
-        message: 'ไม่พบคำขอปฏิเสธที่ระบุ'
-      });
-    }
-
-    // Check tenant
-    if (rejectionRequest.tenantId !== tenantId) {
-      return res.status(403).json({
-        success: false,
-        error: 'INSUFFICIENT_PERMISSIONS',
-        message: 'คุณไม่มีสิทธิ์เข้าถึงคำขอนี้'
-      });
-    }
-
-    // Check if user is in approver list
-    let approvers = rejectionRequest.approverIds;
-    if (typeof approvers === 'string') {
-      try {
-        approvers = JSON.parse(approvers);
-      } catch (e) {
-        approvers = [];
-      }
-    }
-    if (!Array.isArray(approvers)) {
-      approvers = [];
-    }
-
-    // แปลง userId และ approver id ให้เป็น string เพื่อเทียบอย่างปลอดภัย
-    const isApprover = approvers.some(id => String(id) === String(userId));
-
-    if (!isApprover) {
-      return res.status(403).json({
-        success: false,
-        error: 'NOT_APPROVER',
-        message: 'คุณไม่ใช่ผู้อนุมัติสำหรับคำขอนี้'
-      });
-    }
-
-    // Check if request is still pending
-    if (rejectionRequest.status !== 'pending') {
-      return res.status(400).json({
-        success: false,
-        error: 'REQUEST_ALREADY_PROCESSED',
-        message: `คำขอนี้ถูกดำเนินการแล้ว (${rejectionRequest.status})`
-      });
-    }
-
-    // Update rejection request to denied
-    await prisma.rejectionRequest.update({
-      where: { id: parseInt(id) },
-      data: {
-        status: 'denied',
-        approvedBy: userId,
-        approvedAt: new Date()
-      }
-    });
-
-    // Revert job status back to in_progress
-    await prisma.job.update({
-      where: { id: rejectionRequest.jobId },
-      data: { status: 'in_progress' }
-    });
-
-    // Log activity
-    await prisma.activityLog.create({
-      data: {
-        jobId: rejectionRequest.jobId,
-        userId,
-        action: 'rejection_denied',
-        message: 'Approver ไม่อนุมัติคำขอปฏิเสธ - สั่งให้ Assignee ทำงานต่อ',
-        detail: {
-          rejectionRequestId: rejectionRequest.id,
-          reason: reason.trim()
-        }
-      }
-    }).catch(err => console.error('[Jobs] Failed to log activity:', err));
-
-    // Add comment with reason
-    await prisma.jobComment.create({
-      data: {
-        jobId: rejectionRequest.jobId,
-        userId,
-        comment: `❌ ไม่อนุมัติคำขอปฏิเสธ: ${reason.trim()}\n\n💡 แนะนำ: หากต้องการเวลาเพิ่ม กรุณาขอ Extend Deadline แทน`,
-        tenantId
-      }
-    }).catch(err => console.error('[Jobs] Failed to create comment:', err));
-
-    // Notify Assignee
-    try {
-      const jobDetail = await prisma.job.findUnique({
-        where: { id: rejectionRequest.jobId },
-        select: { djId: true, subject: true, assigneeId: true, tenantId: true, assignee: { select: { email: true } } }
-      });
-      if (jobDetail?.assigneeId) {
-        await notificationService.createNotification({
-          tenantId,
-          userId: jobDetail.assigneeId,
-          type: 'rejection_denied',
-          title: `❌ คำขอปฏิเสธงาน ${jobDetail.djId} ไม่ได้รับอนุมัติ`,
-          message: `กรุณาทำงาน "${jobDetail.subject || ''}" ต่อ เหตุผล: ${reason.trim()}\n💡 หากต้องการเวลาเพิ่ม กรุณาขอ Extend Deadline`,
-          link: `/jobs/${rejectionRequest.jobId}`
-        }).catch(err => console.warn('[DenyRejReq] Noti failed:', err.message));
-
-        // Email Assignee with Magic Link
-        if (jobDetail.assignee?.email) {
-          const emailService = new EmailService();
-          const magicLink = await magicLinkService.createJobActionLink({
-            userId: jobDetail.assigneeId,
-            jobId: rejectionRequest.jobId,
-            action: 'view',
-            djId: jobDetail.djId
-          });
-          const emailHtml = createRejectionDeniedEmail({
-            djId: jobDetail.djId,
-            subject: jobDetail.subject || '',
-            reason: reason.trim(),
-            magicLink,
-            userName: `${jobDetail.assignee?.firstName || 'ผู้รับงาน'} ${jobDetail.assignee?.lastName || ''}`
-          });
-          await emailService.sendEmail(jobDetail.assignee.email, `❌ คำขอปฏิเสธงาน ${jobDetail.djId} ไม่ได้รับอนุมัติ`, emailHtml)
-            .catch(err => console.warn('[DenyRejReq] Email failed:', err.message));
-        }
-      }
-    } catch (notiErr) {
-      console.warn('[DenyRejReq] Notification failed (non-blocking):', notiErr.message);
-    }
-
-    res.json({
-      success: true,
-      message: 'ไม่อนุมัติคำขอปฏิเสธ - Assignee ต้องทำงานต่อ',
-      data: {
-        jobId: rejectionRequest.jobId,
-        status: 'in_progress'
-      }
-    });
-
-  } catch (error) {
-    console.error('[Jobs] Deny rejection request error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'DENY_REJECTION_FAILED',
-      message: 'ไม่สามารถปฏิเสธคำขอได้'
     });
   }
 });

@@ -33,18 +33,30 @@ export default function MediaPortal() {
         totalDownloads: 0
     });
 
+    const projectsWithFiles = projects
+        .filter(project => project.id !== 'all' && (project.files || 0) > 0)
+        .sort((a, b) => {
+            const countDiff = (b.files || 0) - (a.files || 0);
+            if (countDiff !== 0) return countDiff;
+            return a.name.localeCompare(b.name, 'th');
+        });
+
+    const projectsWithoutFiles = projects
+        .filter(project => project.id !== 'all' && (project.files || 0) === 0)
+        .sort((a, b) => a.name.localeCompare(b.name, 'th'));
+
     // โหลดโครงการตามสิทธิ์ User
     useEffect(() => {
         loadProjects();
     }, []);
 
-    // โหลดไฟล์เมื่อเลือกโครงการ
+    // โหลดไฟล์ทั้งหมด 1 ครั้ง แล้วกรองตามโครงการในฝั่ง client
     useEffect(() => {
         if (projects.length > 0) {
             loadMediaFiles();
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedProject]);
+    }, [projects.length]);
 
     /**
      * ดึงรายชื่อโครงการที่ User มีสิทธิ์เข้าถึง
@@ -83,11 +95,10 @@ export default function MediaPortal() {
      * (กรองตามโครงการที่เลือก)
      */
     const loadMediaFiles = async () => {
-        console.log('[MediaPortal] loadMediaFiles called, selectedProject:', selectedProject);
+        console.log('[MediaPortal] loadMediaFiles called');
         try {
-            const params = selectedProject === 'all' ? {} : { projectId: selectedProject };
-            console.log('[MediaPortal] Fetching files with params:', params);
-            const response = await httpClient.get('/storage/files', { params });
+            // ดึงทั้งหมดเพื่อให้คำนวณ count ต่อโครงการได้ครบ
+            const response = await httpClient.get('/storage/files');
             console.log('[MediaPortal] API response:', response.data);
 
             if (response.data.success) {
@@ -172,20 +183,37 @@ export default function MediaPortal() {
                 <p className="text-gray-500">คลังไฟล์งาน Design ทั้งหมด (ตามสิทธิ์ของคุณ)</p>
             </div>
 
-            {/* Project Tabs */}
-            <div className="flex gap-2 overflow-x-auto pb-2">
-                {projects.map(project => (
-                    <button
-                        key={project.id}
-                        onClick={() => setSelectedProject(project.id)}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${selectedProject === project.id
-                            ? 'bg-rose-500 text-white shadow-md'
-                            : 'bg-white border border-gray-400 text-gray-700 hover:bg-gray-50'
-                            }`}
-                    >
-                        {project.name} ({project.files})
-                    </button>
-                ))}
+            {/* Project Dropdown */}
+            <div className="max-w-md">
+                <label htmlFor="project-filter" className="block text-sm font-medium text-gray-700 mb-2">
+                    เลือกโครงการ
+                </label>
+                <select
+                    id="project-filter"
+                    value={selectedProject}
+                    onChange={(e) => setSelectedProject(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-rose-400"
+                >
+                    <option value="all">ทั้งหมด ({stats.totalFiles})</option>
+                    {projectsWithFiles.length > 0 && (
+                        <optgroup label="มีไฟล์">
+                            {projectsWithFiles.map(project => (
+                                <option key={project.id} value={String(project.id)}>
+                                    {project.name} ({project.files})
+                                </option>
+                            ))}
+                        </optgroup>
+                    )}
+                    {projectsWithoutFiles.length > 0 && (
+                        <optgroup label="ยังไม่มีไฟล์">
+                            {projectsWithoutFiles.map(project => (
+                                <option key={project.id} value={String(project.id)}>
+                                    {project.name} ({project.files})
+                                </option>
+                            ))}
+                        </optgroup>
+                    )}
+                </select>
             </div>
 
             {/* File Grid */}

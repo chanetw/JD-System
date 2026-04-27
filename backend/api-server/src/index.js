@@ -60,7 +60,6 @@ import userRequestsRoutes from './routes/user-requests.js'; // ✓ NEW: User Req
 import v2Routes from './v2/index.js';
 
 // Cron Services
-import rejectionAutoCloseCron from './services/rejectionAutoCloseCron.js';
 import jobReminderCron from './services/jobReminderCron.js';
 import fileCleanupCron from './services/fileCleanupCron.js';
 
@@ -108,8 +107,9 @@ app.use(cors({
 
 // Body Parser Middleware
 // สำหรับ parse JSON request bodies
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+// ใช้ 50mb เพื่อให้ตรงกับ nginx client_max_body_size 50m และ multer MAX_UPLOAD_SIZE_MB=50
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Static File Serving
 // Serve uploaded files จาก /uploads/ (ใช้เมื่อ STORAGE_PROVIDER=local)
@@ -378,12 +378,6 @@ server.listen(PORT, () => {
 
   // Start cron services
   try {
-    rejectionAutoCloseCron.start();
-    console.log('✓ Rejection auto-close cron started');
-  } catch (cronErr) {
-    console.error('✗ Failed to start rejection auto-close cron:', cronErr);
-  }
-  try {
     jobReminderCron.start();
     console.log('✓ Job reminder cron started');
   } catch (cronErr) {
@@ -409,12 +403,6 @@ process.on('SIGTERM', async () => {
   console.log('SIGTERM signal received: closing HTTP server');
 
   // Stop cron services
-  try {
-    rejectionAutoCloseCron.stop();
-    console.log('✓ Rejection auto-close cron stopped');
-  } catch (cronErr) {
-    console.error('✗ Failed to stop rejection auto-close cron:', cronErr);
-  }
   try {
     jobReminderCron.stop();
     console.log('✓ Job reminder cron stopped');
@@ -444,12 +432,6 @@ process.on('SIGINT', async () => {
   console.log('SIGINT signal received: closing HTTP server');
 
   // Stop cron services
-  try {
-    rejectionAutoCloseCron.stop();
-    console.log('✓ Rejection auto-close cron stopped');
-  } catch (cronErr) {
-    console.error('✗ Failed to stop rejection auto-close cron:', cronErr);
-  }
   try {
     jobReminderCron.stop();
     console.log('✓ Job reminder cron stopped');
