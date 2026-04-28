@@ -1060,6 +1060,14 @@ export class ApprovalService extends BaseService {
       };
 
     } catch (error) {
+      if (error.message === 'Job not found') {
+        return {
+          success: false,
+          error: 'NOT_FOUND',
+          message: 'Job not found'
+        };
+      }
+
       return this.handleError(error, 'APPROVE_VIA_WEB', 'Approval');
     }
   }
@@ -1207,6 +1215,14 @@ export class ApprovalService extends BaseService {
 
       return { success: true, data: { status: 'rejected' } };
     } catch (error) {
+      if (error.message === 'Job not found') {
+        return {
+          success: false,
+          error: 'NOT_FOUND',
+          message: 'Job not found'
+        };
+      }
+
       return this.handleError(error, 'REJECT_VIA_WEB', 'Approval');
     }
   }
@@ -1482,6 +1498,14 @@ export class ApprovalService extends BaseService {
         }
       };
     } catch (error) {
+      if (error.message === 'Job not found') {
+        return {
+          success: false,
+          error: 'NOT_FOUND',
+          message: 'Job not found'
+        };
+      }
+
       return this.handleError(error, 'REJECT_BY_ASSIGNEE', 'Job');
     }
   }
@@ -1551,26 +1575,45 @@ export class ApprovalService extends BaseService {
       // ส่ง Email แจ้งเตือน Requester และ CC
       if (job.requester?.email) {
         try {
-          const EmailService = require('./emailService');
+          const EmailService = (await import('./emailService.js')).default || (await import('./emailService.js')).EmailService;
           const emailService = new EmailService();
 
           const rejectionReason = job.rejectionComment || 'ไม่ระบุเหตุผล';
-          const recipientEmails = [job.requester.email];
-
-          // เพิ่ม CC emails (กรอง duplicate)
-          const uniqueCcEmails = ccEmails.filter(email =>
-            email && !recipientEmails.includes(email)
-          );
-
-          await emailService.sendJobRejectionNotification({
-            to: job.requester.email,
-            cc: uniqueCcEmails,
-            jobId: job.djId,
-            jobSubject: job.subject,
-            rejectionReason: rejectionReason,
-            approverComment: comment,
-            jobLink: `/jobs/${jobId}`
+          const requesterMagicLink = await this.magicLinkService.createJobActionLink({
+            userId: job.requesterId,
+            jobId,
+            action: 'view',
+            djId: job.djId
           });
+          const requesterHtml = createJobRejectionEmail({
+            djId: job.djId,
+            subject: job.subject,
+            reason: comment ? `${rejectionReason}\n\nหมายเหตุผู้อนุมัติ: ${comment}` : rejectionReason,
+            magicLink: requesterMagicLink,
+            requesterName: `${job.requester.firstName} ${job.requester.lastName}`
+          });
+          await emailService.sendEmail(job.requester.email, `งาน ${job.djId} ถูกปฏิเสธ`, requesterHtml)
+            .catch(err => console.warn('[ConfirmRejection] Requester email failed:', err.message));
+
+          const uniqueCcEmails = ccEmails.filter(email => email && email !== job.requester.email);
+          if (uniqueCcEmails.length > 0) {
+            const ccHtml = createEmailTemplate({
+              title: `งาน ${job.djId} ถูกปฏิเสธ`,
+              heading: 'งานถูกปฏิเสธโดยผู้รับงาน',
+              content: `
+                <div class="info-box">
+                  <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
+                  <p><strong>เหตุผลผู้รับงาน:</strong> ${rejectionReason}</p>
+                  ${comment ? `<p><strong>หมายเหตุผู้อนุมัติ:</strong> ${comment}</p>` : ''}
+                </div>
+              `
+            });
+            await Promise.allSettled(
+              uniqueCcEmails.map(email =>
+                emailService.sendEmail(email, `งาน ${job.djId} ถูกปฏิเสธ`, ccHtml)
+              )
+            );
+          }
         } catch (emailErr) {
           console.warn('[ConfirmRejection] Email notification failed:', emailErr.message);
         }
@@ -1581,6 +1624,14 @@ export class ApprovalService extends BaseService {
         data: { status: 'rejected' }
       };
     } catch (error) {
+      if (error.message === 'Job not found') {
+        return {
+          success: false,
+          error: 'NOT_FOUND',
+          message: 'Job not found'
+        };
+      }
+
       return this.handleError(error, 'CONFIRM_ASSIGNEE_REJECTION', 'Job');
     }
   }
@@ -1661,17 +1712,32 @@ export class ApprovalService extends BaseService {
       // ส่ง Email แจ้งเตือน Assignee พร้อมแนะนำให้ใช้ Extend
       if (job.assignee?.email) {
         try {
-          const EmailService = require('./emailService');
+          const EmailService = (await import('./emailService.js')).default || (await import('./emailService.js')).EmailService;
           const emailService = new EmailService();
-
-          await emailService.sendRejectionDeniedNotification({
-            to: job.assignee.email,
-            jobId: job.djId,
-            jobSubject: job.subject,
-            denialReason: reason,
-            assigneeName: job.assignee.displayName || `${job.assignee.firstName} ${job.assignee.lastName}`,
-            jobLink: `/jobs/${jobId}`
+          const assigneeMagicLink = await this.magicLinkService.createJobActionLink({
+            userId: job.assigneeId,
+            jobId,
+            action: 'view',
+            djId: job.djId
           });
+          const assigneeHtml = createEmailTemplate({
+            title: `คำขอปฏิเสธงาน ${job.djId} ไม่ได้รับอนุมัติ`,
+            heading: 'กรุณาดำเนินงานต่อ',
+            content: `
+              <div class="info-box">
+                <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
+                <p><strong>เหตุผลที่ไม่อนุมัติ:</strong> ${reason}</p>
+                <p>หากต้องการเวลาเพิ่มเติม กรุณาใช้ฟังก์ชัน Extend งานในระบบ</p>
+              </div>
+            `,
+            buttonText: '🔐 ดูรายละเอียดงาน',
+            buttonUrl: assigneeMagicLink
+          });
+          await emailService.sendEmail(
+            job.assignee.email,
+            `คำขอปฏิเสธงาน ${job.djId} ไม่ได้รับอนุมัติ`,
+            assigneeHtml
+          ).catch(err => console.warn('[DenyRejection] Email failed:', err.message));
         } catch (emailErr) {
           console.warn('[DenyRejection] Email notification failed:', emailErr.message);
         }
@@ -1685,6 +1751,14 @@ export class ApprovalService extends BaseService {
         }
       };
     } catch (error) {
+      if (error.message === 'Job not found') {
+        return {
+          success: false,
+          error: 'NOT_FOUND',
+          message: 'Job not found'
+        };
+      }
+
       return this.handleError(error, 'DENY_ASSIGNEE_REJECTION', 'Job');
     }
   }

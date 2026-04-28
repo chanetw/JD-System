@@ -157,6 +157,102 @@ const getTimeZoneOffsetMinutes = (date, timeZone = APP_TIMEZONE) => {
   return Math.round((asUtc - date.getTime()) / 60000);
 };
 
+const getRequestIpAddress = (req) => {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  const forwardedIp = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor;
+
+  return forwardedIp?.split(',')[0]?.trim()
+    || req.ip
+    || req.connection?.remoteAddress
+    || 'unknown';
+};
+
+const sendApprovalActionResponse = (res, result) => {
+  if (result.success) {
+    return res.json(result);
+  }
+
+  const statusByError = {
+    NOT_FOUND: 404,
+    ALREADY_PROCESSED: 409,
+    INVALID_STATUS: 409,
+    COMMENT_REQUIRED: 400,
+    NOT_ASSIGNEE: 403,
+    FORBIDDEN: 403
+  };
+
+  return res.status(statusByError[result.error] || 500).json(result);
+};
+
+const parseJobIdParam = (value) => {
+  const jobId = Number(value);
+  return Number.isInteger(jobId) ? jobId : null;
+};
+
+const ensureCanResolveAssigneeRejection = async ({ prisma, jobId, user }) => {
+  const job = await prisma.job.findFirst({
+    where: {
+      id: jobId,
+      tenantId: user.tenantId
+    },
+    select: {
+      id: true,
+      status: true,
+      requesterId: true
+    }
+  });
+
+  if (!job) {
+    return {
+      allowed: false,
+      result: {
+        success: false,
+        error: 'NOT_FOUND',
+        message: 'Job not found'
+      }
+    };
+  }
+
+  if (job.status !== 'assignee_rejected' || hasAdminPrivileges(user)) {
+    return { allowed: true };
+  }
+
+  const lastApproval = await prisma.approval.findFirst({
+    where: {
+      jobId,
+      status: 'approved'
+    },
+    orderBy: [
+      { stepNumber: 'desc' },
+      { approvedAt: 'desc' },
+      { createdAt: 'desc' }
+    ],
+    select: {
+      approverId: true
+    }
+  });
+
+  if (lastApproval?.approverId) {
+    return {
+      allowed: isSameUserId(lastApproval.approverId, user.userId),
+      result: {
+        success: false,
+        error: 'FORBIDDEN',
+        message: 'Only the latest approver can resolve this rejection'
+      }
+    };
+  }
+
+  return {
+    allowed: isSameUserId(job.requesterId, user.userId),
+    result: {
+      success: false,
+      error: 'FORBIDDEN',
+      message: 'Only the requester can resolve this rejection when no approver record exists'
+    }
+  };
+};
+
 const getDayBoundsInTimeZone = (baseDate = new Date(), timeZone = APP_TIMEZONE) => {
   const tz = getDatePartsInTimeZone(baseDate, timeZone);
   const utcMidnight = Date.UTC(tz.year, tz.month - 1, tz.day, 0, 0, 0, 0);
@@ -3796,6 +3892,205 @@ router.get('/:id/sla-info', async (req, res) => {
     }
 
     res.status(500).json({ success: false, message: 'Failed to get SLA info' });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/approve
+ * Approve job through authenticated web UI.
+ */
+router.post('/:id/approve', async (req, res) => {
+  try {
+    const jobId = Number(req.params.id);
+
+    if (!Number.isInteger(jobId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_JOB_ID',
+        message: 'Invalid job id'
+      });
+    }
+
+    const result = await approvalService.approveJobViaWeb({
+      jobId,
+      approverId: req.user.userId,
+      comment: req.body?.comment,
+      ipAddress: getRequestIpAddress(req)
+    });
+
+    return sendApprovalActionResponse(res, result);
+  } catch (error) {
+    console.error('[Jobs] Approve error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'APPROVE_JOB_FAILED',
+      message: 'Failed to approve job'
+    });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/reject
+ * Reject job through authenticated web UI.
+ */
+router.post('/:id/reject', async (req, res) => {
+  try {
+    const jobId = parseJobIdParam(req.params.id);
+
+    if (jobId === null) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_JOB_ID',
+        message: 'Invalid job id'
+      });
+    }
+
+    const result = await approvalService.rejectJobViaWeb({
+      jobId,
+      approverId: req.user.userId,
+      comment: req.body?.comment,
+      ipAddress: getRequestIpAddress(req)
+    });
+
+    return sendApprovalActionResponse(res, result);
+  } catch (error) {
+    console.error('[Jobs] Reject error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'REJECT_JOB_FAILED',
+      message: 'Failed to reject job'
+    });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/reject-by-assignee
+ * Assignee rejects assigned/in-progress work and sends it back to the latest approver.
+ */
+router.post('/:id/reject-by-assignee', async (req, res) => {
+  try {
+    const jobId = parseJobIdParam(req.params.id);
+
+    if (jobId === null) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_JOB_ID',
+        message: 'Invalid job id'
+      });
+    }
+
+    const result = await approvalService.rejectJobByAssignee({
+      jobId,
+      assigneeId: req.user.userId,
+      comment: req.body?.comment
+    });
+
+    return sendApprovalActionResponse(res, result);
+  } catch (error) {
+    console.error('[Jobs] Reject by assignee error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'REJECT_BY_ASSIGNEE_FAILED',
+      message: 'Failed to reject job by assignee'
+    });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/confirm-assignee-rejection
+ * Latest approver confirms assignee rejection and closes the job as rejected.
+ */
+router.post('/:id/confirm-assignee-rejection', async (req, res) => {
+  try {
+    const jobId = parseJobIdParam(req.params.id);
+
+    if (jobId === null) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_JOB_ID',
+        message: 'Invalid job id'
+      });
+    }
+
+    const prisma = getDatabase();
+    const permission = await ensureCanResolveAssigneeRejection({
+      prisma,
+      jobId,
+      user: req.user
+    });
+
+    if (!permission.allowed) {
+      return sendApprovalActionResponse(res, permission.result);
+    }
+
+    const result = await approvalService.confirmAssigneeRejection({
+      jobId,
+      approverId: req.user.userId,
+      comment: req.body?.comment,
+      ccEmails: Array.isArray(req.body?.ccEmails) ? req.body.ccEmails : []
+    });
+
+    return sendApprovalActionResponse(res, result);
+  } catch (error) {
+    console.error('[Jobs] Confirm assignee rejection error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'CONFIRM_ASSIGNEE_REJECTION_FAILED',
+      message: 'Failed to confirm assignee rejection'
+    });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/deny-assignee-rejection
+ * Latest approver denies assignee rejection and returns the job to in_progress.
+ */
+router.post('/:id/deny-assignee-rejection', async (req, res) => {
+  try {
+    const jobId = parseJobIdParam(req.params.id);
+    const reason = req.body?.reason;
+
+    if (jobId === null) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_JOB_ID',
+        message: 'Invalid job id'
+      });
+    }
+
+    if (!reason || reason.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        error: 'COMMENT_REQUIRED',
+        message: 'กรุณาระบุเหตุผลที่ไม่อนุมัติการปฏิเสธ'
+      });
+    }
+
+    const prisma = getDatabase();
+    const permission = await ensureCanResolveAssigneeRejection({
+      prisma,
+      jobId,
+      user: req.user
+    });
+
+    if (!permission.allowed) {
+      return sendApprovalActionResponse(res, permission.result);
+    }
+
+    const result = await approvalService.denyAssigneeRejection({
+      jobId,
+      approverId: req.user.userId,
+      reason: reason.trim()
+    });
+
+    return sendApprovalActionResponse(res, result);
+  } catch (error) {
+    console.error('[Jobs] Deny assignee rejection error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'DENY_ASSIGNEE_REJECTION_FAILED',
+      message: 'Failed to deny assignee rejection'
+    });
   }
 });
 
