@@ -807,6 +807,19 @@ export const jobService = {
         }
     },
 
+    updateDeliveredQuantities: async (jobId, deliveredItems) => {
+        try {
+            const response = await httpClient.patch(`/jobs/${jobId}/delivered-quantities`, {
+                deliveredItems
+            });
+            if (!response.data.success) throw new Error(response.data.message);
+            return response.data;
+        } catch (err) {
+            console.error('[jobService] updateDeliveredQuantities error:', err);
+            throw err;
+        }
+    },
+
     /**
      * ล้างข้อมูล Demo (ลบงานที่สร้างขึ้นใหม่ทั้งหมด ยกเว้น Seed Data)
      * Seed Data จะมี DJ ID ขึ้นต้นด้วย 'TEST-' (ตามที่กำหนดใน migration 010)

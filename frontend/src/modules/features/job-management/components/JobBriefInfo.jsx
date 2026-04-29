@@ -12,7 +12,9 @@ import { CubeIcon } from '@heroicons/react/24/solid';
 import DraftReadStatus from './DraftReadStatus';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import FileActions from '@shared/components/FileActions';
+import Button from '@shared/components/Button';
 import { getFileName } from '@shared/utils/fileUrlUtils';
+import DeliveredItemsEditor from './DeliveredItemsEditor';
 
 const getJobTypeLabel = (value) => {
     if (!value) return 'ไม่ระบุประเภท';
@@ -23,7 +25,10 @@ const getJobTypeLabel = (value) => {
 const normalizeItem = (item, fallbackId) => ({
     id: item?.id || fallbackId,
     name: item?.name || 'ไม่ระบุชื่อชิ้นงาน',
-    quantity: Number(item?.quantity) || 1,
+    quantity: Number(item?.effectiveQuantity ?? item?.deliveredQuantity ?? item?.quantity) || 1,
+    requestedQuantity: Number(item?.quantity) || 1,
+    deliveredQuantity: item?.deliveredQuantity !== null && item?.deliveredQuantity !== undefined ? Number(item.deliveredQuantity) : null,
+    effectiveQuantity: Number(item?.effectiveQuantity ?? item?.deliveredQuantity ?? item?.quantity) || 1,
     defaultSize: item?.defaultSize || item?.jobTypeItem?.defaultSize || null
 });
 
@@ -84,9 +89,16 @@ function JobTypeMetric({ label, value, emphasize = false }) {
     );
 }
 
-const JobBriefInfo = ({ job }) => {
+const JobBriefInfo = ({
+    job,
+    canEditDeliveredQuantities = false,
+    onSaveDeliveredQuantities,
+    isSavingDeliveredQuantities = false
+}) => {
     const { user } = useAuthStoreV2();
     if (!job) return null;
+    const [isEditingDeliveredQuantities, setIsEditingDeliveredQuantities] = React.useState(false);
+    const [deliveredDraft, setDeliveredDraft] = React.useState({});
 
     // API returns fields at root level, not nested under 'brief'
     const brief = {
@@ -96,11 +108,17 @@ const JobBriefInfo = ({ job }) => {
         description: job.description
     };
     const jobTypeGroups = buildJobTypeGroups(job);
+    const ownItems = Array.isArray(job.items) ? job.items : [];
     const totalGroups = jobTypeGroups.length;
     const totalQuantity = jobTypeGroups.reduce((sum, group) => sum + group.totalQty, 0);
     const primaryJobType = totalGroups === 1 ? jobTypeGroups[0].jobType : 'ประเภทงานและชิ้นงาน';
     const slaLabel = job.slaWorkingDays ? `${job.slaWorkingDays} วัน` : '-';
     const hasFiles = job.briefFiles && job.briefFiles.length > 0;
+    const canEditDelivered = canEditDeliveredQuantities
+        && ['completed', 'closed'].includes(job.status)
+        && !job.isParent
+        && ownItems.length > 0
+        && typeof onSaveDeliveredQuantities === 'function';
 
     const formatDate = (dateStr) => {
         if (!dateStr) return null;
@@ -155,6 +173,27 @@ const JobBriefInfo = ({ job }) => {
             .map(file => file?.sourceDjId)
             .filter(Boolean)
     ));
+
+    const openDeliveredEditor = () => {
+        const nextDraft = {};
+        ownItems.forEach((item) => {
+            nextDraft[item.id] = String(item.deliveredQuantity ?? item.effectiveQuantity ?? item.quantity ?? 0);
+        });
+        setDeliveredDraft(nextDraft);
+        setIsEditingDeliveredQuantities(true);
+    };
+
+    const handleDeliveredDraftChange = (itemId, value) => {
+        if (!/^\d*$/.test(value)) return;
+        setDeliveredDraft(prev => ({ ...prev, [itemId]: value }));
+    };
+
+    const handleDeliveredSave = async () => {
+        const success = await onSaveDeliveredQuantities?.(deliveredDraft);
+        if (success) {
+            setIsEditingDeliveredQuantities(false);
+        }
+    };
 
     return (
         <div className="overflow-hidden rounded-xl border border-gray-300 bg-white shadow-sm">
@@ -345,6 +384,13 @@ const JobBriefInfo = ({ job }) => {
                                             )}
                                         </div>
                                         <p className="mt-1 text-sm text-slate-500">สรุปประเภทงานและรายการที่ต้องส่งแบบเรียงลงมาใน brief section เดียว</p>
+                                        {canEditDelivered && !isEditingDeliveredQuantities && (
+                                            <div className="mt-3">
+                                                <Button variant="secondary" onClick={openDeliveredEditor} className="text-sm">
+                                                    แก้ไขจำนวนชิ้นงานที่ส่งจริง (Admin)
+                                                </Button>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
@@ -374,6 +420,9 @@ const JobBriefInfo = ({ job }) => {
                                                 <div className="min-w-0">
                                                     <p className="text-sm font-semibold text-slate-900">{item.name}</p>
                                                     <p className="mt-1 text-xs text-slate-500">{item.defaultSize || 'ไม่ระบุขนาด'}</p>
+                                                    {item.deliveredQuantity !== null && item.deliveredQuantity !== item.requestedQuantity && (
+                                                        <p className="mt-1 text-xs font-medium text-emerald-700">จำนวนเดิม {item.requestedQuantity} ชิ้น • ใช้นับจริง {item.effectiveQuantity} ชิ้น</p>
+                                                    )}
                                                 </div>
                                                 <span className="inline-flex flex-shrink-0 items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
                                                     x{item.quantity}
@@ -384,6 +433,28 @@ const JobBriefInfo = ({ job }) => {
                                 </div>
                             ))}
                         </div>
+
+                        {canEditDelivered && isEditingDeliveredQuantities && (
+                            <div className="border-t border-slate-200 px-5 py-5">
+                                <DeliveredItemsEditor
+                                    items={ownItems}
+                                    jobTypeLabel={job.jobType}
+                                    values={deliveredDraft}
+                                    onChange={handleDeliveredDraftChange}
+                                    disabled={isSavingDeliveredQuantities}
+                                    title="แก้ไขจำนวนชิ้นงานที่ส่งจริง"
+                                    description="สิทธิ์นี้เปิดให้เฉพาะ Admin หลังงานส่งมอบแล้ว ข้อมูลที่บันทึกจะถูกนำไปคำนวณทุกหน้าของระบบ"
+                                />
+                                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                                    <Button variant="ghost" onClick={() => setIsEditingDeliveredQuantities(false)} disabled={isSavingDeliveredQuantities}>
+                                        ยกเลิก
+                                    </Button>
+                                    <Button variant="primary" onClick={handleDeliveredSave} disabled={isSavingDeliveredQuantities}>
+                                        {isSavingDeliveredQuantities ? 'กำลังบันทึก...' : 'บันทึกจำนวนชิ้นงาน'}
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

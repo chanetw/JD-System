@@ -631,6 +631,9 @@ model DesignJobItem {
   jobTypeItemId Int?    @map("job_type_item_id")
   name          String  @db.VarChar(255)
   quantity      Int     @default(1)
+    deliveredQuantity Int?     @map("delivered_quantity")
+    deliveredQuantityUpdatedAt DateTime? @map("delivered_quantity_updated_at") @db.Timestamptz
+    deliveredQuantityUpdatedBy Int?      @map("delivered_quantity_updated_by")
   status        String  @default("pending") @db.VarChar(50)
   filePath      String? @map("file_path") @db.Text
 

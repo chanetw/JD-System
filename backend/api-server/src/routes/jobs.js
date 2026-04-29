@@ -16,10 +16,16 @@ import ApprovalService from '../services/approvalService.js';
 import JobService from '../services/jobService.js';
 import chainService from '../services/chainService.js';
 import jobChainService from '../services/jobChainService.js';
+import * as jobAcceptanceService from '../services/jobAcceptanceService.js';
 import * as workingHoursHelper from '../utils/workingHoursHelper.js';
 import EmailService from '../services/emailService.js';
 import NotificationService from '../services/notificationService.js';
 import MagicLinkService from '../services/magicLinkService.js';
+import {
+  fetchEffectiveItemCountMap,
+  fetchEffectiveItemTotal,
+  getEffectiveItemQuantity
+} from '../utils/deliveredQuantity.js';
 import {
   createJobApprovalEmail,
   createJobAssignmentEmail,
@@ -29,8 +35,6 @@ import {
 import { buildFrontendUrl } from '../utils/frontendUrl.js';
 import { getStorageService } from '../services/storageService.js';
 import { handoffCompletionFilesToNextJobs } from '../services/handoffService.js';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
 
 const approvalService = new ApprovalService();
 const jobService = new JobService();
@@ -1227,7 +1231,7 @@ router.get('/dashboard-stats', async (req, res) => {
       dueToday,
       overdue,
       totalJobs,
-      totalItemsAgg,
+      totalItems,
       pending,
       myJobs,
       assigneeJobs
@@ -1255,16 +1259,7 @@ router.get('/dashboard-stats', async (req, res) => {
       // งานทั้งหมด
       prisma.job.count({ where: baseWhere }),
       // จำนวนชิ้นงานทั้งหมดใน scope เดียวกับ dashboard ปัจจุบัน
-      prisma.designJobItem.aggregate({
-        where: {
-          job: {
-            is: baseWhere
-          }
-        },
-        _sum: {
-          quantity: true
-        }
-      }),
+      fetchEffectiveItemTotal(prisma, baseWhere),
       // งานรออนุมัติ
       prisma.job.count({
         where: {
@@ -1297,23 +1292,11 @@ router.get('/dashboard-stats', async (req, res) => {
       })
     ]);
 
-    const totalItems = totalItemsAgg?._sum?.quantity || 0;
-
     let assigneeSummary = [];
 
     if (assigneeJobs.length > 0) {
       const jobIds = assigneeJobs.map(job => job.id);
-      const itemTotalsByJob = await prisma.designJobItem.groupBy({
-        by: ['jobId'],
-        where: {
-          jobId: { in: jobIds }
-        },
-        _sum: {
-          quantity: true
-        }
-      });
-
-      const itemMap = new Map(itemTotalsByJob.map(entry => [entry.jobId, entry._sum.quantity || 0]));
+      const itemMap = await fetchEffectiveItemCountMap(prisma, jobIds);
       const assigneeMap = new Map();
 
       assigneeJobs.forEach(job => {
@@ -1724,8 +1707,6 @@ router.post('/', async (req, res) => {
     // Step 4.5: Handle Acceptance Date & SLA Calculation
     // คำนวณวันรับงานและ Due Date จาก SLA
     // ============================================
-    const jobAcceptanceService = require('../services/jobAcceptanceService');
-
     let acceptanceDate = req.body.acceptanceDate ? new Date(req.body.acceptanceDate) : null;
     let calculatedDueDate = new Date(dueDate);
     let acceptanceMethod = 'auto';
@@ -2020,8 +2001,8 @@ router.post('/', async (req, res) => {
           const step1 = flow.approverSteps.find(s => (s.stepNumber || s.level) === 1) || flow.approverSteps[0];
           if (step1?.approvers && Array.isArray(step1.approvers)) {
             step1.approvers.forEach(a => {
-              const aid = a.id || a.userId;
-              if (aid) level1ApproverIds.push(aid);
+              const aid = Number(a.id || a.userId);
+              if (Number.isInteger(aid) && aid > 0) level1ApproverIds.push(aid);
             });
           }
         }
@@ -2135,7 +2116,7 @@ router.post('/', async (req, res) => {
         createdAt: result.job.createdAt,
         // Flow Info - ข้อมูลเกี่ยวกับ Approval Flow ที่ใช้
         flowInfo: {
-          templateName: assignment?.template?.name || 'Default (No Template)',
+          templateName: flow?.name || 'Default (No Template)',
           isSkipped: isSkip,
           autoApproved: autoApproveResult?.autoApproved || false,
           autoAssigned: result.autoAssigned
@@ -2197,7 +2178,7 @@ router.get('/:id', async (req, res) => {
         },
         jobItems: {
           select: {
-            id: true, name: true, quantity: true, status: true,
+            id: true, name: true, quantity: true, deliveredQuantity: true, deliveredQuantityUpdatedAt: true, deliveredQuantityUpdatedBy: true, status: true,
             jobTypeItem: { select: { defaultSize: true } }
           },
           take: 100  // ⚡ Performance: Limit to 100 items
@@ -2269,7 +2250,7 @@ router.get('/:id', async (req, res) => {
             dueDate: true,
             jobItems: {
               select: {
-                id: true, name: true, quantity: true, status: true,
+                id: true, name: true, quantity: true, deliveredQuantity: true, deliveredQuantityUpdatedAt: true, deliveredQuantityUpdatedBy: true, status: true,
                 jobTypeItem: { select: { defaultSize: true } }
               }
             } // ✅ NEW: ดึง items ของงานย่อยมาด้วย
@@ -2391,8 +2372,12 @@ router.get('/:id', async (req, res) => {
           id: item.id,
           name: item.name,
           quantity: item.quantity,
+          deliveredQuantity: item.deliveredQuantity,
+          effectiveQuantity: getEffectiveItemQuantity(item),
           status: item.status,
-          defaultSize: item.jobTypeItem?.defaultSize || null
+          defaultSize: item.jobTypeItem?.defaultSize || null,
+          deliveredQuantityUpdatedAt: item.deliveredQuantityUpdatedAt || null,
+          deliveredQuantityUpdatedBy: item.deliveredQuantityUpdatedBy || null
         })) // ✅ NEW: Pass items for UI with defaultSize
       })) || [],
       // Parent job for child
@@ -2418,8 +2403,12 @@ router.get('/:id', async (req, res) => {
           id: item.id,
           name: item.name,
           quantity: item.quantity,
+          deliveredQuantity: item.deliveredQuantity,
+          effectiveQuantity: getEffectiveItemQuantity(item),
           status: item.status,
-          defaultSize
+          defaultSize,
+          deliveredQuantityUpdatedAt: item.deliveredQuantityUpdatedAt || null,
+          deliveredQuantityUpdatedBy: item.deliveredQuantityUpdatedBy || null
         };
       }),
       attachments: job.attachments || [],
@@ -3783,14 +3772,15 @@ router.post('/:id/complete', async (req, res) => {
   try {
     const jobId = parseInt(req.params.id);
     const userId = req.user.userId;
-    const { note, attachments } = req.body;
+    const { note, attachments, deliveredItems } = req.body;
 
     // Use ApprovalService (or rename it to JobWorkflowService later)
     const result = await approvalService.completeJob({
       jobId,
       userId,
       note,
-      attachments
+      attachments,
+      deliveredItems
     });
 
     // 🔔 Notify Requester: งานเสร็จสมบูรณ์
@@ -3912,6 +3902,41 @@ router.post('/:id/complete', async (req, res) => {
   }
 });
 
+router.patch('/:id/delivered-quantities', async (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id, 10);
+    if (Number.isNaN(jobId)) {
+      return res.status(400).json({ success: false, message: 'Job ID ไม่ถูกต้อง' });
+    }
+
+    if (!hasAdminPrivileges(req.user)) {
+      return res.status(403).json({
+        success: false,
+        message: 'ไม่มีสิทธิ์แก้ไขจำนวนชิ้นงานที่ส่งมอบ: เฉพาะ Admin เท่านั้น'
+      });
+    }
+
+    const result = await approvalService.updateDeliveredQuantities({
+      jobId,
+      userId: req.user.userId,
+      deliveredItems: req.body?.deliveredItems
+    });
+
+    if (!result.success) {
+      const statusCode = result.error === 'NOT_FOUND' ? 404 : 400;
+      return res.status(statusCode).json(result);
+    }
+
+    return res.json(result);
+  } catch (error) {
+    console.error('[Jobs] Update delivered quantities error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'ไม่สามารถแก้ไขจำนวนชิ้นงานที่ส่งมอบได้'
+    });
+  }
+});
+
 /**
  * POST /api/jobs/:id/extend
  * Extend job due date (Assignee only)
@@ -3941,8 +3966,6 @@ router.post('/:id/extend', async (req, res) => {
         message: 'Extension reason is required'
       });
     }
-
-    const jobAcceptanceService = require('../services/jobAcceptanceService');
 
     const updatedJob = await jobAcceptanceService.extendJobManually(
       jobId,
@@ -4038,7 +4061,6 @@ router.get('/:id/sla-info', async (req, res) => {
   try {
     const jobId = parseInt(req.params.id);
 
-    const jobAcceptanceService = require('../services/jobAcceptanceService');
     const slaInfo = await jobAcceptanceService.getJobSlaInfo(jobId);
 
     res.json({

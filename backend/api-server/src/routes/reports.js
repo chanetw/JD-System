@@ -12,6 +12,7 @@
 import express from 'express';
 import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import { getDatabase } from '../config/database.js';
+import { fetchEffectiveItemCountMap, fetchEffectiveItemTotal } from '../utils/deliveredQuantity.js';
 
 const router = express.Router();
 
@@ -532,23 +533,7 @@ router.get('/user-performance/:userId', async (req, res) => {
       });
     }
 
-    let itemCountByJob = new Map();
-
-    if (jobs.length > 0) {
-      const itemTotalsByJob = await prisma.designJobItem.groupBy({
-        by: ['jobId'],
-        where: {
-          jobId: { in: jobs.map(job => job.id) }
-        },
-        _sum: {
-          quantity: true
-        }
-      });
-
-      itemCountByJob = new Map(
-        itemTotalsByJob.map(entry => [entry.jobId, entry._sum.quantity || 0])
-      );
-    }
+    const itemCountByJob = await fetchEffectiveItemCountMap(prisma, jobs.map(job => job.id));
 
     // คำนวณ Summary
     const totalJobs = jobs.length;
@@ -773,23 +758,7 @@ router.get('/team-comparison', async (req, res) => {
       }
     });
 
-    let itemCountByJob = new Map();
-
-    if (jobs.length > 0) {
-      const itemTotalsByJob = await prisma.designJobItem.groupBy({
-        by: ['jobId'],
-        where: {
-          jobId: { in: jobs.map(job => job.id) }
-        },
-        _sum: {
-          quantity: true
-        }
-      });
-
-      itemCountByJob = new Map(
-        itemTotalsByJob.map(entry => [entry.jobId, entry._sum.quantity || 0])
-      );
-    }
+    const itemCountByJob = await fetchEffectiveItemCountMap(prisma, jobs.map(job => job.id));
 
     // จัดกลุ่มตาม assignee
     const userMap = {};
@@ -979,21 +948,7 @@ router.get('/analytics', async (req, res) => {
       orderBy: { createdAt: 'desc' }
     });
 
-    let totalItems = 0;
-
-    if (jobs.length > 0) {
-      const itemTotalsByJob = await prisma.designJobItem.groupBy({
-        by: ['jobId'],
-        where: {
-          jobId: { in: jobs.map(job => job.id) }
-        },
-        _sum: {
-          quantity: true
-        }
-      });
-
-      totalItems = itemTotalsByJob.reduce((sum, entry) => sum + (entry._sum.quantity || 0), 0);
-    }
+    const totalItems = await fetchEffectiveItemTotal(prisma, whereCondition);
 
     // คำนวณ KPI
     const totalJobs = jobs.length;

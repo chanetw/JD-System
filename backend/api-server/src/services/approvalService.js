@@ -18,6 +18,10 @@ import chainService from './chainService.js';
 import { cacheService } from './cacheService.js';
 import MagicLinkService from './magicLinkService.js';
 import {
+  getEffectiveItemQuantity,
+  normalizeDeliveredItemsInput
+} from '../utils/deliveredQuantity.js';
+import {
   createEmailTemplate,
   createJobApprovalEmail,
   createJobRejectionEmail,
@@ -1248,80 +1252,119 @@ export class ApprovalService extends BaseService {
   /**
    * Complete Job (Called by Assignee)
    */
-  async completeJob({ jobId, userId, note, attachments }) {
+  async completeJob({ jobId, userId, note, attachments, deliveredItems }) {
     try {
-      const job = await this.prisma.job.findUnique({ where: { id: jobId } });
+      const normalizedDeliveredItems = normalizeDeliveredItemsInput(deliveredItems);
+      const attachmentList = Array.isArray(attachments) ? attachments : [];
+      const completedAt = new Date();
+
+      const job = await this.prisma.job.findUnique({
+        where: { id: jobId },
+        include: {
+          jobItems: {
+            select: {
+              id: true,
+              quantity: true,
+              deliveredQuantity: true
+            }
+          }
+        }
+      });
       if (!job) throw new Error('Job not found');
 
-      // Update Job
-      // Note: attachments handling (upload) is assumed to be done before this, 
-      // and we receive metadata/urls here. Job model has `finalFiles` Json field typically?
-      // Let's assume `finalFiles` is the field name matching frontend expectation or mapping.
-      // Frontend sends: attachments: [{ name: 'Final Link', url: finalLink }]
-      // DB Schema Job model: finalFiles Json? 
-      // Let's check Schema... assuming `finalFiles` exists based on context.
-
-      const updatedJob = await this.prisma.job.update({
-        where: { id: jobId },
-        data: {
-          status: 'completed',
-          completedAt: new Date(),
-          completedBy: userId,
-          finalFiles: attachments // attachments array
+      const validItemIds = new Set(job.jobItems.map(item => item.id));
+      normalizedDeliveredItems.forEach((item) => {
+        if (!validItemIds.has(item.itemId)) {
+          throw new Error(`ไม่พบชิ้นงานที่ต้องการอัปเดตในงานนี้: ${item.itemId}`);
         }
       });
 
-      // Insert final links/files into MediaFile table for MediaPortal / UserPortal.
-      // - If attachment has fileId → file was already inserted by /storage/upload, skip to avoid duplicate
-      // - If attachment has url (link-only) → create MediaFile with type=link
-      if (attachments && Array.isArray(attachments) && attachments.length > 0) {
-        const mediaFilePromises = attachments.map(async (acc) => {
-          if (acc.fileId) {
-            // Uploaded file: MediaFile already created by /api/storage/upload — skip
-            return Promise.resolve();
-          }
-          if (acc.url) {
-            return this.prisma.mediaFile.create({
-              data: {
-                tenantId: job.tenantId,
-                jobId: job.id,
-                projectId: job.projectId,
-                fileName: acc.name || `ลิงก์ส่งงาน - ${job.djId}`,
-                filePath: acc.url,
-                fileType: 'link',
-                mimeType: 'text/uri-list',
-                uploadedBy: userId,
-                fileSize: 0,
-              }
-            });
-          }
-          return Promise.resolve();
-        });
-        await Promise.all(mediaFilePromises);
-      }
+      const deliveredItemMap = new Map(normalizedDeliveredItems.map(item => [item.itemId, item.deliveredQty]));
 
-      // Log Activity
-      await this.logApprovalActivity({
-        jobId,
-        approverId: userId, // Assignee
-        activityType: 'job_completed',
-        description: 'ส่งมอบงาน (Job Completed)',
-        metadata: { note, attachments }
+      const updatedJob = await this.prisma.$transaction(async (tx) => {
+        if (normalizedDeliveredItems.length > 0) {
+          await Promise.all(
+            normalizedDeliveredItems.map((item) => tx.designJobItem.update({
+              where: { id: item.itemId },
+              data: {
+                deliveredQuantity: item.deliveredQty,
+                deliveredQuantityUpdatedAt: completedAt,
+                deliveredQuantityUpdatedBy: userId
+              }
+            }))
+          );
+        }
+
+        const completedJob = await tx.job.update({
+          where: { id: jobId },
+          data: {
+            status: 'completed',
+            completedAt,
+            completedBy: userId,
+            finalFiles: attachmentList
+          }
+        });
+
+        if (attachmentList.length > 0) {
+          const mediaFilePromises = attachmentList.map(async (acc) => {
+            if (acc.fileId) {
+              return Promise.resolve();
+            }
+            if (acc.url) {
+              return tx.mediaFile.create({
+                data: {
+                  tenantId: job.tenantId,
+                  jobId: job.id,
+                  projectId: job.projectId,
+                  fileName: acc.name || `ลิงก์ส่งงาน - ${job.djId}`,
+                  filePath: acc.url,
+                  fileType: 'link',
+                  mimeType: 'text/uri-list',
+                  uploadedBy: userId,
+                  fileSize: 0,
+                }
+              });
+            }
+            return Promise.resolve();
+          });
+          await Promise.all(mediaFilePromises);
+        }
+
+        if (note) {
+          await tx.jobComment.create({
+            data: {
+              tenantId: job.tenantId,
+              jobId,
+              userId,
+              comment: `[ส่งงาน] ${note}`
+            }
+          });
+        }
+
+        return completedJob;
       });
 
-      // Add note as comment if present
-      if (note) {
-        await this.prisma.jobComment.create({
-          data: {
-            tenantId: job.tenantId,
-            jobId: jobId,
-            userId: userId,
-            comment: `[ส่งงาน] ${note}`
-          }
-        });
-      }
+      await this.logApprovalActivity({
+        jobId,
+        approverId: userId,
+        activityType: 'job_completed',
+        description: 'ส่งมอบงาน (Job Completed)',
+        metadata: {
+          note,
+          attachments: attachmentList,
+          deliveredItems: job.jobItems.map(item => ({
+            itemId: item.id,
+            quantity: item.quantity,
+            deliveredQuantity: deliveredItemMap.has(item.id)
+              ? deliveredItemMap.get(item.id)
+              : item.deliveredQuantity,
+            effectiveQuantity: deliveredItemMap.has(item.id)
+              ? deliveredItemMap.get(item.id)
+              : getEffectiveItemQuantity(item)
+          }))
+        }
+      });
 
-      // Notify Requester
       if (this.notificationService && job.requesterId) {
         await this.notificationService.createNotification({
           tenantId: job.tenantId,
@@ -1332,7 +1375,6 @@ export class ApprovalService extends BaseService {
           link: `/jobs/${job.id}`
         });
 
-        // Email Requester with Magic Link
         try {
           const EmailService = (await import('./emailService.js')).default || (await import('./emailService.js')).EmailService;
           const emailService = new EmailService();
@@ -1365,6 +1407,108 @@ export class ApprovalService extends BaseService {
       return { success: true, data: updatedJob };
     } catch (error) {
       return this.handleError(error, 'COMPLETE_JOB', 'Job');
+    }
+  }
+
+  async updateDeliveredQuantities({ jobId, userId, deliveredItems }) {
+    try {
+      const normalizedDeliveredItems = normalizeDeliveredItemsInput(deliveredItems);
+      if (normalizedDeliveredItems.length === 0) {
+        throw new Error('ไม่มีจำนวนชิ้นงานที่ต้องการอัปเดต');
+      }
+
+      const updatedAt = new Date();
+      const job = await this.prisma.job.findUnique({
+        where: { id: jobId },
+        include: {
+          jobItems: {
+            select: {
+              id: true,
+              name: true,
+              quantity: true,
+              deliveredQuantity: true,
+              deliveredQuantityUpdatedAt: true,
+              deliveredQuantityUpdatedBy: true,
+              status: true,
+              jobTypeItem: {
+                select: {
+                  defaultSize: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (!job) throw new Error('Job not found');
+      if (!['completed', 'closed'].includes(job.status)) {
+        throw new Error('แก้ไขจำนวนชิ้นได้เฉพาะงานที่ส่งมอบแล้วเท่านั้น');
+      }
+
+      const validItemIds = new Set(job.jobItems.map(item => item.id));
+      normalizedDeliveredItems.forEach((item) => {
+        if (!validItemIds.has(item.itemId)) {
+          throw new Error(`ไม่พบชิ้นงานที่ต้องการอัปเดตในงานนี้: ${item.itemId}`);
+        }
+      });
+
+      await this.prisma.$transaction(async (tx) => {
+        await Promise.all(
+          normalizedDeliveredItems.map((item) => tx.designJobItem.update({
+            where: { id: item.itemId },
+            data: {
+              deliveredQuantity: item.deliveredQty,
+              deliveredQuantityUpdatedAt: updatedAt,
+              deliveredQuantityUpdatedBy: userId
+            }
+          }))
+        );
+      });
+
+      const refreshedItems = await this.prisma.designJobItem.findMany({
+        where: { jobId },
+        include: {
+          jobTypeItem: {
+            select: {
+              defaultSize: true
+            }
+          }
+        },
+        orderBy: { id: 'asc' }
+      });
+
+      await this.logApprovalActivity({
+        jobId,
+        approverId: userId,
+        activityType: 'delivered_quantities_updated',
+        description: 'แก้ไขจำนวนชิ้นงานที่ส่งมอบ',
+        metadata: {
+          deliveredItems: refreshedItems.map(item => ({
+            itemId: item.id,
+            name: item.name,
+            quantity: item.quantity,
+            deliveredQuantity: item.deliveredQuantity,
+            effectiveQuantity: getEffectiveItemQuantity(item)
+          }))
+        }
+      });
+
+      return {
+        success: true,
+        data: refreshedItems.map(item => ({
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          deliveredQuantity: item.deliveredQuantity,
+          effectiveQuantity: getEffectiveItemQuantity(item),
+          status: item.status,
+          defaultSize: item.jobTypeItem?.defaultSize || null,
+          deliveredQuantityUpdatedAt: item.deliveredQuantityUpdatedAt,
+          deliveredQuantityUpdatedBy: item.deliveredQuantityUpdatedBy
+        }))
+      };
+    } catch (error) {
+      return this.handleError(error, 'UPDATE_DELIVERED_QUANTITIES', 'Job');
     }
   }
 

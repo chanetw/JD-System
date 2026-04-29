@@ -16,7 +16,7 @@ import Swal from 'sweetalert2';
 import { fileUploadService } from '@shared/services/modules/fileUploadService';
 import { adminService } from '@shared/services/modules/adminService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
-import { ROLE_V1_DISPLAY, getJobRole, JOB_ROLE_THEMES } from '@shared/utils/permission.utils';
+import { ROLE_V1_DISPLAY, getJobRole, JOB_ROLE_THEMES, hasAnyRole } from '@shared/utils/permission.utils';
 import { formatDateToThai } from '@shared/utils/dateUtils';
 import Badge from '@shared/components/Badge';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
@@ -37,6 +37,7 @@ import {
 
 // Components
 import JobBriefInfo from '../components/JobBriefInfo';
+import DeliveredItemsEditor from '../components/DeliveredItemsEditor';
 import JobComments from '../components/JobComments';
 import JobActivityLog from '../components/JobActivityLog';
 import SubJobsList from '../components/SubJobsList';
@@ -84,6 +85,7 @@ export default function JobDetail() {
     const [finalLink, setFinalLink] = useState('');
     const [completeUploadedFiles, setCompleteUploadedFiles] = useState([]);
     const [completeUploadingFile, setCompleteUploadingFile] = useState(false);
+    const [completeDeliveredItems, setCompleteDeliveredItems] = useState({});
     const completeFileInputRef = useRef(null);
     const COMPLETE_MAX_TOTAL = 10 * 1024 * 1024; // 10MB รวม
     const [showAssigneeRejectModal, setShowAssigneeRejectModal] = useState(false);
@@ -112,6 +114,7 @@ export default function JobDetail() {
     
     // Loading States
     const [isCompleting, setIsCompleting] = useState(false);
+    const [isSavingDeliveredQuantities, setIsSavingDeliveredQuantities] = useState(false);
 
     // ============================================
     // Data Loading
@@ -377,6 +380,28 @@ export default function JobDetail() {
         setCompleteUploadedFiles(prev => prev.filter(f => f.id !== fileId));
     };
 
+    const handleDeliveredItemChange = (itemId, value) => {
+        if (!/^\d*$/.test(value)) return;
+        setCompleteDeliveredItems(prev => ({ ...prev, [itemId]: value }));
+    };
+
+    const buildDeliveredItemsPayload = (values) => {
+        return Object.entries(values)
+            .filter(([, value]) => value !== '' && value !== null && value !== undefined)
+            .map(([itemId, value]) => ({
+                itemId: Number(itemId),
+                deliveredQty: Number(value)
+            }));
+    };
+
+    const handleOpenCompleteModal = () => {
+        setFinalLink('');
+        setCompleteNote('');
+        setCompleteUploadedFiles([]);
+        setCompleteDeliveredItems({});
+        setShowCompleteModal(true);
+    };
+
     const handleCloseCompleteModal = async () => {
         if (completeUploadedFiles.length > 0) {
             await Promise.allSettled(
@@ -387,6 +412,7 @@ export default function JobDetail() {
         setFinalLink('');
         setCompleteNote('');
         setCompleteUploadedFiles([]);
+        setCompleteDeliveredItems({});
     };
 
     const handleCompleteJob = async () => {
@@ -415,7 +441,11 @@ export default function JobDetail() {
                 });
             });
 
-            await api.completeJob(job.id, { note: completeNote, attachments });
+            await api.completeJob(job.id, {
+                note: completeNote,
+                attachments,
+                deliveredItems: buildDeliveredItemsPayload(completeDeliveredItems)
+            });
             await Swal.fire({
                 icon: 'success',
                 title: 'ส่งมอบงานสำเร็จ!',
@@ -434,6 +464,42 @@ export default function JobDetail() {
             });
         } finally {
             setIsCompleting(false);
+        }
+    };
+
+    const handleSaveDeliveredQuantities = async (values) => {
+        const deliveredItems = buildDeliveredItemsPayload(values);
+        if (deliveredItems.length === 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'ยังไม่มีข้อมูลที่ต้องบันทึก',
+                text: 'กรุณาระบุจำนวนชิ้นงานที่ต้องการให้ระบบนับก่อนบันทึก',
+                confirmButtonColor: '#e11d48'
+            });
+            return false;
+        }
+
+        setIsSavingDeliveredQuantities(true);
+        try {
+            await api.updateDeliveredQuantities(job.id, deliveredItems);
+            await Swal.fire({
+                icon: 'success',
+                title: 'บันทึกจำนวนชิ้นงานสำเร็จ',
+                text: 'ระบบจะใช้จำนวนชิ้นงานใหม่ในการคำนวณทุกหน้าแล้ว',
+                confirmButtonColor: '#e11d48'
+            });
+            await loadJob();
+            return true;
+        } catch (error) {
+            Swal.fire({
+                icon: 'error',
+                title: 'บันทึกจำนวนชิ้นงานไม่สำเร็จ',
+                text: error.message || 'เกิดข้อผิดพลาดในการอัปเดตข้อมูล',
+                confirmButtonColor: '#e11d48'
+            });
+            return false;
+        } finally {
+            setIsSavingDeliveredQuantities(false);
         }
     };
 
@@ -680,6 +746,7 @@ export default function JobDetail() {
     // Role Detection & Theme
     const jobRole = getJobRole(user, job);
     const theme = JOB_ROLE_THEMES[jobRole] || JOB_ROLE_THEMES.viewer;
+    const canEditDeliveredQuantities = hasAnyRole(user, ['Admin']);
 
     const tabs = [
         { id: 'overview', label: 'ภาพรวม (Overview)', icon: DocumentTextIcon },
@@ -745,7 +812,7 @@ export default function JobDetail() {
                                     jobRole={jobRole}
                                     onApprove={handleApprove}
                                     onOpenRejectModal={() => setShowRejectModal(true)}
-                                    onOpenCompleteModal={() => setShowCompleteModal(true)}
+                                    onOpenCompleteModal={handleOpenCompleteModal}
                                     onManualAssign={handleManualAssign}
                                     onConfirmClose={handleConfirmClose}
                                     onRequestRevision={onRequestRevision}
@@ -804,7 +871,12 @@ export default function JobDetail() {
                                 </div>
 
                                 {/* Brief Info */}
-                                <JobBriefInfo job={job} />
+                                <JobBriefInfo
+                                    job={job}
+                                    canEditDeliveredQuantities={canEditDeliveredQuantities}
+                                    onSaveDeliveredQuantities={handleSaveDeliveredQuantities}
+                                    isSavingDeliveredQuantities={isSavingDeliveredQuantities}
+                                />
 
                                 {/* Job Chain Status (for sequential jobs A→B→C) */}
                                 <JobChainStatus job={job} />
@@ -871,7 +943,7 @@ export default function JobDetail() {
             {/* Complete Modal */}
             {showCompleteModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90dvh] overflow-y-auto">
+                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90dvh] overflow-y-auto">
                         {/* Header */}
                         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
                             <h3 className="text-lg font-bold text-green-600">✅ ส่งงาน (Complete)</h3>
@@ -948,6 +1020,16 @@ export default function JobDetail() {
                                     </ul>
                                 )}
                             </div>
+
+                            <DeliveredItemsEditor
+                                items={job?.items || []}
+                                jobTypeLabel={job?.jobType}
+                                values={completeDeliveredItems}
+                                onChange={handleDeliveredItemChange}
+                                disabled={isCompleting || completeUploadingFile}
+                                title="Job Type และจำนวนงานที่ส่งจริง"
+                                description="กรอกเฉพาะรายการที่ต้องการให้ระบบนับต่างจากจำนวนเดิม หากเว้นว่าง ระบบจะใช้จำนวนเดิมของชิ้นงานนั้น"
+                            />
 
                             {/* Note */}
                             <div>

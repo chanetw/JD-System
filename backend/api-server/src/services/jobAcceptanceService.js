@@ -9,9 +9,12 @@
  * 5. การคำนวณ Sequential Child Jobs
  */
 
-const prisma = require('../config/database');
-const { differenceInBusinessDays, parseISO, format } = require('date-fns');
-const NotificationService = require('./notificationService');
+import { addBusinessDays, differenceInBusinessDays, parseISO, format } from 'date-fns';
+
+import { getDatabase } from '../config/database.js';
+import NotificationService from './notificationService.js';
+
+const prisma = getDatabase();
 
 function toDateKey(dateValue) {
     const d = new Date(dateValue);
@@ -392,7 +395,16 @@ async function getJobSlaInfo(jobId) {
     return slaInfo;
 }
 
-module.exports = {
+export {
+    calculateDueDate,
+    checkAutoExtension,
+    applyAutoExtension,
+    extendJobManually,
+    calculateSequentialTimeline,
+    getJobSlaInfo
+};
+
+export default {
     calculateDueDate,
     checkAutoExtension,
     applyAutoExtension,

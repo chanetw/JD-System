@@ -1,0 +1,4 @@
+ALTER TABLE design_job_items
+ADD COLUMN delivered_quantity INTEGER,
+ADD COLUMN delivered_quantity_updated_at TIMESTAMPTZ,
+ADD COLUMN delivered_quantity_updated_by INTEGER;

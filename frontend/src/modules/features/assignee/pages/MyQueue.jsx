@@ -35,6 +35,7 @@ import {
 import { FormInput, FormSelect } from '@shared/components/FormInput';
 import TimelineView from '../components/TimelineView';
 import DraftSubmitModal from '@features/job-management/components/DraftSubmitModal';
+import DeliveredItemsEditor from '@features/job-management/components/DeliveredItemsEditor';
 import httpClient from '@shared/services/httpClient';
 import { resolveSlaBadgePresentation } from '@shared/utils/slaStatusResolver';
 import { matchesSuperSearch } from '@shared/utils/superSearch';
@@ -132,6 +133,9 @@ export default function MyQueue() {
     const [completeNote, setCompleteNote] = useState('');
     const [completeUploadedFiles, setCompleteUploadedFiles] = useState([]);
     const [completeUploadingFile, setCompleteUploadingFile] = useState(false);
+    const [completeItemsLoading, setCompleteItemsLoading] = useState(false);
+    const [completeDeliveredItems, setCompleteDeliveredItems] = useState({});
+    const [isCompleting, setIsCompleting] = useState(false);
     const completeFileInputRef = useRef(null);
     // 10MB รวมสำหรับ final delivery (draft ใช้ global 50MB)
     const COMPLETE_MAX_TOTAL = 10 * 1024 * 1024;
@@ -255,13 +259,47 @@ export default function MyQueue() {
     /**
      * เปิด Complete Modal
      */
-    const handleOpenCompleteModal = (job, e) => {
+    const handleDeliveredItemChange = (itemId, value) => {
+        if (!/^\d*$/.test(value)) return;
+        setCompleteDeliveredItems(prev => ({ ...prev, [itemId]: value }));
+    };
+
+    const buildDeliveredItemsPayload = (values) => {
+        return Object.entries(values)
+            .filter(([, value]) => value !== '' && value !== null && value !== undefined)
+            .map(([itemId, value]) => ({
+                itemId: Number(itemId),
+                deliveredQty: Number(value)
+            }));
+    };
+
+    const handleOpenCompleteModal = async (job, e) => {
         if (e) e.stopPropagation();
         setSelectedJob(job);
         setFinalLink('');
         setCompleteNote('');
         setCompleteUploadedFiles([]);
+        setCompleteDeliveredItems({});
         setShowCompleteModal(true);
+
+        setCompleteItemsLoading(true);
+        try {
+            const detail = await api.getJobById(job.id);
+            const jobDetail = detail?.data || detail;
+            if (jobDetail?.id === job.id) {
+                setSelectedJob(jobDetail);
+            }
+        } catch (error) {
+            console.error('[MyQueue] Failed to load complete modal job detail:', error);
+            Swal.fire({
+                icon: 'warning',
+                title: 'โหลดรายการชิ้นงานไม่สำเร็จ',
+                text: 'ยังสามารถส่งงานได้ แต่ระบบอาจไม่แสดงช่องกรอกจำนวนชิ้นงานในครั้งนี้',
+                confirmButtonColor: '#e11d48'
+            });
+        } finally {
+            setCompleteItemsLoading(false);
+        }
     };
 
     /**
@@ -333,6 +371,9 @@ export default function MyQueue() {
         setFinalLink('');
         setCompleteNote('');
         setCompleteUploadedFiles([]);
+        setCompleteItemsLoading(false);
+        setCompleteDeliveredItems({});
+        setIsCompleting(false);
         setSelectedJob(null);
     };
 
@@ -348,6 +389,9 @@ export default function MyQueue() {
                 confirmButtonColor: '#e11d48'
             });
         }
+        if (isCompleting) return;
+
+        setIsCompleting(true);
         try {
             const attachments = [];
             if (finalLink.trim()) {
@@ -362,7 +406,11 @@ export default function MyQueue() {
                 });
             });
 
-            await api.completeJob(selectedJob.id, { note: completeNote, attachments });
+            await api.completeJob(selectedJob.id, {
+                note: completeNote,
+                attachments,
+                deliveredItems: buildDeliveredItemsPayload(completeDeliveredItems)
+            });
             await Swal.fire({
                 icon: 'success',
                 title: 'ส่งมอบงานสำเร็จ!',
@@ -383,6 +431,8 @@ export default function MyQueue() {
                 text: err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์',
                 confirmButtonColor: '#e11d48'
             });
+        } finally {
+            setIsCompleting(false);
         }
     };
 
@@ -823,11 +873,11 @@ export default function MyQueue() {
             {/* Complete Modal */}
             {showCompleteModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90dvh] overflow-y-auto">
+                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90dvh] overflow-y-auto">
                         {/* Header */}
                         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
                             <h3 className="text-lg font-bold text-green-600">✅ ส่งงาน (Complete)</h3>
-                            <button onClick={handleCloseCompleteModal} className="text-gray-400 hover:text-gray-600">
+                            <button onClick={handleCloseCompleteModal} disabled={isCompleting} className="text-gray-400 hover:text-gray-600 disabled:opacity-50">
                                 <XCircleIcon className="w-6 h-6" />
                             </button>
                         </div>
@@ -899,6 +949,22 @@ export default function MyQueue() {
                                 )}
                             </div>
 
+                            {completeItemsLoading ? (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+                                    กำลังโหลดรายการชิ้นงาน...
+                                </div>
+                            ) : (
+                                <DeliveredItemsEditor
+                                    items={selectedJob?.items || []}
+                                    jobTypeLabel={selectedJob?.jobType}
+                                    values={completeDeliveredItems}
+                                    onChange={handleDeliveredItemChange}
+                                    disabled={isCompleting || completeUploadingFile}
+                                    title="Job Type และจำนวนงานที่ส่งจริง"
+                                    description="กรอกเฉพาะรายการที่ต้องการนับต่างจากจำนวนเดิม หากเว้นว่าง ระบบจะใช้จำนวนเดิมของชิ้นงานนั้น"
+                                />
+                            )}
+
                             {/* Note */}
                             <div>
                                 <label className="block mb-1.5 text-sm font-medium text-gray-700">
@@ -916,14 +982,14 @@ export default function MyQueue() {
 
                         {/* Footer */}
                         <div className="flex gap-2 px-6 py-4 border-t border-gray-200 sticky bottom-0 bg-white">
-                            <Button variant="ghost" onClick={handleCloseCompleteModal} className="flex-1">ยกเลิก</Button>
+                            <Button variant="ghost" onClick={handleCloseCompleteModal} disabled={isCompleting} className="flex-1">ยกเลิก</Button>
                             <Button
                                 variant="primary"
                                 onClick={handleCompleteJob}
-                                disabled={completeUploadingFile || (!finalLink.trim() && completeUploadedFiles.length === 0)}
+                                disabled={isCompleting || completeUploadingFile || (!finalLink.trim() && completeUploadedFiles.length === 0)}
                                 className="flex-1 bg-green-600 hover:bg-green-700"
                             >
-                                ส่งงาน
+                                {isCompleting ? 'กำลังส่งงาน...' : 'ส่งงาน'}
                             </Button>
                         </div>
                     </div>
