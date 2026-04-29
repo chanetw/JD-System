@@ -10,11 +10,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader } from '@shared/components/Card';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
 import { FormInput, FormSelect } from '@shared/components/FormInput';
 import { api } from '@shared/services/apiService';
 import { adminService } from '@shared/services/modules/adminService';
+import { matchesSuperSearch } from '@shared/utils/superSearch';
 
 // Icons
 import {
@@ -32,6 +34,8 @@ import {
  * คอมโพเน็นต์สำหรับการจัดการข้อมูลวันหยุดในระบบ
  */
 export default function AdminHoliday() {
+    const superSearchQuery = useSuperSearchStore(state => state.query);
+    const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
     // === สถานะของข้อมูล (States: Data) ===
     /** ควบคุมการเปิด/ปิดหน้าต่างเพิ่มหรือแก้ไขข้อมูล */
     const [showModal, setShowModal] = useState(false);
@@ -224,6 +228,17 @@ export default function AdminHoliday() {
         }));
     };
 
+    const yearlyHolidays = holidays.filter(h => new Date(h.date).getFullYear() === selectedYear);
+    const filteredYearlyHolidays = yearlyHolidays.filter(holiday => matchesSuperSearch(holiday, superSearchQuery, [
+        value => value.name,
+        value => value.type,
+        value => value.date,
+    ]));
+
+    useEffect(() => {
+        setSuperSearchMeta({ resultCount: filteredYearlyHolidays.length, totalCount: yearlyHolidays.length });
+    }, [filteredYearlyHolidays.length, setSuperSearchMeta, yearlyHolidays.length]);
+
     /**
      * Download Holiday Template
      */
@@ -403,8 +418,7 @@ export default function AdminHoliday() {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-400">
-                        {holidays
-                            .filter(h => new Date(h.date).getFullYear() === selectedYear)
+                        {filteredYearlyHolidays
                             .sort((a, b) => new Date(a.date) - new Date(b.date))
                             .map(holiday => (
                                 <HolidayRow
@@ -417,7 +431,7 @@ export default function AdminHoliday() {
                                 />
                             ))
                         }
-                        {holidays.filter(h => new Date(h.date).getFullYear() === selectedYear).length === 0 && (
+                        {filteredYearlyHolidays.length === 0 && (
                             <tr>
                                 <td colSpan="4" className="px-6 py-8 text-center text-gray-500">
                                     ไม่มีรายการวันหยุดสำหรับปี {selectedYear}

@@ -21,7 +21,7 @@ export default function Button({
     isLoading = false,
     ...props
 }) {
-    const baseStyles = "px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2";
+    const baseStyles = "min-h-[44px] px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2";
 
     const variants = {
         primary: "bg-rose-500 text-white hover:bg-rose-600 disabled:bg-rose-300",

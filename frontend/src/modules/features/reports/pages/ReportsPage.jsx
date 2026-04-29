@@ -3,13 +3,15 @@
  * @description หน้ารายงานผลงานรายบุคคล - แสดง Cards Grid ของทีม
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import { useTeamComparison } from '../hooks/useUserPerformance';
 import UserPerformanceCard from '../components/UserPerformanceCard';
 import UserDetailSidePanel from '../components/UserDetailSidePanel';
 import { Search, Filter, SortAsc, Calendar } from 'lucide-react';
 import { isAdmin as checkIsAdmin } from '@shared/utils/permission.utils';
+import { matchesSuperSearch } from '@shared/utils/superSearch';
 
 /**
  * @component ReportsPage
@@ -18,7 +20,9 @@ import { isAdmin as checkIsAdmin } from '@shared/utils/permission.utils';
 export default function ReportsPage() {
   const { user } = useAuthStoreV2();
   const [selectedUserId, setSelectedUserId] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const searchQuery = useSuperSearchStore(state => state.query);
+  const setSearchQuery = useSuperSearchStore(state => state.setQuery);
+  const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
   const [sortBy, setSortBy] = useState('onTimeRate'); // default: On-Time Rate
   const [dateRange, setDateRange] = useState('this_month');
 
@@ -87,11 +91,10 @@ export default function ReportsPage() {
 
     // Search filter
     if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      users = users.filter(u => 
-        u.userName.toLowerCase().includes(query) ||
-        u.userEmail.toLowerCase().includes(query)
-      );
+      users = users.filter(u => matchesSuperSearch(u, searchQuery, [
+        item => item.userName,
+        item => item.userEmail,
+      ]));
     }
 
     // Sort
@@ -112,6 +115,13 @@ export default function ReportsPage() {
 
     return users;
   }, [data, searchQuery, sortBy, isAdmin, user]);
+
+  useEffect(() => {
+    const totalUsers = !isAdmin && data?.users
+      ? data.users.filter(u => u.userId === user?.userId).length
+      : (data?.users?.length || 0);
+    setSuperSearchMeta({ resultCount: filteredAndSortedUsers.length, totalCount: totalUsers });
+  }, [data, filteredAndSortedUsers.length, isAdmin, setSuperSearchMeta, user?.userId]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">

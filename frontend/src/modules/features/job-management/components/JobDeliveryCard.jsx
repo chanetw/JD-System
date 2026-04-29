@@ -1,17 +1,12 @@
 import React from 'react';
-import { CheckCircleIcon, LinkIcon, DocumentTextIcon, UserIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon, DocumentTextIcon, LinkIcon } from '@heroicons/react/24/outline';
 import { formatDateToThai } from '@shared/utils/dateUtils';
+import FileActions from '@shared/components/FileActions';
+import { getExternalFileUrl, getFileName } from '@shared/utils/fileUrlUtils';
 
 export default function JobDeliveryCard({ job }) {
     // Show only if job is completed or closed, and has final files or completion info
     if (!['completed', 'closed'].includes(job.status)) return null;
-
-    console.log('[JobDeliveryCard] raw data:', {
-        finalFiles: job.finalFiles,
-        completedAt: job.completedAt,
-        completedBy: job.completedByUser,
-        comments: job.comments
-    });
 
     // finalFiles is expected to be an array of objects: { name, url }
     let finalFiles = [];
@@ -71,25 +66,19 @@ export default function JobDeliveryCard({ job }) {
                         <span className="block text-sm font-semibold text-gray-500 mb-2">ลิงก์ผลงาน:</span>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             {finalFiles.map((file, index) => (
-                                <a
+                                <div
                                     key={index}
-                                    href={
-                                        file.url.startsWith('http://') || file.url.startsWith('https://')
-                                            ? file.url
-                                            : `https://${file.url}`
-                                    }
-                                    target="_blank"
-                                    rel="noopener noreferrer"
                                     className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 hover:border-emerald-300 hover:shadow-sm transition-all group"
                                 >
                                     <div className="p-2 bg-emerald-50 text-emerald-600 rounded-md group-hover:bg-emerald-500 group-hover:text-white transition-colors">
                                         <LinkIcon className="w-4 h-4" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium text-gray-900 truncate">{file.name || 'ลิงก์ผลงาน'}</p>
-                                        <p className="text-xs text-gray-500 truncate">{file.url}</p>
+                                        <p className="text-sm font-medium text-gray-900 truncate">{getFileName(file, 'ลิงก์ผลงาน')}</p>
+                                        <p className="text-xs text-gray-500 truncate">{getExternalFileUrl(file) || file.filePath || '-'}</p>
                                     </div>
-                                </a>
+                                    <FileActions file={file} compact className="shrink-0" />
+                                </div>
                             ))}
                         </div>
                     </div>

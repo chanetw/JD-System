@@ -14,11 +14,27 @@ import crypto from 'crypto';
 import { getDatabase } from '../config/database.js';
 import { getFrontendBaseUrl } from '../utils/frontendUrl.js';
 
+const REUSABLE_MAGIC_LINK_ACTIONS = new Set(['view', 'draft', 'rebrief']);
+
+const parsePositiveHours = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
 export class MagicLinkService {
   constructor() {
     this.prisma = getDatabase();
     this.secret = process.env.MAGIC_LINK_SECRET || process.env.JWT_SECRET || 'default-secret-change-in-production';
-    this.expiryHours = 24; // Magic link valid for 24 hours
+    this.expiryHours = parsePositiveHours(process.env.MAGIC_LINK_EXPIRY_HOURS, 24);
+    this.reusableExpiryHours = parsePositiveHours(process.env.MAGIC_LINK_VIEW_EXPIRY_HOURS, 24 * 7);
+  }
+
+  isReusableAction(action) {
+    return REUSABLE_MAGIC_LINK_ACTIONS.has(String(action || '').toLowerCase());
+  }
+
+  getExpiryHoursForAction(action) {
+    return this.isReusableAction(action) ? this.reusableExpiryHours : this.expiryHours;
   }
 
   /**
@@ -33,6 +49,9 @@ export class MagicLinkService {
    */
   async generateMagicLink({ userId, targetUrl, action = 'view', metadata = {}, frontendUrl = null }) {
     try {
+      const normalizedAction = String(action || 'view').toLowerCase();
+      const expiryHours = this.getExpiryHoursForAction(normalizedAction);
+
       // Generate unique token ID
       const tokenId = crypto.randomBytes(32).toString('hex');
       
@@ -41,24 +60,24 @@ export class MagicLinkService {
         tokenId,
         userId,
         targetUrl,
-        action,
+        action: normalizedAction,
         metadata,
         type: 'magic_link',
         iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + (this.expiryHours * 60 * 60)
+        exp: Math.floor(Date.now() / 1000) + (expiryHours * 60 * 60)
       };
 
       // Sign JWT
       const token = jwt.sign(payload, this.secret);
 
-      // Store token in database for one-time use validation
-      const expiresAt = new Date(Date.now() + (this.expiryHours * 60 * 60 * 1000));
+      // Store token in database for validation and optional single-use enforcement
+      const expiresAt = new Date(Date.now() + (expiryHours * 60 * 60 * 1000));
       await this.prisma.magicLinkToken.create({
         data: {
           tokenId,
           userId,
           targetUrl,
-          action,
+          action: normalizedAction,
           metadata: JSON.stringify(metadata),
           expiresAt,
           used: false
@@ -100,7 +119,7 @@ export class MagicLinkService {
         return { valid: false, error: 'INVALID_TOKEN_TYPE', message: 'Invalid token type' };
       }
 
-      // Check if token exists in database and not used
+      // Check if token exists in database and whether this action can be reused
       const tokenRecord = await this.prisma.magicLinkToken.findUnique({
         where: { tokenId: decoded.tokenId }
       });
@@ -109,7 +128,10 @@ export class MagicLinkService {
         return { valid: false, error: 'TOKEN_NOT_FOUND', message: 'Magic link not found' };
       }
 
-      if (tokenRecord.used) {
+      const normalizedAction = String(decoded.action || tokenRecord.action || '').toLowerCase();
+      const isReusableAction = this.isReusableAction(normalizedAction);
+
+      if (tokenRecord.used && !isReusableAction) {
         return { valid: false, error: 'TOKEN_ALREADY_USED', message: 'Magic link has already been used' };
       }
 
@@ -117,14 +139,15 @@ export class MagicLinkService {
         return { valid: false, error: 'TOKEN_EXPIRED', message: 'Magic link has expired' };
       }
 
-      // Mark token as used (one-time use)
-      await this.prisma.magicLinkToken.update({
-        where: { tokenId: decoded.tokenId },
-        data: {
-          used: true,
-          usedAt: new Date()
-        }
-      });
+      if (!isReusableAction) {
+        await this.prisma.magicLinkToken.update({
+          where: { tokenId: decoded.tokenId },
+          data: {
+            used: true,
+            usedAt: new Date()
+          }
+        });
+      }
 
       // Get user data
       const user = await this.prisma.user.findUnique({
@@ -156,7 +179,7 @@ export class MagicLinkService {
         valid: true,
         user,
         targetUrl: decoded.targetUrl,
-        action: decoded.action,
+        action: normalizedAction,
         metadata: decoded.metadata
       };
     } catch (error) {

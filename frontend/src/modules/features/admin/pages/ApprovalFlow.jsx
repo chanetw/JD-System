@@ -12,6 +12,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '@shared/services/apiService';
 import { adminService } from '@shared/services/modules/adminService';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import { Card, CardHeader } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
@@ -20,6 +21,7 @@ import { canApproveInProject, canBeAssignedInBud, hasRole, isAdmin as checkIsAdm
 
 import { PlusIcon, TrashIcon, UserGroupIcon, UserIcon, ArrowLongRightIcon, ArrowRightIcon, BriefcaseIcon, CheckCircleIcon, ExclamationCircleIcon, MagnifyingGlassIcon, PencilIcon, XMarkIcon, ExclamationTriangleIcon, BoltIcon, ForwardIcon } from '@heroicons/react/24/outline';
 import AssignmentMatrix from './AssignmentMatrix'; // Import Matrix Component
+import { matchesSuperSearch } from '@shared/utils/superSearch';
 
 /**
  * จานสีสำหรับใช้แสดงสัญลักษณ์โครงการ (Project Badges)
@@ -57,6 +59,9 @@ const isUserActive = (user) => {
  * หน้าจัดการกำหนดขั้นตอนการทำงาน (Workflow) และสิทธิ์การทำงานร่วมกันในโครงการ
  */
 export default function AdminApprovalFlow() {
+    const superSearchQuery = useSuperSearchStore(state => state.query);
+    const setSuperSearchQuery = useSuperSearchStore(state => state.setQuery);
+    const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
     // === สถานะข้อมูล (States: Data) ===
     /** รายการโครงการทั้งหมด */
     const [projects, setProjects] = useState([]);
@@ -72,8 +77,6 @@ export default function AdminApprovalFlow() {
     const [currentFlow, setCurrentFlow] = useState(null);
     /** อยู่ในโหมดแก้ไขหรือไม่ */
     const [isEditMode, setIsEditMode] = useState(false);
-    /** คำค้นหาโครงการ */
-    const [searchTerm, setSearchTerm] = useState('');
     /** ตัวกรองสถานะ Flow: 'all' (ทั้งหมด), 'hasFlow' (ระบุแล้ว), 'noFlow' (ยังไม่ระบุ) */
     const [flowFilter, setFlowFilter] = useState('all');
 
@@ -687,8 +690,12 @@ export default function AdminApprovalFlow() {
      */
     const filteredProjects = projects.filter(p => {
         // ค้นหาจากชื่อหรือรหัส (Text search)
-        const matchText = p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            p.code?.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchText = matchesSuperSearch(p, superSearchQuery, [
+            project => project.name,
+            project => project.code,
+            project => project.bud,
+            project => project.budName,
+        ]);
 
         // กรองตามสถานะการตั้งค่า Flow (Flow status filter)
         // ✅ ใช้ allApprovalFlows แทน approvalFlows
@@ -699,6 +706,10 @@ export default function AdminApprovalFlow() {
 
         return matchText && matchFlow;
     });
+
+    useEffect(() => {
+        setSuperSearchMeta({ resultCount: filteredProjects.length, totalCount: projects.length });
+    }, [filteredProjects.length, projects.length, setSuperSearchMeta]);
 
     const selectedTeamLeadUser = teamLeadId
         ? allUsers.find(u => parseInt(u.id) === parseInt(teamLeadId))
@@ -760,8 +771,8 @@ export default function AdminApprovalFlow() {
                             <input
                                 type="text"
                                 placeholder="ค้นหาโครงการ..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
+                                value={superSearchQuery}
+                                onChange={(e) => setSuperSearchQuery(e.target.value)}
                                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 text-sm"
                             />
                         </div>

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import api from '@shared/services/apiDatabase';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import { FormSelect } from '@shared/components/FormInput';
 import Button from '@shared/components/Button';
 import Modal from '@shared/components/Modal';
+import { matchesSuperSearch } from '@shared/utils/superSearch';
 
 const isUserActive = (user) => {
     if (!user) return false;
@@ -25,6 +27,9 @@ const isUserActive = (user) => {
  * @param {Function} onSaveSuccess - Callback ที่ถูกเรียกเมื่อบันทึกสำเร็จ
  */
 export default function AssignmentMatrix({ projectId: propProjectId, assignees: propAssignees, onSaveSuccess }) {
+    const superSearchQuery = useSuperSearchStore(state => state.query);
+    const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
+
     // === State ===
     const [projects, setProjects] = useState([]);
     const [localAssignees, setLocalAssignees] = useState([]);
@@ -189,6 +194,19 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
             };
         })
         .filter(Boolean);
+    const filteredJobTypes = jobTypes.filter(type => {
+        const current = matrix.find(m => m.jobTypeId === type.id);
+        return matchesSuperSearch({ ...type, assigneeName: current?.assigneeName, assigneeEmail: current?.assigneeEmail }, superSearchQuery, [
+            value => value.name,
+            value => value.description,
+            value => value.assigneeName,
+            value => value.assigneeEmail,
+        ]);
+    });
+
+    useEffect(() => {
+        setSuperSearchMeta({ resultCount: filteredJobTypes.length, totalCount: jobTypes.length });
+    }, [filteredJobTypes.length, jobTypes.length, setSuperSearchMeta]);
 
     return (
         <div className="bg-white rounded-lg border border-gray-400 mt-4 p-4 shadow-sm">
@@ -251,7 +269,7 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-400">
-                                {jobTypes.map(type => {
+                                {filteredJobTypes.map(type => {
                                     const current = matrix.find(m => m.jobTypeId === type.id);
                                     return (
                                         <tr key={type.id} className="hover:bg-gray-50">
@@ -289,7 +307,7 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
                                         </tr>
                                     );
                                 })}
-                                {jobTypes.length === 0 && (
+                                {filteredJobTypes.length === 0 && (
                                     <tr>
                                         <td colSpan={2} className="px-6 py-10 text-center text-gray-400">
                                             ยังไม่มีประเภทงานในระบบ

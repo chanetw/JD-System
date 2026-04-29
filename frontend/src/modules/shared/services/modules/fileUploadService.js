@@ -404,13 +404,14 @@ export const fileUploadService = {
      * @returns {string} - Icon class or emoji
      */
     getFileIcon: (mimeType) => {
-        if (mimeType.startsWith('image/')) return '🖼️';
-        if (mimeType === 'application/pdf') return '📄';
-        if (mimeType.includes('word')) return '📝';
-        if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return '📊';
-        if (mimeType.includes('powerpoint') || mimeType.includes('presentation')) return '📽️';
-        if (mimeType.includes('zip') || mimeType.includes('rar')) return '📦';
-        if (mimeType.includes('photoshop') || mimeType.includes('postscript')) return '🎨';
+        const normalizedMimeType = String(mimeType || '').toLowerCase();
+        if (normalizedMimeType.startsWith('image/')) return '🖼️';
+        if (normalizedMimeType === 'application/pdf') return '📄';
+        if (normalizedMimeType.includes('word')) return '📝';
+        if (normalizedMimeType.includes('excel') || normalizedMimeType.includes('spreadsheet')) return '📊';
+        if (normalizedMimeType.includes('powerpoint') || normalizedMimeType.includes('presentation')) return '📽️';
+        if (normalizedMimeType.includes('zip') || normalizedMimeType.includes('rar')) return '📦';
+        if (normalizedMimeType.includes('photoshop') || normalizedMimeType.includes('postscript')) return '🎨';
         return '📎';
     }
 };

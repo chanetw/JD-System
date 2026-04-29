@@ -2,18 +2,39 @@ import React from 'react';
 import { UserIcon, PencilIcon, CheckIcon, ClockIcon } from '@heroicons/react/24/outline';
 import Badge from '@shared/components/Badge';
 
+const isParentJob = (job) => job?.isParent === true || job?.isParent === 1;
+
+const getAssigneeName = (assignee) => {
+    if (!assignee) return null;
+    if (typeof assignee === 'string') return assignee.trim() || null;
+
+    return assignee.displayName || assignee.name || [assignee.firstName, assignee.lastName].filter(Boolean).join(' ').trim() || null;
+};
+
+const getParentJobAssignees = (job) => {
+    const childJobs = Array.isArray(job?.childJobs) ? job.childJobs : [];
+    const names = childJobs
+        .map((child) => getAssigneeName(child?.assignee))
+        .filter(Boolean);
+
+    return [...new Set(names)];
+};
+
 const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
     if (!job) return null;
 
+    const parentJob = isParentJob(job);
     const isAdmin = currentUser?.roles?.some(r => (typeof r === 'string' ? r : r?.name)?.toLowerCase() === 'admin') || currentUser?.roleName?.toLowerCase() === 'admin';
     const isManager = currentUser?.roles?.some(r => (typeof r === 'string' ? r : r?.name)?.toLowerCase() === 'manager') || currentUser?.roleName?.toLowerCase() === 'manager';
     const isAssignee = String(job.assigneeId) === String(currentUser?.id);
+    const parentAssignees = getParentJobAssignees(job);
+    const singleAssigneeName = getAssigneeName(job.assignee);
     
     // สถานะที่ไม่ควรให้เปลี่ยนผู้รับผิดชอบ
     const lockedStatuses = ['draft_review', 'completed', 'pending_rebrief', 'rejected', 'closed'];
     const isStatusLocked = lockedStatuses.includes(job.status);
     
-    const canReassign = (isAdmin || isManager || isAssignee) && !isStatusLocked;
+    const canReassign = !parentJob && (isAdmin || isManager || isAssignee) && !isStatusLocked;
 
     return (
         <div className="space-y-6">
@@ -38,15 +59,37 @@ const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
                     <div className="pt-2 border-t border-gray-100">
                         <label className="text-sm text-gray-500 block mb-2">ผู้รับผิดชอบ (Assignee)</label>
                         <div className="flex items-center justify-between bg-gray-50 p-2 rounded-lg group">
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 bg-rose-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                                    {job.assignee?.displayName?.[0] || job.assignee?.name?.[0] || job.assignee?.[0] || 'U'}
+                            {parentJob ? (
+                                <div className="w-full">
+                                    {parentAssignees.length > 0 ? (
+                                        <div className="flex flex-wrap gap-2">
+                                            {parentAssignees.map((name) => (
+                                                <span
+                                                    key={name}
+                                                    className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white px-3 py-1.5 text-sm font-medium text-rose-700"
+                                                >
+                                                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-500 text-xs font-bold text-white">
+                                                        {name?.[0]?.toUpperCase() || 'U'}
+                                                    </span>
+                                                    {name}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-gray-500">ยังไม่มีผู้รับผิดชอบในงานลูก</p>
+                                    )}
                                 </div>
-                                <div>
-                                    <p className="text-sm font-medium text-gray-900">{job.assignee?.displayName || job.assignee?.name || job.assignee || 'Unassigned'}</p>
-                                    <p className="text-xs text-gray-500">Graphic Designer</p>
+                            ) : (
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 bg-rose-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
+                                        {singleAssigneeName?.[0]?.toUpperCase() || 'U'}
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-medium text-gray-900">{singleAssigneeName || 'Unassigned'}</p>
+                                        <p className="text-xs text-gray-500">Graphic Designer</p>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                             {canReassign && (
                                 <button
                                     onClick={onReassign}

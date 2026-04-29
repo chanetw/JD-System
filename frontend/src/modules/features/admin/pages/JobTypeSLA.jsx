@@ -11,6 +11,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { api } from '@shared/services/apiService';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import { Card, CardHeader } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
@@ -28,6 +29,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 import { JOB_ICONS } from '@shared/constants/jobIcons';
+import { matchesSuperSearch } from '@shared/utils/superSearch';
 
 /**
  * รายการเอกสารแนบที่ระบบรองรับให้เลือก (Standard Attachment Types)
@@ -39,6 +41,8 @@ const AVAILABLE_ATTACHMENTS = ['Logo', 'Product Image', 'Size Spec', 'Print Spec
  * คอมโพเน็นต์สำหรับการจัดการประเภทงานและ SLA ในระบบหลังบ้าน
  */
 export default function AdminJobTypeSLA() {
+    const superSearchQuery = useSuperSearchStore(state => state.query);
+    const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
     // === สถานะของข้อมูล (States: Data) ===
     /** รายการประเภทงานทั้งหมด */
     const [jobTypes, setJobTypes] = useState([]);
@@ -333,9 +337,20 @@ export default function AdminJobTypeSLA() {
     );
 
     // Stats Calculation
-    const filteredJobTypes = jobTypes.filter(j => j.name !== 'Project Group (Parent)');
+    const baseJobTypes = jobTypes.filter(j => j.name !== 'Project Group (Parent)');
+    const filteredJobTypes = baseJobTypes.filter(item => matchesSuperSearch(item, superSearchQuery, [
+        value => value.name,
+        value => value.description,
+        value => value.sla,
+        value => value.status,
+        value => value.attachments,
+    ]));
     const activeCount = filteredJobTypes.filter(j => j.isActive !== false).length;
     const avgSLA = filteredJobTypes.length ? (filteredJobTypes.reduce((acc, curr) => acc + Number(curr.sla), 0) / filteredJobTypes.length).toFixed(1) : 0;
+
+    useEffect(() => {
+        setSuperSearchMeta({ resultCount: filteredJobTypes.length, totalCount: baseJobTypes.length });
+    }, [baseJobTypes.length, filteredJobTypes.length, setSuperSearchMeta]);
 
     return (
         <div className="space-y-6">
@@ -393,7 +408,7 @@ export default function AdminJobTypeSLA() {
                         <tbody className="divide-y divide-gray-400">
                             {isLoading ? (
                                 <tr><td colSpan="6" className="p-8 text-center text-gray-500">Loading...</td></tr>
-                            ) : jobTypes.map((item) => {
+                            ) : filteredJobTypes.map((item) => {
                                 const iconConfig = JOB_ICONS[item.icon] || JOB_ICONS.social;
                                 return (
                                     <tr key={item.id} className="hover:bg-gray-50">
@@ -445,7 +460,7 @@ export default function AdminJobTypeSLA() {
             {/* หน้าต่างเพิ่ม/แก้ไข (Add/Edit Modal) */}
             {showModal && (
                 <div className="fixed inset-0 flex items-center justify-center z-50 p-4 animate-fadeIn">
-                    <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col border border-gray-100">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90dvh] overflow-hidden flex flex-col border border-gray-100">
                         <div className="p-6 border-b border-gray-400 flex justify-between items-center bg-gray-50/50">
                             <h3 className="text-lg font-bold text-gray-900">{modalMode === 'add' ? 'เพิ่มประเภทงานใหม่' : 'แก้ไขข้อมูลประเภทงาน'}</h3>
                             <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 bg-white p-1 rounded-full shadow-sm transition-transform hover:rotate-90">

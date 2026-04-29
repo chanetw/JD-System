@@ -74,6 +74,7 @@ model Tenant {
   notifications        Notification[]
   holidays             Holiday[]
   mediaFiles           MediaFile[]
+  draftAttachmentViewLogs DraftAttachmentViewLog[]
   auditLogs            AuditLog[]
   userRequests         UserRequest[]
   userScopeAssignments UserScopeAssignment[]
@@ -134,6 +135,7 @@ model User {
   assignedProjects     ProjectJobAssignment[] @relation("AssignedProjects")
   assignedBuds         BudJobAssignment[]     @relation("AssignedBuds")
   mediaFiles           MediaFile[]
+  draftAttachmentViewLogs DraftAttachmentViewLog[] @relation("DraftAttachmentViewLogs")
   passwordResets       PasswordResetRequest[]
   jobActivities        JobActivity[]
   userRequests         UserRequest[]
@@ -360,6 +362,7 @@ model Job {
   activityLogs    ActivityLog[]    @relation("JobActivityLogs")
   comments        JobComment[]
   mediaFiles      MediaFile[]
+  draftAttachmentViewLogs DraftAttachmentViewLog[]
   slaShiftLogs    SlaShiftLog[]    @relation("SlaShiftLogs")
   urgentJobShifts SlaShiftLog[]    @relation("UrgentJobShifts")
   jobActivities   JobActivity[]
@@ -827,8 +830,31 @@ model MediaFile {
   job     Job?     @relation(fields: [jobId], references: [id], onDelete: SetNull)
   project Project? @relation(fields: [projectId], references: [id])
   user    User     @relation(fields: [uploadedBy], references: [id])
+  draftAttachmentViewLogs DraftAttachmentViewLog[]
 
   @@map("media_files")
+}
+
+model DraftAttachmentViewLog {
+  id            Int      @id @default(autoincrement())
+  tenantId      Int      @map("tenant_id")
+  jobId         Int      @map("job_id")
+  attachmentId  Int      @map("attachment_id")
+  viewerUserId  Int      @map("viewer_user_id")
+  firstViewedAt DateTime @default(now()) @map("first_viewed_at") @db.Timestamptz
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  job        Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  attachment MediaFile @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+  viewer     User      @relation("DraftAttachmentViewLogs", fields: [viewerUserId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, attachmentId, viewerUserId])
+  @@index([tenantId])
+  @@index([jobId])
+  @@index([attachmentId])
+  @@index([viewerUserId])
+  @@map("draft_attachment_view_logs")
 }
 
 model UserScopeAssignment {

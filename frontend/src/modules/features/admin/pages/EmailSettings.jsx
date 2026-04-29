@@ -12,11 +12,15 @@
 
 import { useState, useEffect } from 'react';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import httpClient from '@shared/services/httpClient';
 import { isAdmin as checkIsAdmin } from '@shared/utils/permission.utils';
+import { matchesSuperSearch } from '@shared/utils/superSearch';
 
 export default function EmailSettings() {
   const { user } = useAuthStoreV2();
+  const superSearchQuery = useSuperSearchStore(state => state.query);
+  const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
   const [emailSettings, setEmailSettings] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -26,6 +30,17 @@ export default function EmailSettings() {
 
   // ตรวจสอบว่าเป็น Admin หรือไม่ (รองรับทั้ง V1: user.roles[] และ V2: user.roleName)
   const isAdmin = checkIsAdmin(user);
+  const emailSettingEntries = Object.entries(emailSettings);
+  const filteredEmailSettingEntries = emailSettingEntries.filter(([type, setting]) => matchesSuperSearch({ type, ...setting }, superSearchQuery, [
+    value => value.type,
+    value => value.label,
+    value => value.description,
+    value => value.ccEmails,
+  ]));
+
+  useEffect(() => {
+    setSuperSearchMeta({ resultCount: filteredEmailSettingEntries.length, totalCount: emailSettingEntries.length });
+  }, [emailSettingEntries.length, filteredEmailSettingEntries.length, setSuperSearchMeta]);
 
   // โหลดข้อมูล Email Settings
   useEffect(() => {
@@ -166,7 +181,7 @@ export default function EmailSettings() {
 
       {/* Email Settings List */}
       <div className="space-y-4">
-        {Object.entries(emailSettings).map(([type, setting]) => (
+        {filteredEmailSettingEntries.map(([type, setting]) => (
           <EmailSettingCard
             key={type}
             type={type}
@@ -263,7 +278,7 @@ function EmailSettingCard({ type, setting, expanded, onToggleExpand, onToggleEna
           {/* Info */}
           <div className="flex-1">
             <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-gray-900">{setting.label}</h3>
+              <h3 className="font-semibold text-gray-900">{setting.label || type}</h3>
               {getPriorityBadge(setting.priority)}
               {setting.ccEmails.length > 0 && (
                 <span className="text-xs text-gray-500">({setting.ccEmails.length} emails)</span>

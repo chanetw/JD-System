@@ -12,10 +12,12 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@shared/services/apiService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import { Link } from 'react-router-dom';
 import { Card } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
+import { matchesSuperSearch } from '@shared/utils/superSearch';
 
 // Icons
 import {
@@ -50,6 +52,8 @@ export default function ApprovalsQueue() {
 
     /** ข้อมูลผู้ใช้งานปัจจุบันจาก Central Store */
     const { user } = useAuthStoreV2();
+    const superSearchQuery = useSuperSearchStore(state => state.query);
+    const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
 
     // === สถานะข้อมูล (Data States) ===
     const [jobs, setJobs] = useState([]);
@@ -108,8 +112,6 @@ export default function ApprovalsQueue() {
 
             // Handle both array response (old format) and object response (new format with stats)
             const data = Array.isArray(response) ? response : (response?.data || response);
-            const stats = response?.stats || {};
-
             // เรียงลำดับตามวันที่สร้างล่าสุดขึ้นก่อน (Newest first)
             const sorted = (Array.isArray(data) ? data : []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
@@ -142,7 +144,7 @@ export default function ApprovalsQueue() {
     const notApprovedCount = jobs.filter(j => j.historyData?.category === 'not_approved').length;
 
     /** การคัดกรองข้อมูลตามแท็บสถานะ (Tab Filtering) */
-    const filteredJobs = jobs.filter(job => {
+    const tabFilteredJobs = jobs.filter(job => {
         if (activeTab === 'waiting') {
             // Exclude parent jobs — they are containers, not actionable approval items
             if (job.isParent) return false;
@@ -164,6 +166,21 @@ export default function ApprovalsQueue() {
         }
         return false;
     });
+
+    const filteredJobs = tabFilteredJobs.filter(job => matchesSuperSearch(job, superSearchQuery, [
+        item => item.djId,
+        item => item.id,
+        item => item.subject,
+        item => item.requester,
+        item => item.requesterName,
+        item => item.requesterEmail,
+        item => item.project,
+        item => item.projectName,
+        item => item.jobType,
+        item => item.jobTypeName,
+        item => item.status,
+        item => item.priority,
+    ]));
 
     // จำนวนงานเร่งด่วนที่ยังไม่เสร็จสิ้น (ใช้จาก backend stats)
     // urgentCount มาจาก state ที่ set ใน loadData() แล้ว
@@ -203,7 +220,11 @@ export default function ApprovalsQueue() {
     // Reset page when tab changes
     useEffect(() => {
         setCurrentPage(1);
-    }, [activeTab]);
+    }, [activeTab, superSearchQuery]);
+
+    useEffect(() => {
+        setSuperSearchMeta({ resultCount: filteredJobs.length, totalCount: tabFilteredJobs.length });
+    }, [filteredJobs.length, tabFilteredJobs.length, setSuperSearchMeta]);
 
     // === ฟังก์ชันจัดการเหตุการณ์ (Action Handlers) ===
 
@@ -251,12 +272,12 @@ export default function ApprovalsQueue() {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-5 lg:space-y-6">
             {/* ============================================
           ส่วนหัวของหน้าจอ (Page Header) + Refresh Button
           ============================================ */}
-            <div className="flex justify-between items-start">
-                <div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
                     <h1 className="text-2xl font-bold text-gray-900">คิวรออนุมัติ (Approvals Queue)</h1>
                     <p className="text-gray-500">รายการงาน DJ (Design Job) ที่รอให้คุณดำเนินการตรวจสอบ</p>
                 </div>
@@ -264,7 +285,7 @@ export default function ApprovalsQueue() {
                     variant="secondary"
                     onClick={loadData}
                     disabled={isLoading}
-                    className="flex items-center gap-2"
+                    className="flex items-center gap-2 sm:shrink-0"
                 >
                     <ArrowPathIcon className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
                     รีเฟรช
@@ -275,7 +296,7 @@ export default function ApprovalsQueue() {
           แถบเลือกสถานะงาน (Status Tabs)
           ============================================ */}
             <div className="border-b border-gray-400">
-                <nav className="-mb-px flex gap-6">
+                <nav className="-mb-px flex gap-4 overflow-x-auto sm:gap-6">
                     <TabButton
                         active={activeTab === 'waiting'}
                         onClick={() => setActiveTab('waiting')}
@@ -303,7 +324,7 @@ export default function ApprovalsQueue() {
             {/* ============================================
           สรุปสถิติเบื้องต้น (Summary Stats) - แสดงเสมอ
           ============================================ */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <StatCard
                     label="งานรออนุมัติ"
                     value={waitingCount}
@@ -328,7 +349,47 @@ export default function ApprovalsQueue() {
           ตารางรายการงาน (Queue Table)
           ============================================ */}
             <Card className="overflow-hidden">
-                <div className="overflow-x-auto">
+                <div>
+                    {isLoading && (
+                        <div className="py-8 text-center text-gray-500 lg:hidden">กำลังโหลดรายการงาน...</div>
+                    )}
+                    {!isLoading && paginatedJobs.length === 0 && (
+                        <div className="py-8 text-center text-gray-500 lg:hidden">ไม่พบรายการงานในหัวข้อนี้</div>
+                    )}
+                    {!isLoading && paginatedJobs.length > 0 && (
+                        <div className="divide-y divide-gray-200 lg:hidden">
+                            {groupedJobs.map((job, index) => (
+                                <ApprovalMobileCard
+                                    key={job.id}
+                                    sequence={(currentPage - 1) * itemsPerPage + index + 1}
+                                    pkId={job.id}
+                                    id={job.djId || `DJ-${job.id}`}
+                                    project={job.project}
+                                    bud={job.bud}
+                                    type={job.jobType}
+                                    subject={job.subject}
+                                    requester={job.requester}
+                                    submitted={new Date(job.createdAt).toLocaleDateString('th-TH')}
+                                    historyData={job.historyData}
+                                    activeTab={activeTab}
+                                    status={job.status}
+                                    level={
+                                        job.status?.startsWith('pending_level_')
+                                            ? `Level ${job.status.split('_')[2]}`
+                                            : job.status === 'pending_approval'
+                                                ? 'Level 1'
+                                                : '-'
+                                    }
+                                    urgent={job.priority?.toLowerCase() === 'urgent'}
+                                    onApprove={() => handleOpenApprove(job.id)}
+                                    onReject={() => handleOpenReject(job.id)}
+                                    showActions={activeTab === 'waiting' && job.status !== 'pending_dependency' && !job.predecessorId}
+                                    children={job.children}
+                                />
+                            ))}
+                        </div>
+                    )}
+                    <div className="hidden overflow-x-auto lg:block">
                     <table className="w-full">
                         <thead className="bg-gray-50 border-b border-gray-400">
                             <tr>
@@ -403,11 +464,12 @@ export default function ApprovalsQueue() {
                             )}
                         </tbody>
                     </table>
+                    </div>
                 </div>
 
                 {/* Pagination Controls */}
                 {!isLoading && filteredJobs.length > 0 && (
-                    <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 bg-white">
+                    <div className="flex flex-col gap-3 px-4 py-3 border-t border-gray-200 bg-white sm:flex-row sm:items-center sm:justify-between lg:px-6 lg:py-4">
                         <div className="text-sm text-gray-500">
                             แสดง {((currentPage - 1) * itemsPerPage) + 1} ถึง {Math.min(currentPage * itemsPerPage, filteredJobs.length)} จาก {filteredJobs.length} รายการ
                         </div>
@@ -558,7 +620,7 @@ function TabButton({ active, onClick, count, label, icon }) {
     return (
         <button
             onClick={onClick}
-            className={`py-3 px-1 border-b-2 font-medium flex items-center gap-2 transition-colors ${active ? 'border-rose-500 text-rose-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            className={`min-h-[44px] py-3 px-1 border-b-2 font-medium flex items-center gap-2 transition-colors whitespace-nowrap ${active ? 'border-rose-500 text-rose-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
         >
             {icon}
             {label}
@@ -568,6 +630,80 @@ function TabButton({ active, onClick, count, label, icon }) {
                 </span>
             )}
         </button>
+    );
+}
+
+function ApprovalMobileCard({
+    sequence, pkId, id, project, bud, type, subject, requester, submitted,
+    status, level, urgent, historyData, activeTab, onApprove, onReject,
+    showActions = true, children = []
+}) {
+    const hasChildren = children && children.length > 0;
+
+    return (
+        <article className={`p-4 ${urgent ? 'bg-red-50/70' : 'bg-white'}`}>
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-medium text-gray-500">#{sequence}</span>
+                        <Link to={`/jobs/${pkId}`} className="font-semibold text-rose-600 hover:underline">{id}</Link>
+                        {urgent && <span className="rounded bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-800">ด่วน</span>}
+                        {hasChildren && <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">มีงานย่อย {children.length}</span>}
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-sm font-medium text-gray-900">{subject}</p>
+                    <p className="mt-1 text-xs text-gray-500">{project} · {bud}</p>
+                    <p className="mt-1 text-xs text-gray-500">{type}</p>
+                </div>
+                <Badge status={status} />
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                <div>
+                    <p className="text-xs text-gray-500">ผู้เปิดงาน</p>
+                    <p className="font-medium text-gray-900">{requester}</p>
+                </div>
+                <div>
+                    <p className="text-xs text-gray-500">{activeTab === 'waiting' ? 'วันที่สร้าง' : 'วันที่ดำเนินการ'}</p>
+                    <p className="font-medium text-gray-900">
+                        {activeTab === 'waiting'
+                            ? submitted
+                            : historyData?.actionDate
+                                ? new Date(historyData.actionDate).toLocaleDateString('th-TH')
+                                : '-'}
+                    </p>
+                </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+                    {level}
+                </span>
+                {activeTab !== 'waiting' && (
+                    <span className="max-w-full truncate text-xs text-gray-500">
+                        {historyData?.comment || '-'}
+                    </span>
+                )}
+            </div>
+
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <Link to={`/jobs/${pkId}`} className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-gray-200 px-3 text-sm text-gray-700 hover:bg-gray-50">
+                    <EyeIcon className="mr-1.5 h-4 w-4" />
+                    ดูรายละเอียด
+                </Link>
+                {showActions && (
+                    <>
+                        <Button variant="success" className="text-sm" onClick={onApprove}>
+                            <CheckIcon className="h-4 w-4" />
+                            อนุมัติ
+                        </Button>
+                        <Button variant="danger" className="text-sm" onClick={onReject}>
+                            <XMarkIcon className="h-4 w-4" />
+                            ปฏิเสธ
+                        </Button>
+                    </>
+                )}
+            </div>
+        </article>
     );
 }
 
@@ -631,7 +767,7 @@ function Th({ children, className = "text-left" }) {
  * @param {boolean} props.isExpanded - สถานะการกาง/ยุบ
  * @param {Function} props.onToggleExpand - ฟังก์ชันสลับสถานะ
  */
-function AccordionRow({ sequence, pkId, id, project, bud, type, subject, requester, submitted, status, sla, urgent, historyData, activeTab, onApprove, onReject, showActions = true, predecessorDjId, predecessorSubject, predecessorStatus, children = [], isExpanded, onToggleExpand }) {
+function AccordionRow({ sequence, pkId, id, project, bud, type, subject, requester, submitted, status, sla, urgent, historyData, activeTab, onApprove, onReject, showActions = true, predecessorDjId, children = [], isExpanded, onToggleExpand }) {
     const hasChildren = children && children.length > 0;
 
     // Determine row background based on urgent status
@@ -742,7 +878,7 @@ function AccordionRow({ sequence, pkId, id, project, bud, type, subject, request
             </tr>
 
             {/* งานต่อเนื่องที่กางลงมา */}
-            {isExpanded && hasChildren && children.map((childJob, index) => (
+            {isExpanded && hasChildren && children.map((childJob) => (
                 <tr key={childJob.id} className="bg-gray-50/50 hover:bg-gray-100/50">
                     <td colSpan="7" className="px-4 py-3">
                         <div className="flex items-center gap-3">

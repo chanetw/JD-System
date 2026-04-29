@@ -40,7 +40,6 @@ import JobBriefInfo from '../components/JobBriefInfo';
 import JobComments from '../components/JobComments';
 import JobActivityLog from '../components/JobActivityLog';
 import SubJobsList from '../components/SubJobsList';
-import ParentJobAssignees from '../components/ParentJobAssignees';
 import JobApprovalFlow from '../components/JobApprovalFlow';
 import JobSidebar from '../components/JobSidebar';
 import JobActionPanel from '../components/JobActionPanel';
@@ -689,11 +688,11 @@ export default function JobDetail() {
     ].filter(t => !t.hidden);
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-5 lg:space-y-6">
             {/* Header */}
-            <header className={`bg-white border-b border-gray-400 border-l-4 ${theme.headerBorder} -mx-6 -mt-6 px-6 py-4 mb-6 sticky top-0 z-10 shadow-sm`}>
-                <div className="flex items-center justify-between gap-4">
-                    <button onClick={() => navigate('/jobs')} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 flex-shrink-0">
+            <header className={`bg-white border-b border-gray-400 border-l-4 ${theme.headerBorder} -mx-4 -mt-4 px-4 py-3 mb-4 sticky top-16 z-10 shadow-sm sm:-mx-5 sm:-mt-5 sm:px-5 lg:-mx-6 lg:-mt-6 lg:px-6 lg:py-4 lg:mb-6`}>
+                <div className="flex items-start justify-between gap-3 sm:items-center sm:gap-4">
+                    <button onClick={() => navigate('/jobs')} className="min-h-[44px] min-w-[44px] p-2 hover:bg-gray-100 rounded-lg text-gray-500 flex-shrink-0">
                         <ArrowLeftIcon className="w-5 h-5" />
                     </button>
                     <div className="flex-1 min-w-0">
@@ -722,19 +721,19 @@ export default function JobDetail() {
             </header>
 
             {/* Main Content + Sidebar Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
                 {/* Main Content - Tabs */}
-                <div className="bg-white rounded-xl border border-gray-400 shadow-sm overflow-hidden flex flex-col min-h-[500px]">
+                <div className="bg-white rounded-xl border border-gray-400 shadow-sm overflow-hidden flex flex-col min-h-[500px] min-w-0">
                     {/* Tab Headers */}
                     <Tabs
                         tabs={tabs}
                         activeTab={activeTab}
                         onChange={setActiveTab}
-                        className="px-6 pt-2"
+                        className="px-4 pt-2 sm:px-5 lg:px-6"
                     />
 
                     {/* Tab Content */}
-                    <div className="p-6 flex-1 space-y-6 overflow-y-auto">
+                    <div className="p-4 flex-1 space-y-4 overflow-y-auto sm:p-5 sm:space-y-5 lg:p-6 lg:space-y-6">
                         {activeTab === 'overview' && (
                             <>
                                 {/* Action Block - Approval/Start/Complete only */}
@@ -764,7 +763,7 @@ export default function JobDetail() {
                                 {job.status === 'assignee_rejected' && (() => {
                                     return (
                                         <div className="bg-gradient-to-r from-orange-50 to-amber-50 border-l-4 border-orange-500 rounded-lg p-5 shadow-sm mb-6">
-                                            <div className="flex items-start gap-4">
+                                            <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                                                 <div className="flex-shrink-0">
                                                     <svg className="w-7 h-7 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
                                                         <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -813,9 +812,6 @@ export default function JobDetail() {
                                 {/* Parent Job Children List (for parent jobs with multiple children) */}
                                 <ParentJobChildrenList job={job} />
 
-                                {/* Parent Job Assignees (aggregated assignees from all children) */}
-                                <ParentJobAssignees job={job} />
-
                                 {/* Comments Section (Embedded in Overview) */}
                                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col mt-6" style={{ maxHeight: '450px' }}>
                                     <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex justify-between items-center">
@@ -841,7 +837,7 @@ export default function JobDetail() {
                 </div>
 
                 {/* Sidebar */}
-                <div className="space-y-6">
+                <div className="space-y-4 sm:space-y-5 lg:space-y-6 min-w-0">
                     <JobSidebar
                         job={job}
                         currentUser={user}
@@ -855,7 +851,7 @@ export default function JobDetail() {
             {/* Reject Modal */}
             {showRejectModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                    <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90dvh] overflow-y-auto">
                         <h3 className="text-lg font-bold mb-4 text-red-600">ปฏิเสธงาน</h3>
                         <textarea
                             className="w-full border rounded p-2 mb-4"
@@ -875,7 +871,7 @@ export default function JobDetail() {
             {/* Complete Modal */}
             {showCompleteModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90dvh] overflow-y-auto">
                         {/* Header */}
                         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
                             <h3 className="text-lg font-bold text-green-600">✅ ส่งงาน (Complete)</h3>
@@ -995,7 +991,7 @@ export default function JobDetail() {
             {/* Assignee Reject Modal */}
             {showAssigneeRejectModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                    <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90dvh] overflow-y-auto">
                         <h3 className="text-lg font-bold mb-4 text-red-600">ปฏิเสธงาน (Assignee)</h3>
                         <p className="text-sm text-gray-600 mb-3">
                             กรุณาระบุเหตุผลในการปฏิเสธงาน คำขอจะถูกส่งไปยังผู้อนุมัติเพื่อพิจารณา
@@ -1018,7 +1014,7 @@ export default function JobDetail() {
             {/* Deny Rejection Modal */}
             {showDenyRejectionModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                    <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90dvh] overflow-y-auto">
                         <h3 className="text-lg font-bold mb-4 text-rose-600">ไม่อนุมัติคำขอปฏิเสธงาน</h3>
                         <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 mb-4">
                             <p className="text-sm text-rose-800 mb-2">
@@ -1055,7 +1051,7 @@ export default function JobDetail() {
             {/* Confirm Assignee Rejection Modal with CC Emails */}
             {showConfirmRejectionModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                    <div className="bg-white rounded-lg p-4 sm:p-6 max-w-lg w-full max-h-[90dvh] overflow-y-auto">
                         <h3 className="text-lg font-bold mb-4 text-red-600">ยืนยันการปฏิเสธงาน</h3>
 
                         {/* Job Info */}
@@ -1178,7 +1174,7 @@ export default function JobDetail() {
             {/* Reassign Modal */}
             {showReassignModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                    <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90dvh] overflow-y-auto">
                         <h3 className="text-lg font-bold mb-4">เปลี่ยนผู้รับผิดชอบ</h3>
                         <select
                             className="w-full border rounded p-2 mb-4"
@@ -1246,7 +1242,7 @@ export default function JobDetail() {
             {/* Rebrief Modal */}
             {showRebriefModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg p-6 max-w-md w-full">
+                    <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90dvh] overflow-y-auto">
                         <h3 className="text-lg font-bold mb-4 text-orange-600">🔄 ขอข้อมูลเพิ่มเติม (Rebrief)</h3>
                         <p className="text-sm text-gray-600 mb-4">
                             ระบุเหตุผลที่ต้องการข้อมูลเพิ่มเติมจาก Requester
@@ -1275,7 +1271,7 @@ export default function JobDetail() {
             {/* Submit Rebrief Modal (Requester) */}
             {showSubmitRebriefModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                    <div className="bg-white rounded-lg p-4 sm:p-6 max-w-lg w-full max-h-[90dvh] overflow-y-auto">
                         <h3 className="text-lg font-bold mb-4 text-orange-600">📤 ส่งข้อมูลเพิ่มเติม</h3>
                         
                         <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">

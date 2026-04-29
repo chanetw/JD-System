@@ -11,6 +11,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import api from '@shared/services/apiService';
 import httpClient from '@shared/services/httpClient';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
@@ -18,6 +19,7 @@ import { hasAnyRole } from '@shared/utils/permission.utils';
 import DraftSubmitModal from '@features/job-management/components/DraftSubmitModal';
 import { WORK_STATUS_LABEL, STATUS_COLOR, matchesStatusFilter } from '@shared/constants/jobStatus';
 import { resolveSlaBadgePresentation } from '@shared/utils/slaStatusResolver';
+import { matchesSuperSearch } from '@shared/utils/superSearch';
 
 // ============================================
 // Constants
@@ -79,6 +81,8 @@ const getPersonDisplayName = (person) => {
  */
 function Dashboard() {
     const { user } = useAuthStoreV2();
+    const superSearchQuery = useSuperSearchStore(state => state.query);
+    const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
 
     // KPI Stats
     const [stats, setStats] = useState({ newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, totalItems: 0, assigneeSummary: [] });
@@ -503,6 +507,19 @@ function Dashboard() {
             result = buildParentViewJobs(result);
         }
 
+        result = result.filter(job => matchesSuperSearch(job, superSearchQuery, [
+            item => item.djId,
+            item => item.id,
+            item => item.subject,
+            item => item.project,
+            item => item.projectName,
+            item => item.jobType,
+            item => item.jobTypeName,
+            item => getAssigneeName(item),
+            item => item.status,
+            item => item.calculatedJobStatus,
+        ]));
+
         // 3. Apply Sort Logic
         if (sortMode === 'sla') {
             result.sort((a, b) => {
@@ -532,7 +549,11 @@ function Dashboard() {
         console.log(`[Dashboard] แสดงผล ${result.length} รายการ (หน้า ${queuePage}) | View Mode: ${viewMode} | Sort: ${sortMode}`);
         
         return result;
-    }, [jobs, viewMode, sortMode, buildParentViewJobs, queuePage]);
+    }, [jobs, viewMode, sortMode, buildParentViewJobs, queuePage, superSearchQuery, getAssigneeName]);
+
+    useEffect(() => {
+        setSuperSearchMeta({ resultCount: filteredJobs.length, totalCount: jobs.length });
+    }, [filteredJobs.length, jobs.length, setSuperSearchMeta]);
 
     const filterableJobs = useMemo(() => {
         return jobs.filter(job => !job.isParent);
@@ -574,7 +595,7 @@ function Dashboard() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-5 lg:space-y-6">
             {/* ============================================
           Page Title
           ============================================ */}

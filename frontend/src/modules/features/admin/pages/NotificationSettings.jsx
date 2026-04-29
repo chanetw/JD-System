@@ -11,6 +11,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { api } from '@shared/services/apiService';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import Button from '@shared/components/Button';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
 import { Card, CardHeader, CardBody } from '@shared/components/Card';
@@ -29,6 +30,7 @@ import {
     Cog6ToothIcon,
     InformationCircleIcon
 } from '@heroicons/react/24/outline';
+import { matchesSuperSearch } from '@shared/utils/superSearch';
 
 // Event types with labels
 const EVENT_TYPES = [
@@ -43,6 +45,9 @@ const EVENT_TYPES = [
 ];
 
 export default function NotificationSettings() {
+    const superSearchQuery = useSuperSearchStore(state => state.query);
+    const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
+
     // States
     const [jobTypes, setJobTypes] = useState([]);
     const [users, setUsers] = useState([]);
@@ -217,6 +222,17 @@ export default function NotificationSettings() {
         }
     };
 
+    const filteredJobTypes = jobTypes.filter(jobType => matchesSuperSearch(jobType, superSearchQuery, [
+        value => value.name,
+        value => value.description,
+        value => value.sla,
+        value => value.sla_days,
+    ]));
+
+    useEffect(() => {
+        setSuperSearchMeta({ resultCount: filteredJobTypes.length, totalCount: jobTypes.length });
+    }, [filteredJobTypes.length, jobTypes.length, setSuperSearchMeta]);
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-64">
@@ -246,7 +262,7 @@ export default function NotificationSettings() {
                     <Card className="p-4">
                         <h3 className="font-semibold text-gray-900 mb-3">ประเภทงาน</h3>
                         <div className="space-y-2">
-                            {jobTypes.map((jt) => (
+                            {filteredJobTypes.map((jt) => (
                                 <button
                                     key={jt.id}
                                     onClick={() => selectJobType(jt)}

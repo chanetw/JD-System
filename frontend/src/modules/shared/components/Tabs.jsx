@@ -10,8 +10,8 @@ import React from 'react';
  */
 const Tabs = ({ tabs, activeTab, onChange, className = '' }) => {
     return (
-        <div className={`border-b border-gray-200 ${className}`}>
-            <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+        <div className={`border-b border-gray-200 overflow-x-auto ${className}`}>
+            <nav className="-mb-px flex min-w-max gap-4 sm:gap-6 lg:gap-8" aria-label="Tabs">
                 {tabs.map((tab) => {
                     const isActive = activeTab === tab.id;
                     const Icon = tab.icon;
@@ -20,7 +20,7 @@ const Tabs = ({ tabs, activeTab, onChange, className = '' }) => {
                             key={tab.id}
                             onClick={() => onChange(tab.id)}
                             className={`
-                                group inline-flex items-center py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap transition-colors duration-200
+                                group inline-flex min-h-[44px] items-center py-3 sm:py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap transition-colors duration-200
                                 ${isActive
                                     ? 'border-rose-500 text-rose-600'
                                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'

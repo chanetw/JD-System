@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { api } from '@shared/services/apiService';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import { Card, CardHeader } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
@@ -16,6 +17,7 @@ import {
     MagnifyingGlassIcon
 } from '@heroicons/react/24/outline';
 import Swal from 'sweetalert2';
+import { matchesSuperSearch } from '@shared/utils/superSearch';
 
 /**
  * แถบเมนูสำหรับเลือกจัดการข้อมูลแต่ละประเภท (Tabs Configuration)
@@ -35,16 +37,11 @@ const TABS = [
  * @returns {JSX.Element} หน้าจอจัดการข้อมูลองค์กร
  */
 export default function OrganizationManagement() {
+    const superSearchQuery = useSuperSearchStore(state => state.query);
+    const setSuperSearchQuery = useSuperSearchStore(state => state.setQuery);
+    const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
     /** แท็บที่กำลังใช้งานอยู่ (Active Tab) */
     const [activeTab, setActiveTab] = useState('projects');
-    /** คำค้นหาแยกตามแท็บ */
-    const [searchByTab, setSearchByTab] = useState({
-        projects: '',
-        departments: '',
-        buds: '',
-        tenants: ''
-    });
-
     // === สถานะข้อมูล (Data States) ===
     /** รายการบริษัททั้งหมด (Tenants) */
     const [tenants, setTenants] = useState([]);
@@ -748,7 +745,7 @@ export default function OrganizationManagement() {
     // Reset to first page when search changes
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchByTab, activeTab]);
+    }, [superSearchQuery, activeTab]);
 
     const getSearchPlaceholder = () => {
         if (activeTab === 'projects') return 'ค้นหาชื่อโครงการ...';
@@ -784,12 +781,21 @@ export default function OrganizationManagement() {
     };
 
     const currentList = getCurrentList();
-    const currentSearchTerm = (searchByTab[activeTab] || '').trim().toLowerCase();
+    const currentSearchTerm = superSearchQuery;
     const filteredList = currentList.filter((item) => {
         if (!currentSearchTerm) return true;
-        const searchableName = `${item?.name || ''}`.toLowerCase();
-        return searchableName.includes(currentSearchTerm);
+        return matchesSuperSearch(item, currentSearchTerm, [
+            value => value.name,
+            value => value.code,
+            value => value.description,
+            value => value.email,
+            value => value.subdomain,
+        ]);
     });
+
+    useEffect(() => {
+        setSuperSearchMeta({ resultCount: filteredList.length, totalCount: currentList.length });
+    }, [currentList.length, filteredList.length, setSuperSearchMeta]);
 
     const totalPages = Math.max(1, Math.ceil(filteredList.length / ITEMS_PER_PAGE));
     const paginatedList = filteredList.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -862,7 +868,7 @@ export default function OrganizationManagement() {
 
             {/* แถบเมนู (Tabs) สำหรับเลือกประเภทข้อมูล */}
             <div className="border-b border-gray-400">
-                <nav className="-mb-px flex space-x-8">
+                <nav className="-mb-px flex gap-4 overflow-x-auto sm:gap-6 lg:gap-8">
                     {TABS.map((tab) => {
                         const Icon = tab.icon;
                         const isActive = activeTab === tab.id;
@@ -898,13 +904,13 @@ export default function OrganizationManagement() {
                                     type="text"
                                     className="block w-full rounded-md border border-gray-300 p-2 pl-10 text-sm focus:border-indigo-500 focus:ring-indigo-500"
                                     placeholder={getSearchPlaceholder()}
-                                    value={searchByTab[activeTab] || ''}
-                                    onChange={(e) => setSearchByTab((prev) => ({ ...prev, [activeTab]: e.target.value }))}
+                                    value={currentSearchTerm}
+                                    onChange={(e) => setSuperSearchQuery(e.target.value)}
                                 />
-                                {searchByTab[activeTab] && (
+                                {currentSearchTerm && (
                                     <button
                                         type="button"
-                                        onClick={() => setSearchByTab((prev) => ({ ...prev, [activeTab]: '' }))}
+                                        onClick={() => setSuperSearchQuery('')}
                                         className="absolute inset-y-0 right-0 flex items-center pr-3 text-xs font-medium text-gray-500 hover:text-gray-700"
                                     >
                                         ล้าง
@@ -928,7 +934,7 @@ export default function OrganizationManagement() {
                             <Button
                                 variant="secondary"
                                 className="mt-4"
-                                onClick={() => setSearchByTab((prev) => ({ ...prev, [activeTab]: '' }))}
+                                onClick={() => setSuperSearchQuery('')}
                             >
                                 ล้างคำค้น
                             </Button>

@@ -9,6 +9,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '@shared/services/apiService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import { fileUploadService } from '@shared/services/modules/fileUploadService';
 import { Card } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
@@ -36,6 +37,7 @@ import TimelineView from '../components/TimelineView';
 import DraftSubmitModal from '@features/job-management/components/DraftSubmitModal';
 import httpClient from '@shared/services/httpClient';
 import { resolveSlaBadgePresentation } from '@shared/utils/slaStatusResolver';
+import { matchesSuperSearch } from '@shared/utils/superSearch';
 import Swal from 'sweetalert2';
 
 /**
@@ -112,7 +114,9 @@ export default function MyQueue() {
     const [tabCounts, setTabCounts] = useState({ in_progress: 0, completed: 0, rejected: 0, timeline: 0 });
 
     // Filter & Sort State
-    const [searchTerm, setSearchTerm] = useState('');
+    const searchTerm = useSuperSearchStore(state => state.query);
+    const setSearchTerm = useSuperSearchStore(state => state.setQuery);
+    const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
     const [sortBy, setSortBy] = useState('deadline'); // 'deadline', 'priority', 'newest'
     const [filterProject, setFilterProject] = useState('all');
 
@@ -555,14 +559,17 @@ export default function MyQueue() {
         return 1;
     };
 
-    const filteredJobs = jobs
-        .filter(job => {
-            const searchLower = searchTerm.toLowerCase();
-            const matchesSearch = (job.subject || '').toLowerCase().includes(searchLower) ||
-                (job.djId || '').toLowerCase().includes(searchLower);
-            const matchesProject = filterProject === 'all' || job.projectName === filterProject;
-            return matchesSearch && matchesProject;
-        })
+    const projectFilteredJobs = jobs.filter(job => filterProject === 'all' || job.projectName === filterProject);
+    const filteredJobs = projectFilteredJobs
+        .filter(job => matchesSuperSearch(job, searchTerm, [
+            item => item.djId,
+            item => item.id,
+            item => item.subject,
+            item => item.projectName,
+            item => item.status,
+            item => item.priority,
+            item => item.assignee,
+        ]))
         .sort((a, b) => {
             const weightDiff = getSortWeight(b) - getSortWeight(a);
             if (weightDiff !== 0) return weightDiff;
@@ -581,6 +588,10 @@ export default function MyQueue() {
             }
             return 0;
         });
+
+    useEffect(() => {
+        setSuperSearchMeta({ resultCount: filteredJobs.length, totalCount: projectFilteredJobs.length });
+    }, [filteredJobs.length, projectFilteredJobs.length, setSuperSearchMeta]);
 
     // แบ่งกลุ่มงาน: urgent, risk (overdue + shouldStart passed), normal
     const urgentJobs = filteredJobs.filter(j => j.priority?.toLowerCase() === 'urgent' && activeTab !== 'completed');
@@ -601,7 +612,7 @@ export default function MyQueue() {
     });
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-5 lg:space-y-6">
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
@@ -627,7 +638,7 @@ export default function MyQueue() {
 
             {/* Toolbar: Search & Filter (ซ่อนเมื่ออยู่ใน Timeline tab) */}
             {activeTab !== 'timeline' && (
-                <div className="bg-white p-4 rounded-xl border border-gray-400 shadow-sm space-y-3 md:space-y-0 md:flex md:items-center md:gap-4">
+                <div className="bg-white p-4 rounded-xl border border-gray-400 shadow-sm grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-4">
                     <div className="flex-1 relative">
                         <DocumentMagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                         <input
@@ -638,8 +649,8 @@ export default function MyQueue() {
                             className="w-full pl-10 pr-4 py-2 border border-gray-400 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:outline-none"
                         />
                     </div>
-                    <div className="flex gap-2">
-                        <div className="w-40">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex">
+                        <div className="w-full lg:w-40">
                             <select
                                 value={filterProject}
                                 onChange={(e) => setFilterProject(e.target.value)}
@@ -649,7 +660,7 @@ export default function MyQueue() {
                                 {projects.map(p => <option key={p} value={p}>{p}</option>)}
                             </select>
                         </div>
-                        <div className="w-40">
+                        <div className="w-full lg:w-40">
                             <select
                                 value={sortBy}
                                 onChange={(e) => setSortBy(e.target.value)}
@@ -666,7 +677,7 @@ export default function MyQueue() {
 
             {/* Tabs Navigation */}
             <div className="border-b border-gray-400">
-                <nav className="-mb-px flex space-x-1 overflow-x-auto">
+                <nav className="-mb-px flex gap-1 overflow-x-auto">
                     {TABS.map((tab) => {
                         const Icon = tab.icon;
                         const isActive = activeTab === tab.id;
@@ -676,7 +687,7 @@ export default function MyQueue() {
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
                                 className={`
-                                    flex items-center gap-2 py-4 px-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap
+                                    flex min-h-[44px] items-center gap-2 py-3 sm:py-4 px-3 border-b-2 font-medium text-sm transition-colors whitespace-nowrap
                                     ${isActive
                                         ? `border-rose-500 text-rose-600`
                                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
@@ -812,7 +823,7 @@ export default function MyQueue() {
             {/* Complete Modal */}
             {showCompleteModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90dvh] overflow-y-auto">
                         {/* Header */}
                         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
                             <h3 className="text-lg font-bold text-green-600">✅ ส่งงาน (Complete)</h3>

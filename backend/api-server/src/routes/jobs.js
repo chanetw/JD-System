@@ -27,6 +27,8 @@ import {
   createEmailTemplate
 } from '../utils/emailTemplates.js';
 import { buildFrontendUrl } from '../utils/frontendUrl.js';
+import { getStorageService } from '../services/storageService.js';
+import { handoffCompletionFilesToNextJobs } from '../services/handoffService.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
@@ -63,6 +65,142 @@ const hasAdminPrivileges = (user) => {
 const isSameUserId = (left, right) => {
   if (left == null || right == null) return false;
   return String(left) === String(right);
+};
+
+const toIsoStringOrNull = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  return value;
+};
+
+const buildMediaFilePublicUrl = (filePath, fileType) => {
+  if (!filePath) return null;
+
+  if (fileType === 'link') {
+    if (filePath.startsWith('http://') || filePath.startsWith('https://') || filePath.startsWith('/')) {
+      return filePath;
+    }
+    return `https://${filePath}`;
+  }
+
+  try {
+    const storageService = getStorageService();
+    return storageService.getPublicUrl(filePath);
+  } catch (error) {
+    console.warn('[Jobs] Failed to build media file public URL:', error.message);
+    return null;
+  }
+};
+
+const mapDraftAttachmentSnapshot = (file) => ({
+  id: file.id,
+  fileId: file.id,
+  fileName: file.fileName,
+  filePath: file.filePath,
+  fileSize: file.fileSize == null ? null : Number(file.fileSize),
+  fileType: file.fileType || null,
+  mimeType: file.mimeType || null,
+  publicUrl: buildMediaFilePublicUrl(file.filePath, file.fileType),
+  createdAt: toIsoStringOrNull(file.createdAt)
+});
+
+const normalizeDraftAttachmentList = (attachments) => {
+  if (!Array.isArray(attachments)) return [];
+
+  return attachments
+    .map((attachment) => {
+      if (!attachment || typeof attachment !== 'object' || Array.isArray(attachment)) {
+        return null;
+      }
+
+      const attachmentId = attachment.fileId ?? attachment.id ?? null;
+      return {
+        ...attachment,
+        id: attachmentId,
+        fileId: attachmentId,
+        fileName: attachment.fileName ?? attachment.name ?? null,
+        filePath: attachment.filePath ?? null,
+        fileSize: attachment.fileSize == null ? null : Number(attachment.fileSize),
+        fileType: attachment.fileType ?? null,
+        mimeType: attachment.mimeType ?? null,
+        publicUrl: attachment.publicUrl ?? null,
+        createdAt: toIsoStringOrNull(attachment.createdAt)
+      };
+    })
+    .filter(Boolean);
+};
+
+const normalizeDraftEntries = (draftFiles) => {
+  if (!Array.isArray(draftFiles)) return [];
+
+  return draftFiles
+    .map((entry, index) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        return null;
+      }
+
+      const attachments = normalizeDraftAttachmentList(entry.attachments);
+      const review = entry.review && typeof entry.review === 'object' && !Array.isArray(entry.review)
+        ? {
+          ...entry.review,
+          action: entry.review.action ?? null,
+          reason: entry.review.reason ?? null,
+          reviewLink: entry.review.reviewLink ?? null,
+          reviewedAt: toIsoStringOrNull(entry.review.reviewedAt ?? entry.review.createdAt),
+          reviewedByUserId: entry.review.reviewedByUserId ?? null,
+          attachments: normalizeDraftAttachmentList(entry.review.attachments)
+        }
+        : null;
+
+      return {
+        ...entry,
+        id: entry.id ?? `draft-${index + 1}`,
+        iteration: Number.isInteger(entry.iteration) ? entry.iteration : index + 1,
+        name: entry.name ?? 'Draft Submission',
+        url: entry.url ?? null,
+        note: entry.note ?? null,
+        submittedAt: toIsoStringOrNull(entry.submittedAt ?? entry.createdAt),
+        attachments,
+        review
+      };
+    })
+    .filter(Boolean);
+};
+
+const loadDraftAttachmentSnapshots = async ({ prisma, tenantId, jobId, attachmentIds }) => {
+  const uniqueAttachmentIds = Array.from(new Set(
+    (Array.isArray(attachmentIds) ? attachmentIds : [])
+      .map((attachmentId) => Number(attachmentId))
+      .filter(Number.isInteger)
+  ));
+
+  if (uniqueAttachmentIds.length === 0) {
+    return [];
+  }
+
+  const mediaFiles = await prisma.mediaFile.findMany({
+    where: {
+      id: { in: uniqueAttachmentIds },
+      tenantId,
+      jobId
+    },
+    select: {
+      id: true,
+      fileName: true,
+      filePath: true,
+      fileSize: true,
+      fileType: true,
+      mimeType: true,
+      createdAt: true
+    }
+  });
+
+  if (mediaFiles.length !== uniqueAttachmentIds.length) {
+    return null;
+  }
+
+  const fileMap = new Map(mediaFiles.map((file) => [file.id, file]));
+  return uniqueAttachmentIds.map((attachmentId) => mapDraftAttachmentSnapshot(fileMap.get(attachmentId)));
 };
 
 const shouldSkipRecentJobAssignedDelivery = async ({ prisma, tenantId, userId, jobId, windowMinutes = 5 }) => {
@@ -2287,7 +2425,7 @@ router.get('/:id', async (req, res) => {
       attachments: job.attachments || [],
 
       // Draft Review Details
-      draftFiles: job.draftFiles || [],
+      draftFiles: normalizeDraftEntries(job.draftFiles),
       draftSubmittedAt: job.draftSubmittedAt,
       draftCount: job.draftCount || 0,
 
@@ -3285,6 +3423,11 @@ router.post('/:id/reassign', async (req, res) => {
       return res.status(404).json({ success: false, message: 'ไม่พบงานที่ระบุ' });
     }
 
+    // ❌ Parent job cannot be reassigned
+    if (job.isParent === true || job.isParent === 1) {
+      return res.status(400).json({ success: false, message: 'งานแม่ไม่สามารถมอบหมายงานได้' });
+    }
+
     // Permission Check: Owner, Assignee, Admin, Manager
     // This uses Prisma which bypasses RLS
     // Role checks are usually done up the chain, or we just trust the token
@@ -3441,6 +3584,11 @@ router.post('/:id/assign', async (req, res) => {
 
     if (!job) {
       return res.status(404).json({ success: false, message: 'ไม่พบงานที่ระบุ' });
+    }
+
+    // ❌ Parent job cannot be assigned
+    if (job.isParent === true || job.isParent === 1) {
+      return res.status(400).json({ success: false, message: 'งานแม่ไม่สามารถมอบหมายงานได้' });
     }
 
     // 2. Permission: Admin หรือ Manager เท่านั้น
@@ -3685,6 +3833,19 @@ router.post('/:id/complete', async (req, res) => {
       } catch (chainError) {
         console.error('[Jobs] Sequential Job Trigger Failed:', chainError);
         // Don't fail the request, just log error
+      }
+
+      // 📎 Handoff: ส่งต่อไฟล์ส่งมอบไปงานถัดไปในลำดับ chain
+      try {
+        const prismaForHandoff = getDatabase();
+        const handoffResult = await handoffCompletionFilesToNextJobs(jobId, userId, prismaForHandoff);
+        if (handoffResult.handed > 0) {
+          console.log(
+            `[Jobs] File Handoff: ${handoffResult.handed} file(s) → ${handoffResult.nextJobs.join(', ')}`
+          );
+        }
+      } catch (handoffError) {
+        console.error('[Jobs] File Handoff Failed (non-blocking):', handoffError);
       }
 
       // ✅ NEW: Check Parent Job Closure (Partial Rejection Support)
@@ -4100,7 +4261,8 @@ router.post('/:id/deny-assignee-rejection', async (req, res) => {
  * 
  * Body: {
  *   link?: string,
- *   note?: string
+ *   note?: string,
+ *   attachmentIds?: number[]
  * }
  */
 router.post('/:id/submit-draft', async (req, res) => {
@@ -4108,7 +4270,7 @@ router.post('/:id/submit-draft', async (req, res) => {
     const jobId = parseInt(req.params.id);
     const userId = req.user.userId;
     const tenantId = req.user.tenantId;
-    const { link, note } = req.body;
+    const { link, note, attachmentIds } = req.body;
     const prisma = getDatabase();
 
     // Get job with relations
@@ -4144,13 +4306,37 @@ router.post('/:id/submit-draft', async (req, res) => {
       });
     }
 
-    // Prepare draft files - append to existing array
-    const existingDrafts = Array.isArray(job.draftFiles) ? job.draftFiles : [];
-    const newDraft = link ? { name: 'Draft Link', url: link, note, submittedAt: new Date() } : null;
-    const updatedDraftFiles = newDraft ? [...existingDrafts, newDraft] : existingDrafts;
+    const draftAttachments = await loadDraftAttachmentSnapshots({
+      prisma,
+      tenantId,
+      jobId,
+      attachmentIds
+    });
 
-    // Update job (handle null draftCount)
-    const currentDraftCount = job.draftCount || 0;
+    if (draftAttachments === null) {
+      return res.status(400).json({
+        success: false,
+        message: 'มีไฟล์แนบบางรายการไม่ถูกต้องหรือไม่อยู่ในงานนี้'
+      });
+    }
+
+    // Prepare draft files - append to existing array with per-iteration attachment snapshot
+    const existingDrafts = normalizeDraftEntries(job.draftFiles);
+    const currentDraftCount = job.draftCount || existingDrafts.length || 0;
+    const submittedAt = new Date().toISOString();
+    const updatedDraftFiles = [
+      ...existingDrafts,
+      {
+        id: `draft-${jobId}-${Date.now()}`,
+        iteration: currentDraftCount + 1,
+        name: link ? 'Draft Link' : 'Draft Submission',
+        url: link?.trim() || null,
+        note: note?.trim() || null,
+        submittedAt,
+        attachments: draftAttachments
+      }
+    ];
+
     const updatedJob = await prisma.job.update({
       where: { id: jobId },
       data: {
@@ -4168,7 +4354,13 @@ router.post('/:id/submit-draft', async (req, res) => {
         userId,
         action: 'draft_submitted',
         message: `ส่ง Draft ครั้งที่ ${updatedJob.draftCount}${note ? ': ' + note : ''}`,
-        detail: { link, note, draftCount: updatedJob.draftCount }
+        detail: {
+          link: link?.trim() || null,
+          note: note?.trim() || null,
+          draftCount: updatedJob.draftCount,
+          attachmentIds: draftAttachments.map((attachment) => attachment.fileId),
+          attachmentCount: draftAttachments.length
+        }
       }
     });
 
@@ -4310,6 +4502,8 @@ router.post('/:id/submit-draft', async (req, res) => {
  * Body: {
  *   action: 'approve' | 'reject' (required)
  *   reason: string (required)
+ *   reviewLink?: string
+ *   attachmentIds?: number[]
  * }
  */
 router.post('/:id/approve-draft', async (req, res) => {
@@ -4317,7 +4511,7 @@ router.post('/:id/approve-draft', async (req, res) => {
     const jobId = parseInt(req.params.id);
     const userId = req.user.userId;
     const tenantId = req.user.tenantId;
-    const { action, reason } = req.body;
+    const { action, reason, reviewLink, attachmentIds } = req.body;
     const prisma = getDatabase();
 
     // Validation
@@ -4370,11 +4564,55 @@ router.post('/:id/approve-draft', async (req, res) => {
       });
     }
 
+    const reviewAttachments = await loadDraftAttachmentSnapshots({
+      prisma,
+      tenantId,
+      jobId,
+      attachmentIds
+    });
+
+    if (reviewAttachments === null) {
+      return res.status(400).json({
+        success: false,
+        message: 'มีไฟล์แนบบางรายการไม่ถูกต้องหรือไม่อยู่ในงานนี้'
+      });
+    }
+
+    const existingDrafts = normalizeDraftEntries(job.draftFiles);
+    if (existingDrafts.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'ไม่พบ Draft ที่รอตรวจสอบ'
+      });
+    }
+
+    const latestDraftIndex = existingDrafts.length - 1;
+    const updatedDraftFiles = existingDrafts.map((draftEntry, index) => {
+      if (index !== latestDraftIndex) {
+        return draftEntry;
+      }
+
+      return {
+        ...draftEntry,
+        review: {
+          action,
+          reason: reason.trim(),
+          reviewLink: reviewLink?.trim() || null,
+          reviewedAt: new Date().toISOString(),
+          reviewedByUserId: userId,
+          attachments: reviewAttachments
+        }
+      };
+    });
+
     // Update job status
     const newStatus = action === 'approve' ? 'in_progress' : 'rework';
     const updatedJob = await prisma.job.update({
       where: { id: jobId },
-      data: { status: newStatus }
+      data: {
+        status: newStatus,
+        draftFiles: updatedDraftFiles
+      }
     });
 
     // Log activity
@@ -4384,7 +4622,13 @@ router.post('/:id/approve-draft', async (req, res) => {
         userId,
         action: action === 'approve' ? 'draft_approved' : 'draft_rejected',
         message: `${action === 'approve' ? 'อนุมัติ' : 'ปฏิเสธ'} Draft: ${reason.trim()}`,
-        detail: { action, reason: reason.trim() }
+        detail: {
+          action,
+          reason: reason.trim(),
+          reviewLink: reviewLink?.trim() || null,
+          attachmentIds: reviewAttachments.map((attachment) => attachment.fileId),
+          attachmentCount: reviewAttachments.length
+        }
       }
     });
 
@@ -4394,7 +4638,7 @@ router.post('/:id/approve-draft', async (req, res) => {
         tenantId,
         jobId,
         userId,
-        comment: `${action === 'approve' ? '✅ อนุมัติ Draft' : '❌ ปฏิเสธ Draft'}: ${reason.trim()}`
+        comment: `${action === 'approve' ? '✅ อนุมัติ Draft' : '❌ ปฏิเสธ Draft'}: ${reason.trim()}${reviewLink?.trim() ? `\nลิงก์อ้างอิง: ${reviewLink.trim()}` : ''}`
       }
     });
 
@@ -4494,6 +4738,8 @@ router.post('/:id/approve-draft', async (req, res) => {
               <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
               <p><strong>ผู้ตรวจสอบ:</strong> ${job.requester?.firstName || ''} ${job.requester?.lastName || ''}</p>
               <p><strong>${action === 'approve' ? 'ความเห็น' : 'เหตุผล'}:</strong> ${reason.trim()}</p>
+              ${reviewLink?.trim() ? `<p><strong>ลิงก์อ้างอิง:</strong> <a href="${reviewLink.trim()}" style="color:#be123c;">${reviewLink.trim()}</a></p>` : ''}
+              ${reviewAttachments.length > 0 ? `<p><strong>ไฟล์แนบประกอบการตรวจ:</strong> ${reviewAttachments.length} ไฟล์</p>` : ''}
             </div>
             <p>${action === 'approve' ? 'สามารถทำงานต่อได้เลย' : 'กรุณาแก้ไขและส่ง draft ใหม่'}</p>
           `,

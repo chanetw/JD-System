@@ -15,6 +15,7 @@ import Swal from 'sweetalert2';
 import apiDatabase from '@shared/services/apiDatabase';
 import { adminService } from '@shared/services/modules/adminService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import { generateTempPassword } from '@shared/utils/passwordGenerator';
 import { ROLES, ROLE_LABELS, ROLE_V1_DISPLAY, ROLE_V2_BADGE_COLORS, hasRole, normalizeRoleName } from '@shared/utils/permission.utils';
 import Button from '@shared/components/Button';
@@ -213,7 +214,9 @@ export default function UserManagementNew() {
     });
 
     // Filter State
-    const [searchTerm, setSearchTerm] = useState('');
+    const searchTerm = useSuperSearchStore(state => state.query);
+    const setSearchTerm = useSuperSearchStore(state => state.setQuery);
+    const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
     const debouncedSearchTerm = useDebounce(searchTerm, 300); // ⚡ 300ms debounce
     const [filterRole, setFilterRole] = useState('');
     const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'active', 'inactive'
@@ -1346,6 +1349,12 @@ export default function UserManagementNew() {
 
     // ⚡ Use users directly (backend already filtered)
     const filteredUsers = users;
+
+    useEffect(() => {
+        if (activeTab === 'active') {
+            setSuperSearchMeta({ resultCount: filteredUsers.length, totalCount: pagination.total || filteredUsers.length });
+        }
+    }, [activeTab, filteredUsers.length, pagination.total, setSuperSearchMeta]);
 
 
     return (

@@ -497,13 +497,24 @@ export default function CreateDJ() {
         };
         newJobs.push(mainJob);
 
-        // 🔥 Auto-Chain Logic: Check for Next Job
-        console.log(`[Auto-Chain] Checking chain for ${jobTypeInfo?.name}: nextJobTypeId=${jobTypeInfo?.nextJobTypeId}`);
-        if (jobTypeInfo?.nextJobTypeId) {
+        // 🔥 Auto-Chain Logic (Directional / Root-only):
+        // Only auto-add downstream job when the selected job type is a chain ROOT.
+        // A job type is a root when no other active job type points to it via nextJobTypeId.
+        // This allows opening downstream job types (e.g. Banner Web) standalone without
+        // pulling their predecessor (e.g. Graphic) automatically.
+        const incomingTargets = new Set(
+            masterData.jobTypes
+                .filter(t => t.nextJobTypeId != null)
+                .map(t => t.nextJobTypeId)
+        );
+        const isChainRoot = !incomingTargets.has(parseInt(jobTypeId));
+
+        console.log(`[Auto-Chain] ${jobTypeInfo?.name}: nextJobTypeId=${jobTypeInfo?.nextJobTypeId}, isRoot=${isChainRoot}`);
+
+        if (isChainRoot && jobTypeInfo?.nextJobTypeId) {
             const nextTypeInfo = masterData.jobTypes.find(t => t.id === jobTypeInfo.nextJobTypeId);
             console.log(`[Auto-Chain] Next type lookup (id=${jobTypeInfo.nextJobTypeId}):`, nextTypeInfo ? nextTypeInfo.name : 'NOT FOUND');
             if (nextTypeInfo) {
-                // Check redundancy for the chained job
                 const nextExists = selectedJobTypes.some(jt => jt.jobTypeId === nextTypeInfo.id);
                 if (!nextExists) {
                     console.log(`[Auto-Chain] ✅ Adding ${nextTypeInfo.name} after ${jobTypeInfo.name}`);
@@ -522,6 +533,8 @@ export default function CreateDJ() {
                     console.log(`[Auto-Chain] ⚠️ ${nextTypeInfo.name} already exists, skipping`);
                 }
             }
+        } else if (!isChainRoot) {
+            console.log(`[Auto-Chain] ⛔ ${jobTypeInfo?.name} is a chain target (non-root) — no auto-chain`);
         }
 
         // เพิ่มเข้า State ทีเดียว (Optimistic UI)
@@ -787,14 +800,17 @@ export default function CreateDJ() {
      */
     const validateForm = () => {
         const newErrors = [];
-        if (!formData.project) newErrors.push("กรุณาเลือกโครงการ (Project)");
-        if (!formData.jobType && selectedJobTypes.length === 0) newErrors.push("กรุณาเลือกประเภทงาน (Job Type)");
-        if (!formData.subject) newErrors.push("กรุณาระบุหัวข้องาน (Subject)");
-        // Objective ไม่บังคับแล้ว (ลบ validation 20 ตัวอักษร)
+        if (!formData.project)
+            newErrors.push("โครงการ (Project) — กรุณาเลือกโครงการที่ต้องการสร้างงาน");
+        if (!formData.jobType && selectedJobTypes.length === 0)
+            newErrors.push("ประเภทงาน (Job Type) — กรุณาเลือกประเภทงานอย่างน้อย 1 รายการ");
+        if (!formData.subject)
+            newErrors.push("หัวข้องาน (Subject) — กรุณาระบุหัวข้องานที่ต้องการสร้าง");
+        if (!formData.dueDate)
+            newErrors.push("วันส่งงาน (Due Date) — กรุณาเลือกวันส่งงาน (สามารถปรับจาก SLA ที่ระบบแนะนำได้)");
         // ต้องมี briefLink หรือ briefFiles อย่างน้อยหนึ่งอย่างถึงจะส่งงานได้
-        if (!formData.briefLink && briefFiles.length === 0) {
-            newErrors.push("กรุณาใส่ลิงค์รายละเอียด (Brief Link) หรือแนบไฟล์ Brief เพื่อส่งงาน");
-        }
+        if (!formData.briefLink && briefFiles.length === 0)
+            newErrors.push("รายละเอียดงาน (Brief) — กรุณาแนบไฟล์ Brief หรือใส่ลิงค์รายละเอียดงาน");
 
         setErrors(newErrors);
         return newErrors.length === 0;
@@ -1018,14 +1034,18 @@ export default function CreateDJ() {
     };
 
     const calculateCompletion = () => {
-        const fields = ['project', 'jobType', 'subject'];
-        const filled = fields.filter(f => formData[f]).length;
-        const hasBrief = (formData.briefLink || briefFiles.length > 0) ? 1 : 0;
-        return Math.round(((filled + hasBrief) / (fields.length + 1)) * 100);
+        // 5 required slots: project, jobType (via selectedJobTypes), subject, dueDate, brief
+        let filled = 0;
+        if (formData.project) filled++;
+        if (selectedJobTypes.length > 0 || formData.jobType) filled++;
+        if (formData.subject) filled++;
+        if (formData.dueDate) filled++;
+        if (formData.briefLink || briefFiles.length > 0) filled++;
+        return Math.round((filled / 5) * 100);
     };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5 lg:space-y-6">
             {/* === หัวข้อหน้า (Page Header) === */}
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -1038,24 +1058,33 @@ export default function CreateDJ() {
           Validation Alert
           ============================================ */}
             {errors.length > 0 && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3 animate-pulse">
-                    <div className="text-red-600 mt-0.5">
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                        <svg className="w-5 h-5 text-red-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                         </svg>
+                        <h3 className="font-semibold text-red-800">ข้อมูลไม่ครบถ้วน — กรุณากรอกข้อมูลต่อไปนี้ให้ครบก่อนส่งงาน</h3>
                     </div>
-                    <div>
-                        <h3 className="font-medium text-red-800">กรุณาแก้ไขข้อผิดพลาดดังนี้</h3>
-                        <ul className="text-sm text-red-700 mt-1 space-y-1 list-disc pl-4">
-                            {errors.map((err, i) => <li key={i}>{err}</li>)}
-                        </ul>
-                    </div>
+                    <ul className="space-y-1.5 pl-1">
+                        {errors.map((err, i) => {
+                            const [label, detail] = err.split(' — ');
+                            return (
+                                <li key={i} className="flex items-start gap-2 text-sm">
+                                    <span className="mt-0.5 text-red-500">✕</span>
+                                    <span>
+                                        <span className="font-medium text-red-800">{label}</span>
+                                        {detail && <span className="text-red-600"> — {detail}</span>}
+                                    </span>
+                                </li>
+                            );
+                        })}
+                    </ul>
                 </div>
             )}
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
                 {/* === คอลัมน์ซ้าย: ฟอร์มกรอกข้อมูล (Form Sections) === */}
-                <div className="space-y-4 md:col-span-2 md:space-y-6 lg:col-span-2">
+                <div className="space-y-4 lg:col-span-2 lg:space-y-6">
 
                     {/* ส่วนที่ 1: ข้อมูลโครงการ (Job Info) */}
                     <Card>
@@ -1398,7 +1427,7 @@ export default function CreateDJ() {
 
                             {/* Subject และ Priority ย้ายไปอยู่ก่อน Job Type แล้ว */}
                         </CardBody>
-                    </Card >
+                    </Card>
 
                     {/* ✨ NEW SECTION: วันส่งงาน (Due Date Selection) */}
                     <Card className="shadow-md">
@@ -1453,7 +1482,7 @@ export default function CreateDJ() {
                     </Card>
 
                     {/* ส่วนที่ 2: รายละเอียดงาน (Brief) */}
-                    < Card >
+                    <Card>
                         <CardHeader title="รายละเอียดงาน (Brief)" badge="2" />
                         <CardBody className="!p-4 space-y-4 sm:!p-6">
                             <div>
@@ -1471,10 +1500,10 @@ export default function CreateDJ() {
                             {/* ส่วน Headline, Sub-headline, Selling Points, Price ถูกลบออกตาม implementation plan */}
                             {/* Brief Link แยกเป็น section เฉพาะด้านล่าง */}
                         </CardBody>
-                    </Card >
+                    </Card>
 
                     {/* ส่วนที่ 3: Brief Link หรือ ไฟล์แนบ */}
-                    < Card >
+                    <Card>
                         <CardHeader title="รายละเอียด Brief (Brief Link / ไฟล์แนบ)" badge="3" />
                         <CardBody className="space-y-4">
                             {/* Notice - แสดงเมื่อยังไม่มีทั้งลิงค์และไฟล์ */}
@@ -1584,14 +1613,14 @@ export default function CreateDJ() {
                             </div>
 
                         </CardBody>
-                    </Card >
-                </div >
+                    </Card>
+                </div>
 
                 {/* === คอลัมน์ขวา: พรีวิวและดำเนินการ (Info Panels & Actions) === */}
-                < div className="space-y-4 md:space-y-6" >
+                <div className="space-y-4 lg:space-y-6">
 
                     {/* พรีวิวลำดับการอนุมัติ (Approval Flow Preview) */}
-                    < Card >
+                    <Card>
                         <CardHeader title="ลำดับการอนุมัติ" badge="4" />
                         <CardBody>
                             {approvalFlow ? (
@@ -1652,7 +1681,7 @@ export default function CreateDJ() {
                                 </div>
                             )}
                         </CardBody>
-                    </Card >
+                    </Card>
 
 
 
@@ -1949,7 +1978,7 @@ export default function CreateDJ() {
                             </div>
                         </CardBody>
                     </Card>
-                    < Card >
+                    <Card>
                         <CardHeader title="ความสมบูรณ์ของข้อมูล" />
                         <CardBody>
                             <div className="space-y-3">
@@ -1972,10 +2001,10 @@ export default function CreateDJ() {
                                 </div>
                             </div>
                         </CardBody>
-                    </Card >
+                    </Card>
 
                     {/* ปุ่มดำเนินการ (Actions Panel) */}
-                    < div className="space-y-3 pb-2 md:pb-0 lg:sticky lg:top-20" >
+                    <div className="space-y-3 pb-2 lg:sticky lg:top-20 lg:pb-0">
                         <Button type="submit" className="w-full h-12 text-lg shadow-lg" disabled={isSubmitting}>
                             {isSubmitting ? (
                                 <span className="flex items-center gap-2">
@@ -1994,7 +2023,7 @@ export default function CreateDJ() {
                             {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกร่าง (Save Draft)'}
                         </Button>
                         */}
-                    </div >
+                    </div>
 
                 </div >
             </div >

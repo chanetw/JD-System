@@ -31,9 +31,15 @@
 }
 
 /* Base Styles */
+html,
+#root {
+  min-height: 100%;
+}
+
 body {
   font-family: 'Sarabun', sans-serif;
   @apply bg-gray-50 text-gray-900;
+  overflow-x: hidden;
 }
 
 /* Custom Scrollbar - แถบเลื่อนแบบกำหนดเอง (Global) */

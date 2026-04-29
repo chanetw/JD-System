@@ -282,13 +282,13 @@ fi
 
 echo -e "${BLUE}🚀 Step 4: Deploy target services${NC}"
 if [[ "$DEPLOY_TARGET" == "backend" ]]; then
-    docker compose -f "$COMPOSE_FILE" up -d --no-deps backend
+    docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate backend
     wait_for_health "backend" "dj-backend-prod"
 elif [[ "$DEPLOY_TARGET" == "frontend" ]]; then
-    docker compose -f "$COMPOSE_FILE" up -d --no-deps frontend
+    docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate frontend
     wait_for_health "frontend" "dj-frontend-prod"
 else
-    docker compose -f "$COMPOSE_FILE" up -d backend frontend
+    docker compose -f "$COMPOSE_FILE" up -d --force-recreate backend frontend
     wait_for_health "backend" "dj-backend-prod"
     wait_for_health "frontend" "dj-frontend-prod"
 fi

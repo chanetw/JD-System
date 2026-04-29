@@ -10,22 +10,34 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { useNotificationStore } from '@core/stores/notificationStore';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import UserProfileMenu from '@shared/components/UserProfileMenu';
 
 /**
  * @component Header
  * @description แถบบนพร้อม Search, Role Switcher และ Notifications
  */
-export default function Header({ onMenuClick }) {
+export default function Header({ sidebarCollapsed = false, onMobileMenuClick }) {
     // ดึงสถานะและฟังก์ชันการจัดการจาก Store (Auth และ Notifications)
     const { user } = useAuthStoreV2();
     const { notifications, unreadCount, fetchNotifications, markAsRead, markAllAsRead, isLoading } = useNotificationStore();
+    const location = useLocation();
+    const searchQuery = useSuperSearchStore(state => state.query);
+    const setSearchQuery = useSuperSearchStore(state => state.setQuery);
+    const clearSearchQuery = useSuperSearchStore(state => state.clearQuery);
+    const setActivePath = useSuperSearchStore(state => state.setActivePath);
+    const resultCount = useSuperSearchStore(state => state.resultCount);
+    const totalCount = useSuperSearchStore(state => state.totalCount);
 
     // === สถานะการแสดงผลเมนู Dropdown (UI States) ===
     const [showNoti, setShowNoti] = useState(false);               // เมนูแจ้งเตือน
+
+    useEffect(() => {
+        setActivePath(location.pathname);
+    }, [location.pathname, setActivePath]);
 
     // Auto-refresh notifications ทุก 2 นาที (120,000 ms) - เฉพาะ icon กระดิ่ง ไม่ reload ทั้งหน้า
     useEffect(() => {
@@ -60,17 +72,19 @@ export default function Header({ onMenuClick }) {
         }
     }, [toast.show]);
 
+    const sidebarOffsetClass = sidebarCollapsed ? 'lg:left-[76px]' : 'lg:left-64';
+
     return (
         // ============================================
         // Header Container
         // ============================================
-        <header className="fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 flex items-center justify-between px-3 sm:px-4 md:left-64 md:px-6 z-40">
+        <header className={`fixed top-0 left-0 right-0 z-40 flex h-16 items-center justify-between border-b border-gray-200 bg-white px-3 transition-[left] duration-200 sm:px-4 lg:px-6 ${sidebarOffsetClass}`}>
 
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
                 <button
                     type="button"
-                    onClick={onMenuClick}
-                    className="md:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100"
+                    onClick={onMobileMenuClick}
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 lg:hidden"
                     aria-label="Open menu"
                 >
                     <MenuIcon className="w-5 h-5" />
@@ -79,14 +93,32 @@ export default function Header({ onMenuClick }) {
                 {/* ============================================
           Search Box - ช่องค้นหา
           ============================================ */}
-                <div className="hidden sm:block w-full max-w-md">
+                <div className="min-w-0 flex-1 max-w-md">
                     <div className="relative">
                         <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                         <input
                             type="text"
-                            placeholder="ค้นหา DJ ID หรือ Subject..."
-                            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                            value={searchQuery}
+                            onChange={(event) => setSearchQuery(event.target.value)}
+                            placeholder="ค้นหาในหน้านี้..."
+                            className="min-h-[44px] w-full rounded-lg border border-gray-200 py-2 pl-10 pr-20 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-rose-500"
+                            aria-label="ค้นหาในหน้านี้"
                         />
+                        {searchQuery && resultCount !== null && totalCount !== null && (
+                            <span className="pointer-events-none absolute right-10 top-1/2 hidden -translate-y-1/2 text-[11px] font-medium text-slate-400 sm:inline">
+                                {resultCount}/{totalCount}
+                            </span>
+                        )}
+                        {searchQuery && (
+                            <button
+                                type="button"
+                                onClick={clearSearchQuery}
+                                className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                                aria-label="ล้างคำค้นหา"
+                            >
+                                <XIcon className="h-4 w-4" />
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -109,6 +141,7 @@ export default function Header({ onMenuClick }) {
                             if (!showNoti) fetchNotifications();
                         }}
                         className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+                        aria-label="Open notifications"
                     >
                         <BellIcon className="w-6 h-6" />
                         {/* Badge แสดงจำนวนแจ้งเตือนที่ยังไม่อ่าน */}
@@ -121,7 +154,7 @@ export default function Header({ onMenuClick }) {
 
                     {/* รายการแจ้งเตือน Dropdown */}
                     {showNoti && (
-                        <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-slate-100 py-2 z-20">
+                        <div className="absolute right-0 z-20 mt-2 w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] rounded-xl border border-slate-100 bg-white py-2 shadow-lg sm:w-80">
                             <div className="px-4 py-2 border-b border-slate-50 flex justify-between items-center">
                                 <h3 className="font-bold text-slate-800">การแจ้งเตือน (Notifications)</h3>
                                 {unreadCount > 0 && (
@@ -134,7 +167,7 @@ export default function Header({ onMenuClick }) {
                                 )}
                             </div>
 
-                            <div className="max-h-96 overflow-y-auto">
+                            <div className="max-h-[70dvh] overflow-y-auto">
                                 {isLoading ? (
                                     <div className="p-4 text-center text-slate-400 text-sm">กำลังโหลด...</div>
                                 ) : notifications.length === 0 ? (
@@ -175,7 +208,7 @@ export default function Header({ onMenuClick }) {
 
             {/* Toast Popup */}
             {toast.show && (
-                <div className={`fixed top-20 right-6 z-50 px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-slide-in ${toast.type === 'success'
+                <div className={`fixed right-4 top-20 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-lg px-4 py-3 shadow-lg animate-slide-in sm:right-6 ${toast.type === 'success'
                     ? 'bg-green-50 border border-green-200 text-green-800'
                     : 'bg-red-50 border border-red-200 text-red-800'
                     }`}>
@@ -216,6 +249,14 @@ function SearchIcon({ className }) {
     );
 }
 
+function XIcon({ className }) {
+    return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+    );
+}
+
 function MenuIcon({ className }) {
     return (
         <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -240,5 +281,3 @@ function BellIcon({ className }) {
         </svg>
     );
 }
-
-

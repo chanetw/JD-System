@@ -20,7 +20,7 @@ import { adminService } from '@shared/services/modules/adminService';
  * @component Sidebar
  * @description แถบเมนูด้านซ้าย
  */
-export default function Sidebar({ isMobileOpen = false, onClose = () => {} }) {
+export default function Sidebar({ collapsed = false, onToggleCollapsed = () => {}, isMobileOpen = false, onClose = () => {} }) {
     const navigate = useNavigate();
 
     /** ข้อมูลผู้ใช้งานปัจจุบันจาก store */
@@ -37,6 +37,10 @@ export default function Sidebar({ isMobileOpen = false, onClose = () => {} }) {
     const dashboardPath = (hasAnyRole(user, ['Admin', 'Requester', 'Assignee', 'manager', 'supervisor']) || isApprover)
         ? '/dashboard'
         : getDefaultHomeRoute(user);
+    const desktopWidthClass = collapsed ? 'lg:w-[76px]' : 'lg:w-64';
+    const surfaceClass = collapsed ? 'lg:bg-[#881337] lg:text-white lg:border-r lg:border-rose-900/30 lg:shadow-[0_18px_45px_rgba(136,19,55,0.28)]' : '';
+    const navPaddingClass = collapsed ? 'px-4 lg:px-3' : 'px-4';
+    const labelVisibilityClass = collapsed ? 'lg:hidden' : '';
 
     /**
      * จำนวน User Requests ที่รอ Admin ดำเนินการ (pending)
@@ -59,28 +63,37 @@ export default function Sidebar({ isMobileOpen = false, onClose = () => {} }) {
         // ============================================
         // Sidebar Container
         // ============================================
-        <aside className={`fixed left-0 top-0 h-screen w-72 max-w-[85vw] bg-[#881337] text-white flex flex-col z-40 shadow-xl transform transition-transform duration-200 ease-out md:w-64 md:z-20 md:translate-x-0 ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <aside className={`fixed left-0 top-0 z-40 flex h-dvh w-72 max-w-[85vw] flex-col bg-[#881337] text-white shadow-xl transform transition-[transform,width,background-color,color] duration-200 ease-out lg:z-20 lg:max-w-none lg:translate-x-0 ${desktopWidthClass} ${surfaceClass} ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
 
             {/* ============================================
           Logo & Title
           ============================================ */}
-            <div className="p-6">
+            <div className={collapsed ? 'p-6 lg:px-3 lg:py-4' : 'p-6'}>
                 {/* โลโก้ระบบ */}
-                <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm">
+                <div className={`flex items-center justify-between gap-3 ${collapsed ? 'lg:justify-center' : ''}`}>
+                    <div className={`flex items-center gap-3 ${collapsed ? 'lg:justify-center' : ''}`}>
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm shrink-0 ${collapsed ? 'bg-white lg:bg-white lg:ring-1 lg:ring-white/60' : 'bg-white'}`}>
                             <span className="text-[#881337] font-bold text-lg">DJ</span>
                         </div>
-                        <div>
+                        <div className={labelVisibilityClass}>
                             <h1 className="font-bold text-white text-lg leading-tight">DJ System</h1>
                             <p className="text-xs text-rose-200">Design Job Management</p>
                         </div>
                     </div>
                     <button
                         type="button"
+                        aria-label="Collapse sidebar"
+                        title="Collapse sidebar"
+                        onClick={onToggleCollapsed}
+                        className={`hidden h-9 w-9 items-center justify-center rounded-lg text-rose-100 hover:bg-white/10 hover:text-white lg:inline-flex ${collapsed ? 'lg:hidden' : ''}`}
+                    >
+                        <ChevronRailIcon collapsed={false} className="h-5 w-5" />
+                    </button>
+                    <button
+                        type="button"
                         aria-label="Close sidebar"
                         onClick={onClose}
-                        className="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-lg text-rose-100 hover:bg-white/10 hover:text-white"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-rose-100 hover:bg-white/10 hover:text-white lg:hidden"
                     >
                         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -92,46 +105,46 @@ export default function Sidebar({ isMobileOpen = false, onClose = () => {} }) {
             {/* ============================================
           Navigation Menu - เมนูนำทาง
           ============================================ */}
-            <nav className="flex-1 px-4 space-y-1 overflow-y-auto pt-2 scrollbar-rose">
+            <nav className={`flex-1 space-y-1 overflow-y-auto pt-2 scrollbar-rose ${navPaddingClass}`}>
 
                 {shouldPrioritizeMyQueue && (
-                    <SidebarLink to="/assignee/my-queue" icon={InboxIcon} onClick={onClose}>
+                    <SidebarLink to="/assignee/my-queue" icon={InboxIcon} onClick={onClose} collapsed={collapsed}>
                         คิวงานของฉัน (My Queue)
                     </SidebarLink>
                 )}
 
-                <SidebarLink to={dashboardPath} icon={DashboardIcon} onClick={onClose}>
+                <SidebarLink to={dashboardPath} icon={DashboardIcon} onClick={onClose} collapsed={collapsed}>
                     แผงควบคุม (Dashboard)
                 </SidebarLink>
 
                 {canCreateJob && (
-                    <SidebarLink to="/create" icon={CreateIcon} onClick={onClose}>
+                    <SidebarLink to="/create" icon={CreateIcon} onClick={onClose} collapsed={collapsed}>
                         สร้างงาน DJ ใหม่
                     </SidebarLink>
                 )}
 
-                <SidebarLink to="/jobs" icon={ListIcon} onClick={onClose}>
+                <SidebarLink to="/jobs" icon={ListIcon} onClick={onClose} collapsed={collapsed}>
                     รายการงาน DJ ทั้งหมด
                 </SidebarLink>
 
                 {isApprover && (
-                    <SidebarLink to="/approvals" icon={ApprovalIcon} onClick={onClose}>
+                    <SidebarLink to="/approvals" icon={ApprovalIcon} onClick={onClose} collapsed={collapsed}>
                         คิวงานรออนุมัติ
                     </SidebarLink>
                 )}
 
                 {(isAssignee || isAdmin) && !shouldPrioritizeMyQueue && (
-                    <SidebarLink to="/assignee/my-queue" icon={InboxIcon} onClick={onClose}>
+                    <SidebarLink to="/assignee/my-queue" icon={InboxIcon} onClick={onClose} collapsed={collapsed}>
                         คิวงานของฉัน (My Queue)
                     </SidebarLink>
                 )}
 
-                <SidebarLink to="/media-portal" icon={MediaIcon} onClick={onClose}>
+                <SidebarLink to="/media-portal" icon={MediaIcon} onClick={onClose} collapsed={collapsed}>
                     ศูนย์จัดการสื่อ (Media)
                 </SidebarLink>
 
                 {canCreateJob && (
-                    <SidebarLink to="/user-portal" icon={UserIcon} onClick={onClose}>
+                    <SidebarLink to="/user-portal" icon={UserIcon} onClick={onClose} collapsed={collapsed}>
                         ข้อมูลผู้ใช้งาน (User)
                     </SidebarLink>
                 )}
@@ -143,17 +156,17 @@ export default function Sidebar({ isMobileOpen = false, onClose = () => {} }) {
             ============================================ */}
                 {isAdmin && (
                     <>
-                        <div className="pt-6 pb-2 px-2">
+                        <div className={`pt-6 pb-2 px-2 ${labelVisibilityClass}`}>
                             <p className="text-xs font-bold text-rose-300 uppercase tracking-wider">
                                 Admin
                             </p>
                         </div>
 
-                        <SidebarLink to="/admin/organization" icon={BuildingOfficeIcon} onClick={onClose}>
+                        <SidebarLink to="/admin/organization" icon={BuildingOfficeIcon} onClick={onClose} collapsed={collapsed}>
                             ข้อมูลโครงสร้างองค์กร
                         </SidebarLink>
 
-                        <SidebarLink to="/admin/approval-flow" icon={FlowIcon} onClick={onClose}>
+                        <SidebarLink to="/admin/approval-flow" icon={FlowIcon} onClick={onClose} collapsed={collapsed}>
                             ผังการอนุมัติ (Flow)
                         </SidebarLink>
 
@@ -165,27 +178,28 @@ export default function Sidebar({ isMobileOpen = false, onClose = () => {} }) {
                             badge={pendingRequestCount > 0 ? pendingRequestCount : undefined}
                             badgeColor="bg-red-500"
                             onClick={onClose}
+                            collapsed={collapsed}
                         >
                             จัดการผู้ใช้งาน
                         </SidebarLink>
 
-                        <SidebarLink to="/admin/job-types" icon={Cog6ToothIcon} onClick={onClose}>
+                        <SidebarLink to="/admin/job-types" icon={Cog6ToothIcon} onClick={onClose} collapsed={collapsed}>
                             ประเภทงาน & SLA
                         </SidebarLink>
 
-                        <SidebarLink to="/admin/job-type-items" icon={Cog6ToothIcon} onClick={onClose}>
+                        <SidebarLink to="/admin/job-type-items" icon={Cog6ToothIcon} onClick={onClose} collapsed={collapsed}>
                             ชิ้นงานย่อย (Sub-items)
                         </SidebarLink>
 
-                        <SidebarLink to="/admin/holidays" icon={CalendarIcon} onClick={onClose}>
+                        <SidebarLink to="/admin/holidays" icon={CalendarIcon} onClick={onClose} collapsed={collapsed}>
                             ปฏิทินวันหยุด
                         </SidebarLink>
 
-                        <SidebarLink to="/admin/email-settings" icon={Cog6ToothIcon} onClick={onClose}>
+                        <SidebarLink to="/admin/email-settings" icon={Cog6ToothIcon} onClick={onClose} collapsed={collapsed}>
                             ตั้งค่าอีเมล (Email)
                         </SidebarLink>
 
-                        <SidebarLink to="/admin/portal-settings" icon={Cog6ToothIcon} onClick={onClose}>
+                        <SidebarLink to="/admin/portal-settings" icon={Cog6ToothIcon} onClick={onClose} collapsed={collapsed}>
                             ตั้งค่า User Portal
                         </SidebarLink>
 
@@ -197,17 +211,17 @@ export default function Sidebar({ isMobileOpen = false, onClose = () => {} }) {
             ============================================ */}
                 {canAccessAnalytics && (
                     <>
-                        <div className="pt-6 pb-2 px-2">
+                        <div className={`pt-6 pb-2 px-2 ${labelVisibilityClass}`}>
                             <p className="text-xs font-bold text-rose-300 uppercase tracking-wider">
                                 รายงาน & ภาพรวม
                             </p>
                         </div>
 
-                        <SidebarLink to="/analytics" icon={AnalyticsIcon} onClick={onClose}>
+                        <SidebarLink to="/analytics" icon={AnalyticsIcon} onClick={onClose} collapsed={collapsed}>
                             Dashboard ภาพรวม
                         </SidebarLink>
 
-                        <SidebarLink to="/reports" icon={ReportIcon} onClick={onClose}>
+                        <SidebarLink to="/reports" icon={ReportIcon} onClick={onClose} collapsed={collapsed}>
                             รายงานบุคคล (Individual Reports)
                         </SidebarLink>
                     </>
@@ -217,13 +231,18 @@ export default function Sidebar({ isMobileOpen = false, onClose = () => {} }) {
             {/* ============================================
           Bottom Action
           ============================================ */}
-            <div className="p-4 border-t border-rose-800/30 bg-[#881337]">
+            <div className={collapsed ? 'space-y-3 p-4 border-t border-rose-800/30 bg-[#881337] lg:border-rose-900/30 lg:bg-[#881337] lg:px-3' : 'space-y-3 p-4 border-t border-rose-800/30 bg-[#881337]'}>
                 <button
-                    onClick={() => navigate(getDefaultHomeRoute(user))}
-                    className="flex items-center gap-3 px-3 py-2 w-full text-rose-100 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                    onClick={() => {
+                        onClose();
+                        navigate(getDefaultHomeRoute(user));
+                    }}
+                    className={`flex min-h-[44px] items-center gap-3 rounded-lg px-3 py-2 w-full text-rose-100 hover:text-white hover:bg-white/10 transition-colors ${collapsed ? 'lg:justify-center lg:text-rose-100 lg:hover:bg-white/10 lg:hover:text-white' : ''}`}
+                    title={collapsed ? 'กลับหน้าหลัก (Home)' : undefined}
+                    aria-label="กลับหน้าหลัก (Home)"
                 >
-                    <ArrowLeftOnRectangleIcon className="w-5 h-5" />
-                    <span className="text-sm font-medium">กลับหน้าหลัก (Home)</span>
+                    <ArrowLeftOnRectangleIcon className="w-5 h-5 shrink-0" />
+                    <span className={`text-sm font-medium ${labelVisibilityClass}`}>กลับหน้าหลัก (Home)</span>
                 </button>
             </div>
         </aside>
@@ -239,24 +258,29 @@ export default function Sidebar({ isMobileOpen = false, onClose = () => {} }) {
  * @param {string|number} [props.badge] - ข้อความตัวเลขบน Badge แจ้งเตือน (ถ้ามี)
  * @param {string} [props.badgeColor] - คลาสสีสำหรับ Badge
  */
-function SidebarLink({ to, icon: Icon, children, badge, badgeColor, onClick }) {
+function SidebarLink({ to, icon: Icon, children, badge, badgeColor, onClick, collapsed = false }) {
+    const label = typeof children === 'string' ? children : undefined;
+
     return (
         <NavLink
             to={to}
             onClick={onClick}
+            title={collapsed ? label : undefined}
+            aria-label={label}
             className={({ isActive }) =>
-                `flex items-center justify-between px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${isActive
-                    ? 'bg-[#9f1239] text-white shadow-sm'
-                    : 'text-rose-100 hover:bg-white/10 hover:text-white'
+                `relative flex min-h-[44px] items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ${collapsed ? 'lg:justify-center' : ''} ${
+                    collapsed
+                        ? (isActive ? 'bg-[#9f1239] text-white shadow-sm lg:bg-[#9f1239] lg:text-white' : 'text-rose-100 hover:bg-white/10 hover:text-white lg:text-rose-100 lg:hover:bg-white/10 lg:hover:text-white')
+                        : (isActive ? 'bg-[#9f1239] text-white shadow-sm' : 'text-rose-100 hover:bg-white/10 hover:text-white')
                 }`
             }
         >
-            <div className="flex items-center gap-3">
-                {Icon && <Icon className="w-5 h-5 opacity-90" />}
-                {children}
+            <div className={`flex items-center gap-3 min-w-0 ${collapsed ? 'lg:justify-center' : ''}`}>
+                {Icon && <Icon className="w-5 h-5 opacity-90 shrink-0" />}
+                <span className={`truncate ${collapsed ? 'lg:hidden' : ''}`}>{children}</span>
             </div>
             {badge && (
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold text-white ${badgeColor}`}>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold text-white ${badgeColor} ${collapsed ? 'lg:absolute lg:right-1 lg:top-1 lg:px-1.5' : ''}`}>
                     {badge}
                 </span>
             )}
@@ -371,6 +395,14 @@ function ArrowLeftOnRectangleIcon({ className }) {
     return (
         <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+    );
+}
+
+function ChevronRailIcon({ className, collapsed }) {
+    return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={collapsed ? 'M9 5l7 7-7 7' : 'M15 19l-7-7 7-7'} />
         </svg>
     );
 }

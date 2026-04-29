@@ -5,11 +5,14 @@ import {
     CalendarDaysIcon,
     UserIcon,
     CheckCircleIcon,
-    ClockIcon
+    ClockIcon,
+    ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 import { CubeIcon } from '@heroicons/react/24/solid';
 import DraftReadStatus from './DraftReadStatus';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
+import FileActions from '@shared/components/FileActions';
+import { getFileName } from '@shared/utils/fileUrlUtils';
 
 const getJobTypeLabel = (value) => {
     if (!value) return 'ไม่ระบุประเภท';
@@ -145,6 +148,13 @@ const JobBriefInfo = ({ job }) => {
     ].filter(Boolean);
 
     const files = Array.isArray(job.briefFiles) ? job.briefFiles : [];
+    const inheritedFiles = files.filter(file => !!file?.sourceJobId);
+    const hasPredecessor = !!job.predecessorId;
+    const inheritedSources = Array.from(new Set(
+        inheritedFiles
+            .map(file => file?.sourceDjId)
+            .filter(Boolean)
+    ));
 
     return (
         <div className="overflow-hidden rounded-xl border border-gray-300 bg-white shadow-sm">
@@ -241,31 +251,71 @@ const JobBriefInfo = ({ job }) => {
                         </div>
                     )}
 
+                    {(hasPredecessor || inheritedFiles.length > 0) && (
+                        <div className="py-4 sm:grid sm:grid-cols-[220px_minmax(0,1fr)] sm:gap-6">
+                            <dt className="text-sm font-medium text-gray-500">File Final Work</dt>
+                            <dd className="mt-1 sm:mt-0">
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {inheritedFiles.length > 0 ? (
+                                            <>
+                                                <span className="inline-flex items-center rounded-full border border-amber-300 bg-white px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+                                                    ✅ รับไฟล์ต่อเนื่องแล้ว {inheritedFiles.length} ไฟล์
+                                                </span>
+                                                {inheritedSources.map((djId) => (
+                                                    <span
+                                                        key={djId}
+                                                        className="inline-flex items-center rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800"
+                                                    >
+                                                        จาก {djId}
+                                                    </span>
+                                                ))}
+                                            </>
+                                        ) : (
+                                            <span className="inline-flex items-center rounded-full border border-amber-300 bg-white px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+                                                ⏳ รอรับไฟล์จากงานก่อนหน้า
+                                            </span>
+                                        )}
+                                    </div>
+                                    {inheritedFiles.length > 0 ? (
+                                        <p className="mt-2 text-xs text-amber-800">
+                                            ไฟล์ที่มีสัญลักษณ์รับต่อ (⬇) คือไฟล์ส่งมอบที่ระบบพ่วงมาจากงานก่อนหน้าใน chain
+                                        </p>
+                                    ) : (
+                                        <p className="mt-2 text-xs text-amber-800">
+                                            เมื่อปิดงานก่อนหน้าและมีไฟล์ส่งมอบ ระบบจะพ่วงไฟล์มาแสดงในส่วนไฟล์แนบอัตโนมัติ
+                                        </p>
+                                    )}
+                                </div>
+                            </dd>
+                        </div>
+                    )}
+
                     {hasFiles && (
                         <div className="py-4 sm:grid sm:grid-cols-[220px_minmax(0,1fr)] sm:gap-6">
                             <dt className="text-sm font-medium text-gray-500">ไฟล์แนบ (Attachments)</dt>
                             <dd className="mt-1 sm:mt-0">
                                 <ul className="overflow-hidden rounded-xl border border-gray-300 divide-y divide-gray-200">
                                     {files.map((file, idx) => {
-                                        const fileName = file.name || file.fileName || file.originalName || `ไฟล์แนบ ${idx + 1}`;
-                                        const fileUrl = file.url || file.filePath || '#';
+                                        const fileName = getFileName(file, `ไฟล์แนบ ${idx + 1}`);
+                                        const isHandedOff = !!file.sourceJobId;
 
                                         return (
-                                            <li key={`${fileName}-${idx}`} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                                            <li key={`${fileName}-${idx}`} className={`flex items-center justify-between gap-3 px-4 py-3 text-sm ${isHandedOff ? 'bg-amber-50' : ''}`}>
                                                 <div className="min-w-0 flex items-center gap-3">
-                                                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500">
-                                                        <PaperClipIcon className="h-4 w-4" />
+                                                    <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${isHandedOff ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-500'}`}>
+                                                        {isHandedOff ? <ArrowDownTrayIcon className="h-4 w-4" /> : <PaperClipIcon className="h-4 w-4" />}
                                                     </div>
-                                                    <span className="truncate text-gray-800">{fileName}</span>
+                                                    <div className="min-w-0">
+                                                        <span className="truncate text-gray-800 block">{fileName}</span>
+                                                        {isHandedOff && (
+                                                            <span className="text-xs text-amber-700 font-medium">
+                                                                📎 จากงานก่อนหน้า: {file.sourceDjId}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <a
-                                                    href={fileUrl}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="flex-shrink-0 font-medium text-rose-600 hover:text-rose-700"
-                                                >
-                                                    ดาวน์โหลด
-                                                </a>
+                                                <FileActions file={file} compact className="flex-shrink-0" />
                                             </li>
                                         );
                                     })}

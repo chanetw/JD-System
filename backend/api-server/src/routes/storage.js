@@ -99,6 +99,74 @@ function uploadSingleFile(req, res, next) {
   });
 }
 
+const normalizeExternalFileUrl = (value) => {
+  if (!value) return null;
+  if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('/')) {
+    return value;
+  }
+  return `https://${value}`;
+};
+
+const buildContentDisposition = (type, fileName) => {
+  const safeFileName = String(fileName || 'download')
+    .replace(/[^\x20-\x7E]|[\r\n"]/g, '_');
+  const encodedFileName = encodeURIComponent(String(fileName || 'download'));
+  return `${type}; filename="${safeFileName}"; filename*=UTF-8''${encodedFileName}`;
+};
+
+const sendStoredFile = async (req, res, { disposition = 'attachment' } = {}) => {
+  const { id } = req.params;
+  const fileId = parseInt(id);
+
+  if (isNaN(fileId)) {
+    return res.status(400).json({
+      success: false,
+      error: 'INVALID_FILE_ID',
+      message: 'ID ไฟล์ไม่ถูกต้อง'
+    });
+  }
+
+  const file = await prisma.mediaFile.findFirst({
+    where: {
+      id: fileId,
+      tenantId: req.user.tenantId
+    }
+  });
+
+  if (!file) {
+    return res.status(404).json({
+      success: false,
+      error: 'FILE_NOT_FOUND',
+      message: 'ไม่พบไฟล์นี้'
+    });
+  }
+
+  if (file.fileType === 'link') {
+    const externalUrl = normalizeExternalFileUrl(file.filePath);
+    if (!externalUrl) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_FILE_URL',
+        message: 'ลิงก์ไฟล์ไม่ถูกต้อง'
+      });
+    }
+    return res.redirect(externalUrl);
+  }
+
+  const storageService = getStorageService();
+  const downloadResult = await storageService.downloadFile(file.filePath);
+
+  if (!downloadResult.success) {
+    return res.status(500).json(downloadResult);
+  }
+
+  res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+  res.setHeader('Content-Disposition', buildContentDisposition(disposition, file.fileName));
+  res.setHeader('Content-Length', downloadResult.data.length);
+
+  return res.send(downloadResult.data);
+};
+
 /**
  * POST /api/storage/upload
  * อัปโหลดไฟล์
@@ -313,6 +381,25 @@ router.get('/files', async (req, res) => {
 });
 
 /**
+ * GET /api/storage/files/:id/view
+ * เปิดดูไฟล์ใน browser (PDF preview ใช้ Content-Disposition: inline)
+ *
+ * @param {number} id - ID ของไฟล์
+ */
+router.get('/files/:id/view', async (req, res) => {
+  try {
+    return await sendStoredFile(req, res, { disposition: 'inline' });
+  } catch (error) {
+    console.error('[Storage] View error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'VIEW_FAILED',
+      message: 'ไม่สามารถเปิดดูไฟล์ได้'
+    });
+  }
+});
+
+/**
  * GET /api/storage/files/:id
  * ดาวน์โหลดไฟล์
  * 
@@ -320,50 +407,7 @@ router.get('/files', async (req, res) => {
  */
 router.get('/files/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const fileId = parseInt(id);
-
-    if (isNaN(fileId)) {
-      return res.status(400).json({
-        success: false,
-        error: 'INVALID_FILE_ID',
-        message: 'ID ไฟล์ไม่ถูกต้อง'
-      });
-    }
-
-    // ตรวจสอบว่าไฟล์มีอยู่และผู้ใช้มีสิทธิ์เข้าถึง
-    const file = await prisma.mediaFile.findFirst({
-      where: {
-        id: fileId,
-        tenantId: req.user.tenantId
-      }
-    });
-
-    if (!file) {
-      return res.status(404).json({
-        success: false,
-        error: 'FILE_NOT_FOUND',
-        message: 'ไม่พบไฟล์นี้'
-      });
-    }
-
-    let downloadResult;
-
-    // ใช้ StorageService abstraction
-    const storageService = getStorageService();
-    downloadResult = await storageService.downloadFile(file.filePath);
-
-    if (!downloadResult.success) {
-      return res.status(500).json(downloadResult);
-    }
-
-    // ตั้งค่า headers สำหรับการดาวน์โหลด
-    res.setHeader('Content-Type', file.mimeType);
-    res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
-    res.setHeader('Content-Length', downloadResult.data.length);
-
-    res.send(downloadResult.data);
-
+    return await sendStoredFile(req, res, { disposition: 'attachment' });
   } catch (error) {
     console.error('[Storage] Download error:', error);
     res.status(500).json({

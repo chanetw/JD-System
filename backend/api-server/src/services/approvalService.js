@@ -628,6 +628,15 @@ export class ApprovalService extends BaseService {
         };
       }
 
+      // ❌ Parent job cannot be approved
+      if (job.isParent === true || job.isParent === 1) {
+        return {
+          success: false,
+          error: 'PARENT_JOB',
+          message: 'งานแม่ไม่ต้องผ่านการอนุมัติ'
+        };
+      }
+
       // 2. Get Flow using V1 Extended
       const flow = await this.getApprovalFlow(job.projectId, job.jobTypeId, job.priority);
 
@@ -1092,6 +1101,15 @@ export class ApprovalService extends BaseService {
           error: 'ALREADY_PROCESSED',
           message: `งานนี้ถูกดำเนินการไปแล้ว (สถานะปัจจุบัน: ${job.status})`,
           data: { currentStatus: job.status }
+        };
+      }
+
+      // ❌ Parent job cannot be rejected
+      if (job.isParent === true || job.isParent === 1) {
+        return {
+          success: false,
+          error: 'PARENT_JOB',
+          message: 'งานแม่ไม่ต้องผ่านการอนุมัติ'
         };
       }
 

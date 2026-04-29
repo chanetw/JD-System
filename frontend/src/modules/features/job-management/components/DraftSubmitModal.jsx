@@ -116,7 +116,7 @@ const DraftSubmitModal = ({ isOpen, onClose, job, onSuccess, currentUser }) => {
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90dvh] overflow-y-auto">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
                     <h3 className="text-lg font-bold text-blue-600">📝 ส่ง Draft ให้ตรวจ</h3>

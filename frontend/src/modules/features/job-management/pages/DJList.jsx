@@ -16,16 +16,50 @@ import Button from '@shared/components/Button';
 import { api } from '@shared/services/apiService';
 import { formatDateToThai } from '@shared/utils/dateUtils';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
-import { getUserScopes, getAllowedProjectIds } from '@shared/utils/scopeHelpers';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
+import { getUserScopes } from '@shared/utils/scopeHelpers';
 import { hasRole } from '@shared/utils/permission.utils';
 import { DJ_LIST_FILTER_OPTIONS, matchesStatusFilter } from '@shared/constants/jobStatus';
 import { resolveSlaBadgePresentation } from '@shared/utils/slaStatusResolver';
+import { matchesSuperSearch } from '@shared/utils/superSearch';
 
 // Icons
 import {
     PlusIcon,
     MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
+
+const collectUserSearchValues = (value) => {
+    if (!value) return [];
+    if (typeof value === 'string') return [value];
+
+    const fullName = [
+        value.firstName || value.first_name,
+        value.lastName || value.last_name
+    ].filter(Boolean).join(' ');
+
+    return [
+        value.name,
+        value.displayName,
+        value.display_name,
+        value.email,
+        fullName
+    ].filter(Boolean);
+};
+
+const getRequesterSearchValues = (job) => [
+    job.requester,
+    job.requesterName,
+    job.requester_name,
+    ...collectUserSearchValues(job.requester),
+].filter(Boolean);
+
+const getAssigneeSearchValues = (job) => [
+    job.assignee,
+    job.assigneeName,
+    job.assignee_name,
+    ...collectUserSearchValues(job.assignee),
+].filter(Boolean);
 
 export default function DJList() {
     // === Auth State ===
@@ -51,7 +85,9 @@ export default function DJList() {
     });
 
     // === สถานะการค้นหาและจัดเรียง (Search & Sort States) ===
-    const [searchQuery, setSearchQuery] = useState(''); // ข้อความที่ใช้ค้นหา
+    const searchQuery = useSuperSearchStore(state => state.query); // ข้อความที่ใช้ค้นหา
+    const setSearchQuery = useSuperSearchStore(state => state.setQuery);
+    const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
     const [sortBy, setSortBy] = useState('createdDate'); // รูปแบบการจัดเรียง (วันที่สร้าง หรือ Deadline)
     const [includeCompleted, setIncludeCompleted] = useState(false); // false = ซ่อน completed/closed เป็นค่าเริ่มต้น
     const shouldIncludeCompletedInQuery = includeCompleted || filters.status === 'completed';
@@ -132,6 +168,13 @@ export default function DJList() {
         applyFiltersAndSearch();
     }, [jobs, filters, searchQuery, sortBy, myJobsOnly]);
 
+    useEffect(() => {
+        const queryFromUrl = searchParams.get('search');
+        if (queryFromUrl) {
+            setSearchQuery(queryFromUrl);
+        }
+    }, [searchParams, setSearchQuery]);
+
     /** ประมวลผลการคัดกรอง การค้นหา และการจัดเรียงข้อมูล */
     const applyFiltersAndSearch = () => {
         let result = [...jobs];
@@ -148,9 +191,6 @@ export default function DJList() {
         if (filters.jobType) {
             result = result.filter(j => j.jobType === filters.jobType);
         }
-        if (filters.status) {
-            result = result.filter(j => matchesStatusFilter(j.status, filters.status));
-        }
         if (filters.assignee) {
             result = result.filter(j => j.assignee === filters.assignee);
         }
@@ -158,13 +198,48 @@ export default function DJList() {
             result = result.filter(j => j.priority === filters.priority);
         }
 
+        if (filters.status) {
+            const childrenByParentId = result.reduce((map, job) => {
+                if (job.parentJobId) {
+                    if (!map[job.parentJobId]) map[job.parentJobId] = [];
+                    map[job.parentJobId].push(job);
+                }
+                return map;
+            }, {});
+
+            result = result.filter(job => {
+                const children = childrenByParentId[job.id] || [];
+                const hasChildren = job.isParent && children.length > 1;
+                const calculatedApprovalStatus = hasChildren ? calculateParentApprovalStatus(children) : null;
+                const calculatedJobStatus = hasChildren ? calculateParentJobStatus(children) : null;
+                const display = resolveDisplayStatuses(
+                    job.status,
+                    job.isParent,
+                    hasChildren,
+                    Boolean(job.parentJobId),
+                    calculatedApprovalStatus,
+                    calculatedJobStatus
+                );
+
+                return [job.status, display.approval, display.work].some(status =>
+                    matchesStatusFilter(status, filters.status)
+                );
+            });
+        }
+
         // 2. นำ Search Query มาใช้งาน (ค้นจากเลขที่ DJ หรือหัวข้องาน)
         if (searchQuery.trim()) {
-            const query = searchQuery.toLowerCase();
-            result = result.filter(j =>
-                (j.djId || j.id?.toString())?.toLowerCase().includes(query) ||
-                j.subject?.toLowerCase().includes(query)
-            );
+            result = result.filter(j => matchesSuperSearch(j, searchQuery, [
+                job => job.djId,
+                job => job.id,
+                job => job.subject,
+                job => job.project,
+                job => job.jobType,
+                getRequesterSearchValues,
+                getAssigneeSearchValues,
+                job => job.status,
+                job => job.priority,
+            ]));
         }
 
         // 3. จัดเรียงข้อมูล (Sort)
@@ -231,6 +306,7 @@ export default function DJList() {
         });
 
         setFilteredJobs(result);
+        setSuperSearchMeta({ resultCount: result.length, totalCount: jobs.length });
         setCurrentPage(1); // เมื่อเริ่มคัดกรองใหม่ ให้กลับไปที่หน้า 1 เสมอ
     };
 
@@ -366,16 +442,16 @@ export default function DJList() {
     // Render
     // ============================================
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-5 lg:space-y-6">
             {/* ส่วนหัวของหน้าจอ */}
-            <div className="flex items-center justify-between">
-                <div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
                     <h1 className="text-2xl font-bold text-gray-900">รายการงาน DJ (DJ List)</h1>
                     <p className="text-gray-500">ค้นหาและติดตามสถานะงาน Design Job ทั้งหมด</p>
                 </div>
                 {!hasRole(user, 'assignee') && (
-                    <Link to="/create">
-                        <Button>
+                    <Link to="/create" className="sm:shrink-0">
+                        <Button className="w-full sm:w-auto">
                             <PlusIcon className="w-5 h-5" />
                             สร้างงานใหม่ (Create DJ)
                         </Button>
@@ -414,7 +490,7 @@ export default function DJList() {
 
             {/* ส่วนคัดกรองข้อมูล (Filters Section) */}
             <div className="bg-white rounded-xl border border-gray-400 shadow-sm p-4">
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
                     <FilterSelect
                         label="โครงการ (Project)"
                         value={filters.project}
@@ -448,7 +524,7 @@ export default function DJList() {
                     />
                 </div>
 
-                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+                <div className="flex flex-col gap-3 mt-4 pt-4 border-t border-gray-100 sm:flex-row sm:items-center sm:justify-between">
                     <label className="inline-flex items-center gap-2 text-sm text-gray-700">
                         <input
                             type="checkbox"
@@ -458,7 +534,7 @@ export default function DJList() {
                         />
                         แสดงงานสำเร็จ
                     </label>
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-2 gap-2 sm:flex">
                         <Button variant="ghost" className="text-sm" onClick={handleClearFilters}>ล้างค่า (Clear)</Button>
                         <Button className="text-sm" onClick={applyFiltersAndSearch}>ใช้งานการคัดกรอง (Apply)</Button>
                     </div>
@@ -467,7 +543,7 @@ export default function DJList() {
 
             {/* Results Table */}
             <div className="bg-white rounded-xl border border-gray-400 shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-400 flex items-center justify-between">
+                <div className="px-4 py-3 border-b border-gray-400 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:px-6 lg:py-4">
                     <p className="text-sm text-gray-600">
                         แสดง <strong>{filteredJobs.length}</strong> รายการ
                     </p>
@@ -476,7 +552,7 @@ export default function DJList() {
                         <select
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value)}
-                            className="text-sm border border-gray-300 rounded-lg px-2 py-1"
+                            className="text-sm border border-gray-300 rounded-lg px-2 py-2"
                         >
                             <option value="createdDate">Created Date (ล่าสุด)</option>
                             <option value="deadline">Deadline (ใกล้สุด)</option>
@@ -484,7 +560,7 @@ export default function DJList() {
                     </div>
                 </div>
 
-                <div className="overflow-x-auto">
+                <div>
                     {isLoading ? (
                         <div className="flex items-center justify-center py-12">
                             <div className="text-gray-500">กำลังโหลดข้อมูล...</div>
@@ -495,6 +571,51 @@ export default function DJList() {
                             <p className="text-sm text-gray-400 mt-1">ลองเปลี่ยน filter หรือ search query</p>
                         </div>
                     ) : (
+                        <>
+                        <div className="divide-y divide-gray-200 lg:hidden">
+                            {currentJobs.map((job) => (
+                                <React.Fragment key={job.id}>
+                                    <JobMobileCard
+                                        id={job.djId || `DJ-${job.id}`}
+                                        pkId={job.id}
+                                        priority={job.priority}
+                                        project={job.project}
+                                        type={job.jobType}
+                                        subject={job.subject}
+                                        status={job.status}
+                                        calculatedApprovalStatus={job.calculatedApprovalStatus}
+                                        calculatedJobStatus={job.calculatedJobStatus}
+                                        submitDate={job.createdAt ? formatDateToThai(new Date(job.createdAt)) : '-'}
+                                        deadline={job.deadline ? formatDateToThai(new Date(job.deadline)) : '-'}
+                                        sla={calculateSLA(job)}
+                                        assignee={job.assignee || '-'}
+                                        isParent={job.isParent}
+                                        hasChildren={job.children && job.children.length > 0}
+                                        isExpanded={expandedRows.has(job.id)}
+                                        onToggleExpand={() => toggleRowExpansion(job.id)}
+                                    />
+                                    {job.children && job.children.length > 0 && expandedRows.has(job.id) && job.children.map((child) => (
+                                        <JobMobileCard
+                                            key={child.id}
+                                            id={child.djId || `DJ-${child.id}`}
+                                            pkId={child.id}
+                                            priority={child.priority}
+                                            project={child.project || job.project}
+                                            type={child.jobType}
+                                            subject={child.subject}
+                                            status={child.status}
+                                            submitDate={child.createdAt ? formatDateToThai(new Date(child.createdAt)) : '-'}
+                                            deadline={child.deadline ? formatDateToThai(new Date(child.deadline)) : '-'}
+                                            sla={calculateSLA(child)}
+                                            assignee={child.assignee || '-'}
+                                            isChild
+                                        />
+                                    ))}
+                                </React.Fragment>
+                            ))}
+                        </div>
+
+                        <div className="hidden overflow-x-auto lg:block">
                         <table className="w-full">
                             <thead className="bg-gray-50">
                                 <tr>
@@ -581,7 +702,7 @@ export default function DJList() {
                                                     }
                                                 });
 
-                                                return job.children.map((child, index) => {
+                                                return job.children.map((child) => {
                                                     // Get pre-calculated chain info for this specific job
                                                     // If it's a standalone job (chain length 1), this will be undefined
                                                     const chainInfo = jobChains.get(child.id);
@@ -617,6 +738,8 @@ export default function DJList() {
                                 ))}
                             </tbody>
                         </table>
+                        </div>
+                        </>
                     )}
                 </div>
 
@@ -710,6 +833,101 @@ function Th({ children }) {
     );
 }
 
+function resolveDisplayStatuses(status, isParent, hasChildren, isChild, calculatedApprovalStatus, calculatedJobStatus) {
+    if (isParent && hasChildren) {
+        return {
+            approval: calculatedApprovalStatus || status,
+            work: calculatedJobStatus || status
+        };
+    }
+
+    if (isChild) {
+        if (status?.includes('pending') && status !== 'pending_dependency') {
+            return { approval: status, work: 'pending_dependency' };
+        }
+        if (status === 'pending_dependency') {
+            return { approval: 'approved', work: 'pending_dependency' };
+        }
+        return {
+            approval: status === 'rejected' ? 'rejected' : 'approved',
+            work: status
+        };
+    }
+
+    if (status?.includes('pending') && status !== 'pending_dependency') {
+        return { approval: status, work: status };
+    }
+    if (['approved', 'assigned', 'in_progress', 'completed', 'rejected_by_assignee'].includes(status)) {
+        return { approval: 'approved', work: status };
+    }
+    if (status === 'rejected') {
+        return { approval: 'rejected', work: status };
+    }
+    return { approval: status, work: status };
+}
+
+function JobMobileCard({
+    id, pkId, project, type, subject, status, priority,
+    calculatedApprovalStatus, calculatedJobStatus,
+    submitDate, deadline, sla, assignee,
+    isParent, hasChildren, isExpanded, onToggleExpand, isChild
+}) {
+    const display = resolveDisplayStatuses(status, isParent, hasChildren, isChild, calculatedApprovalStatus, calculatedJobStatus);
+
+    return (
+        <article className={`p-4 ${isChild ? 'bg-gray-50 pl-8' : 'bg-white'}`}>
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                        {isParent && hasChildren && (
+                            <button
+                                type="button"
+                                onClick={onToggleExpand}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
+                                aria-label={isExpanded ? 'ยุบงานย่อย' : 'กางงานย่อย'}
+                            >
+                                <svg className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                            </button>
+                        )}
+                        <Link to={`/jobs/${pkId}`} className="font-semibold text-rose-600 hover:underline">
+                            {id}
+                        </Link>
+                        {priority?.toLowerCase() === 'urgent' && (
+                            <span className="rounded bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-800">ด่วน</span>
+                        )}
+                        {isParent && hasChildren && <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-600">Parent Job</span>}
+                        {isChild && <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-600">งานย่อย</span>}
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-sm font-medium text-gray-900">{subject}</p>
+                    <p className="mt-1 text-xs text-gray-500">{project} · {type}</p>
+                </div>
+                <div className="shrink-0 text-right text-xs text-gray-500">
+                    <div>สร้าง: {submitDate}</div>
+                    <div className="mt-1 font-medium text-gray-700">ส่ง: {deadline}</div>
+                </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                <div>
+                    <p className="mb-1 text-xs text-gray-500">สถานะอนุมัติ</p>
+                    <Badge status={display.approval} isApprovalStatus />
+                </div>
+                <div>
+                    <p className="mb-1 text-xs text-gray-500">สถานะงาน</p>
+                    <Badge status={display.work} />
+                </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm">
+                <span className="text-gray-600">ผู้ออกแบบ: <span className="font-medium text-gray-900">{assignee}</span></span>
+                <span>{sla}</span>
+            </div>
+        </article>
+    );
+}
+
 /**
  * JobRow Component: แสดงแถวข้อมูลงาน DJ ในตาราง
  */
@@ -720,41 +938,7 @@ function JobRow({
     isParent, hasChildren, isExpanded, onToggleExpand,
     isChild, childInfo, rowClass = 'hover:bg-gray-50'
 }) {
-    // กำหนดสถานะที่จะแสดง — แยก "สถานะอนุมัติ" กับ "สถานะงาน"
-    let displayApprovalStatus = status;
-    let displayJobStatus = status;
-
-    if (isParent && hasChildren) {
-        displayApprovalStatus = calculatedApprovalStatus || status;
-        displayJobStatus = calculatedJobStatus || status;
-    } else if (isChild) {
-        // สำหรับงานลูกแยกสถานะอนุมัติและสถานะงานให้ชัดเจน
-        if (status?.includes('pending') && status !== 'pending_dependency') {
-            displayApprovalStatus = status;
-            displayJobStatus = 'pending_dependency'; // รอเริ่มงาน
-        } else if (status === 'pending_dependency') {
-            displayApprovalStatus = 'approved'; // ผ่านแล้วแต่รอคิว
-            displayJobStatus = 'pending_dependency';
-        } else {
-            displayApprovalStatus = status === 'rejected' ? 'rejected' : 'approved';
-            displayJobStatus = status;
-        }
-    } else {
-        // งานปกติ (ไม่ใช่ parent/child) — แยกตามตาราง Mapping
-        // สถานะอนุมัติ: pending → รออนุมัติ, approved/assigned/in_progress/completed → อนุมัติแล้ว, rejected → ไม่อนุมัติ
-        // สถานะงาน: approved → ยังไม่มอบหมาย, assigned → ได้รับมอบหมาย, in_progress → กำลังทำ, completed → เสร็จแล้ว
-        if (status?.includes('pending') && status !== 'pending_dependency') {
-            displayApprovalStatus = status; // pending_approval, pending_level_2, etc.
-            displayJobStatus = status;      // Badge จะแสดง "-" ผ่าน workTexts
-        } else if (['approved', 'assigned', 'in_progress', 'completed', 'rejected_by_assignee'].includes(status)) {
-            displayApprovalStatus = 'approved';
-            displayJobStatus = status;
-        } else if (status === 'rejected') {
-            displayApprovalStatus = 'rejected';
-            displayJobStatus = status;      // Badge จะแสดง "-" ผ่าน workTexts
-        }
-        // อื่นๆ (draft, scheduled, cancelled ฯลฯ) ใช้ status ตรงๆ
-    }
+    const display = resolveDisplayStatuses(status, isParent, hasChildren, isChild, calculatedApprovalStatus, calculatedJobStatus);
 
     return (
         <tr className={rowClass}>
@@ -796,11 +980,11 @@ function JobRow({
             <td className="px-4 py-3 text-sm max-w-[200px] truncate" title={subject}>{subject}</td>
             <td className="px-4 py-3">
                 {/* Approval Status */}
-                <Badge status={displayApprovalStatus} isApprovalStatus={true} />
+                <Badge status={display.approval} isApprovalStatus={true} />
             </td>
             <td className="px-4 py-3">
                 {/* Job Status */}
-                <Badge status={displayJobStatus} />
+                <Badge status={display.work} />
             </td>
             <td className="px-4 py-3 text-sm text-gray-500">{submitDate}</td>
             <td className="px-4 py-3 text-sm font-medium text-gray-700">{deadline}</td>
@@ -811,5 +995,3 @@ function JobRow({
         </tr>
     );
 }
-
-

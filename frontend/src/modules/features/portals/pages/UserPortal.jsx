@@ -16,6 +16,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Badge from '@shared/components/Badge';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import { getUserScopes } from '@shared/utils/scopeHelpers';
 import { api } from '@shared/services/apiService';
 import { adminService } from '@shared/services/modules/adminService';
@@ -23,6 +24,8 @@ import httpClient from '@shared/services/httpClient';
 import { JOB_ICONS } from '@shared/constants/jobIcons';
 import UserProfileMenu from '@shared/components/UserProfileMenu';
 import { resolveSlaBadgePresentation } from '@shared/utils/slaStatusResolver';
+import { matchesSuperSearch } from '@shared/utils/superSearch';
+import FileActions from '@shared/components/FileActions';
 
 // Icons
 import {
@@ -34,7 +37,6 @@ import {
     QuestionMarkCircleIcon,
     PhoneIcon,
     ArrowDownTrayIcon,
-    EyeIcon,
     ChevronRightIcon,
     ChevronDownIcon,
     VideoCameraIcon,
@@ -46,7 +48,6 @@ import {
     ArchiveBoxIcon,
     ArrowRightIcon,
     Bars3BottomLeftIcon,
-    ArrowTopRightOnSquareIcon,
     LinkIcon
 } from '@heroicons/react/24/outline';
 
@@ -56,7 +57,9 @@ export default function UserPortal() {
     const [recentJobs, setRecentJobs] = useState([]);
     const [expandedRows, setExpandedRows] = useState(new Set());
     const [isLoading, setIsLoading] = useState(true);
-    const [searchQuery, setSearchQuery] = useState('');
+    const searchQuery = useSuperSearchStore(state => state.query);
+    const setSearchQuery = useSuperSearchStore(state => state.setQuery);
+    const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
     const [activeProject, setActiveProject] = useState(0);
 
     // Real data states
@@ -312,6 +315,21 @@ export default function UserPortal() {
         }
     };
 
+    const visibleRecentJobs = recentJobs.filter(job => matchesSuperSearch(job, searchQuery, [
+        item => item.djId,
+        item => item.id,
+        item => item.subject,
+        item => item.project,
+        item => item.projectName,
+        item => item.jobType,
+        item => item.status,
+        item => item.priority,
+    ]));
+
+    useEffect(() => {
+        setSuperSearchMeta({ resultCount: visibleRecentJobs.length, totalCount: recentJobs.length });
+    }, [recentJobs.length, setSuperSearchMeta, visibleRecentJobs.length]);
+
 
 
     // ฟังก์ชันหา relative time
@@ -507,14 +525,14 @@ export default function UserPortal() {
                                                     <div className="animate-spin w-6 h-6 border-2 border-rose-500 border-t-transparent rounded-full mx-auto"></div>
                                                 </td>
                                             </tr>
-                                        ) : recentJobs.length === 0 ? (
+                                        ) : visibleRecentJobs.length === 0 ? (
                                             <tr>
                                                 <td colSpan="5" className="px-4 py-8 text-center text-slate-500">
                                                     ไม่มีงาน
                                                 </td>
                                             </tr>
                                         ) : (
-                                            recentJobs.map((job) => (
+                                            visibleRecentJobs.map((job) => (
                                                 <React.Fragment key={job.id}>
                                                     {/* Parent Row */}
                                                     <tr
@@ -696,7 +714,17 @@ export default function UserPortal() {
                             // กรองไฟล์ตามโครงการที่เลือก
                             const selectedProject = projects[activeProject];
                             const filteredFiles = selectedProject 
-                                ? mediaFiles.filter(f => f.projectId === selectedProject.id)
+                                ? mediaFiles.filter(f =>
+                                    f.projectId === selectedProject.id &&
+                                    matchesSuperSearch(f, searchQuery, [
+                                        item => item.fileName,
+                                        item => item.file_name,
+                                        item => item.originalName,
+                                        item => item.jobId,
+                                        item => item.mimeType,
+                                        item => item.fileType,
+                                    ])
+                                )
                                     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
                                     .slice(0, 3)
                                 : [];
@@ -831,28 +859,16 @@ function MediaCard({ file }) {
     const dateStr = new Date(file.createdAt || new Date()).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const projectName = file.project?.name || file.project?.code || 'No Project';
 
-    const handleView = (e) => {
-        if (e) e.stopPropagation();
-        // เปิดหน้าเว็บทันที (ไม่รอ tracking)
-        let urlToOpen = file.publicUrl || file.filePath;
-        // เติม https:// ถ้า URL ไม่มี protocol
-        if (urlToOpen && !urlToOpen.startsWith('http://') && !urlToOpen.startsWith('https://') && !urlToOpen.startsWith('/')) {
-            urlToOpen = 'https://' + urlToOpen;
-        }
-        window.open(urlToOpen, '_blank');
-        
+    const handleFileAction = (_, action = 'view') => {
         // Track แบบ async (ไม่ block)
         httpClient.post('/analytics/track-click', {
             fileId: file.id,
-            action: 'view'
+            action
         }).catch(err => console.error('[MediaCard] Track error:', err));
     };
 
     return (
-        <div
-            onClick={handleView}
-            className="bg-white rounded border border-slate-200 shadow-sm p-3 hover:bg-slate-50 hover:shadow transition-all cursor-pointer flex flex-col justify-between min-h-[100px]"
-        >
+        <div className="bg-white rounded border border-slate-200 shadow-sm p-3 hover:bg-slate-50 hover:shadow transition-all flex flex-col justify-between min-h-[100px]">
             <div>
                 {/* Project Badge */}
                 <div className="flex gap-1.5 mb-2">
@@ -881,8 +897,7 @@ function MediaCard({ file }) {
                         {dateStr}
                     </div>
                 </div>
-                {/* Open Link Icon - ใช้อันเดียว */}
-                <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+                <FileActions file={file} onAction={handleFileAction} compact />
             </div>
         </div>
     );
@@ -901,5 +916,3 @@ function TipItem({ num, title, desc }) {
         </div>
     );
 }
-
-

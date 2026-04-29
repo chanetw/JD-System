@@ -10,6 +10,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { api } from '@shared/services/apiService';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import { Card, CardHeader } from '@shared/components/Card';
 import Button from '@shared/components/Button';
 import Swal from 'sweetalert2';
@@ -17,12 +18,15 @@ import { FormInput, FormSelect } from '@shared/components/FormInput';
 import {
     PlusIcon, TrashIcon, XMarkIcon, DocumentDuplicateIcon, PencilIcon
 } from '@heroicons/react/24/outline';
+import { matchesSuperSearch } from '@shared/utils/superSearch';
 
 /**
  * JobTypeItems Component
  * คอมโพเน็นต์สำหรับจัดการรายการชิ้นงานย่อยในหน้า Admin
  */
 export default function JobTypeItems() {
+    const superSearchQuery = useSuperSearchStore(state => state.query);
+    const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
     // === สถานะข้อมูล ===
     /** รายการประเภทงานทั้งหมด สำหรับ Dropdown */
     const [jobTypes, setJobTypes] = useState([]);
@@ -260,6 +264,15 @@ export default function JobTypeItems() {
 
     // หา Job Type ที่เลือกอยู่
     const selectedJobType = jobTypes.find(jt => String(jt.id) === String(selectedJobTypeId));
+    const filteredItems = items.filter(item => matchesSuperSearch(item, superSearchQuery, [
+        value => value.name,
+        value => value.defaultSize,
+        () => selectedJobType?.name,
+    ]));
+
+    useEffect(() => {
+        setSuperSearchMeta({ resultCount: filteredItems.length, totalCount: items.length });
+    }, [filteredItems.length, items.length, setSuperSearchMeta]);
 
     return (
         <div className="space-y-6 p-6">
@@ -298,7 +311,7 @@ export default function JobTypeItems() {
                     title={`รายการชิ้นงานย่อยของ "${selectedJobType?.name || '...'}"`}
                 >
                     <span className="text-sm text-gray-500">
-                        พบ {items?.length || 0} รายการ
+                        พบ {filteredItems?.length || 0} รายการ
                     </span>
                 </CardHeader>
                 <div className="overflow-x-auto">
@@ -313,9 +326,9 @@ export default function JobTypeItems() {
                         <tbody className="divide-y divide-gray-400">
                             {isLoading ? (
                                 <tr><td colSpan="3" className="p-8 text-center text-gray-500">กำลังโหลด...</td></tr>
-                            ) : items.length === 0 ? (
+                            ) : filteredItems.length === 0 ? (
                                 <tr><td colSpan="3" className="p-8 text-center text-gray-500">ยังไม่มีรายการชิ้นงานย่อย</td></tr>
-                            ) : items.map(item => (
+                            ) : filteredItems.map(item => (
                                 <tr key={item.id} className="hover:bg-gray-50">
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-3">

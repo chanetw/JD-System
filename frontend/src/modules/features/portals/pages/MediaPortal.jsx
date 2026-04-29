@@ -12,17 +12,21 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardBody } from '@shared/components/Card';
 import { adminService } from '@shared/services/modules/adminService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import httpClient from '@shared/services/httpClient';
 import {
     PhotoIcon,
     Bars3BottomLeftIcon,
-    ClockIcon,
-    ArrowTopRightOnSquareIcon
+    ClockIcon
 } from '@heroicons/react/24/outline';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
+import { matchesSuperSearch } from '@shared/utils/superSearch';
+import FileActions from '@shared/components/FileActions';
 
 export default function MediaPortal() {
     const { user } = useAuthStoreV2();
+    const superSearchQuery = useSuperSearchStore(state => state.query);
+    const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
     const [selectedProject, setSelectedProject] = useState('all');
     const [projects, setProjects] = useState([]);
     const [mediaFiles, setMediaFiles] = useState([]);
@@ -144,29 +148,36 @@ export default function MediaPortal() {
     /**
      * Track Click (เพื่อนับสถิติการกด Link)
      */
-    const handleViewFile = (file) => {
-        // เปิด Link/URL ในแท็บใหม่ทันที (ไม่รอ tracking)
-        let urlToOpen = file.publicUrl || file.filePath;
-        // เติม https:// ถ้า URL ไม่มี protocol
-        if (urlToOpen && !urlToOpen.startsWith('http://') && !urlToOpen.startsWith('https://') && !urlToOpen.startsWith('/')) {
-            urlToOpen = 'https://' + urlToOpen;
-        }
-        window.open(urlToOpen, '_blank');
-        
+    const handleFileAction = (file, action = 'view') => {
         // Track click/view แบบ async (ไม่ block การเปิดหน้า)
         httpClient.post('/analytics/track-click', {
             fileId: file.id,
-            action: 'view'
+            action
         }).catch(err => console.error('[MediaPortal] Track error:', err));
     };
 
-    const filteredFiles = selectedProject === 'all'
+    const projectFilteredFiles = selectedProject === 'all'
         ? mediaFiles
         : mediaFiles.filter(f => {
             // แปลง selectedProject เป็น number เพื่อเปรียบเทียบกับ projectId
             const projectIdToMatch = selectedProject === 'all' ? null : Number(selectedProject);
             return f.projectId === projectIdToMatch;
         });
+
+    const filteredFiles = projectFilteredFiles.filter(file => matchesSuperSearch(file, superSearchQuery, [
+        item => item.fileName,
+        item => item.file_name,
+        item => item.originalName,
+        item => item.projectName,
+        item => item.jobId,
+        item => item.mimeType,
+        item => item.fileType,
+        item => item.publicUrl,
+    ]));
+
+    useEffect(() => {
+        setSuperSearchMeta({ resultCount: filteredFiles.length, totalCount: projectFilteredFiles.length });
+    }, [filteredFiles.length, projectFilteredFiles.length, setSuperSearchMeta]);
 
     if (isLoading) {
         return (
@@ -229,7 +240,7 @@ export default function MediaPortal() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     {filteredFiles.map(file => (
-                        <MediaCard key={file.id} file={file} onView={handleViewFile} />
+                        <MediaCard key={file.id} file={file} onAction={handleFileAction} />
                     ))}
                 </div>
             )}
@@ -261,7 +272,7 @@ export default function MediaPortal() {
  * Component แสดงการ์ดไฟล์แต่ละชิ้น
  * รองรับ Link ภายนอก (แสดง Icon Link แทนประเภทไฟล์)
  */
-function MediaCard({ file, onView }) {
+function MediaCard({ file, onAction }) {
     const isExternalLink = file.fileType === 'link';
     const jobSubject = file.job?.subject || file.fileName || 'Untitled';
     const dateStr = new Date(file.createdAt || new Date()).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -278,10 +289,7 @@ function MediaCard({ file, onView }) {
     });
 
     return (
-        <div
-            onClick={() => onView(file)}
-            className="bg-white rounded border border-gray-200 shadow-sm p-3 hover:bg-gray-50 hover:shadow transition-all cursor-pointer flex flex-col justify-between min-h-[100px]"
-        >
+        <div className="bg-white rounded border border-gray-200 shadow-sm p-3 hover:bg-gray-50 hover:shadow transition-all flex flex-col justify-between min-h-[100px]">
             <div>
                 {/* Project Badge */}
                 <div className="flex gap-1.5 mb-2">
@@ -310,8 +318,7 @@ function MediaCard({ file, onView }) {
                         {dateStr}
                     </div>
                 </div>
-                {/* Open Link Icon - ใช้อันเดียว */}
-                <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+                <FileActions file={file} onAction={onAction} compact />
             </div>
         </div>
     );

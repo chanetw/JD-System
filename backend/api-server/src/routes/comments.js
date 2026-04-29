@@ -283,14 +283,28 @@ router.post('/jobs/:jobId/comments', async (req, res) => {
     // Prepare notification recipients
     const notifyUserIds = new Set();
 
-    // Notify job assignee if commenter is requester
-    if (userId === job.requesterId && job.assigneeId && job.assigneeId !== userId) {
+    // Always notify requester and assignee (if they exist and are not the commenter)
+    if (job.requesterId && job.requesterId !== userId) {
+      notifyUserIds.add(job.requesterId);
+    }
+    if (job.assigneeId && job.assigneeId !== userId) {
       notifyUserIds.add(job.assigneeId);
     }
 
-    // Notify job requester if commenter is assignee
-    if (userId === job.assigneeId && job.requesterId !== userId) {
-      notifyUserIds.add(job.requesterId);
+    // Notify all prior commenters in this job (anyone who has commented before)
+    try {
+      const priorCommenters = await prisma.jobComment.findMany({
+        where: { jobId: parseInt(jobId), tenantId, id: { not: newComment.id } },
+        select: { userId: true },
+        distinct: ['userId']
+      });
+      priorCommenters.forEach(c => {
+        if (c.userId !== userId) {
+          notifyUserIds.add(c.userId);
+        }
+      });
+    } catch (priorErr) {
+      console.warn('[Comments] Failed to fetch prior commenters:', priorErr.message);
     }
 
     // Notify @mentioned users

@@ -50,10 +50,13 @@ const JobActionPanel = ({
 
     // 1. Approval Actions
     const renderApprovalActions = () => {
+        // Parent jobs do not go through approval
+        if (job.isParent === true || job.isParent === 1) return null;
+        if (job.status === 'assignee_rejected') return null;
+
         const isPending = job.currentLevel > 0 && job.currentLevel < 999;
         const isPendingStatus = job.status === 'pending_approval' ||
-            job.status?.startsWith('pending_level_') ||
-            job.status === 'assignee_rejected';
+            job.status?.startsWith('pending_level_');
 
         let canApprove = false;
 
@@ -94,6 +97,9 @@ const JobActionPanel = ({
 
     // 2. Manual Assignment (Admin/Mgr)
     const renderManualAssignment = () => {
+        // Parent jobs cannot be assigned
+        if (job.isParent === true || job.isParent === 1) return null;
+
         if (job.assigneeId) return null;
 
         const canAssign = isAdmin || isDeptManager;
