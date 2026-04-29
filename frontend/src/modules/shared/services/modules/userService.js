@@ -1,6 +1,4 @@
 
-import { supabase } from '../supabaseClient';
-import { handleResponse, generateOTP } from '../utils';
 import httpClient from '../httpClient';
 import { normalizeRoleName } from '@shared/utils/permission.utils';
 
@@ -8,8 +6,8 @@ export const userService = {
     // --- Users CRUD ---
     /**
      * ดึงรายการ User ทั้งหมดผ่าน Backend API
-     * ใช้ Backend API แทน Supabase โดยตรงเพื่อ:
-     * - Bypass RLS (Backend ใช้ service role)
+     * ใช้ Backend API เพื่อ:
+     * - รวมสิทธิ์และ tenant context ไว้ที่ server
      * - รวม Business Logic ไว้ที่ Backend
      * - ง่ายต่อการย้าย Database ในอนาคต
      */
@@ -120,7 +118,7 @@ export const userService = {
 
     /**
      * ดึงรายชื่อ User สำหรับหน้า Login (Mock Mode)
-     * เรียกผ่าน API Server (Public endpoint) แทนการเรียก Supabase โดยตรง (ติด RLS)
+     * เรียกผ่าน API Server (Public endpoint)
      */
     getMockUsers: async () => {
         try {
@@ -160,10 +158,6 @@ export const userService = {
             if (!response.ok) {
                 throw new Error(data.message || 'Login failed');
             }
-
-            // Store token if needed (though authStore handles session via Supabase usually, 
-            // but here we are using custom auth endpoint. 
-            // Ideally we should sync with Supabase Auth or just use the token returned)
 
             // For now, return the user object as expected by authStore
             return {
@@ -208,52 +202,33 @@ export const userService = {
     },
 
     getCurrentUser: async () => {
-        // For now, return hardcoded user ID 1 (Requester) or 2 (Approver) for testing
-        // Or fetch dynamic if we had Auth context.
-        // Mimic mockApi returning ID 1 ("Worawut")
-        const { data } = await supabase.from('users').select('*').eq('id', 1).single();
-        if (!data) return null;
-        return {
-            id: data.id,
-            
-            role: data.role,
-            email: data.email,
-            avatar: data.avatar_url
-        };
+        const response = await httpClient.get('/auth/me');
+        if (!response.data?.success) return null;
+        return response.data.data;
     },
 
     createUser: async (userData) => {
-        const payload = {
-            tenant_id: userData.tenantId || 1,
-            email: userData.email,
-            first_name: userData.firstName,
-            last_name: userData.lastName,
-            display_name: `${userData.firstName} ${userData.lastName}`,
-            role: userData.role,
-            is_active: true
-        };
-        const { data, error } = await supabase.from('users').insert([payload]).select().single();
-        if (error) throw error;
-        return data;
+        const response = await httpClient.post('/users', userData);
+        if (!response.data?.success) {
+            throw new Error(response.data?.message || 'Failed to create user');
+        }
+        return response.data.data;
     },
 
     updateUser: async (id, userData) => {
-        const payload = {
-            email: userData.email,
-            first_name: userData.firstName,
-            last_name: userData.lastName,
-            
-            role: userData.role
-        };
-        const { data, error } = await supabase.from('users').update(payload).eq('id', id).select().single();
-        if (error) throw error;
-        return data;
+        const response = await httpClient.put(`/users/${id}`, userData);
+        if (!response.data?.success) {
+            throw new Error(response.data?.message || 'Failed to update user');
+        }
+        return response.data.data;
     },
 
     deleteUser: async (id) => {
-        const { error } = await supabase.from('users').update({ is_active: false }).eq('id', id);
-        if (error) throw error;
-        return { success: true };
+        const response = await httpClient.delete(`/users/${id}`);
+        if (!response.data?.success) {
+            throw new Error(response.data?.message || 'Failed to delete user');
+        }
+        return response.data;
     },
 
     // --- User Registration Requests ---
@@ -287,7 +262,7 @@ export const userService = {
         try {
             console.log('[userService] Fetching pending registrations with status:', status);
 
-            // Use Backend API instead of direct Supabase to bypass RLS and get proper context
+            // Use Backend API to keep tenant and permission context on the server
             const response = await httpClient.get(`/users/registrations/pending`, {
                 params: { status }
             });
@@ -313,59 +288,7 @@ export const userService = {
      * @param {number} adminUserId - ID ของ Admin ที่อนุมัติ
      */
     approveRegistration: async (registrationId, adminUserId) => {
-        try {
-            // 1. ดึงข้อมูลคำขอสมัคร
-            const { data: registrationData, error: fetchError } = await supabase
-                .from('user_registration_requests')
-                .select('*')
-                .eq('id', registrationId)
-                .single();
-
-            if (fetchError) throw fetchError;
-
-            // 2. สร้างผู้ใช้ใหม่
-            const newUser = {
-                tenant_id: 1, // Default tenant
-                email: registrationData.email,
-                password_hash: 'temporary_hash', // TODO: สร้างรหัสผ่านจริง
-                first_name: registrationData.first_name,
-                last_name: registrationData.last_name,
-                display_name: `${registrationData.first_name} ${registrationData.last_name}`,
-                title: registrationData.title,
-                phone: registrationData.phone,
-                role: 'requester', // Default role for now, can be updated later via roles assignment
-                must_change_password: true,
-                is_active: true
-            };
-
-            const { data: userData, error: createUserError } = await supabase
-                .from('users')
-                .insert([newUser])
-                .select()
-                .single();
-
-            if (createUserError) throw createUserError;
-
-            // 3. อัปเดตสถานะคำขอสมัคร
-            const { error: updateError } = await supabase
-                .from('user_registration_requests')
-                .update({
-                    status: 'approved',
-                    approved_by: adminUserId,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', registrationId);
-
-            if (updateError) throw updateError;
-
-            // 4. ส่ง Email แจ้งการอนุมัติ
-            await userService.sendApprovalEmail(registrationData.email, registrationData.first_name);
-
-            return userData;
-        } catch (error) {
-            console.error('Error approving registration:', error);
-            throw error;
-        }
+        throw new Error('Use adminService.approveRegistration() with role and temporary password payload.');
     },
 
     /**
@@ -419,21 +342,9 @@ export const userService = {
 
     assignUserRoles: async (userId, tenantId, roles, assignedBy) => {
         try {
-            const roleRecords = roles.map(roleName => ({
-                user_id: userId,
-                tenant_id: tenantId,
-                role_name: roleName,
-                assigned_by: assignedBy,
-                is_active: true
-            }));
-
-            const { data, error } = await supabase
-                .from('user_roles')
-                .insert(roleRecords)
-                .select();
-
-            if (error) throw error;
-            return data;
+            const response = await httpClient.post(`/users/${userId}/roles`, { roles });
+            if (!response.data?.success) throw new Error(response.data?.message || 'Failed to assign user roles');
+            return response.data.data;
         } catch (error) {
             console.error('Error assigning user roles:', error);
             throw error;
@@ -441,66 +352,24 @@ export const userService = {
     },
 
     assignUserScope: async (userId, tenantId, scopeLevel, scopeId, scopeName, roleType, assignedBy) => {
-        try {
-            const { data, error } = await supabase
-                .from('user_scope_assignments')
-                .insert([{
-                    user_id: userId,
-                    tenant_id: tenantId,
-                    scope_level: scopeLevel,
-                    scope_id: scopeId || null,
-                    scope_name: scopeName,
-                    role_type: roleType,
-                    assigned_by: assignedBy,
-                    is_active: true
-                }])
-                .select()
-                .single();
-
-            if (error) throw error;
-            return data;
-        } catch (error) {
-            console.error('Error assigning user scope:', error);
-            throw error;
-        }
+        throw new Error('Use /users/:id/roles through adminService.saveUserRoles() to update scopes.');
     },
 
     assignUserScopes: async (userId, tenantId, scopeAssignments, assignedBy) => {
-        try {
-            const records = scopeAssignments.map(assignment => ({
-                user_id: userId,
-                tenant_id: tenantId,
-                scope_level: assignment.scopeLevel,
-                scope_id: assignment.scopeId || null,
-                scope_name: assignment.scopeName,
-                role_type: assignment.roleType,
-                assigned_by: assignedBy,
-                is_active: true
-            }));
-
-            const { data, error } = await supabase
-                .from('user_scope_assignments')
-                .insert(records)
-                .select();
-
-            if (error) throw error;
-            return data;
-        } catch (error) {
-            console.error('Error assigning user scopes:', error);
-            throw error;
-        }
+        throw new Error('Use /users/:id/roles through adminService.saveUserRoles() to update scopes.');
     },
 
     getUserScopes: async (userId) => {
         try {
-            const { data, error } = await supabase
-                .from('user_scope_assignments')
-                .select('*')
-                .eq('user_id', userId)
-                .eq('is_active', true);
-
-            if (error) throw error;
-            return data;
+            const response = await httpClient.get(`/users/${userId}/roles`);
+            const roles = response.data?.data?.roles || [];
+            return roles.flatMap(role => (role.scopes || []).map(scope => ({
+                user_id: userId,
+                scope_id: scope.scopeId,
+                scope_level: scope.level,
+                scope_name: scope.scopeName,
+                role_type: role.name
+            })));
         } catch (error) {
             console.error('Error getting user scopes:', error);
             throw error;
@@ -508,92 +377,19 @@ export const userService = {
     },
 
     updateUserScopes: async (userId, tenantId, scopeAssignments, assignedBy) => {
-        try {
-            // 1. Deactivate or Delete old scopes
-            // For simplicity, we'll delete old active assignments for this user
-            const { error: deleteError } = await supabase
-                .from('user_scope_assignments')
-                .delete()
-                .eq('user_id', userId);
-
-            if (deleteError) throw deleteError;
-
-            // 2. Insert new scopes
-            if (scopeAssignments.length > 0) {
-                return await userService.assignUserScopes(userId, tenantId, scopeAssignments, assignedBy);
-            }
-            return [];
-        } catch (error) {
-            console.error('Error updating user scopes:', error);
-            throw error;
-        }
+        throw new Error('Use /users/:id/roles through adminService.saveUserRoles() to update scopes.');
     },
 
     // --- Password Management ---
 
     requestPasswordReset: async (email) => {
-        const { data: user, error: userError } = await supabase
-            .from('users')
-            .select('id, email')
-            .eq('email', email)
-            .eq('is_active', true)
-            .single();
-
-        if (userError || !user) {
-            throw new Error('ไม่พบอีเมลนี้ในระบบ');
-        }
-
-        const otp = generateOTP();
-        const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-
-        const { error } = await supabase
-            .from('password_reset_tokens')
-            .insert({
-                user_id: user.id,
-                token: otp,
-                expires_at: expiresAt.toISOString(),
-                is_used: false
-            });
-
-        if (error) throw error;
-
-        console.log(`[DEV] OTP for ${email}: ${otp} `);
-        return { success: true, message: 'OTP sent to email' };
+        const response = await httpClient.post('/v2/auth/forgot-password', { email });
+        if (!response.data?.success) throw new Error(response.data?.message || 'Failed to request password reset');
+        return response.data;
     },
 
     resetPasswordWithOTP: async (email, otp, newPassword) => {
-        const { data: user, error: userError } = await supabase
-            .from('users')
-            .select('id')
-            .eq('email', email)
-            .single();
-
-        if (userError || !user) throw new Error('ไม่พบผู้ใช้');
-
-        const { data: token, error: tokenError } = await supabase
-            .from('password_reset_tokens')
-            .select('*')
-            .eq('user_id', user.id)
-            .eq('token', otp)
-            .eq('is_used', false)
-            .gt('expires_at', new Date().toISOString())
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
-
-        if (tokenError || !token) throw new Error('OTP ไม่ถูกต้องหรือหมดอายุแล้ว');
-
-        await supabase
-            .from('password_reset_tokens')
-            .update({ is_used: true })
-            .eq('id', token.id);
-
-        await supabase
-            .from('users')
-            .update({ must_change_password: false })
-            .eq('id', user.id);
-
-        return { success: true };
+        throw new Error('OTP reset flow was replaced by token-based reset-password API.');
     },
 
     changePassword: async (currentPassword, newPassword) => {

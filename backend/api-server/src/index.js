@@ -23,9 +23,6 @@ import { setupNotificationEventHandlers } from './socket/handlers/notificationEv
 // Import Database Connection
 import { getDatabase, testDatabaseConnection, closeDatabaseConnection } from './config/database.js';
 
-// Import Supabase Configuration
-import { testSupabaseConnection, isUsingSupabase } from './config/supabase.js';
-
 // Import Routes
 import authRoutes from './routes/auth.js';
 import usersRoutes from './routes/users.js';
@@ -234,18 +231,10 @@ app.get('/health', async (req, res) => {
     // ทดสอบการเชื่อมต่อ database
     const dbConnected = await testDatabaseConnection();
 
-    // ทดสอบการเชื่อมต่อ Supabase (ถ้าใช้)
-    let supabaseStatus = 'not_configured';
-    if (isUsingSupabase()) {
-      const supabaseTest = await testSupabaseConnection();
-      supabaseStatus = supabaseTest.success ? 'connected' : 'error';
-    }
-
     res.json({
       status: 'ok',
       message: 'DJ System API Server is running',
       database: dbConnected ? 'connected' : 'disconnected',
-      supabase: supabaseStatus,
       environment: process.env.NODE_ENV || 'development',
       timestamp: new Date().toISOString()
     });
@@ -254,7 +243,6 @@ app.get('/health', async (req, res) => {
       status: 'ok',
       message: 'DJ System API Server is running',
       database: 'error',
-      supabase: 'error',
       error: error.message,
       timestamp: new Date().toISOString()
     });

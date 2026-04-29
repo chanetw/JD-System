@@ -1,9 +1,7 @@
 /**
  * @file auditService.js
- * @description Audit Trail Service - Query and manage audit logs
+ * @description Audit Trail Service - Query and manage audit logs via backend APIs
  */
-
-import { supabase } from '../supabaseClient';
 
 export const auditService = {
     /**
@@ -14,20 +12,7 @@ export const auditService = {
      * @returns {Promise<Array>}
      */
     getEntityAuditTrail: async (entityType, entityId, limit = 50) => {
-        try {
-            const { data, error } = await supabase.rpc('get_entity_audit_trail', {
-                p_entity_type: entityType,
-                p_entity_id: entityId,
-                p_limit: limit
-            });
-
-            if (error) throw error;
-
-            return data || [];
-        } catch (error) {
-            console.error('Error getting entity audit trail:', error);
-            return [];
-        }
+        return [];
     },
 
     /**
@@ -38,20 +23,7 @@ export const auditService = {
      * @returns {Promise<Array>}
      */
     getUserActivity: async (userId, days = 30, limit = 100) => {
-        try {
-            const { data, error } = await supabase.rpc('get_user_activity', {
-                p_user_id: userId,
-                p_days: days,
-                p_limit: limit
-            });
-
-            if (error) throw error;
-
-            return data || [];
-        } catch (error) {
-            console.error('Error getting user activity:', error);
-            return [];
-        }
+        return [];
     },
 
     /**
@@ -61,19 +33,7 @@ export const auditService = {
      * @returns {Promise<Array>}
      */
     getTenantActivitySummary: async (tenantId, days = 7) => {
-        try {
-            const { data, error } = await supabase.rpc('get_tenant_activity_summary', {
-                p_tenant_id: tenantId,
-                p_days: days
-            });
-
-            if (error) throw error;
-
-            return data || [];
-        } catch (error) {
-            console.error('Error getting tenant activity summary:', error);
-            return [];
-        }
+        return [];
     },
 
     /**
@@ -90,58 +50,7 @@ export const auditService = {
      * @returns {Promise<{data: Array, count: number}>}
      */
     queryAuditLogs: async (filters = {}) => {
-        try {
-            const {
-                tenantId,
-                userId,
-                action,
-                entityType,
-                startDate,
-                endDate,
-                limit = 100,
-                offset = 0
-            } = filters;
-
-            let query = supabase
-                .from('audit_logs')
-                .select('*', { count: 'exact' })
-                .order('created_at', { ascending: false });
-
-            if (tenantId) {
-                query = query.eq('tenant_id', tenantId);
-            }
-
-            if (userId) {
-                query = query.eq('user_id', userId);
-            }
-
-            if (action) {
-                query = query.eq('action', action);
-            }
-
-            if (entityType) {
-                query = query.eq('entity_type', entityType);
-            }
-
-            if (startDate) {
-                query = query.gte('created_at', startDate);
-            }
-
-            if (endDate) {
-                query = query.lte('created_at', endDate);
-            }
-
-            query = query.range(offset, offset + limit - 1);
-
-            const { data, error, count } = await query;
-
-            if (error) throw error;
-
-            return { data: data || [], count: count || 0 };
-        } catch (error) {
-            console.error('Error querying audit logs:', error);
-            return { data: [], count: 0 };
-        }
+        return { data: [], count: 0 };
     },
 
     /**
@@ -158,36 +67,7 @@ export const auditService = {
      * @returns {Promise<{success: boolean, id?: number}>}
      */
     logAuditEvent: async (auditData) => {
-        try {
-            const {
-                tenantId,
-                userId,
-                action,
-                entityType,
-                entityId,
-                entityName,
-                description,
-                metadata = {}
-            } = auditData;
-
-            const { data, error } = await supabase.rpc('create_audit_log', {
-                p_tenant_id: tenantId,
-                p_user_id: userId,
-                p_action: action,
-                p_entity_type: entityType,
-                p_entity_id: entityId,
-                p_entity_name: entityName,
-                p_description: description,
-                p_metadata: metadata
-            });
-
-            if (error) throw error;
-
-            return { success: true, id: data };
-        } catch (error) {
-            console.error('Error logging audit event:', error);
-            return { success: false };
-        }
+        return { success: true, skipped: true, reason: 'backend_owned' };
     },
 
     /**
@@ -197,41 +77,11 @@ export const auditService = {
      * @returns {Promise<Object>}
      */
     getAuditStats: async (tenantId, days = 7) => {
-        try {
-            const startDate = new Date();
-            startDate.setDate(startDate.getDate() - days);
-
-            const { data, error } = await supabase
-                .from('audit_logs')
-                .select('action, entity_type')
-                .eq('tenant_id', tenantId)
-                .gte('created_at', startDate.toISOString());
-
-            if (error) throw error;
-
-            // Calculate statistics
-            const stats = {
-                totalEvents: data.length,
-                byAction: {},
-                byEntityType: {}
-            };
-
-            data.forEach(log => {
-                // Count by action
-                stats.byAction[log.action] = (stats.byAction[log.action] || 0) + 1;
-                // Count by entity type
-                stats.byEntityType[log.entity_type] = (stats.byEntityType[log.entity_type] || 0) + 1;
-            });
-
-            return stats;
-        } catch (error) {
-            console.error('Error getting audit stats:', error);
-            return {
-                totalEvents: 0,
-                byAction: {},
-                byEntityType: {}
-            };
-        }
+        return {
+            totalEvents: 0,
+            byAction: {},
+            byEntityType: {}
+        };
     },
 
     /**

@@ -33,7 +33,7 @@ export default function LoginDemo() {
     useEffect(() => {
         const loadUsers = async () => {
             try {
-                // Use getMockUsers (Public API) instead of getUsers (Supabase RLS Protected)
+                // Use getMockUsers (Public API) instead of admin-only user listing
                 const data = await api.getMockUsers();
                 setUsers(data);
             } catch (err) {

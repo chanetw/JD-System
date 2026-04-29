@@ -1,5 +1,4 @@
 
-import { supabase } from '../supabaseClient';
 import { handleResponse } from '../utils';
 import { notificationService } from './notificationService';
 import httpClient from '../httpClient';
@@ -323,7 +322,7 @@ export const jobService = {
 
         try {
             // ============================================
-            // V2: เรียก Backend API แทน Supabase โดยตรง
+            // V2: เรียก Backend API โดยตรง
             // Backend จะจัดการ:
             // - Flow Assignment Resolution
             // - Skip Approval Logic
@@ -354,19 +353,8 @@ export const jobService = {
             const jobResult = response.data.data;
             console.log(`[jobService] Job created: ${jobResult.djId}, status: ${jobResult.status}, skip: ${jobResult.flowInfo?.isSkipped}`);
 
-            // ============================================
-            // Legacy: ถ้าเป็นงานด่วน และ Backend ยังไม่ได้ Assign
-            // ให้เรียก SLA Shift จาก Frontend (จะย้ายไป Backend ในอนาคต)
-            // ============================================
-            if (jobData.priority?.toLowerCase() === 'urgent' && jobResult.assigneeId) {
-                try {
-                    const { adminService } = await import('./adminService');
-                    const holidays = await adminService.getHolidayDates();
-                    await jobService.shiftSLAIfUrgent(jobResult.id, jobResult.assigneeId, holidays);
-                } catch (slaError) {
-                    console.warn('[jobService] SLA Shift failed (non-critical):', slaError.message);
-                }
-            }
+            // Urgent SLA shifting is handled by the backend only.
+            // Keeping this path disabled prevents duplicate due-date shifts.
 
             // ============================================
             // Legacy: Send Notification (Frontend)
@@ -402,7 +390,7 @@ export const jobService = {
     /**
      * สร้าง Parent Job พร้อม Child Jobs
      *
-     * ✅ V2: ใช้ Backend API แทน Supabase โดยตรง
+     * ✅ V2: ใช้ Backend API โดยตรง
      * - Security: Bypass RLS restrictions (ใช้ Service Role)
      * - Atomicity: All-or-nothing (Transaction)
      * - Data Integrity: ไม่มี orphan jobs
@@ -553,45 +541,28 @@ export const jobService = {
 
 
     finishJob: async (jobId, finalFiles, notes, userId) => {
-        // 1. Upload files (Mock data structure for files)
-        const filesData = finalFiles.map(f => ({
-            name: f.name,
-            size: f.size,
-            type: f.type,
+        const attachments = (finalFiles || []).map(file => ({
+            name: file.name,
+            size: file.size,
+            type: file.type
         }));
 
-        // 2. Update job
-        const { data, error } = await supabase
-            .from('jobs')
-            .update({
-                status: 'completed',
-                completed_at: new Date().toISOString(),
-                completed_by: userId,
-                final_files: filesData
-            })
-            .eq('id', jobId)
-            .select()
-            .single();
-
-        if (error) throw error;
-
-        // 3. Add to job history
-        await supabase.from('job_history').insert({
-            job_id: jobId,
-            action: 'completed',
-            user_id: userId,
-            details: notes ? { notes } : null
+        const response = await httpClient.post(`/jobs/${jobId}/complete`, {
+            attachments,
+            note: notes,
+            completedBy: userId
         });
 
-        // 4. Send notifications
-        await notificationService.sendNotification('job_completed', jobId, { notes });
+        if (!response.data.success) {
+            throw new Error(response.data.message || 'Failed to complete job');
+        }
 
-        return data;
+        return response.data.data || response.data;
     },
 
     // --- Dashboard Stats ---
 
-    // ⚡ Performance: ใช้ Backend API ที่ใช้ COUNT() แทน Supabase ที่ดึงทุก row
+    // ⚡ Performance: ใช้ Backend API ที่ใช้ COUNT() แทนการดึงทุก row
     getDashboardStats: async (user, statusFilter, assigneeFilter) => {
         try {
             const role = _extractRoleParam(user);
@@ -694,70 +665,11 @@ export const jobService = {
      * @returns {Promise<void>}
      */
     shiftSLAIfUrgent: async (urgentJobId, assigneeId, holidays = []) => {
-        console.log(`[Urgent Logic] Calculating SLA shift for Assignee ID: ${assigneeId} caused by Job ID: ${urgentJobId}`);
-
-        try {
-            // 1. หา Job ทั้งหมดของ Assignee คนนี้ที่ยังไม่เสร็จ (active jobs)
-            const { data: activeJobs, error } = await supabase
-                .from('jobs')
-                .select('*')
-                .eq('assignee_id', assigneeId)
-                .neq('id', urgentJobId) // ไม่รวมงานใหม่
-                .in('status', ['pending_approval', 'approved', 'in_progress', 'correction']);
-
-            if (error) {
-                console.error('[Urgent Logic] Error fetching active jobs:', error);
-                return;
-            }
-
-            if (!activeJobs || activeJobs.length === 0) {
-                console.log('[Urgent Logic] No other active jobs to shift.');
-                return;
-            }
-
-            console.log(`[Urgent Logic] Found ${activeJobs.length} active jobs to shift +2 working days.`);
-
-            // 2. Import addWorkDays function เพื่อคำนวณวันทำการ
-            const { addWorkDays } = await import('../../utils/slaCalculator');
-
-            // 3. Loop update each job
-            for (const job of activeJobs) {
-                const currentDueDate = new Date(job.due_date);
-
-                // คำนวณวันทำการ ข้ามวันหยุด
-                const newDueDate = addWorkDays(currentDueDate, 2, holidays);
-
-                console.log(` >> Shifting Job ${job.id} (${job.subject}): ${job.due_date} -> ${newDueDate.toISOString()}`);
-
-                // Update Database จริง
-                await supabase.from('jobs').update({
-                    due_date: newDueDate.toISOString(),
-                    original_due_date: job.original_due_date || job.due_date,
-                    shifted_by_job_id: urgentJobId
-                }).eq('id', job.id);
-
-                // บันทึก Log
-                await supabase.from('sla_shift_logs').insert({
-                    job_id: job.id,
-                    urgent_job_id: urgentJobId,
-                    original_due_date: job.original_due_date || job.due_date,
-                    new_due_date: newDueDate.toISOString(),
-                    shift_days: 2
-                });
-
-                // ส่ง Notification ไปหาเจ้าของงาน
-                await notificationService.sendNotification('deadline_approaching', job.id, {
-                    shiftDays: 2,
-                    reasonJobId: urgentJobId,
-                    reason: 'ถูกเลื่อนเนื่องจากมีงานด่วนเข้ามา'
-                });
-            }
-
-            console.log(`[Urgent Logic] ✅ Successfully shifted ${activeJobs.length} jobs.`);
-
-        } catch (err) {
-            console.error('[Urgent Logic] Exception:', err);
-        }
+        console.warn('[Urgent Logic] shiftSLAIfUrgent is disabled. Backend handles urgent SLA rescheduling.', {
+            urgentJobId,
+            assigneeId,
+            holidayCount: holidays?.length || 0
+        });
     },
 
 
@@ -770,7 +682,7 @@ export const jobService = {
         try {
             console.log(`[jobService] startJob: ${jobId}, trigger: ${triggerType}`);
 
-            // Call Backend API instead of direct Supabase
+            // Call Backend API
             const response = await httpClient.post(`/jobs/${jobId}/start`, { triggerType });
 
             if (!response.data.success) {
@@ -825,35 +737,7 @@ export const jobService = {
      * Seed Data จะมี DJ ID ขึ้นต้นด้วย 'TEST-' (ตามที่กำหนดใน migration 010)
      */
     resetDemoData: async () => {
-        console.log('[Demo] Resetting data...');
-        try {
-            // ลบงานที่ไม่ได้ขึ้นต้นด้วย TEST-
-            // Note: Supabase doesn't support NOT LIKE easily in JS client for delete
-            // So we fetch IDs first then delete. Safety check.
-
-            const { data: jobsToDelete, error: fetchErr } = await supabase
-                .from('jobs')
-                .select('id, dj_id')
-                .not('dj_id', 'like', 'TEST-%');
-
-            if (fetchErr) throw fetchErr;
-
-            if (jobsToDelete.length > 0) {
-                const ids = jobsToDelete.map(j => j.id);
-                const { error: delErr } = await supabase
-                    .from('jobs')
-                    .delete()
-                    .in('id', ids);
-
-                if (delErr) throw delErr;
-            }
-
-            console.log(`[Demo] Reset completed. Deleted ${jobsToDelete.length} jobs.`);
-            return { success: true, count: jobsToDelete.length };
-        } catch (error) {
-            console.error('[Demo] Reset failed:', error);
-            throw error;
-        }
+        throw new Error('Demo reset must be executed by a backend/admin endpoint.');
     },
 
 

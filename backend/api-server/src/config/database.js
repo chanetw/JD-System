@@ -4,22 +4,20 @@
  *
  * จัดการการเชื่อมต่อ PostgreSQL สำหรับ:
  * - Development: Local PostgreSQL
- * - UAT: Supabase PostgreSQL
  * - Production: On-premise PostgreSQL
  *
- * Dual-Mode Support:
- * - DATABASE_MODE=supabase  → ใช้ Supabase PostgreSQL (default)
- * - DATABASE_MODE=local     → ใช้ Local/Docker PostgreSQL
+ * DATABASE_MODE is informational only. Runtime uses the PostgreSQL URL from
+ * DATABASE_URL and defaults to local.
  */
 
 import { PrismaClient } from '@prisma/client';
 
 /**
  * ตรวจสอบ Database Mode ปัจจุบัน
- * @returns {'supabase' | 'local'} - Database mode
+ * @returns {'local'} - Database mode
  */
 export function getDatabaseMode() {
-  return process.env.DATABASE_MODE || 'supabase';
+  return process.env.DATABASE_MODE || 'local';
 }
 
 /**

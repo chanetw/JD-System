@@ -36,6 +36,19 @@ export class ApprovalService extends BaseService {
     this.magicLinkService = new MagicLinkService();
   }
 
+  async triggerUrgentRescheduleIfNeeded(job, prisma = this.prisma) {
+    try {
+      if (!job || String(job.priority || '').toLowerCase() !== 'urgent' || !job.assigneeId) {
+        return null;
+      }
+
+      return await chainService.rescheduleForUrgent(job, prisma);
+    } catch (error) {
+      console.warn(`[ApprovalService] Urgent reschedule failed for job ${job?.djId || job?.id}:`, error.message);
+      return null;
+    }
+  }
+
   /**
    * สร้าง approval token สำหรับการอนุมัติผ่าน email
    * 
@@ -434,7 +447,7 @@ export class ApprovalService extends BaseService {
         newStatus = 'pending_approval';
       }
 
-      await this.prisma.job.update({
+      const updatedJob = await this.prisma.job.update({
         where: { id: jobId },
         data: {
           status: newStatus,
@@ -446,6 +459,8 @@ export class ApprovalService extends BaseService {
           })
         }
       });
+
+      await this.triggerUrgentRescheduleIfNeeded(updatedJob);
     } catch (error) {
       console.error('[ApprovalService] Update job status failed:', error);
       throw error;
@@ -2108,6 +2123,8 @@ export class ApprovalService extends BaseService {
         }
       });
 
+      await this.triggerUrgentRescheduleIfNeeded(updatedJob);
+
       return { success: true, data: updatedJob, assigneeId };
     } catch (error) {
       console.error('[ApprovalService] Assign failed:', error);
@@ -2470,13 +2487,15 @@ export class ApprovalService extends BaseService {
         }
       }
 
-      await this.prisma.job.update({
+      const updatedJob = await this.prisma.job.update({
         where: { id: jobId },
         data: {
           status: newStatus,
           ...(isFinal && newStatus !== 'pending_dependency' ? { startedAt: new Date() } : {})
         }
       });
+
+      await this.triggerUrgentRescheduleIfNeeded(updatedJob);
 
       // 5.2 Auto-approve reached final and already has assignee → notify + email assignee
       if (sendAssigneeNotification && isFinal && newStatus === 'in_progress') {

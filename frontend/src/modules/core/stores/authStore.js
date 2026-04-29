@@ -12,10 +12,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import api from '@shared/services/apiService';
-import { supabase, setSupabaseToken, clearSupabaseToken } from '@shared/services/supabaseClient';
 
-/** AUTH_MODE: 'supabase' (default) | 'jwt_only' */
-const AUTH_MODE = import.meta.env.VITE_AUTH_MODE || 'supabase';
+/** Legacy store kept for compatibility. Active app uses authStoreV2. */
 
 /**
  * useAuthStore: คลังข้อมูลสำหรับการยืนยันตัวตน
@@ -88,15 +86,6 @@ export const useAuthStore = create(
                     const response = await userService.getMe();
 
                     if (response.success && response.data) {
-                        // Sync with Supabase Client (Critical for RLS)
-                        if (AUTH_MODE === 'supabase') {
-                            setSupabaseToken(token);
-                            await supabase.auth.setSession({
-                                access_token: token,
-                                refresh_token: token
-                            });
-                        }
-
                         // รูปแบบข้อมูลจาก /me ผ่านการ map roles มาเรียบร้อยแล้ว
                         set({
                             user: { ...response.data, token }, // Keep token in user object
@@ -107,9 +96,6 @@ export const useAuthStore = create(
                     } else {
                         // ถ้า Token หมดอายุหรือ Session หาย
                         localStorage.removeItem('token');
-                        if (AUTH_MODE === 'supabase') {
-                            await supabase.auth.signOut();
-                        }
                         set({ user: null, session: null, isAuthenticated: false, isLoading: false });
                     }
                 } catch (error) {
@@ -150,27 +136,10 @@ export const useAuthStore = create(
 
                 try {
                     // === JWT_ONLY MODE: ใช้ Backend API ===
-                    if (AUTH_MODE === 'jwt_only') {
-                        const { userService } = await import('@shared/services/modules/userService');
-                        const response = await userService.getMe();
-                        if (response.success && response.data) {
-                            set({ user: { ...response.data, token: user.token } });
-                        }
-                        return;
-                    }
-
-                    // === SUPABASE MODE (default) ===
-                    const { data, error } = await supabase
-                        .from('users')
-                        .select(`
-                            *,
-                            userRoles:user_roles(*)
-                        `)
-                        .eq('id', user.id)
-                        .single();
-
-                    if (!error && data) {
-                        set({ user: data });
+                    const { userService } = await import('@shared/services/modules/userService');
+                    const response = await userService.getMe();
+                    if (response.success && response.data) {
+                        set({ user: { ...response.data, token: user.token } });
                     }
                 } catch (error) {
                     console.error('Error refreshing user:', error);
@@ -206,14 +175,6 @@ export const useAuthStore = create(
                     // บันทึก token แยกใน localStorage (สำหรับ API calls)
                     if (user?.token) {
                         localStorage.setItem('token', user.token);
-                        // Sync Supabase Session
-                        if (AUTH_MODE === 'supabase') {
-                            setSupabaseToken(user.token);
-                            await supabase.auth.setSession({
-                                access_token: user.token,
-                                refresh_token: user.token
-                            });
-                        }
                     }
 
                     set({
@@ -243,12 +204,6 @@ export const useAuthStore = create(
                 // ลบ token จาก localStorage
                 localStorage.removeItem('token');
 
-                // ออกจากระบบใน Supabase
-                if (AUTH_MODE === 'supabase') {
-                    await supabase.auth.signOut();
-                    clearSupabaseToken();
-                }
-
                 set({
                     user: null,
                     session: null,
@@ -276,14 +231,6 @@ export const useAuthStore = create(
                     if (result.user && result.token) {
                         // บันทึก Token ใหม่
                         localStorage.setItem('token', result.token);
-                        // Sync Supabase Session
-                        if (AUTH_MODE === 'supabase') {
-                            setSupabaseToken(result.token);
-                            await supabase.auth.setSession({
-                                access_token: result.token,
-                                refresh_token: result.token
-                            });
-                        }
 
                         // อัปเดต State
                         set({

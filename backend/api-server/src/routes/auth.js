@@ -262,7 +262,7 @@ router.post('/login', async (req, res) => {
 
     // สร้าง JWT token
     const tokenPayload = {
-      sub: crypto.randomUUID(), // Required by Supabase (Dummy UUID)
+      sub: crypto.randomUUID(),
       userId: user.id,
       tenantId: user.tenantId,
       email: user.email,
@@ -673,7 +673,7 @@ router.post('/impersonate', authenticateToken, setRLSContextMiddleware, async (r
 
     // 5. สร้าง JWT Token ใหม่สำหรับ Target User
     const tokenPayload = {
-      sub: crypto.randomUUID(), // Compatibility for Supabase
+      sub: crypto.randomUUID(),
       userId: targetUser.id,
       tenantId: targetUser.tenantId,
       email: targetUser.email,

@@ -1,13 +1,13 @@
 
 /**
- * Helper to handle Supabase response
- * @param {Object} response - The response object from Supabase { data, error }
+ * Helper to handle legacy data/error response objects
+ * @param {Object} response - The response object { data, error }
  * @returns {any} - The data from response
  * @throws {Error} - If error is present
  */
 export const handleResponse = ({ data, error }) => {
     if (error) {
-        console.error("Supabase API Error:", error);
+        console.error("API Error:", error);
         throw new Error(error.message);
     }
     return data;

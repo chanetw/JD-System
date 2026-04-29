@@ -102,8 +102,7 @@ export default function CreateDJ() {
         let nextDate;
 
         if (priority === 'Urgent') {
-            nextDate = new Date(today);
-            nextDate.setDate(nextDate.getDate() + 1);
+            nextDate = addWorkDays(today, effectiveSla, holidayList);
         } else {
             nextDate = addWorkDays(today, effectiveSla, holidayList);
             nextDate = new Date(nextDate);

@@ -77,6 +77,19 @@ const toIsoStringOrNull = (value) => {
   return value;
 };
 
+const triggerUrgentRescheduleIfNeeded = async (job, prisma) => {
+  try {
+    if (!job || String(job.priority || '').toLowerCase() !== 'urgent' || !job.assigneeId) {
+      return null;
+    }
+
+    return await chainService.rescheduleForUrgent(job, prisma);
+  } catch (error) {
+    console.warn(`[Jobs] Urgent reschedule failed for ${job?.djId || job?.id}:`, error.message);
+    return null;
+  }
+};
+
 const buildMediaFilePublicUrl = (filePath, fileType) => {
   if (!filePath) return null;
 
@@ -1161,7 +1174,7 @@ function buildDashboardRoleFilter(roles, userId) {
 /**
  * GET /api/jobs/dashboard-stats
  * ดึง stats สำหรับ Dashboard ด้วย aggregate COUNT (ไม่ดึงทุก row)
- * แทน getDashboardStats ที่ดึงผ่าน Supabase ตรง
+ * ผ่าน Backend API โดยตรง
  *
  * @query {string} role - comma-separated roles (e.g. 'requester,approver')
  * @returns {Object} { newToday, dueToday, overdue, totalJobs, totalItems, pending, myJobs, assigneeSummary }
@@ -1750,21 +1763,21 @@ router.post('/', async (req, res) => {
         console.log(`[Jobs] Calculated Due Date from Acceptance Date: ${calculatedDueDate}`);
       }
     } else {
-      // ถ้าไม่ระบุ Acceptance Date ให้ใช้วันที่สร้างงาน (ปรับแล้ว)
-      acceptanceDate = dueDateValidation.adjustedDate;
+      // ถ้าไม่ระบุ Acceptance Date ให้ถือว่า dueDate ที่ requester เลือกคือ deadline จริง
+      // แล้วคำนวณวันเริ่ม/วันรับงานย้อนกลับจาก SLA
+      calculatedDueDate = dueDateValidation.adjustedDate;
       acceptanceMethod = 'auto';
 
-      // คำนวณ Due Date จาก SLA
       if (jobType.slaWorkingDays) {
-        calculatedDueDate = await calculateDueDateWithTenantHolidays(
-          acceptanceDate,
+        acceptanceDate = await subtractWorkingDaysWithTenantHolidays(
+          calculatedDueDate,
           jobType.slaWorkingDays,
           tenantId,
           prisma
         );
+        console.log(`[Jobs] Calculated Acceptance Date from target Due Date: ${acceptanceDate}`);
       } else {
-        // ถ้าไม่มี SLA ให้ใช้ dueDate ที่ปรับแล้ว
-        calculatedDueDate = dueDateValidation.adjustedDate;
+        acceptanceDate = dueDateValidation.adjustedDate;
       }
     }
 
@@ -3332,6 +3345,63 @@ async function calculateDueDateWithTenantHolidays(startDate, workingDays, tenant
 }
 
 /**
+ * Helper: Calculate acceptance/start date by subtracting working days from a target due date.
+ * - ใช้เมื่อ requester เลือก Due Date เป็น deadline จริง
+ * - นับถอยหลังเฉพาะวันทำการและวันหยุดของ tenant
+ */
+async function subtractWorkingDaysWithTenantHolidays(dueDate, workingDays, tenantId, prisma) {
+  const safeWorkingDays = Number(workingDays) || 0;
+  const result = new Date(dueDate);
+
+  if (safeWorkingDays <= 0) {
+    return result;
+  }
+
+  const rangeEnd = new Date(dueDate);
+  rangeEnd.setHours(23, 59, 59, 999);
+  const rangeStart = new Date(dueDate);
+  rangeStart.setDate(rangeStart.getDate() - Math.max(45, safeWorkingDays * 4));
+  rangeStart.setHours(0, 0, 0, 0);
+
+  const holidaySet = new Set();
+  try {
+    const holidays = await prisma.holiday.findMany({
+      where: {
+        tenantId,
+        date: {
+          gte: rangeStart,
+          lte: rangeEnd
+        }
+      },
+      select: { date: true }
+    });
+
+    holidays.forEach(({ date }) => {
+      const d = new Date(date);
+      holidaySet.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    });
+  } catch (err) {
+    console.warn('[Jobs] Could not load holidays for SLA acceptance date calculation, fallback to weekends only:', err.message);
+  }
+
+  let daysSubtracted = 0;
+  while (daysSubtracted < safeWorkingDays) {
+    result.setDate(result.getDate() - 1);
+
+    const dayOfWeek = result.getDay();
+    const dateKey = `${result.getFullYear()}-${String(result.getMonth() + 1).padStart(2, '0')}-${String(result.getDate()).padStart(2, '0')}`;
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const isHoliday = holidaySet.has(dateKey);
+
+    if (!isWeekend && !isHoliday) {
+      daysSubtracted++;
+    }
+  }
+
+  return result;
+}
+
+/**
  * Helper: คำนวณ deadline auto-close = 1 วันทำงานถัดไป
  * - ข้ามวันเสาร์ (6) และวันอาทิตย์ (0)
  * - ข้ามวันหยุดนักขัตฤกษ์จาก holidays table (กรองตาม tenantId)
@@ -3453,10 +3523,12 @@ router.post('/:id/reassign', async (req, res) => {
       updateData.startedAt = new Date();
     }
 
-    await prisma.job.update({
+    const updatedJob = await prisma.job.update({
       where: { id: Number(id) },
       data: updateData
     });
+
+    await triggerUrgentRescheduleIfNeeded(updatedJob, prisma);
 
     // 4. Log Activity
     await prisma.activityLog.create({
@@ -3608,7 +3680,9 @@ router.post('/:id/assign', async (req, res) => {
       updateData.startedAt = new Date();
     }
 
-    await prisma.job.update({ where: { id: Number(id) }, data: updateData });
+    const updatedJob = await prisma.job.update({ where: { id: Number(id) }, data: updateData });
+
+    await triggerUrgentRescheduleIfNeeded(updatedJob, prisma);
 
     // 5. Log activity
     await prisma.activityLog.create({
@@ -3728,6 +3802,8 @@ router.post('/:id/start', async (req, res) => {
         startedAt: job.startedAt || new Date(), // เก็บเวลาเริ่มงานครั้งแรกเท่านั้น
       }
     });
+
+    await triggerUrgentRescheduleIfNeeded(updatedJob, prisma);
 
     // 3. Log Activity
     await prisma.activityLog.create({

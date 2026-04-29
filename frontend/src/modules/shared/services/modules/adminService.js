@@ -1,4 +1,3 @@
-import { supabase } from '../supabaseClient';
 import { handleResponse } from '../utils';
 import httpClient from '../httpClient';
 import { cacheService } from '../cacheService';
@@ -609,27 +608,21 @@ export const adminService = {
     getApprovalFlows: async () => {
         // V1 Extended: Get all flows from database (default flows only, jobTypeId = null)
         try {
-            const { data: flows, error } = await supabase.from('approval_flows')
-                .select('*')
-                .is('job_type_id', null) // Only get default flows
-                .eq('is_active', true)
-                .order('project_id');
-
-            if (error) throw error;
+            const flows = await adminService.getAllApprovalFlows();
 
             // Transform V1 Extended structure to frontend format
-            return flows.map(f => ({
+            return (flows || []).filter(f => !f.jobTypeId && !f.job_type_id).map(f => ({
                 id: f.id,
-                projectId: f.project_id,
-                jobTypeId: f.job_type_id,
-                skipApproval: f.skip_approval,
-                autoAssignType: f.auto_assign_type,
-                autoAssignUserId: f.auto_assign_user_id,
+                projectId: f.projectId || f.project_id,
+                jobTypeId: f.jobTypeId || f.job_type_id,
+                skipApproval: f.skipApproval || f.skip_approval,
+                autoAssignType: f.autoAssignType || f.auto_assign_type,
+                autoAssignUserId: f.autoAssignUserId || f.auto_assign_user_id,
                 name: f.name,
-                levels: f.approver_steps || [], // approverSteps stored as JSON
+                levels: f.levels || f.approverSteps || f.approver_steps || [],
                 includeTeamLead: f.conditions?.includeTeamLead || false,
                 teamLeadId: f.conditions?.teamLeadId || null,
-                updatedAt: f.updated_at
+                updatedAt: f.updatedAt || f.updated_at
             }));
         } catch (error) {
             console.error('[adminService] getApprovalFlows error:', error);
@@ -991,7 +984,7 @@ export const adminService = {
     },
 
     updateUser: async (id, userData) => {
-        // ✓ Use Backend API instead of direct Supabase (RLS blocked)
+        // ✓ Use Backend API
         const payload = {
             firstName: userData.firstName,
             lastName: userData.lastName,
@@ -1156,8 +1149,7 @@ export const adminService = {
         try {
             console.log(`[adminService] Getting user with roles (Backend API): ${userId}`);
 
-            // Call Backend API instead of direct Supabase
-            // Because RLS might block access to user_roles/scopes
+            // Call Backend API because user role/scope reads are backend-owned
             const response = await httpClient.get(`/users/${userId}/roles`);
 
             if (response.data && response.data.success) {
@@ -1185,7 +1177,7 @@ export const adminService = {
         try {
             console.log('💾 Saving roles via Backend API:', { userId, roles, assignedBy, tenantId });
 
-            // Call Backend API instead of direct Supabase to avoid RLS issues
+            // Call Backend API to avoid direct database access from frontend
             const response = await httpClient.post(`/users/${userId}/roles`, {
                 roles
             });
@@ -1250,66 +1242,17 @@ export const adminService = {
      */
     getApproversByScope: async (budId = null, tenantId = 1) => {
         try {
-            // ดึง users ที่มี role = approver จาก user_roles
-            let query = supabase
-                .from('user_roles')
-                .select(`
-                    user_id,
-                    users!inner(id, display_name, email, avatar_url, is_active)
-                `)
-                .eq('role_name', 'approver')
-                .eq('tenant_id', tenantId)
-                .eq('is_active', true);
+            const response = await httpClient.get('/users', {
+                params: { role: 'Approver', activeOnly: true, limit: 1000 }
+            });
+            const result = response.data?.data;
+            const users = Array.isArray(result) ? result : (result?.data || []);
 
-            const { data: approverRoles, error } = await query;
-
-            if (error) {
-                // Fallback: ดึงจาก users table โดยตรง
-                const { data: fallbackUsers } = await supabase
-                    .from('users')
-                    .select('id, display_name, email, avatar_url')
-                    .eq('role', 'approver')
-                    .eq('is_active', true);
-
-                return (fallbackUsers || []).map(u => ({
-                    id: u.id,
-                    name: u.display_name,
-                    email: u.email,
-                    avatar: u.avatar_url
-                }));
-            }
-
-            // ถ้ามี budId → filter by scope
-            if (budId && approverRoles && approverRoles.length > 0) {
-                const userIds = approverRoles.map(r => r.user_id);
-
-                const { data: scopes } = await supabase
-                    .from('user_scope_assignments')
-                    .select('user_id')
-                    .in('user_id', userIds)
-                    .eq('role_type', 'approver')
-                    .eq('tenant_id', tenantId)
-                    .eq('is_active', true)
-                    .or(`scope_level.eq.tenant,and(scope_level.eq.bud,scope_id.eq.${budId})`);
-
-                const validUserIds = new Set((scopes || []).map(s => s.user_id));
-
-                // ถ้าไม่มี scopes → ถือว่า legacy (full access)
-                return approverRoles
-                    .filter(r => validUserIds.size === 0 || validUserIds.has(r.user_id))
-                    .map(r => ({
-                        id: r.users.id,
-                        name: r.users.display_name,
-                        email: r.users.email,
-                        avatar: r.users.avatar_url
-                    }));
-            }
-
-            return (approverRoles || []).map(r => ({
-                id: r.users.id,
-                name: r.users.display_name,
-                email: r.users.email,
-                avatar: r.users.avatar_url
+            return users.map(u => ({
+                id: u.id,
+                name: u.displayName || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email,
+                email: u.email,
+                avatar: u.avatarUrl || u.avatar
             }));
         } catch (err) {
             console.error('getApproversByScope error:', err);
@@ -1325,38 +1268,17 @@ export const adminService = {
      */
     getAssigneesByScope: async (budId = null, tenantId = 1) => {
         try {
-            // ดึงจาก user_roles
-            const { data: assigneeRoles, error } = await supabase
-                .from('user_roles')
-                .select(`
-                    user_id,
-                    users!inner(id, display_name, email, avatar_url, is_active)
-                `)
-                .eq('role_name', 'assignee')
-                .eq('tenant_id', tenantId)
-                .eq('is_active', true);
+            const response = await httpClient.get('/users', {
+                params: { role: 'Assignee', activeOnly: true, limit: 1000 }
+            });
+            const result = response.data?.data;
+            const users = Array.isArray(result) ? result : (result?.data || []);
 
-            if (error) {
-                // Fallback
-                const { data: fallbackUsers } = await supabase
-                    .from('users')
-                    .select('id, display_name, email, avatar_url')
-                    .eq('role', 'assignee')
-                    .eq('is_active', true);
-
-                return (fallbackUsers || []).map(u => ({
-                    id: u.id,
-                    name: u.display_name,
-                    email: u.email,
-                    avatar: u.avatar_url
-                }));
-            }
-
-            return (assigneeRoles || []).map(r => ({
-                id: r.users.id,
-                name: r.users.display_name,
-                email: r.users.email,
-                avatar: r.users.avatar_url
+            return users.map(u => ({
+                id: u.id,
+                name: u.displayName || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email,
+                email: u.email,
+                avatar: u.avatarUrl || u.avatar
             }));
         } catch (err) {
             console.error('getAssigneesByScope error:', err);
@@ -1708,4 +1630,3 @@ export const adminService = {
         }
     }
 };
-

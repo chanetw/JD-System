@@ -1,6 +1,6 @@
 /**
  * @file apiDatabase.js
- * @description Real Database API Service integrating with Supabase.
+ * @description Real Database API facade backed by REST API services.
  * REFACTORED: Now acts as a facade aggregating specific service modules.
  */
 

@@ -2,9 +2,9 @@
 
 ## 🎯 ภาพรวม
 
-คู่มือนี้อธิบายการใช้งานระบบฐานข้อมูลแบบ Dual-Mode ที่สามารถสลับระหว่าง Supabase และ Local/Docker PostgreSQL ได้
+คู่มือนี้อธิบายการใช้งานระบบฐานข้อมูลปัจจุบันที่ใช้ Local/Docker PostgreSQL หรือ PostgreSQL server ผ่าน Backend API
 
-## 🔄 Dual-Mode Architecture
+## 🔄 Current Architecture
 
 ```
 ┌─────────────────┐    ┌─────────────────┐
@@ -20,11 +20,6 @@
                     │   Database      │
                     │                 │
                     │ ┌─────────────┐ │
-                    │ │ Supabase    │ │
-                    │ │ PostgreSQL  │ │
-                    │ └─────────────┘ │
-                    │                 │
-                    │ ┌─────────────┐ │
                     │ │ Local/Docker│ │
                     │ │ PostgreSQL  │ │
                     │ └─────────────┘ │
@@ -36,11 +31,11 @@
 ### Backend Configuration
 ```env
 # Database Mode
-DATABASE_MODE=supabase          # supabase | local
+DATABASE_MODE=local
 DATABASE_URL=postgresql://...   # Connection string
 
 # Storage Provider
-STORAGE_PROVIDER=supabase       # supabase | local | google_drive
+STORAGE_PROVIDER=local          # local | google_drive
 
 # Google Drive (if using google_drive)
 GOOGLE_SERVICE_ACCOUNT={"type":"service_account",...}
@@ -53,31 +48,15 @@ UPLOADS_DIR=./uploads
 ### Frontend Configuration
 ```env
 # Authentication Mode
-VITE_AUTH_MODE=supabase         # supabase | jwt_only
+VITE_AUTH_MODE=jwt_only
 
 # Frontend Mode
-VITE_FRONTEND_MODE=supabase     # supabase | api_only
+VITE_FRONTEND_MODE=api_only
 ```
 
 ## 🚀 Quick Start
 
-### 1. ใช้งานกับ Supabase (Default)
-```bash
-# Backend .env
-DATABASE_MODE=supabase
-DATABASE_URL=postgresql://postgres:[password]@db.[project].supabase.co:5432/postgres
-STORAGE_PROVIDER=supabase
-
-# Frontend .env
-VITE_AUTH_MODE=supabase
-VITE_FRONTEND_MODE=supabase
-
-# Start services
-npm run dev  # Backend
-npm run dev  # Frontend
-```
-
-### 2. ใช้งานกับ Local/Docker
+### ใช้งานกับ Local/Docker
 ```bash
 # Start Docker PostgreSQL
 docker-compose up -d postgres
@@ -100,18 +79,15 @@ npm run dev  # Frontend
 
 | DATABASE_MODE | STORAGE_PROVIDER | VITE_AUTH_MODE | VITE_FRONTEND_MODE | Use Case |
 |---------------|------------------|-----------------|-------------------|---------|
-| supabase | supabase | supabase | supabase | **Production (Current)** |
-| local | local | jwt_only | api_only | **Local Development** |
-| supabase | local | supabase | supabase | **Hybrid (Supabase DB, Local Files)** |
+| local | local | jwt_only | api_only | **Current Runtime** |
 | local | google_drive | jwt_only | api_only | **Local DB, Cloud Files** |
 
 ## 🔄 Migration Steps
 
 ### Phase 1: Sync Data to Local
 ```bash
-# 1. Export from Supabase
-export SUPABASE_DB_URL="postgresql://postgres:[password]@db.[project].supabase.co:5432/postgres"
-./scripts/sync-supabase-to-docker.sh
+# 1. Restore from an existing PostgreSQL backup if needed
+docker exec -i dj-postgres psql -U postgres -d dj_system < backup.sql
 
 # 2. Verify data
 docker exec dj-postgres psql -U postgres dj_system -c "SELECT COUNT(*) FROM jobs;"
@@ -139,15 +115,7 @@ curl http://localhost:3000/api/jobs
 
 ## 🗂️ File Storage Options
 
-### 1. Supabase Storage (Default)
-```env
-STORAGE_PROVIDER=supabase
-```
-- Files stored in Supabase Storage bucket
-- Public URLs automatically generated
-- RLS policies apply
-
-### 2. Local Disk Storage
+### 1. Local Disk Storage
 ```env
 STORAGE_PROVIDER=local
 UPLOADS_DIR=./uploads
@@ -233,7 +201,7 @@ npm run dev
 ### Test Storage Provider Switching
 ```bash
 # Test each provider
-for provider in supabase local google_drive; do
+for provider in local google_drive; do
   echo "Testing $provider..."
   STORAGE_PROVIDER=$provider npm run dev &
   sleep 3
@@ -245,7 +213,7 @@ done
 ### Test Database Mode Switching
 ```bash
 # Test database modes
-for mode in supabase local; do
+for mode in local; do
   echo "Testing $mode database..."
   DATABASE_MODE=$mode npm run dev &
   sleep 3
@@ -257,8 +225,8 @@ done
 ### Test Frontend Modes
 ```bash
 # Test frontend modes
-for auth in supabase jwt_only; do
-  for frontend in supabase api_only; do
+for auth in jwt_only; do
+  for frontend in api_only; do
     echo "Testing AUTH_MODE=$auth, FRONTEND_MODE=$frontend"
     VITE_AUTH_MODE=$auth VITE_FRONTEND_MODE=$frontend npm run dev &
     sleep 3
@@ -275,7 +243,7 @@ done
 # Backend logs show mode on startup
 npm run dev
 # Look for:
-# [Database] Mode: supabase | URL: postgresql://****@****
+# [Database] Mode: local | URL: postgresql://****@****
 # [StorageService] Provider: local
 
 # Frontend console shows mode
@@ -322,16 +290,16 @@ curl -H "Authorization: Bearer <token>" \
 ### Environment Variables Summary
 | Variable | Options | Default | Description |
 |----------|----------|---------|-------------|
-| `DATABASE_MODE` | `supabase`, `local` | `supabase` | Database connection mode |
-| `STORAGE_PROVIDER` | `supabase`, `local`, `google_drive` | `supabase` | File storage provider |
-| `VITE_AUTH_MODE` | `supabase`, `jwt_only` | `supabase` | Frontend authentication |
-| `VITE_FRONTEND_MODE` | `supabase`, `api_only` | `supabase` | Frontend API calls |
+| `DATABASE_MODE` | `local` | `local` | Database connection mode |
+| `STORAGE_PROVIDER` | `local`, `google_drive` | `local` | File storage provider |
+| `VITE_AUTH_MODE` | `jwt_only` | `jwt_only` | Frontend authentication |
+| `VITE_FRONTEND_MODE` | `api_only` | `api_only` | Frontend API calls |
 | `UPLOADS_DIR` | path | `./uploads` | Local storage directory |
 
 ### File Locations
 - Docker Compose: `docker-compose.yml`, `docker-compose.prod.yml`
 - Dockerfile: `backend/api-server/Dockerfile`
-- Scripts: `scripts/sync-supabase-to-docker.sh`, `scripts/backup-docker.sh`
+- Scripts: `scripts/backup-docker.sh`
 - Storage Service: `backend/api-server/src/services/storageService.js`
 - Providers: `backend/api-server/src/services/providers/`
 
@@ -344,4 +312,4 @@ curl -H "Authorization: Bearer <token>" \
 
 ---
 
-**📝 Note:** ระบบถูกออกแบบให้ทำงานเหมือนเดิมเมื่อใช้ค่า default (supabase) การเปลี่ยน mode เป็นแบบ optional สำหรับการทดสอบและ migration เท่านั้น
+**📝 Note:** Runtime ปัจจุบันใช้ Backend API, JWT auth, และ local storage เป็นค่าเริ่มต้น

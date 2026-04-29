@@ -1,5 +1,5 @@
 
-import { supabase } from '../supabaseClient';
+import httpClient from '../httpClient';
 
 export const reportService = {
     /**
@@ -8,27 +8,27 @@ export const reportService = {
     getReportData: async (periodType = 'this_month', customStartDate = null, customEndDate = null, filters = {}) => {
         const { startDate, endDate } = reportService.getPeriodDates(periodType, customStartDate, customEndDate);
 
-        // Build query
-        let query = supabase
-            .from('jobs')
-            .select(`
-                *,
-                job_type:job_types(name, icon),
-                project:projects(name, code),
-                assignee:users!jobs_assignee_id_fkey(display_name, email), 
-                requester:users!jobs_requester_id_fkey(display_name, email)
-            `) // Note: Modified generic relation names to match schema used in jobService (users!...)
-            .gte('created_at', startDate)
-            .lte('created_at', endDate);
+        const response = await httpClient.get('/reports/analytics', {
+            params: {
+                startDate,
+                endDate,
+                status: filters.status,
+                jobTypeId: filters.jobTypeId,
+                projectId: filters.projectId,
+                assigneeId: filters.assigneeId
+            }
+        });
 
-        // Apply filters
-        if (filters.status) query = query.eq('status', filters.status);
-        if (filters.jobTypeId) query = query.eq('job_type_id', filters.jobTypeId);
-        if (filters.projectId) query = query.eq('project_id', filters.projectId);
-        if (filters.assigneeId) query = query.eq('assignee_id', filters.assigneeId); // Fixed column name
+        if (!response.data?.success) {
+            throw new Error(response.data?.message || 'Failed to fetch report data');
+        }
 
-        const { data, error } = await query.order('created_at', { ascending: false });
-        if (error) throw error;
+        const apiData = response.data.data || {};
+        const data = apiData.jobs || [];
+
+        if (!data.length) {
+            return apiData;
+        }
 
         // Calculate all metrics based on fetched data
         const kpi = await reportService.calculateKPI(data);

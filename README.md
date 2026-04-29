@@ -128,10 +128,10 @@ npm run dev
 ### Development database only
 
 ```bash
-docker compose up -d
+docker compose up -d postgres
 ```
 
-ไฟล์ [docker-compose.yml](docker-compose.yml) ใช้สำหรับ PostgreSQL ในงานพัฒนา
+ไฟล์ [docker-compose.yml](docker-compose.yml) ใช้สำหรับ PostgreSQL ในงานพัฒนา และตั้ง project name เป็น `dj-system-dev` เพื่อแยกจาก production stack
 
 ### Development full stack (PostgreSQL + Backend + Frontend)
 

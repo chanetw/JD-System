@@ -25,7 +25,6 @@ const ApprovalFlow = React.lazy(() => import('./pages/ApprovalFlow'));
 const AssignmentMatrix = React.lazy(() => import('./pages/AssignmentMatrix'));
 const OrganizationManagement = React.lazy(() => import('./pages/OrganizationManagement'));
 const HolidayCalendar = React.lazy(() => import('./pages/HolidayCalendar'));
-const NotificationSettings = React.lazy(() => import('./pages/NotificationSettings'));
 const EmailSettings = React.lazy(() => import('./pages/EmailSettings'));
 const PortalSettings = React.lazy(() => import('./pages/PortalSettings'));
 // V2 ApprovalFlowTemplates REMOVED - Using V1 Extended instead
@@ -102,7 +101,7 @@ export const routes = [
     },
     {
         path: 'admin/notifications',
-        element: withSuspense(NotificationSettings),
+        element: withSuspense(EmailSettings),
         roles: ['Admin'],
         title: 'ตั้งค่าการแจ้งเตือน'
     },

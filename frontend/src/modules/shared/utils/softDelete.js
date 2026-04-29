@@ -3,8 +3,6 @@
  * @description Soft Delete utility functions for jobs, users, and other entities
  */
 
-import { supabase } from '../services/supabaseClient';
-
 /**
  * Soft delete a job
  * @param {number} jobId - Job ID to delete
@@ -12,19 +10,7 @@ import { supabase } from '../services/supabaseClient';
  * @returns {Promise<{success: boolean, error?: string}>}
  */
 export const softDeleteJob = async (jobId, deletedBy) => {
-    try {
-        const { data, error } = await supabase.rpc('soft_delete_job', {
-            p_job_id: jobId,
-            p_deleted_by: deletedBy
-        });
-
-        if (error) throw error;
-
-        return { success: true, data };
-    } catch (error) {
-        console.error('Error soft deleting job:', error);
-        return { success: false, error: error.message };
-    }
+    return { success: false, error: 'Soft delete must be executed by a backend endpoint.' };
 };
 
 /**
@@ -34,19 +20,7 @@ export const softDeleteJob = async (jobId, deletedBy) => {
  * @returns {Promise<{success: boolean, error?: string}>}
  */
 export const restoreJob = async (jobId, restoredBy) => {
-    try {
-        const { data, error } = await supabase.rpc('restore_deleted_job', {
-            p_job_id: jobId,
-            p_restored_by: restoredBy
-        });
-
-        if (error) throw error;
-
-        return { success: true, data };
-    } catch (error) {
-        console.error('Error restoring job:', error);
-        return { success: false, error: error.message };
-    }
+    return { success: false, error: 'Restore must be executed by a backend endpoint.' };
 };
 
 /**
@@ -56,19 +30,7 @@ export const restoreJob = async (jobId, restoredBy) => {
  * @returns {Promise<{success: boolean, error?: string}>}
  */
 export const softDeleteUser = async (userId, deletedBy) => {
-    try {
-        const { data, error } = await supabase.rpc('soft_delete_user', {
-            p_user_id: userId,
-            p_deleted_by: deletedBy
-        });
-
-        if (error) throw error;
-
-        return { success: true, data };
-    } catch (error) {
-        console.error('Error soft deleting user:', error);
-        return { success: false, error: error.message };
-    }
+    return { success: false, error: 'Soft delete must be executed by a backend endpoint.' };
 };
 
 /**
@@ -78,30 +40,7 @@ export const softDeleteUser = async (userId, deletedBy) => {
  * @returns {Promise<Array>}
  */
 export const getDeletedJobs = async (tenantId, days = 30) => {
-    try {
-        const cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() - days);
-
-        const { data, error } = await supabase
-            .from('jobs')
-            .select(`
-                *,
-                project:projects(name),
-                job_type:job_types(name),
-                deleted_by_user:users!jobs_deleted_by_fkey(display_name)
-            `)
-            .eq('tenant_id', tenantId)
-            .not('deleted_at', 'is', null)
-            .gte('deleted_at', cutoffDate.toISOString())
-            .order('deleted_at', { ascending: false });
-
-        if (error) throw error;
-
-        return data || [];
-    } catch (error) {
-        console.error('Error getting deleted jobs:', error);
-        return [];
-    }
+    return [];
 };
 
 /**
@@ -111,28 +50,7 @@ export const getDeletedJobs = async (tenantId, days = 30) => {
  * @returns {Promise<Array>}
  */
 export const getDeletedUsers = async (tenantId, days = 30) => {
-    try {
-        const cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() - days);
-
-        const { data, error } = await supabase
-            .from('users')
-            .select(`
-                *,
-                deleted_by_user:users!users_deleted_by_fkey(display_name)
-            `)
-            .eq('tenant_id', tenantId)
-            .not('deleted_at', 'is', null)
-            .gte('deleted_at', cutoffDate.toISOString())
-            .order('deleted_at', { ascending: false });
-
-        if (error) throw error;
-
-        return data || [];
-    } catch (error) {
-        console.error('Error getting deleted users:', error);
-        return [];
-    }
+    return [];
 };
 
 /**

@@ -2,9 +2,8 @@
  * @file storageService.js
  * @description Storage Service Abstraction - รองรับหลาย provider
  * 
- * Dual-Mode Support:
- * - STORAGE_PROVIDER=supabase      → Supabase Storage (default)
- * - STORAGE_PROVIDER=local         → Local disk /uploads/
+ * Supported providers:
+ * - STORAGE_PROVIDER=local         → Local disk /uploads/ (default)
  * - STORAGE_PROVIDER=google_drive  → Google Drive API
  * 
  * ทุก provider ใช้ interface เดียวกัน:
@@ -16,14 +15,13 @@
 
 import { LocalStorageProvider } from './providers/localStorageProvider.js';
 import { GoogleDriveProvider } from './providers/googleDriveProvider.js';
-import { SupabaseStorageProvider } from './providers/supabaseStorageProvider.js';
 
 /**
  * ตรวจสอบ Storage Provider ปัจจุบัน
- * @returns {'supabase' | 'local' | 'google_drive'} - Storage provider type
+ * @returns {'local' | 'google_drive'} - Storage provider type
  */
 export function getStorageMode() {
-  return process.env.STORAGE_PROVIDER || 'supabase';
+  return process.env.STORAGE_PROVIDER || 'local';
 }
 
 /**
@@ -46,10 +44,8 @@ export class StorageService {
       case 'google_drive':
         return new GoogleDriveProvider();
       case 'local':
-        return new LocalStorageProvider();
-      case 'supabase':
       default:
-        return new SupabaseStorageProvider();
+        return new LocalStorageProvider();
     }
   }
 

@@ -8,7 +8,7 @@
  * - Job Assignment Notification
  * - Job Status Update Notification
  * 
- * ใช้ Backend Email API (SMTP) แทน Supabase Edge Function
+ * ใช้ Backend Email API (SMTP)
  */
 
 // Email API Configuration

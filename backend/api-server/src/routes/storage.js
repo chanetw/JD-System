@@ -1,11 +1,11 @@
 /**
  * @file storage.js
- * @description File Storage Routes (Supabase & NAS)
+ * @description File Storage Routes
  * 
  * Features:
  * - File upload/download
- * - Supabase Storage integration
- * - NAS fallback support
+ * - Local disk storage by default
+ * - Optional Google Drive provider support
  * - File metadata management
  */
 
@@ -16,7 +16,6 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { authenticateToken, setRLSContextMiddleware } from './auth.js';
-import { SupabaseStorageService, isUsingSupabase } from '../config/supabase.js';
 import { hasRole } from '../helpers/roleHelper.js';
 import { getDatabase } from '../config/database.js';
 import { getStorageService, getStorageMode } from '../services/storageService.js';
@@ -500,11 +499,6 @@ router.get('/config', async (req, res) => {
   try {
     const config = {
       storageProvider: getStorageMode(),
-      usingSupabase: isUsingSupabase(),
-      supabaseConfig: isUsingSupabase() ? {
-        bucketName: process.env.SUPABASE_STORAGE_BUCKET || 'dj-system-files',
-        url: process.env.SUPABASE_URL
-      } : null,
       maxFileSize: '10MB',
       allowedTypes: [
         'image/jpeg',

@@ -1,6 +1,9 @@
 # DJ System - Docker Compose (Development)
 # ใช้สำหรับ development environment
-# สลับระหว่าง Supabase และ Local ได้ด้วย environment variables
+# แยก project name จาก production stack เพื่อให้ local test ไม่กระทบ
+# docker-compose.prod.yml ที่ใช้บน server
+
+name: dj-system-dev
 
 services:
   # ==========================================

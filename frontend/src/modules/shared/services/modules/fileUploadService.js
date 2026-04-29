@@ -1,20 +1,11 @@
 /**
  * @file fileUploadService.js
- * @description File Upload Service using Supabase Storage or Backend API
- * 
- * Dual-Mode Support:
- * - VITE_FRONTEND_MODE=supabase  → Supabase Storage (default)
- * - VITE_FRONTEND_MODE=api_only  → Backend API /api/storage/*
+ * @description File Upload Service using Backend API /api/storage/*
  */
 
-import { supabase } from '../supabaseClient';
 import httpClient from '../httpClient';
 
-/** FRONTEND_MODE: 'supabase' (default) | 'api_only' */
-const FRONTEND_MODE = import.meta.env.VITE_FRONTEND_MODE || 'supabase';
-
 // Configuration
-const STORAGE_BUCKET = 'job-attachments';
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const ALLOWED_MIME_TYPES = [
     // Images
@@ -41,7 +32,7 @@ const ALLOWED_MIME_TYPES = [
 
 export const fileUploadService = {
     /**
-     * Upload a file to Supabase Storage
+     * Upload a file to backend storage
      * @param {File} file - File object to upload
      * @param {Object} options - Upload options
      * @param {number} options.jobId - Job ID
@@ -62,102 +53,27 @@ export const fileUploadService = {
                 return { success: false, error: validation.error };
             }
 
-            // === API_ONLY MODE: ใช้ Backend API /api/storage/upload ===
-            if (FRONTEND_MODE === 'api_only') {
-                const formData = new FormData();
-                const safeAttachmentType = String(attachmentType || 'general').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
-                const folderParts = [`tenant_${tenantId || 1}`];
-                if (jobId) folderParts.push(`job_${jobId}`);
-                folderParts.push(safeAttachmentType);
+            const formData = new FormData();
+            const safeAttachmentType = String(attachmentType || 'general').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+            const folderParts = [`tenant_${tenantId || 1}`];
+            if (jobId) folderParts.push(`job_${jobId}`);
+            folderParts.push(safeAttachmentType);
 
-                formData.append('file', file);
-                formData.append('folder', folderParts.join('/'));
-                if (jobId) formData.append('jobId', jobId);
+            formData.append('file', file);
+            formData.append('folder', folderParts.join('/'));
+            if (jobId) formData.append('jobId', jobId);
 
-                const response = await httpClient.post('/storage/upload', formData, {
-                    headers: { 'Content-Type': 'multipart/form-data' },
-                    onUploadProgress: (progressEvent) => {
-                        if (onProgress && progressEvent.total) {
-                            onProgress(Math.round((progressEvent.loaded / progressEvent.total) * 100));
-                        }
+            const response = await httpClient.post('/storage/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                onUploadProgress: (progressEvent) => {
+                    if (onProgress && progressEvent.total) {
+                        onProgress(Math.round((progressEvent.loaded / progressEvent.total) * 100));
                     }
-                });
-
-                if (onProgress) onProgress(100);
-                return response.data;
-            }
-
-            // === SUPABASE MODE (default) ===
-            // Generate unique file path
-            const fileExt = file.name.split('.').pop();
-            const timestamp = Date.now();
-            const safeFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-            const filePath = `tenant_${tenantId}/job_${jobId}/${timestamp}_${safeFileName}`;
-
-            // Upload to Supabase Storage
-            const { data: uploadData, error: uploadError } = await supabase.storage
-                .from(STORAGE_BUCKET)
-                .upload(filePath, file, {
-                    cacheControl: '3600',
-                    upsert: false,
-                });
-
-            if (uploadError) throw uploadError;
-
-            // Get public URL
-            const { data: urlData } = supabase.storage
-                .from(STORAGE_BUCKET)
-                .getPublicUrl(filePath);
-
-            // Save metadata to database
-            const { data: attachmentData, error: dbError } = await supabase
-                .from('job_attachments')
-                .insert([{
-                    tenant_id: tenantId,
-                    job_id: jobId,
-                    file_name: file.name,
-                    file_path: filePath,
-                    file_size: file.size,
-                    file_type: fileExt,
-                    mime_type: file.type,
-                    attachment_type: attachmentType || 'general',
-                    uploaded_by: userId,
-                    created_at: new Date().toISOString()
-                }])
-                .select()
-                .single();
-
-            if (dbError) {
-                // Rollback: delete uploaded file
-                await supabase.storage.from(STORAGE_BUCKET).remove([filePath]);
-                throw dbError;
-            }
-
-            // Log activity
-            await supabase
-                .from('job_activities')
-                .insert([{
-                    tenant_id: tenantId,
-                    job_id: jobId,
-                    user_id: userId,
-                    activity_type: 'file_uploaded',
-                    description: `Uploaded file: ${file.name}`,
-                    metadata: {
-                        file_name: file.name,
-                        file_size: file.size,
-                        attachment_type: attachmentType
-                    }
-                }]);
+                }
+            });
 
             if (onProgress) onProgress(100);
-
-            return {
-                success: true,
-                data: {
-                    ...attachmentData,
-                    url: urlData.publicUrl
-                }
-            };
+            return response.data;
 
         } catch (error) {
             console.error('Error uploading file:', error);
@@ -215,58 +131,8 @@ export const fileUploadService = {
      */
     deleteFile: async (attachmentId, userId) => {
         try {
-            // === API_ONLY MODE ===
-            if (FRONTEND_MODE === 'api_only') {
-                const response = await httpClient.delete(`/storage/files/${attachmentId}`);
-                return response.data;
-            }
-
-            // === SUPABASE MODE (default) ===
-            // Get attachment info
-            const { data: attachment, error: fetchError } = await supabase
-                .from('job_attachments')
-                .select('*')
-                .eq('id', attachmentId)
-                .single();
-
-            if (fetchError) throw fetchError;
-
-            // Delete from storage
-            const { error: storageError } = await supabase.storage
-                .from(STORAGE_BUCKET)
-                .remove([attachment.file_path]);
-
-            if (storageError) {
-                console.warn('Storage delete warning:', storageError);
-            }
-
-            // Soft delete from database (or hard delete if preferred)
-            const { error: dbError } = await supabase
-                .from('job_attachments')
-                .update({
-                    deleted_at: new Date().toISOString(),
-                    deleted_by: userId
-                })
-                .eq('id', attachmentId);
-
-            if (dbError) throw dbError;
-
-            // Log activity
-            await supabase
-                .from('job_activities')
-                .insert([{
-                    tenant_id: attachment.tenant_id,
-                    job_id: attachment.job_id,
-                    user_id: userId,
-                    activity_type: 'file_deleted',
-                    description: `Deleted file: ${attachment.file_name}`,
-                    metadata: {
-                        attachment_id: attachmentId,
-                        file_name: attachment.file_name
-                    }
-                }]);
-
-            return { success: true };
+            const response = await httpClient.delete(`/storage/files/${attachmentId}`);
+            return response.data;
 
         } catch (error) {
             console.error('Error deleting file:', error);
@@ -281,37 +147,8 @@ export const fileUploadService = {
      */
     getJobAttachments: async (jobId) => {
         try {
-            // === API_ONLY MODE ===
-            if (FRONTEND_MODE === 'api_only') {
-                const response = await httpClient.get(`/storage/files?jobId=${jobId}`);
-                return response.data?.data || [];
-            }
-
-            // === SUPABASE MODE (default) ===
-            const { data, error } = await supabase
-                .from('job_attachments')
-                .select(`
-                    *,
-                    uploader:users!job_attachments_uploaded_by_fkey(display_name, avatar_url)
-                `)
-                .eq('job_id', jobId)
-                .is('deleted_at', null)
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-
-            // Add public URLs
-            return (data || []).map(attachment => {
-                const { data: urlData } = supabase.storage
-                    .from(STORAGE_BUCKET)
-                    .getPublicUrl(attachment.file_path);
-
-                return {
-                    ...attachment,
-                    url: urlData.publicUrl,
-                    uploaderName: attachment.uploader?.display_name
-                };
-            });
+            const response = await httpClient.get(`/storage/files?jobId=${jobId}`);
+            return response.data?.data || [];
 
         } catch (error) {
             console.error('Error getting job attachments:', error);
@@ -327,21 +164,9 @@ export const fileUploadService = {
      */
     getDownloadUrl: async (filePath, expiresIn = 3600) => {
         try {
-            // === API_ONLY MODE ===
-            if (FRONTEND_MODE === 'api_only') {
-                // Backend ใช้ /api/storage/files/:id สำหรับดาวน์โหลด
-                // filePath ที่นี่อาจเป็น ID หรือ path — คืน URL ตรงๆ
-                return `${httpClient.defaults.baseURL}/storage/files/${filePath}`;
-            }
-
-            // === SUPABASE MODE (default) ===
-            const { data, error } = await supabase.storage
-                .from(STORAGE_BUCKET)
-                .createSignedUrl(filePath, expiresIn);
-
-            if (error) throw error;
-
-            return data.signedUrl;
+            // Backend ใช้ /api/storage/files/:id สำหรับดาวน์โหลด
+            // filePath ที่นี่อาจเป็น ID หรือ path — คืน URL ตรงๆ
+            return `${httpClient.defaults.baseURL}/storage/files/${filePath}`;
         } catch (error) {
             console.error('Error getting download URL:', error);
             return null;

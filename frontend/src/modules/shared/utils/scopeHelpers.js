@@ -1,14 +1,40 @@
 /**
  * @file scopeHelpers.js
- * @description Utilities สำหรับตรวจสอบ User Scope และ Authorization
- * 
- * Scope Levels:
- * - Tenant: เห็นทุกอย่างในบริษัท
- * - BUD: เห็นทุกโครงการในสายงาน
- * - Project: เห็นเฉพาะโครงการที่ระบุ
+ * @description Utilities สำหรับตรวจสอบ User Scope และ Authorization ผ่าน Backend API
  */
 
-import { supabase } from '@shared/services/supabaseClient';
+import httpClient from '@shared/services/httpClient';
+
+const normalizeRoleName = (value) => String(value || '').toLowerCase();
+
+const normalizeScope = (scope, userId, roleName = null) => {
+    const scopeLevel = scope.scope_level || scope.scopeLevel || scope.level || 'project';
+    const scopeId = scope.scope_id || scope.scopeId || scope.id || null;
+    const scopeName = scope.scope_name || scope.scopeName || scope.name || '';
+    const roleType = scope.role_type || scope.roleType || roleName;
+
+    return {
+        ...scope,
+        user_id: userId,
+        scope_id: scopeId,
+        scope_level: String(scopeLevel).toLowerCase(),
+        scope_name: scopeName,
+        role_type: roleType,
+        project_id: String(scopeLevel).toLowerCase() === 'project' ? scopeId : scope.project_id
+    };
+};
+
+const getProjects = async () => {
+    const response = await httpClient.get('/projects');
+    if (!response.data?.success) return [];
+    return response.data.data || [];
+};
+
+const getProjectById = async (projectId) => {
+    const response = await httpClient.get(`/projects/${projectId}`);
+    if (!response.data?.success) return null;
+    return response.data.data || null;
+};
 
 /**
  * Get user's scope assignments
@@ -17,14 +43,19 @@ import { supabase } from '@shared/services/supabaseClient';
  */
 export const getUserScopes = async (userId) => {
     try {
-        const { data, error } = await supabase
-            .from('user_scope_assignments')
-            .select('*')
-            .eq('user_id', userId)
-            .eq('is_active', true);
+        const response = await httpClient.get(`/users/${userId}/roles`);
+        if (!response.data?.success) return [];
 
-        if (error) throw error;
-        return data || [];
+        const user = response.data.data || {};
+        const scopes = [];
+
+        (user.roles || []).forEach(role => {
+            (role.scopes || []).forEach(scope => {
+                scopes.push(normalizeScope(scope, userId, role.name));
+            });
+        });
+
+        return scopes;
     } catch (error) {
         console.error('Error fetching user scopes:', error);
         return [];
@@ -39,38 +70,15 @@ export const getUserScopes = async (userId) => {
  */
 export const hasProjectScope = async (userId, projectId) => {
     try {
-        // Get user's scopes
         const scopes = await getUserScopes(userId);
 
-        // Check if user has Tenant-level scope (see all)
-        if (scopes.some(s => s.scope_level?.toLowerCase() === 'tenant')) {
-            return true;
-        }
+        if (scopes.some(s => s.scope_level === 'tenant')) return true;
 
-        // Get project details
-        const { data: project, error } = await supabase
-            .from('projects')
-            .select('id, bud_id, tenant_id')
-            .eq('id', projectId)
-            .single();
+        const project = await getProjectById(projectId);
+        if (!project) return false;
 
-        if (error || !project) return false;
-
-        // Check BUD-level scope
-        if (scopes.some(s => 
-            s.scope_level?.toLowerCase() === 'bud' && 
-            s.scope_id === project.bud_id
-        )) {
-            return true;
-        }
-
-        // Check Project-level scope
-        if (scopes.some(s => 
-            s.scope_level?.toLowerCase() === 'project' && 
-            s.scope_id === projectId
-        )) {
-            return true;
-        }
+        if (scopes.some(s => s.scope_level === 'bud' && s.scope_id === project.budId)) return true;
+        if (scopes.some(s => s.scope_level === 'project' && s.scope_id === Number(projectId))) return true;
 
         return false;
     } catch (error) {
@@ -90,35 +98,22 @@ export const getAllowedProjectIds = async (userId, tenantId) => {
         const scopes = await getUserScopes(userId);
         const allowedProjectIds = new Set();
 
-        // If user has Tenant-level scope, get all projects in tenant
-        if (scopes.some(s => s.scope_level?.toLowerCase() === 'tenant')) {
-            const { data: allProjects } = await supabase
-                .from('projects')
-                .select('id')
-                .eq('tenant_id', tenantId)
-                .eq('is_active', true);
-
-            (allProjects || []).forEach(p => allowedProjectIds.add(p.id));
+        if (scopes.some(s => s.scope_level === 'tenant')) {
+            const projects = await getProjects();
+            projects.forEach(p => allowedProjectIds.add(p.id));
             return allowedProjectIds;
         }
 
-        // Add projects from Project-level scopes
         scopes
-            .filter(s => s.scope_level?.toLowerCase() === 'project')
+            .filter(s => s.scope_level === 'project')
             .forEach(s => allowedProjectIds.add(s.scope_id));
 
-        // Add projects from BUD-level scopes
-        const budScopes = scopes.filter(s => s.scope_level?.toLowerCase() === 'bud');
-        if (budScopes.length > 0) {
-            const budIds = budScopes.map(s => s.scope_id);
-            const { data: projects } = await supabase
-                .from('projects')
-                .select('id')
-                .in('bud_id', budIds)
-                .eq('tenant_id', tenantId)
-                .eq('is_active', true);
-
-            (projects || []).forEach(p => allowedProjectIds.add(p.id));
+        const budIds = scopes.filter(s => s.scope_level === 'bud').map(s => s.scope_id);
+        if (budIds.length > 0) {
+            const projects = await getProjects();
+            projects
+                .filter(p => budIds.includes(p.budId))
+                .forEach(p => allowedProjectIds.add(p.id));
         }
 
         return allowedProjectIds;
@@ -138,33 +133,12 @@ export const filterJobsByScope = async (jobs, userId) => {
     try {
         const scopes = await getUserScopes(userId);
 
-        // If user has Tenant-level scope, return all
-        if (scopes.some(s => s.scope_level?.toLowerCase() === 'tenant')) {
-            return jobs;
-        }
+        if (scopes.some(s => s.scope_level === 'tenant')) return jobs;
 
-        // Get allowed project IDs
-        const allowedProjectIds = new Set();
+        const allowedProjectIds = await getAllowedProjectIds(userId);
+        if (allowedProjectIds.size === 0) return jobs;
 
-        // Add projects from Project-level scopes
-        scopes
-            .filter(s => s.scope_level?.toLowerCase() === 'project')
-            .forEach(s => allowedProjectIds.add(s.scope_id));
-
-        // Add projects from BUD-level scopes
-        const budScopes = scopes.filter(s => s.scope_level?.toLowerCase() === 'bud');
-        if (budScopes.length > 0) {
-            const budIds = budScopes.map(s => s.scope_id);
-            const { data: projects } = await supabase
-                .from('projects')
-                .select('id')
-                .in('bud_id', budIds);
-
-            (projects || []).forEach(p => allowedProjectIds.add(p.id));
-        }
-
-        // Filter jobs
-        return jobs.filter(job => allowedProjectIds.has(job.project_id));
+        return jobs.filter(job => allowedProjectIds.has(job.projectId || job.project_id));
     } catch (error) {
         console.error('Error filtering jobs by scope:', error);
         return [];
@@ -186,48 +160,24 @@ export const hasAnyScope = async (userId) => {
 // =========================================
 
 /**
- * Get user roles with scopes from user_roles table (Multi-Role format)
+ * Get user roles with scopes from Backend API
  * @param {number} userId - User ID
  * @returns {Promise<Array>} - Array of roles with scopes
  */
 export const getUserRolesWithScopes = async (userId) => {
     try {
-        // Get active roles for user
-        const { data: roles, error: rolesError } = await supabase
-            .from('user_roles')
-            .select('id, role_name, is_active')
-            .eq('user_id', userId)
-            .eq('is_active', true);
+        const response = await httpClient.get(`/users/${userId}/roles`);
+        if (!response.data?.success) return [];
 
-        if (rolesError) throw rolesError;
-        if (!roles || roles.length === 0) return [];
-
-        // Get scopes for each role
-        const rolesWithScopes = await Promise.all(
-            roles.map(async (role) => {
-                const { data: scopes, error: scopesError } = await supabase
-                    .from('user_scope_assignments')
-                    .select('scope_level, scope_id, scope_name')
-                    .eq('user_role_id', role.id)
-                    .eq('is_active', true);
-
-                if (scopesError) {
-                    console.warn(`Error fetching scopes for role ${role.role_name}:`, scopesError);
-                }
-
-                return {
-                    name: role.role_name,
-                    isActive: role.is_active,
-                    scopes: (scopes || []).map(s => ({
-                        level: s.scope_level?.toLowerCase() || 'project',
-                        scopeId: s.scope_id,
-                        scopeName: s.scope_name || ''
-                    }))
-                };
-            })
-        );
-
-        return rolesWithScopes;
+        return (response.data.data?.roles || []).map(role => ({
+            ...role,
+            name: normalizeRoleName(role.name),
+            scopes: (role.scopes || []).map(scope => ({
+                level: String(scope.level || scope.scopeLevel || 'project').toLowerCase(),
+                scopeId: scope.scopeId || scope.scope_id || scope.id,
+                scopeName: scope.scopeName || scope.scope_name || scope.name || ''
+            }))
+        }));
     } catch (error) {
         console.error('Error getting user roles with scopes:', error);
         return [];
@@ -244,34 +194,22 @@ export const getUserRolesWithScopes = async (userId) => {
 export const canAccessProject = async (userId, projectId, roleName = null) => {
     try {
         const rolesWithScopes = await getUserRolesWithScopes(userId);
-        
-        // Filter by specific role if provided
-        const rolesToCheck = roleName 
-            ? rolesWithScopes.filter(r => r.name === roleName)
+        const rolesToCheck = roleName
+            ? rolesWithScopes.filter(r => normalizeRoleName(r.name) === normalizeRoleName(roleName))
             : rolesWithScopes;
 
         if (rolesToCheck.length === 0) return false;
 
-        // Get project details
-        const { data: project, error } = await supabase
-            .from('projects')
-            .select('id, bud_id, tenant_id')
-            .eq('id', projectId)
-            .single();
+        const project = await getProjectById(projectId);
+        if (!project) return false;
 
-        if (error || !project) return false;
-
-        // Check each role's scopes
         for (const role of rolesToCheck) {
-            // No scopes = tenant level (can access all)
-            if (!role.scopes || role.scopes.length === 0) {
-                return true;
-            }
+            if (!role.scopes || role.scopes.length === 0) return true;
 
             for (const scope of role.scopes) {
                 if (scope.level === 'tenant') return true;
-                if (scope.level === 'bud' && scope.scopeId === project.bud_id) return true;
-                if (scope.level === 'project' && scope.scopeId === projectId) return true;
+                if (scope.level === 'bud' && scope.scopeId === project.budId) return true;
+                if (scope.level === 'project' && scope.scopeId === Number(projectId)) return true;
             }
         }
 
@@ -292,51 +230,31 @@ export const canAccessProject = async (userId, projectId, roleName = null) => {
 export const getAccessibleProjectIds = async (userId, tenantId, roleName = null) => {
     try {
         const rolesWithScopes = await getUserRolesWithScopes(userId);
-        
-        // Filter by specific role if provided
-        const rolesToCheck = roleName 
-            ? rolesWithScopes.filter(r => r.name === roleName)
+        const rolesToCheck = roleName
+            ? rolesWithScopes.filter(r => normalizeRoleName(r.name) === normalizeRoleName(roleName))
             : rolesWithScopes;
 
         if (rolesToCheck.length === 0) return [];
 
+        const projects = await getProjects();
         const projectIds = new Set();
 
         for (const role of rolesToCheck) {
-            // No scopes = tenant level (can access all)
             if (!role.scopes || role.scopes.length === 0) {
-                const { data: allProjects } = await supabase
-                    .from('projects')
-                    .select('id')
-                    .eq('tenant_id', tenantId)
-                    .eq('is_active', true);
-
-                (allProjects || []).forEach(p => projectIds.add(p.id));
-                return Array.from(projectIds); // Return all projects
+                projects.forEach(p => projectIds.add(p.id));
+                return Array.from(projectIds);
             }
 
             for (const scope of role.scopes) {
                 if (scope.level === 'tenant') {
-                    // Tenant level = all projects
-                    const { data: allProjects } = await supabase
-                        .from('projects')
-                        .select('id')
-                        .eq('tenant_id', tenantId)
-                        .eq('is_active', true);
-
-                    (allProjects || []).forEach(p => projectIds.add(p.id));
+                    projects.forEach(p => projectIds.add(p.id));
                     return Array.from(projectIds);
                 }
 
                 if (scope.level === 'bud') {
-                    // BUD level = all projects in BUD
-                    const { data: budProjects } = await supabase
-                        .from('projects')
-                        .select('id')
-                        .eq('bud_id', scope.scopeId)
-                        .eq('is_active', true);
-
-                    (budProjects || []).forEach(p => projectIds.add(p.id));
+                    projects
+                        .filter(p => p.budId === scope.scopeId)
+                        .forEach(p => projectIds.add(p.id));
                 }
 
                 if (scope.level === 'project') {

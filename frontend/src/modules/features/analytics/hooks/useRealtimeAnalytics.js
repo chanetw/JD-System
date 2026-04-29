@@ -11,7 +11,8 @@
 import { useRef, useEffect, useCallback } from 'react';
 import { useJobsRealtime } from '@shared/hooks/useRealtime';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
-import { isSupabaseConfigured } from '@shared/services/supabaseClient';
+
+const isRealtimeEnabled = false;
 
 /**
  * @function useRealtimeAnalytics
@@ -40,10 +41,10 @@ export function useRealtimeAnalytics(onDataChange) {
     };
 
     // Subscribe ไปยัง jobs table
-    useJobsRealtime(tenantId, callbacks, !!tenantId && isSupabaseConfigured);
+    useJobsRealtime(tenantId, callbacks, !!tenantId && isRealtimeEnabled);
 
     return {
-        isConnected: !!tenantId && isSupabaseConfigured,
+        isConnected: !!tenantId && isRealtimeEnabled,
         error: null
     };
 }
@@ -92,7 +93,7 @@ export function useRealtimeAnalyticsWithRefetch(refetch, debounceMs = 1000) {
     };
 
     // Subscribe ไปยัง jobs table
-    useJobsRealtime(tenantId, callbacks, !!tenantId && isSupabaseConfigured);
+    useJobsRealtime(tenantId, callbacks, !!tenantId && isRealtimeEnabled);
 
     // Cleanup timer เมื่อ component unmount
     useEffect(() => {
@@ -104,7 +105,7 @@ export function useRealtimeAnalyticsWithRefetch(refetch, debounceMs = 1000) {
     }, []);
 
     return {
-        isConnected: !!tenantId && isSupabaseConfigured,
+        isConnected: !!tenantId && isRealtimeEnabled,
         error: null
     };
 }

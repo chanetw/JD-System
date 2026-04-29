@@ -36,10 +36,8 @@ const AcceptanceDatePicker = ({
         // คำนวณ Min Due Date ตาม Priority
         let minDueDate;
         if (priority === 'Urgent') {
-            // งานด่วน: เลือกได้เลยตั้งแต่พรุ่งนี้ (ไม่ต้องคำนวณ SLA)
-            // Example: วันนี้ 18 ก.พ. → เลือกได้ตั้งแต่ 19 ก.พ. เป็นต้นไป (แทรกคิวได้เลย)
-            minDueDate = new Date(today);
-            minDueDate.setDate(minDueDate.getDate() + 1); // พรุ่งนี้
+            // งานด่วน: เลือกได้ตั้งแต่วันนี้ + SLA (ไม่บวก buffer เพิ่ม)
+            minDueDate = addWorkDays(today, jobType.sla, holidays);
             minDueDate.setHours(0, 0, 0, 0);
         } else {
             // งานปกติ: Due Date ≥ วันนี้ + SLA + 1

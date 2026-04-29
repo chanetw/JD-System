@@ -49,8 +49,9 @@ export const chainConfig = {
   enableCycleDetection: process.env.ENABLE_CYCLE_DETECTION !== 'false',
 
   /**
-   * Days to shift when Urgent job is created
-   * When an Urgent job is approved, shift all competing jobs by this many days
+   * Legacy fixed shift days.
+   * New urgent rescheduling uses multiplier = min(activeUrgentCount, 2)
+   * and cumulative queue delay instead of this value.
    *
    * @type {number}
    * @default 2

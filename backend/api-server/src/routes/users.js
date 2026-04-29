@@ -11,7 +11,6 @@
 import express from 'express';
 import { UserService } from '../services/userService.js';
 import { authenticateToken, setRLSContextMiddleware } from './auth.js';
-import { getSupabaseClient } from '../config/supabase.js';
 import { getDatabase } from '../config/database.js';
 import EmailService from '../services/emailService.js';
 import { notifyUserSessionUpdate } from '../helpers/userSessionNotification.js';

@@ -2,6 +2,8 @@
 
 เอกสารนี้รวบรวมตัวแปร environment ที่ใช้ใน DJ System ทั้งฝั่ง Backend และ Frontend
 
+หมายเหตุ: Runtime ปัจจุบันไม่ใช้ Supabase แล้ว ให้ใช้ PostgreSQL ผ่าน Backend API และ local storage เป็นค่าเริ่มต้น
+
 Source of truth:
 - [backend/api-server/.env.example](../../backend/api-server/.env.example)
 - [backend/api-server/envprod.txt](../../backend/api-server/envprod.txt)
@@ -44,8 +46,9 @@ Source of truth:
 | ENABLE_FULL_TRANSITIVE | true | Optional | เดิน chain แบบ transitive |
 | PREVENT_SELF_CHAIN | true | Optional | ป้องกันงานชี้กลับตัวเอง |
 | ENABLE_CYCLE_DETECTION | true | Optional | ตรวจจับวงจรใน chain |
-| URGENT_SHIFT_DAYS | 2 | Optional | จำนวนวันที่เลื่อนงานเมื่อ urgent |
+| URGENT_SHIFT_DAYS | 2 | Optional | ค่า legacy; logic ใหม่ใช้ `min(active urgent jobs, 2)` และ delay ตามลำดับคิว |
 | ENABLE_URGENT_RESCHEDULE | true | Optional | เปิดการ reschedule ตอน urgent |
+| URGENT_IMPACT_TEST_EMAIL | chanetw@sena.co.th | Optional | ส่งสำเนา UAT ของ email แจ้งงานถูกเลื่อนจาก urgent |
 | ENABLE_CHAIN_NOTIFICATIONS | true | Optional | แจ้งเตือนเมื่อ chain เปลี่ยน |
 | ENABLE_RATE_LIMITING | false / true | Optional | เปิด rate limiting |
 | LOG_LEVEL | debug / info | Optional | ระดับ log |
@@ -66,6 +69,22 @@ Source of truth:
 - STORAGE_PROVIDER=local
 - AUTH_MODE=jwt_only
 - ENABLE_RATE_LIMITING=true
+
+## Local Docker Isolation
+
+`docker-compose.yml` สำหรับ local development ตั้ง `name: dj-system-dev` เพื่อแยก Docker Compose project ออกจาก production stack ที่ใช้ `docker-compose.prod.yml`
+
+ผลลัพธ์ที่คาดหวัง:
+
+- Local PostgreSQL ใช้ container `dj-postgres` และ port `5433`
+- Production PostgreSQL ใช้ container `dj-postgres-prod` และ port `5434`
+- คำสั่ง local เช่น `docker compose up -d postgres` จะอยู่ใน project `dj-system-dev` และไม่ควร recreate/stop service ของ production
+
+ข้อควรระวัง:
+
+- งาน local ให้ใช้ `docker compose up -d postgres` หรือ `docker compose --profile app up -d`
+- งาน production server ให้ใช้ `docker compose -f docker-compose.prod.yml ...` เท่านั้น
+- ห้ามใช้คำสั่ง `docker compose down -v` กับ production โดยไม่ตั้งใจ เพราะจะลบ volume ข้อมูล
 
 ## Security Checklist
 

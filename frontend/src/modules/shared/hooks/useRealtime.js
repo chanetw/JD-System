@@ -5,7 +5,8 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { realtimeService } from '../services/modules/realtimeService';
-import { isSupabaseConfigured } from '../services/supabaseClient';
+
+const isRealtimeEnabled = false;
 
 /**
  * Hook for subscribing to job changes
@@ -17,7 +18,7 @@ export const useJobsRealtime = (tenantId, callbacks = {}, enabled = true) => {
     const subscriptionRef = useRef(null);
 
     useEffect(() => {
-        if (!isSupabaseConfigured) return;
+        if (!isRealtimeEnabled) return;
         if (!enabled || !tenantId) return;
 
         // Subscribe
@@ -47,7 +48,7 @@ export const useNotificationsRealtime = (userId, onNewNotification, enabled = tr
     const subscriptionRef = useRef(null);
 
     useEffect(() => {
-        if (!isSupabaseConfigured) return;
+        if (!isRealtimeEnabled) return;
         if (!enabled || !userId) return;
 
         subscriptionRef.current = realtimeService.subscribeToNotifications(
@@ -75,7 +76,7 @@ export const useApprovalsRealtime = (tenantId, onApprovalChange, enabled = true)
     const subscriptionRef = useRef(null);
 
     useEffect(() => {
-        if (!isSupabaseConfigured) return;
+        if (!isRealtimeEnabled) return;
         if (!enabled || !tenantId) return;
 
         subscriptionRef.current = realtimeService.subscribeToApprovals(
@@ -103,7 +104,7 @@ export const useJobDetailRealtime = (jobId, callbacks = {}, enabled = true) => {
     const subscriptionRef = useRef(null);
 
     useEffect(() => {
-        if (!isSupabaseConfigured) return;
+        if (!isRealtimeEnabled) return;
         if (!enabled || !jobId) return;
 
         subscriptionRef.current = realtimeService.subscribeToJobDetail(
@@ -131,7 +132,7 @@ export const usePresence = (userId, onPresenceChange, enabled = true) => {
     const subscriptionRef = useRef(null);
 
     useEffect(() => {
-        if (!isSupabaseConfigured) return;
+        if (!isRealtimeEnabled) return;
         if (!enabled || !userId) return;
 
         subscriptionRef.current = realtimeService.subscribeToPresence(
