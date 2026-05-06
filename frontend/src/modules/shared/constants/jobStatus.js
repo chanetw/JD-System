@@ -159,12 +159,48 @@ export const FILTER_GROUP_MAP = {
     pending_approval: ['pending_approval', 'pending_level_1', 'pending_level_2', 'pending_level_3'],
     rework: ['correction', 'rework', 'returned'],
     draft_review: ['draft_review', 'pending_rebrief', 'rebrief_submitted'],
-    completed: ['completed', 'closed'],
+    completed: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'],
     rejected: ['rejected', 'rejected_by_assignee'],
 };
 
 // ========================================
-// 7. Helper Functions
+// 7. Assignee Action Contracts
+// ========================================
+
+export const ASSIGNEE_REJECTABLE_STATUSES = [
+    'assigned',
+    'in_progress',
+    'draft_review',
+    'pending_rebrief',
+    'rebrief_submitted',
+];
+
+export const ASSIGNEE_COMPLETE_ACTION_STATUSES = [
+    'approved',
+    'assigned',
+    'in_progress',
+    'rework',
+    'correction',
+    'returned',
+];
+
+export const ASSIGNEE_EXTENDABLE_STATUSES = [
+    'assigned',
+    'in_progress',
+];
+
+export const ASSIGNEE_DRAFT_REBRIEF_ACTION_STATUSES = [
+    'approved',
+    'assigned',
+    'in_progress',
+    'rework',
+    'correction',
+    'returned',
+    'draft_review',
+];
+
+// ========================================
+// 8. Helper Functions
 // ========================================
 
 /**

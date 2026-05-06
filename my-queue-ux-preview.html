@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Queue UX Preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --surface: #ffffff;
+      --ink: #122036;
+      --muted: #5f6f86;
+      --line: #d8e0ec;
+
+      --critical-bg: #fff1ef;
+      --critical-bd: #ffb8ab;
+      --critical-fg: #9b1c1c;
+
+      --warning-bg: #fff7e7;
+      --warning-bd: #ffd48a;
+      --warning-fg: #8a4b00;
+
+      --ok-bg: #ecf8f1;
+      --ok-bd: #9fddbb;
+      --ok-fg: #17633a;
+
+      --draft-bg: #eef4ff;
+      --draft-bd: #acc6ff;
+      --draft-fg: #1f4ea8;
+
+      --urgent: #d92d20;
+      --primary: #0f6fff;
+      --primary-ink: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Sarabun", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 500px at -10% -20%, #dbe9ff 0%, transparent 60%),
+        radial-gradient(1000px 400px at 110% -20%, #e7fff2 0%, transparent 60%),
+        var(--bg);
+    }
+
+    .page {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+    }
+
+    .hero {
+      background: linear-gradient(130deg, #12305f, #0f6fff);
+      color: #fff;
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: 0 18px 38px rgba(15, 111, 255, 0.24);
+    }
+
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      line-height: 1.1;
+      letter-spacing: 0.2px;
+    }
+
+    .hero p {
+      margin: 0;
+      color: #dce9ff;
+      font-size: 15px;
+    }
+
+    .metrics {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 12px;
+      padding: 10px 12px;
+      backdrop-filter: blur(4px);
+    }
+
+    .metric .k {
+      font-size: 12px;
+      color: #dce9ff;
+      margin-bottom: 3px;
+    }
+
+    .metric .v {
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .toolbar {
+      margin-top: 16px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: #fff;
+      font-weight: 600;
+      color: #234;
+      font-size: 14px;
+    }
+
+    .chip.active {
+      border-color: #83b3ff;
+      background: #eaf2ff;
+      color: #0f4db3;
+    }
+
+    .section {
+      margin-top: 18px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .section-header {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #fbfdff;
+    }
+
+    .section-title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 0.2px;
+    }
+
+    .cards {
+      padding: 12px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      background: #fff;
+      display: grid;
+      gap: 10px;
+      box-shadow: 0 2px 0 rgba(18, 32, 54, 0.02);
+    }
+
+    .card-head {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      background: #f2f5fa;
+      border: 1px solid #e1e8f2;
+      padding: 3px 8px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .type {
+      background: #eef3ff;
+      border: 1px solid #ccd9ff;
+      color: #2f4a94;
+      padding: 3px 8px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .urgent {
+      background: #ffe7e4;
+      border: 1px solid #ffb9af;
+      color: var(--urgent);
+      padding: 3px 8px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .subject {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.2;
+      font-weight: 800;
+    }
+
+    .summary {
+      border-radius: 12px;
+      padding: 10px 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .summary.critical { background: var(--critical-bg); border: 1px solid var(--critical-bd); color: var(--critical-fg); }
+    .summary.warning { background: var(--warning-bg); border: 1px solid var(--warning-bd); color: var(--warning-fg); }
+    .summary.ok { background: var(--ok-bg); border: 1px solid var(--ok-bd); color: var(--ok-fg); }
+    .summary.draft { background: var(--draft-bg); border: 1px solid var(--draft-bd); color: var(--draft-fg); }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .meta-item {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: #fff;
+    }
+
+    .meta-item .k {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 2px;
+    }
+
+    .meta-item .v {
+      font-size: 14px;
+      font-weight: 700;
+      color: #13263f;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      border-radius: 10px;
+      border: 1px solid transparent;
+      padding: 10px 14px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: default;
+    }
+
+    .btn.primary {
+      background: var(--primary);
+      color: var(--primary-ink);
+      box-shadow: 0 10px 22px rgba(15, 111, 255, 0.25);
+    }
+
+    .btn.secondary {
+      background: #fff;
+      color: #27425f;
+      border-color: #c9d7e8;
+    }
+
+    .legend {
+      margin-top: 14px;
+      font-size: 13px;
+      color: #50627b;
+      background: #f8fbff;
+      border: 1px dashed #c8d9ee;
+      border-radius: 12px;
+      padding: 10px 12px;
+    }
+
+    @media (max-width: 860px) {
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .subject { font-size: 21px; }
+    }
+
+    @media (max-width: 520px) {
+      .hero h1 { font-size: 24px; }
+      .subject { font-size: 19px; }
+      .summary { font-size: 15px; }
+      .actions { justify-content: stretch; }
+      .btn { width: 100%; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1>คิวงานของฉัน แบบอ่านง่าย</h1>
+      <p>แนวคิด: ให้คนรับงานเห็นทันทีว่า ต้องทำอะไรต่อ และต้องทำเมื่อไหร่</p>
+      <div class="metrics">
+        <div class="metric"><div class="k">ต้องทำตอนนี้</div><div class="v">3</div></div>
+        <div class="metric"><div class="k">ต้องเริ่มวันนี้</div><div class="v">5</div></div>
+        <div class="metric"><div class="k">รอตรวจ Draft</div><div class="v">2</div></div>
+        <div class="metric"><div class="k">งานทั้งหมด</div><div class="v">14</div></div>
+      </div>
+    </section>
+
+    <section class="toolbar">
+      <span class="chip active">ต้องทำตอนนี้</span>
+      <span class="chip">ต้องเริ่มวันนี้</span>
+      <span class="chip">รอตรวจ Draft</span>
+      <span class="chip">รอข้อมูล/ติด dependency</span>
+      <span class="chip">งานปกติ</span>
+    </section>
+
+    <section class="section">
+      <header class="section-header">
+        <h2 class="section-title">ต้องทำตอนนี้</h2>
+        <span class="chip active">3 งาน</span>
+      </header>
+
+      <div class="cards">
+        <article class="card">
+          <div class="card-head">
+            <span class="mono">DJ-260409-0002-01</span>
+            <span class="type">Rich Menu</span>
+            <span class="urgent">URGENT</span>
+          </div>
+
+          <h3 class="subject">Rich menu สำหรับ Sena Solar Energy</h3>
+
+          <div class="summary critical">
+            <span>เลยกำหนดแล้ว 10 วัน</span>
+            <span>ต้องเร่งส่งวันนี้</span>
+          </div>
+
+          <div class="meta">
+            <div class="meta-item"><div class="k">โปรเจกต์</div><div class="v">Corporate</div></div>
+            <div class="meta-item"><div class="k">ผู้สั่งงาน</div><div class="v">Marketing Team</div></div>
+            <div class="meta-item"><div class="k">วันรับงาน</div><div class="v">9 เม.ย. 69</div></div>
+            <div class="meta-item"><div class="k">กำหนดส่ง</div><div class="v">10 เม.ย. 69</div></div>
+          </div>
+
+          <div class="actions">
+            <button class="btn secondary">ดูรายละเอียด</button>
+            <button class="btn primary">ส่งงาน</button>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <span class="mono">DJ-260429-0041</span>
+            <span class="type">Facebook Ads</span>
+          </div>
+
+          <h3 class="subject">Key Visual แคมเปญกลางเดือน</h3>
+
+          <div class="summary warning">
+            <span>ควรเริ่มวันนี้</span>
+            <span>เหลืออีก 2 วันก่อนครบกำหนด</span>
+          </div>
+
+          <div class="meta">
+            <div class="meta-item"><div class="k">โปรเจกต์</div><div class="v">Sena Main</div></div>
+            <div class="meta-item"><div class="k">ผู้สั่งงาน</div><div class="v">Aom N.</div></div>
+            <div class="meta-item"><div class="k">วันรับงาน</div><div class="v">28 เม.ย. 69</div></div>
+            <div class="meta-item"><div class="k">กำหนดส่ง</div><div class="v">1 พ.ค. 69</div></div>
+          </div>
+
+          <div class="actions">
+            <button class="btn secondary">ดูรายละเอียด</button>
+            <button class="btn primary">เริ่มทำ</button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <header class="section-header">
+        <h2 class="section-title">รอตรวจ Draft</h2>
+        <span class="chip">2 งาน</span>
+      </header>
+
+      <div class="cards">
+        <article class="card">
+          <div class="card-head">
+            <span class="mono">DJ-260429-0028-01</span>
+            <span class="type">Instagram Post</span>
+          </div>
+
+          <h3 class="subject">โพสต์โปรโมชันสงกรานต์</h3>
+
+          <div class="summary draft">
+            <span>ส่ง Draft แล้ว</span>
+            <span>รอผู้สั่งงานตรวจ</span>
+          </div>
+
+          <div class="meta">
+            <div class="meta-item"><div class="k">โปรเจกต์</div><div class="v">Social Always-on</div></div>
+            <div class="meta-item"><div class="k">ผู้สั่งงาน</div><div class="v">Ploy K.</div></div>
+            <div class="meta-item"><div class="k">วันส่ง Draft</div><div class="v">29 เม.ย. 69</div></div>
+            <div class="meta-item"><div class="k">สถานะถัดไป</div><div class="v">รอ feedback</div></div>
+          </div>
+
+          <div class="actions">
+            <button class="btn secondary">ดู Draft ที่ส่ง</button>
+            <button class="btn secondary">ส่ง Draft ใหม่</button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <div class="legend">
+      ตัวอย่างนี้เน้น UX สำหรับคนรับงาน: แสดง “สถานะสรุปหลัก” เพียง 1 อันต่อการ์ด, เปลี่ยนเวลาเป็นภาษาคน (วัน/วันนี้/เลยกำหนด), และจัดกลุ่มงานตามสิ่งที่ต้องทำทันที
+    </div>
+  </div>
+</body>
+</html>

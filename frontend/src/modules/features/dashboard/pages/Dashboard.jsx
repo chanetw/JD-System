@@ -101,6 +101,7 @@ function Dashboard() {
     const [viewMode, setViewMode] = useState('flat');          // 'flat' | 'parent' — View Mode Toggle
     const [expandedRows, setExpandedRows] = useState(new Set()); // Parent IDs ที่กางอยู่ (Parent View)
     const [sortMode, setSortMode] = useState('sla');     // 'sla' | 'createdAt' | 'updatedAt' — default: SLA น้อยไปมาก
+    const [pageSize, setPageSize] = useState(20);          // จำนวนรายการต่อหน้า: 20 | 50 | 100
 
     // Holidays สำหรับคำนวณ working days
     const [holidays, setHolidays] = useState([]);
@@ -186,7 +187,7 @@ function Dashboard() {
             const params = {
                 role: roleParam,
                 page: pageNum,
-                limit: 20,
+                limit: pageSize,
                 includeCompleted: activeIncludeCompleted ? 'true' : 'false'
             };
             if (activeStatus) params.status = activeStatus;
@@ -218,7 +219,7 @@ function Dashboard() {
             setQueueLoading(false);
             if (!append) setIsLoading(false);
         }
-    }, [user, queueLoading, getRoleParam, statusFilter, assigneeFilter, includeCompleted]);
+    }, [user, queueLoading, getRoleParam, statusFilter, assigneeFilter, includeCompleted, pageSize]);
 
     // โหลดครั้งแรกเมื่อ user หรือ filter เปลี่ยน
     useEffect(() => {
@@ -237,6 +238,15 @@ function Dashboard() {
         fetchQueueJobs(1, false, statusFilter, assigneeFilter);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [statusFilter, assigneeFilter, includeCompleted]);
+
+    // Reset หน้า 1 เมื่อ pageSize เปลี่ยน
+    useEffect(() => {
+        if (!user) return;
+        setJobs([]);
+        setQueuePage(1);
+        fetchQueueJobs(1, false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pageSize]);
 
     // ============================================
     // Fetch Page of Drill-down Jobs
@@ -740,7 +750,7 @@ function Dashboard() {
                             <h2 className="text-lg font-semibold text-gray-900">รายการงานของฉัน</h2>
                             {queueTotal > 0 && (
                                 <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                                    {Math.min((queuePage - 1) * 20 + 1, queueTotal)}-{Math.min(queuePage * 20, queueTotal)} / {queueTotal} รายการ
+                                    {Math.min((queuePage - 1) * pageSize + 1, queueTotal)}-{Math.min(queuePage * pageSize, queueTotal)} / {queueTotal} รายการ
                                 </span>
                             )}
                         </div>
@@ -838,6 +848,17 @@ function Dashboard() {
                                 <option value="createdAt">เรียงตาม: งานสร้างล่าสุด</option>
                                 <option value="sla">เรียงตาม: SLA น้อยไปมาก</option>
                             </select>
+
+                            {/* Page Size Selector */}
+                            <select
+                                value={pageSize}
+                                onChange={e => setPageSize(Number(e.target.value))}
+                                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
+                            >
+                                <option value={20}>20 / หน้า</option>
+                                <option value={50}>50 / หน้า</option>
+                                <option value={100}>100 / หน้า</option>
+                            </select>
                         </div>
                     </div>
                 </div>
@@ -868,7 +889,7 @@ function Dashboard() {
                                 </tr>
                             ) : (
                                 filteredJobs.map((job, idx) => {
-                                    const rowNum = (queuePage - 1) * 20 + idx + 1;
+                                    const rowNum = (queuePage - 1) * pageSize + idx + 1;
                                     // === FLAT VIEW: แสดงแบบธรรมดา (เดิม) ===
                                     if (viewMode === 'flat') {
                                         return <JobRow key={job.id} job={job} rowIndex={rowNum} holidays={holidays} onOpenDraftModal={handleOpenDraftModal} />;
@@ -940,7 +961,7 @@ function Dashboard() {
                     {queueTotal > 0 && (
                         <div className="py-3 px-4 flex items-center justify-between border-t border-gray-200">
                             <span className="text-sm text-gray-500">
-                                แสดง {Math.min((queuePage - 1) * 20 + 1, queueTotal)}-{Math.min(queuePage * 20, queueTotal)} จาก {queueTotal} รายการ
+                                แสดง {Math.min((queuePage - 1) * pageSize + 1, queueTotal)}-{Math.min(queuePage * pageSize, queueTotal)} จาก {queueTotal} รายการ
                             </span>
                             <div className="flex items-center gap-2">
                                 <button
@@ -951,15 +972,15 @@ function Dashboard() {
                                     ← ก่อนหน้า
                                 </button>
                                 <span className="text-sm text-gray-600 font-medium">
-                                    หน้า {queuePage} / {Math.ceil(queueTotal / 20)}
+                                    หน้า {queuePage} / {Math.ceil(queueTotal / pageSize)}
                                 </span>
                                 <button
                                     onClick={() => { 
-                                        const totalPages = Math.ceil(queueTotal / 20);
+                                        const totalPages = Math.ceil(queueTotal / pageSize);
                                         if (queuePage < totalPages) fetchQueueJobs(queuePage + 1, false); 
                                     }}
-                                    disabled={queuePage >= Math.ceil(queueTotal / 20) || queueLoading}
-                                    className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${queuePage >= Math.ceil(queueTotal / 20) ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-gray-300 text-gray-600 hover:bg-gray-50 cursor-pointer'}`}
+                                    disabled={queuePage >= Math.ceil(queueTotal / pageSize) || queueLoading}
+                                    className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${queuePage >= Math.ceil(queueTotal / pageSize) ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-gray-300 text-gray-600 hover:bg-gray-50 cursor-pointer'}`}
                                 >
                                     ถัดไป →
                                 </button>

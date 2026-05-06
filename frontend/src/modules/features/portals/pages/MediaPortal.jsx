@@ -277,6 +277,29 @@ function MediaCard({ file, onAction }) {
     const jobSubject = file.job?.subject || file.fileName || 'Untitled';
     const dateStr = new Date(file.createdAt || new Date()).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const projectName = file.project?.name || file.project?.code || 'No Project';
+    const hasProject = Boolean(file.projectId || file.project?.id);
+
+    const resolveFileTypeLabel = () => {
+        if (isExternalLink) return 'LINK';
+
+        const mime = String(file.mimeType || file.fileType || '').toLowerCase();
+        if (mime.includes('pdf')) return 'PDF';
+        if (mime.includes('png')) return 'PNG';
+        if (mime.includes('jpeg') || mime.includes('jpg')) return 'JPEG';
+        if (mime.includes('gif')) return 'GIF';
+        if (mime.includes('webp')) return 'WEBP';
+        if (mime.includes('svg')) return 'SVG';
+        if (mime.includes('msword') || mime.includes('wordprocessingml')) return 'DOC';
+        if (mime.includes('spreadsheetml') || mime.includes('ms-excel')) return 'XLS';
+        if (mime.includes('presentationml') || mime.includes('ms-powerpoint')) return 'PPT';
+        if (mime.includes('zip') || mime.includes('rar') || mime.includes('7z')) return 'ARCHIVE';
+
+        const fileName = String(file.fileName || '').toLowerCase();
+        const ext = fileName.includes('.') ? fileName.split('.').pop() : '';
+        return ext ? ext.toUpperCase() : 'FILE';
+    };
+
+    const fileTypeLabel = resolveFileTypeLabel();
     
     console.log('[MediaCard] File data:', {
         id: file.id,
@@ -293,14 +316,15 @@ function MediaCard({ file, onAction }) {
             <div>
                 {/* Project Badge */}
                 <div className="flex gap-1.5 mb-2">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-rose-100 text-rose-800">
-                        {projectName}
+                    <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${hasProject ? 'bg-rose-100 text-rose-800' : 'bg-gray-100 text-gray-700'}`}
+                        title={hasProject ? projectName : 'ไฟล์นี้ยังไม่ถูกผูกกับโปรเจกต์'}
+                    >
+                        {hasProject ? projectName : 'ยังไม่ผูกโปรเจกต์'}
                     </span>
-                    {isExternalLink && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
-                            Link
-                        </span>
-                    )}
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+                        {fileTypeLabel}
+                    </span>
                 </div>
 
                 {/* Title */}

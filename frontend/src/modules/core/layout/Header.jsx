@@ -95,7 +95,7 @@ export default function Header({ sidebarCollapsed = false, onMobileMenuClick }) 
           ============================================ */}
                 <div className="min-w-0 flex-1 max-w-md">
                     <div className="relative">
-                        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <SearchIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                         <input
                             type="text"
                             value={searchQuery}

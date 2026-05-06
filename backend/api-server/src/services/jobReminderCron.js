@@ -39,11 +39,13 @@ class JobReminderCron {
     // Run immediately on start
     this.checkStaleJobs();
     this.checkUpcomingSLA();
+    this.checkAssigneeRejectionTimeout();
 
     // Then run periodically
     this.intervalId = setInterval(() => {
       this.checkStaleJobs();
       this.checkUpcomingSLA();
+      this.checkAssigneeRejectionTimeout();
     }, this.intervalMinutes * 60 * 1000);
 
     this.isRunning = true;
@@ -318,6 +320,162 @@ class JobReminderCron {
       console.log(`[JobReminder] Sent ${sentCount} SLA deadline reminders`);
     } catch (error) {
       console.error('[JobReminder] checkUpcomingSLA failed:', error);
+    }
+  }
+
+  /**
+   * ตรวจสอบงานที่ assignee_rejected และ auto-close ถ้า deadline ผ่านไป
+   * Deadline = 1 วันทำการตั้งแต่เวลาที่ปฏิเสธ
+   */
+  async checkAssigneeRejectionTimeout() {
+    try {
+      const prisma = getDatabase();
+      const notificationService = new NotificationService(prisma);
+
+      // ดึงงานทั้งหมดที่อยู่ใน assignee_rejected
+      const rejectedJobs = await prisma.job.findMany({
+        where: {
+          status: 'assignee_rejected'
+        },
+        select: {
+          id: true,
+          djId: true,
+          subject: true,
+          tenantId: true,
+          requesterId: true,
+          assigneeId: true,
+          requester: { select: { email: true, firstName: true, lastName: true } },
+          assignee: { select: { email: true, firstName: true, lastName: true } }
+        }
+      });
+
+      if (rejectedJobs.length === 0) {
+        console.log('[JobReminder] No assignee_rejected jobs found');
+        return;
+      }
+
+      console.log(`[JobReminder] Found ${rejectedJobs.length} assignee_rejected jobs to check`);
+
+      const { countWorkingDaysBetween } = await import('./jobAcceptanceService.js');
+
+      let autoClosedCount = 0;
+
+      for (const job of rejectedJobs) {
+        try {
+          // หา timestamp ของการปฏิเสธจาก activity log
+          const rejectionActivity = await prisma.activityLog.findFirst({
+            where: {
+              jobId: job.id,
+              action: 'job_rejected_by_assignee'
+            },
+            orderBy: { createdAt: 'desc' }
+          });
+
+          if (!rejectionActivity) {
+            console.warn(
+              `[JobReminder] No rejection activity found for job ${job.djId}, skipping`
+            );
+            continue;
+          }
+
+          // นับวันทำการที่ผ่านไปแล้ว
+          const now = new Date();
+          const workingDaysElapsed = await countWorkingDaysBetween(
+            rejectionActivity.createdAt,
+            now,
+            job.tenantId
+          );
+
+          // ถ้า >= 1 วันทำการ → auto-close
+          if (workingDaysElapsed >= 1) {
+            console.log(
+              `[JobReminder] Auto-closing job ${job.djId} ` +
+              `(${workingDaysElapsed} working days elapsed since rejection)`
+            );
+
+            // Update status to rejected
+            const autoClosedAt = new Date();
+            const description = `ระบบปิดงานอัตโนมัติ เพราะ approver ไม่ตัดสินใจ ภายในวันทำการที่กำหนด (${workingDaysElapsed} วันทำการ)`;
+            const detail = {
+              rejectionTimestamp: rejectionActivity.createdAt.toISOString(),
+              workingDaysElapsed,
+              autoClosedAt: autoClosedAt.toISOString()
+            };
+
+            const updateResult = await prisma.job.updateMany({
+              where: {
+                id: job.id,
+                status: 'assignee_rejected'
+              },
+              data: {
+                status: 'rejected'
+              }
+            });
+
+            if (updateResult.count === 0) {
+              console.log(
+                `[JobReminder] Skip auto-close for ${job.djId} because status changed during processing`
+              );
+              continue;
+            }
+
+            // Log activity
+            await prisma.jobActivity.create({
+              data: {
+                tenantId: job.tenantId,
+                jobId: job.id,
+                userId: null, // System action
+                activityType: 'auto_closed_rejection_timeout',
+                description,
+                metadata: detail
+              }
+            });
+
+            await prisma.activityLog.create({
+              data: {
+                jobId: job.id,
+                userId: null,
+                action: 'auto_closed_rejection_timeout',
+                message: description,
+                detail
+              }
+            });
+
+            // Notify requester
+            if (job.requesterId) {
+              await notificationService
+                .createNotification({
+                  tenantId: job.tenantId,
+                  userId: job.requesterId,
+                  type: 'rejection_auto_closed',
+                  title: `❌ งาน ${job.djId} ปฏิเสธอัตโนมัติ`,
+                  message: `งาน "${job.subject}" ถูกปฏิเสธอัตโนมัติ ` +
+                    `เพราะผู้อนุมัติไม่ตัดสินใจภายในกำหนดเวลา`,
+                  link: `/jobs/${job.id}`
+                })
+                .catch(err =>
+                  console.warn('[RejectionTimeout] Notification failed:', err.message)
+                );
+            }
+
+            autoClosedCount++;
+          }
+        } catch (jobError) {
+          console.error(
+            `[JobReminder] Error checking job ${job.djId}:`,
+            jobError.message
+          );
+          // Continue to next job
+        }
+      }
+
+      if (autoClosedCount > 0) {
+        console.log(
+          `[JobReminder] Auto-closed ${autoClosedCount} rejection timeouts`
+        );
+      }
+    } catch (error) {
+      console.error('[JobReminder] checkAssigneeRejectionTimeout error:', error);
     }
   }
 }

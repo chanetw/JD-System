@@ -181,7 +181,10 @@ export default function DJList() {
 
         // 0. My Jobs filter — แสดงเฉพาะงานที่ user เป็น requester หรือ assignee
         if (myJobsOnly && user?.id) {
-            result = result.filter(j => j.requesterId === user.id || j.assigneeId === user.id);
+            result = result.filter(j =>
+                String(j.requesterId) === String(user.id) ||
+                String(j.assigneeId) === String(user.id)
+            );
         }
 
         // 1. นำ Filters มาใช้งาน
@@ -431,12 +434,19 @@ export default function DJList() {
     // ============================================
     // Get Unique Values for Filters
     // ============================================
-    const uniqueProjects = [...new Set(jobs.map(j => j.project))].filter(Boolean);
+    const uniqueProjects = [...new Set(jobs.map(j => j.project))]
+        .filter(Boolean)
+        .sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }));
     const uniqueAssignees = [...new Set(
         jobs
             .filter(j => j.assigneeIsActive !== false)
             .map(j => j.assignee)
-    )].filter(Boolean);
+    )]
+        .filter(Boolean)
+        .sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }));
+    const uniqueJobTypes = [...new Set(masterData.jobTypes.map(jt => jt.name))]
+        .filter(Boolean)
+        .sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }));
 
     // ============================================
     // Render
@@ -501,7 +511,7 @@ export default function DJList() {
                         label="ประเภทงาน (Job Type)"
                         value={filters.jobType}
                         onChange={(val) => handleFilterChange('jobType', val)}
-                        options={[...new Set(masterData.jobTypes.map(jt => jt.name))]}
+                        options={uniqueJobTypes}
                     />
                     <FilterSelect
                         label="สถานะ"

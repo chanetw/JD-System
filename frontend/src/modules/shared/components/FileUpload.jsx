@@ -21,6 +21,7 @@ import { fileUploadService } from '../services/modules/fileUploadService';
  */
 const FileUpload = ({
     jobId,
+    projectId,
     tenantId,
     userId,
     attachmentType = 'general',
@@ -92,6 +93,7 @@ const FileUpload = ({
                 files,
                 {
                     jobId,
+                    projectId,
                     tenantId,
                     userId,
                     attachmentType,

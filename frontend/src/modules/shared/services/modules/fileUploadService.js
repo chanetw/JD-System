@@ -30,12 +30,34 @@ const ALLOWED_MIME_TYPES = [
     'image/vnd.adobe.photoshop', // PSD
 ];
 
+const formatUploadError = (error, maxFileSizeBytes) => {
+    const maxMb = Math.floor((maxFileSizeBytes || MAX_FILE_SIZE) / (1024 * 1024));
+    const status = error?.response?.status;
+    const backendMessage = error?.response?.data?.message;
+    const backendError = error?.response?.data?.error;
+
+    if (backendMessage) {
+        return backendMessage;
+    }
+
+    if (status === 413 || backendError === 'FILE_TOO_LARGE') {
+        return `ไฟล์มีขนาดใหญ่เกินกำหนด (สูงสุด ${maxMb}MB ต่อไฟล์)`;
+    }
+
+    if (status === 415 || backendError === 'INVALID_FILE') {
+        return 'ประเภทไฟล์ไม่รองรับ หรือไฟล์ไม่ถูกต้อง';
+    }
+
+    return error?.message || 'อัปโหลดไฟล์ไม่สำเร็จ';
+};
+
 export const fileUploadService = {
     /**
      * Upload a file to backend storage
      * @param {File} file - File object to upload
      * @param {Object} options - Upload options
      * @param {number} options.jobId - Job ID
+     * @param {number} [options.projectId] - Project ID
      * @param {number} options.tenantId - Tenant ID
      * @param {number} options.userId - Uploader user ID
      * @param {string} options.attachmentType - Type of attachment (e.g., 'CI Guideline', 'Logo Pack')
@@ -44,7 +66,7 @@ export const fileUploadService = {
      * @returns {Promise<{success: boolean, data?: Object, error?: string}>}
      */
     uploadFile: async (file, options = {}) => {
-        const { jobId, tenantId, userId, attachmentType, onProgress, maxFileSize } = options;
+        const { jobId, projectId, tenantId, userId, attachmentType, onProgress, maxFileSize } = options;
 
         try {
             // Validate file (pass maxFileSize override if provided)
@@ -62,6 +84,7 @@ export const fileUploadService = {
             formData.append('file', file);
             formData.append('folder', folderParts.join('/'));
             if (jobId) formData.append('jobId', jobId);
+            if (projectId) formData.append('projectId', projectId);
 
             const response = await httpClient.post('/storage/upload', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
@@ -77,7 +100,10 @@ export const fileUploadService = {
 
         } catch (error) {
             console.error('Error uploading file:', error);
-            return { success: false, error: error.message };
+            return {
+                success: false,
+                error: formatUploadError(error, maxFileSize)
+            };
         }
     },
 

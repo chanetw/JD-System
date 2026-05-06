@@ -2,7 +2,7 @@
  * @file DraftCard.jsx
  * @description Component แสดง Draft ที่ Assignee ส่งมาให้ตรวจสอบ
  * - แสดงรายการ Draft แต่ละครั้ง พร้อม link + หมายเหตุ + วันที่
- * - บันทึก read log เมื่อ "คลิก link" เท่านั้น (ไม่ใช่ page load)
+ * - บันทึก read log เมื่อ requester เปิดดู link หรือไฟล์แนบ
  * - แสดงสถานะการอ่านของ Requester สำหรับ Assignee/Admin
  */
 
@@ -64,28 +64,34 @@ export default function DraftCard({ job, currentUser, onSuccess }) {
         return sizeInMb >= 1 ? `${sizeInMb.toFixed(1)} MB` : `${Math.max(1, Math.round(Number(size) / 1024))} KB`;
     };
 
-    const recordDraftRead = useCallback(() => {
+    const recordDraftRead = useCallback((payload = {}) => {
         if (!isRequester || !jobId) return;
 
-        draftReadLogService.recordRead(jobId)
+        draftReadLogService.recordRead(jobId, payload)
             .then(r => r?.success && console.log('[DraftCard] ✅ Read log recorded'))
             .catch(err => console.warn('[DraftCard] ⚠️ Could not record read log:', err));
     }, [jobId, isRequester]);
 
-    const handleLinkClick = useCallback(() => {
-        recordDraftRead();
+    const handleLinkClick = useCallback((draftEntry) => {
+        recordDraftRead({
+            source: 'link',
+            fileName: draftEntry?.name || 'Draft Link'
+        });
     }, [recordDraftRead]);
 
     const handleAttachmentClick = useCallback((attachment) => {
-        recordDraftRead();
         const attachmentId = attachment?.fileId || attachment?.id;
+        const fileName = getFileName(attachment, 'Draft Attachment');
 
-        if (!isRequester || !jobId || !attachmentId) {
+        if (!isRequester || !jobId) {
             return;
         }
 
-        draftReadLogService.recordAttachmentView(jobId, attachmentId)
-            .catch(err => console.warn('[DraftCard] ⚠️ Could not record draft attachment view:', err));
+        recordDraftRead({
+            source: 'attachment',
+            attachmentId,
+            fileName
+        });
     }, [isRequester, jobId, recordDraftRead]);
 
     const getHref = (url) => {
@@ -131,7 +137,11 @@ export default function DraftCard({ job, currentUser, onSuccess }) {
                                 </div>
                                 <FileActions
                                     file={attachment}
-                                    onAction={() => onAttachmentClick?.(attachment)}
+                                    onAction={(file, action) => {
+                                        if (action === 'view') {
+                                            onAttachmentClick?.(attachment);
+                                        }
+                                    }}
                                     className="justify-end"
                                     compact
                                 />
@@ -222,7 +232,7 @@ export default function DraftCard({ job, currentUser, onSuccess }) {
                             href={getHref(file.url)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            onClick={handleLinkClick}
+                            onClick={() => handleLinkClick(file)}
                             className="flex items-center gap-3 p-3 bg-white rounded-lg border border-blue-200 hover:border-blue-400 hover:shadow-sm transition-all group"
                         >
                             <div className="p-2 bg-blue-100 text-blue-600 rounded-md group-hover:bg-blue-500 group-hover:text-white transition-colors flex-shrink-0">

@@ -27,6 +27,7 @@ const DraftSubmitModal = ({ isOpen, onClose, job, onSuccess, currentUser }) => {
         try {
             const result = await fileUploadService.uploadMultipleFiles(files, {
                 jobId: job.id,
+                projectId: job.projectId,
                 tenantId: currentUser?.tenantId || job.tenantId,
                 userId: currentUser?.id,
                 attachmentType: 'draft'

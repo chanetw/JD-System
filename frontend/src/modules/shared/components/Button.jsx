@@ -34,7 +34,7 @@ export default function Button({
 
     return (
         <button
-            className={`${baseStyles} ${variants[variant] || variants.primary} ${disabled || isLoading ? 'opacity-70 cursor-not-allowed' : ''} ${className}`}
+            className={`${baseStyles} ${variants[variant] || variants.primary} ${className} ${disabled || isLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
             disabled={disabled || isLoading}
             {...props}
         >

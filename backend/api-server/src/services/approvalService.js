@@ -17,6 +17,7 @@ import NotificationService from './notificationService.js';
 import chainService from './chainService.js';
 import { cacheService } from './cacheService.js';
 import MagicLinkService from './magicLinkService.js';
+import { countWorkingDaysBetween, addWorkingDaysWithTenantHolidays } from './jobAcceptanceService.js';
 import {
   getEffectiveItemQuantity,
   normalizeDeliveredItemsInput
@@ -29,6 +30,14 @@ import {
   createJobAssignmentEmail
 } from '../utils/emailTemplates.js';
 
+const ASSIGNEE_REJECTABLE_STATUSES = [
+  'assigned',
+  'in_progress',
+  'draft_review',
+  'pending_rebrief',
+  'rebrief_submitted'
+];
+
 export class ApprovalService extends BaseService {
   constructor() {
     super();
@@ -38,7 +47,8 @@ export class ApprovalService extends BaseService {
 
   async triggerUrgentRescheduleIfNeeded(job, prisma = this.prisma) {
     try {
-      if (!job || String(job.priority || '').toLowerCase() !== 'urgent' || !job.assigneeId) {
+      const readyStatuses = ['assigned', 'in_progress'];
+      if (!job || String(job.priority || '').toLowerCase() !== 'urgent' || !job.assigneeId || !readyStatuses.includes(job.status)) {
         return null;
       }
 
@@ -46,6 +56,82 @@ export class ApprovalService extends BaseService {
     } catch (error) {
       console.warn(`[ApprovalService] Urgent reschedule failed for job ${job?.djId || job?.id}:`, error.message);
       return null;
+    }
+  }
+
+  async notifyAssigneeAssignment(jobId, tenantIdFallback = null, options = {}) {
+    try {
+      const { mirrorToTestMailbox = false } = options;
+      const job = await this.prisma.job.findUnique({
+        where: { id: jobId },
+        select: {
+          id: true,
+          tenantId: true,
+          djId: true,
+          subject: true,
+          priority: true,
+          dueDate: true,
+          assigneeId: true,
+          assignee: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true
+            }
+          }
+        }
+      });
+
+      if (!job?.assigneeId) {
+        return;
+      }
+
+      await this.notificationService.createNotification({
+        tenantId: job.tenantId || tenantIdFallback || 1,
+        userId: job.assigneeId,
+        type: 'job_assigned',
+        title: `👤 คุณได้รับมอบหมายงาน: ${job.djId}`,
+        message: `งาน "${job.subject}" ถูกมอบหมายให้คุณ`,
+        link: `/jobs/${job.id}`
+      }).catch(err => console.warn('[ApprovalService] Assignee notification failed:', err.message));
+
+      if (job.assignee?.email) {
+        const EmailService = (await import('./emailService.js')).default || (await import('./emailService.js')).EmailService;
+        const emailService = new EmailService();
+        const magicLink = await this.magicLinkService.createJobActionLink({
+          userId: job.assigneeId,
+          jobId: job.id,
+          action: 'view',
+          djId: job.djId
+        });
+        const html = createJobAssignmentEmail({
+          djId: job.djId,
+          subject: job.subject,
+          priority: job.priority || 'normal',
+          dueDate: job.dueDate ? new Date(job.dueDate).toLocaleDateString('th-TH') : null,
+          magicLink,
+          assigneeName: `${job.assignee.firstName || ''} ${job.assignee.lastName || ''}`.trim()
+        });
+        await emailService.sendEmail(
+          job.assignee.email,
+          `👤 คุณได้รับมอบหมายงาน: ${job.djId}`,
+          html
+        ).catch(err => console.warn('[ApprovalService] Assignee email failed:', err.message));
+
+        if (mirrorToTestMailbox) {
+          const testEmail = String(process.env.AUTO_APPROVAL_TEST_EMAIL || '').trim();
+          if (testEmail) {
+            await emailService.sendEmail(
+              testEmail,
+              `[TEST] Auto-Approved Assignment: ${job.djId}`,
+              html
+            ).catch(err => console.warn('[ApprovalService] Test mailbox email failed:', err.message));
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('[ApprovalService] notifyAssigneeAssignment failed:', error.message);
     }
   }
 
@@ -440,8 +526,22 @@ export class ApprovalService extends BaseService {
 
       let newStatus;
       if (pendingApprovals === 0) {
-        // ไม่มีการอนุมัติที่รอดำเนินการ -> อนุมัติสำเร็จ
-        newStatus = 'approved';
+        const job = await this.prisma.job.findUnique({
+          where: { id: jobId },
+          select: {
+            tenantId: true,
+            assigneeId: true,
+            predecessorId: true
+          }
+        });
+
+        if (job?.predecessorId) {
+          newStatus = 'pending_dependency';
+        } else if (job?.assigneeId) {
+          newStatus = 'assigned';
+        } else {
+          newStatus = 'approved';
+        }
       } else {
         // ยังมีการอนุมัติที่รอดำเนินการ
         newStatus = 'pending_approval';
@@ -450,17 +550,15 @@ export class ApprovalService extends BaseService {
       const updatedJob = await this.prisma.job.update({
         where: { id: jobId },
         data: {
-          status: newStatus,
-          // ถ้าอนุมัติสำเร็จแล้วและมี assignee ให้ auto-start เป็น in_progress
-          ...(newStatus === 'approved' && {
-            status: 'in_progress',
-            assignedAt: new Date(),
-            startedAt: new Date()
-          })
+          status: newStatus
         }
       });
 
       await this.triggerUrgentRescheduleIfNeeded(updatedJob);
+
+      if (newStatus === 'assigned') {
+        await this.notifyAssigneeAssignment(jobId, updatedJob.tenantId);
+      }
     } catch (error) {
       console.error('[ApprovalService] Update job status failed:', error);
       throw error;
@@ -631,7 +729,7 @@ export class ApprovalService extends BaseService {
       // 1. Get Job & Current Status
       const job = await this.prisma.job.findUnique({
         where: { id: jobId },
-        select: { id: true, projectId: true, jobTypeId: true, status: true, requesterId: true, djId: true, subject: true, isParent: true, predecessorId: true, tenantId: true, priority: true }
+        select: { id: true, projectId: true, jobTypeId: true, status: true, requesterId: true, djId: true, subject: true, isParent: true, predecessorId: true, tenantId: true, priority: true, assigneeId: true }
       });
 
       if (!job) throw new Error('Job not found');
@@ -709,14 +807,27 @@ export class ApprovalService extends BaseService {
         updateData.status = 'pending_dependency';
         nextStatus = 'pending_dependency';
         console.log(`[Approval] Job ${job.djId} approved but has predecessor → pending_dependency`);
-      } else if (isFinal) {
-        updateData.startedAt = new Date();
+      } else if (isFinal && job.assigneeId) {
+        updateData.status = 'assigned';
+        nextStatus = 'assigned';
+        console.log(`[Approval] Job ${job.djId} approved with assignee → assigned`);
       }
 
       await this.prisma.job.update({
         where: { id: jobId },
         data: updateData
       });
+
+      if (isFinal && nextStatus === 'assigned') {
+        await this.notifyAssigneeAssignment(jobId, job.tenantId);
+        await this.triggerUrgentRescheduleIfNeeded({
+          id: jobId,
+          djId: job.djId,
+          priority: job.priority,
+          assigneeId: job.assigneeId,
+          status: 'assigned'
+        });
+      }
 
       // ✅ Notification: Approve non-final → แจ้ง Approver level ถัดไป
       if (!isFinal && this.notificationService) {
@@ -791,7 +902,7 @@ export class ApprovalService extends BaseService {
 
       // V1 Extended: Auto-Assign Logic if Final Approval (skip if has predecessor)
       let assignResult = null;
-      if (isFinal && !job.predecessorId) {
+      if (isFinal && !job.predecessorId && !job.assigneeId) {
         assignResult = await this.autoAssignJob(jobId, flow, job.requesterId);
         if (assignResult.success) {
           nextStatus = 'in_progress';
@@ -855,6 +966,10 @@ export class ApprovalService extends BaseService {
           select: {
             id: true,
             jobTypeId: true,
+            assigneeId: true,
+            predecessorId: true,
+            assignedAt: true,
+            startedAt: true,
             requesterId: true,
             tenantId: true,
             djId: true,
@@ -915,30 +1030,47 @@ export class ApprovalService extends BaseService {
           for (const child of pendingChildren) {
             try {
               const flow = flowMap.get(child.jobTypeId) || flowMap.get(null);
-              let assigneeId = null;
-              let childFinalStatus = 'approved';
+              let assigneeId = child.assigneeId || null;
+              let childFinalStatus = child.predecessorId ? 'pending_dependency' : 'approved';
 
-              // Determine assignee based on flow config
-              if (flow?.autoAssignType === 'specific_user' && flow.autoAssignUserId) {
-                assigneeId = flow.autoAssignUserId;
-                childFinalStatus = 'in_progress';
-              } else if (flow?.autoAssignType === 'dept_manager' && child.requester?.department?.managerId) {
-                assigneeId = child.requester.department.managerId;
+              // Preserve the assignee chosen at creation time; only fallback when still unassigned.
+              if (!assigneeId) {
+                if (flow?.autoAssignType === 'specific_user' && flow.autoAssignUserId) {
+                  assigneeId = flow.autoAssignUserId;
+                } else if (flow?.autoAssignType === 'dept_manager' && child.requester?.department?.managerId) {
+                  assigneeId = child.requester.department.managerId;
+                }
+              }
+
+              if (assigneeId && !child.predecessorId) {
                 childFinalStatus = 'in_progress';
               }
 
               // Prepare update operation
-              if (assigneeId) {
+              const updateData = {
+                updatedAt: new Date()
+              };
+
+              if (childFinalStatus !== 'approved') {
+                updateData.status = childFinalStatus;
+              }
+
+              if (assigneeId !== child.assigneeId) {
+                updateData.assigneeId = assigneeId;
+                if (assigneeId && !child.assignedAt) {
+                  updateData.assignedAt = new Date();
+                }
+              }
+
+              if (childFinalStatus === 'in_progress' && !child.startedAt) {
+                updateData.startedAt = new Date();
+              }
+
+              if (Object.keys(updateData).length > 1) {
                 assignOps.push(
                   this.prisma.job.update({
                     where: { id: child.id },
-                    data: {
-                      assigneeId,
-                      status: 'in_progress',
-                      assignedAt: new Date(),
-                      startedAt: new Date(),
-                      updatedAt: new Date()
-                    }
+                    data: updateData
                   })
                 );
               }
@@ -1551,8 +1683,8 @@ export class ApprovalService extends BaseService {
         };
       }
 
-      // ตรวจสอบสถานะงาน (ต้องเป็น in_progress หรือ assigned)
-      if (!['in_progress', 'assigned'].includes(job.status)) {
+      // อนุญาตให้ปฏิเสธได้ต่อเนื่องแม้งานค้างในช่วง Draft/Rebrief
+      if (!ASSIGNEE_REJECTABLE_STATUSES.includes(job.status)) {
         return {
           success: false,
           error: 'INVALID_STATUS',
@@ -1829,7 +1961,7 @@ export class ApprovalService extends BaseService {
         select: {
           id: true, djId: true, status: true, tenantId: true,
           requesterId: true, assigneeId: true, rejectedBy: true,
-          rejectionComment: true, subject: true,
+          rejectionComment: true, subject: true, dueDate: true,
           assignee: {
             select: { id: true, email: true, firstName: true, lastName: true, displayName: true }
           }
@@ -1847,12 +1979,47 @@ export class ApprovalService extends BaseService {
         };
       }
 
-      // อัพเดทสถานะกลับเป็น in_progress และ set rejection denial flags
-      await this.prisma.job.update({
-        where: { id: jobId },
+      // หา timestamp ของการปฏิเสธจาก activity log
+      const rejectionActivity = await this.prisma.activityLog.findFirst({
+        where: {
+          jobId,
+          action: 'job_rejected_by_assignee'
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      const denialTimestamp = new Date();
+      let newDueDate = job.dueDate;
+
+      // คำนวณจำนวนวันทำการที่ถูก pause และ extend dueDate
+      if (rejectionActivity && job.dueDate) {
+        const pausedDays = await countWorkingDaysBetween(
+          rejectionActivity.createdAt,
+          denialTimestamp,
+          job.tenantId,
+          this.prisma
+        );
+
+        if (pausedDays > 0) {
+          newDueDate = await addWorkingDaysWithTenantHolidays({
+            db: this.prisma,
+            tenantId: job.tenantId,
+            startDate: job.dueDate,
+            workingDays: pausedDays
+          });
+        }
+      }
+
+      // อัพเดทสถานะกลับเป็น in_progress พร้อม extend dueDate
+      const updateResult = await this.prisma.job.updateMany({
+        where: {
+          id: jobId,
+          status: 'assignee_rejected'
+        },
         data: {
           status: 'in_progress',
-          rejectionDeniedAt: new Date(),
+          dueDate: newDueDate,
+          rejectionDeniedAt: denialTimestamp,
           rejectionDeniedBy: approverId,
           // Clear rejection fields
           rejectedBy: null,
@@ -1860,6 +2027,14 @@ export class ApprovalService extends BaseService {
           rejectionComment: null
         }
       });
+
+      if (updateResult.count === 0) {
+        return {
+          success: false,
+          error: 'INVALID_STATUS',
+          message: 'สถานะงานถูกเปลี่ยนระหว่างดำเนินการ กรุณารีเฟรชแล้วลองใหม่อีกครั้ง'
+        };
+      }
 
       // Log Activity
       await this.logApprovalActivity({
@@ -1924,7 +2099,7 @@ export class ApprovalService extends BaseService {
         success: true,
         data: {
           status: 'in_progress',
-          rejectionDeniedAt: new Date()
+          rejectionDeniedAt: denialTimestamp
         }
       };
     } catch (error) {
@@ -2481,88 +2656,25 @@ export class ApprovalService extends BaseService {
           newStatus = 'pending_dependency';
           console.log(`[AutoApprove] Job ${currentJob.djId || jobId} approved but has predecessor → pending_dependency`);
         } else if (currentJob?.assigneeId) {
-          // No predecessor but has assignee → start immediately
-          newStatus = 'in_progress';
-          console.log(`[AutoApprove] Job ${currentJob.djId || jobId} has assignee → status set to in_progress`);
+          // No predecessor but has assignee → mark as assigned after approval
+          newStatus = 'assigned';
+          console.log(`[AutoApprove] Job ${currentJob.djId || jobId} has assignee → status set to assigned`);
         }
       }
 
       const updatedJob = await this.prisma.job.update({
         where: { id: jobId },
         data: {
-          status: newStatus,
-          ...(isFinal && newStatus !== 'pending_dependency' ? { startedAt: new Date() } : {})
+          status: newStatus
         }
       });
 
       await this.triggerUrgentRescheduleIfNeeded(updatedJob);
 
       // 5.2 Auto-approve reached final and already has assignee → notify + email assignee
-      if (sendAssigneeNotification && isFinal && newStatus === 'in_progress') {
+      if (sendAssigneeNotification && isFinal && newStatus === 'assigned') {
         try {
-          const jobWithAssignee = await this.prisma.job.findUnique({
-            where: { id: jobId },
-            select: {
-              id: true,
-              tenantId: true,
-              djId: true,
-              subject: true,
-              priority: true,
-              dueDate: true,
-              assigneeId: true,
-              requester: { select: { firstName: true, lastName: true } },
-              assignee: { select: { id: true, email: true, firstName: true, lastName: true } }
-            }
-          });
-
-          if (jobWithAssignee?.assigneeId && jobWithAssignee?.assignee?.email) {
-            const magicLink = await this.magicLinkService.createJobActionLink({
-              userId: jobWithAssignee.assigneeId,
-              jobId: jobWithAssignee.id,
-              action: 'view',
-              djId: jobWithAssignee.djId
-            });
-
-            await this.notificationService.sendNotification({
-              tenantId: jobWithAssignee.tenantId || tenantId,
-              userIds: [jobWithAssignee.assigneeId],
-              type: 'job_assigned',
-              title: `👤 งาน ${jobWithAssignee.djId} ถูกอนุมัติอัตโนมัติและมอบหมายแล้ว`,
-              message: `งาน "${jobWithAssignee.subject}" ได้รับการอนุมัติอัตโนมัติและเริ่มทำงานแล้ว`,
-              link: `/jobs/${jobWithAssignee.id}`,
-              sendEmail: true,
-              emailData: {
-                assigneeName: `${jobWithAssignee.assignee.firstName || ''} ${jobWithAssignee.assignee.lastName || ''}`.trim(),
-                jobId: jobWithAssignee.djId,
-                jobSubject: jobWithAssignee.subject,
-                requesterName: `${jobWithAssignee.requester?.firstName || ''} ${jobWithAssignee.requester?.lastName || ''}`.trim(),
-                priority: jobWithAssignee.priority || 'normal',
-                deadline: jobWithAssignee.dueDate?.toLocaleDateString('th-TH') || null,
-                magicLink,
-                buttonText: '🔐 เริ่มทำงานทันที (ไม่ต้อง Login)'
-              }
-            });
-
-            // Optional: send same content to test mailbox when configured.
-            const testEmail = String(process.env.AUTO_APPROVAL_TEST_EMAIL || '').trim();
-            if (testEmail) {
-              const EmailService = (await import('./emailService.js')).default || (await import('./emailService.js')).EmailService;
-              const emailService = new EmailService();
-              const html = createJobAssignmentEmail({
-                djId: jobWithAssignee.djId,
-                subject: jobWithAssignee.subject,
-                priority: jobWithAssignee.priority || 'normal',
-                dueDate: jobWithAssignee.dueDate?.toLocaleDateString('th-TH') || null,
-                magicLink,
-                assigneeName: `${jobWithAssignee.assignee.firstName || ''} ${jobWithAssignee.assignee.lastName || ''}`.trim()
-              });
-              await emailService.sendEmail(
-                testEmail,
-                `[TEST] Auto-Approved Assignment: ${jobWithAssignee.djId}`,
-                html
-              );
-            }
-          }
+          await this.notifyAssigneeAssignment(jobId, tenantId, { mirrorToTestMailbox: true });
         } catch (notifyErr) {
           console.warn('[AutoApprove] Assignee notification failed (non-blocking):', notifyErr.message);
         }
@@ -2879,6 +2991,7 @@ export class ApprovalService extends BaseService {
           jobTypeId: parseInt(jobTypeId),
           isActive: true
         },
+        orderBy: { id: 'asc' },
         select: { assigneeId: true }
       });
 
@@ -2955,6 +3068,7 @@ export class ApprovalService extends BaseService {
             jobTypeId: parseInt(jobTypeId),
             isActive: true
           },
+          orderBy: { id: 'asc' },
           select: { assigneeId: true }
         });
         if (assignment?.assigneeId) {

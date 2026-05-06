@@ -9,30 +9,18 @@ export const draftReadLogService = {
   /**
    * บันทึกการเปิดอ่าน Draft Submission
    * @param {number} jobId - Job ID
+   * @param {Object} [payload]
+   * @param {string} [payload.source] - source ของการเปิดดู เช่น link | attachment | preview
+   * @param {number} [payload.attachmentId] - Attachment ID ถ้าเปิดผ่านไฟล์แนบ
+   * @param {string} [payload.fileName] - ชื่อไฟล์/ลิงก์สำหรับข้อความแจ้งเตือน
    * @returns {Promise} Response data
    */
-  recordRead: async (jobId) => {
+  recordRead: async (jobId, payload = {}) => {
     try {
-      const response = await httpClient.post(`/draft-read-logs/${jobId}`);
+      const response = await httpClient.post(`/draft-read-logs/${jobId}`, payload);
       return response.data;
     } catch (error) {
       console.error('[Draft Read Log] Error recording read:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * บันทึกการเปิดดู Draft Attachment
-   * @param {number} jobId - Job ID
-   * @param {number} attachmentId - Attachment ID
-   * @returns {Promise} Response data
-   */
-  recordAttachmentView: async (jobId, attachmentId) => {
-    try {
-      const response = await httpClient.post(`/draft-read-logs/${jobId}/files/${attachmentId}/view`);
-      return response.data;
-    } catch (error) {
-      console.error('[Draft Read Log] Error recording attachment view:', error);
       throw error;
     }
   },

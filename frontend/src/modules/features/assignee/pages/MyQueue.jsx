@@ -9,7 +9,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '@shared/services/apiService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
-import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import { fileUploadService } from '@shared/services/modules/fileUploadService';
 import { Card } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
@@ -37,9 +36,12 @@ import TimelineView from '../components/TimelineView';
 import DraftSubmitModal from '@features/job-management/components/DraftSubmitModal';
 import DeliveredItemsEditor from '@features/job-management/components/DeliveredItemsEditor';
 import httpClient from '@shared/services/httpClient';
-import { resolveSlaBadgePresentation } from '@shared/utils/slaStatusResolver';
-import { matchesSuperSearch } from '@shared/utils/superSearch';
-import Swal from 'sweetalert2';
+import { ACTION_BUTTON_STYLES, showAlert } from '@shared/utils/alertHelper';
+import {
+    ASSIGNEE_COMPLETE_ACTION_STATUSES,
+    ASSIGNEE_DRAFT_REBRIEF_ACTION_STATUSES,
+    ASSIGNEE_REJECTABLE_STATUSES,
+} from '@shared/constants/jobStatus';
 
 /**
  * แถบเมนูสถานะงาน (Tabs Configuration)
@@ -57,7 +59,7 @@ const TAB_DESCRIPTIONS = {
         icon: '▶️',
         title: 'กำลังทำ',
         desc: 'งานที่อยู่ระหว่างดำเนินการ รวมงานที่ได้รับมอบหมาย กำลังทำ รอตรวจ Draft และรอแก้ไข (งานที่ approved แล้วหรือข้าม flow มาถึงผู้รับงานแล้ว)',
-        statuses: '(approved, assigned, in_progress, correction, rework, returned, pending_dependency, draft_review)',
+        statuses: '(approved, assigned, in_progress, correction, rework, returned, pending_dependency, draft_review, pending_rebrief, rebrief_submitted)',
     },
     completed: {
         icon: '✅',
@@ -115,9 +117,7 @@ export default function MyQueue() {
     const [tabCounts, setTabCounts] = useState({ in_progress: 0, completed: 0, rejected: 0, timeline: 0 });
 
     // Filter & Sort State
-    const searchTerm = useSuperSearchStore(state => state.query);
-    const setSearchTerm = useSuperSearchStore(state => state.setQuery);
-    const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
+    const [localSearch, setLocalSearch] = useState('');
     const [sortBy, setSortBy] = useState('deadline'); // 'deadline', 'priority', 'newest'
     const [filterProject, setFilterProject] = useState('all');
 
@@ -126,6 +126,9 @@ export default function MyQueue() {
     const [showRebriefModal, setShowRebriefModal] = useState(false);
     const [selectedJob, setSelectedJob] = useState(null);
     const [rebriefReason, setRebriefReason] = useState('');
+    const [showRejectModal, setShowRejectModal] = useState(false);
+    const [rejectReason, setRejectReason] = useState('');
+    const [isRejecting, setIsRejecting] = useState(false);
 
     // Complete Modal State
     const [showCompleteModal, setShowCompleteModal] = useState(false);
@@ -291,12 +294,7 @@ export default function MyQueue() {
             }
         } catch (error) {
             console.error('[MyQueue] Failed to load complete modal job detail:', error);
-            Swal.fire({
-                icon: 'warning',
-                title: 'โหลดรายการชิ้นงานไม่สำเร็จ',
-                text: 'ยังสามารถส่งงานได้ แต่ระบบอาจไม่แสดงช่องกรอกจำนวนชิ้นงานในครั้งนี้',
-                confirmButtonColor: '#e11d48'
-            });
+            showAlert('warning', 'โหลดรายการชิ้นงานไม่สำเร็จ', 'ยังสามารถส่งงานได้ แต่ระบบอาจไม่แสดงช่องกรอกจำนวนชิ้นงานในครั้งนี้');
         } finally {
             setCompleteItemsLoading(false);
         }
@@ -313,12 +311,7 @@ export default function MyQueue() {
         const existingSize = completeUploadedFiles.reduce((sum, f) => sum + (f.fileSize || 0), 0);
         const newSize = files.reduce((sum, f) => sum + f.size, 0);
         if (existingSize + newSize > COMPLETE_MAX_TOTAL) {
-            Swal.fire({
-                icon: 'warning',
-                title: 'ขนาดไฟล์รวมเกินกำหนด',
-                text: `ขนาดรวม ${((existingSize + newSize) / 1024 / 1024).toFixed(1)}MB เกินขีดจำกัด 10MB สำหรับไฟล์ส่งมอบ`,
-                confirmButtonColor: '#e11d48'
-            });
+            showAlert('warning', 'ขนาดไฟล์รวมเกินกำหนด', `ขนาดรวม ${((existingSize + newSize) / 1024 / 1024).toFixed(1)}MB เกินขีดจำกัด 10MB สำหรับไฟล์ส่งมอบ`);
             e.target.value = '';
             return;
         }
@@ -327,6 +320,7 @@ export default function MyQueue() {
         try {
             const result = await fileUploadService.uploadMultipleFiles(files, {
                 jobId: selectedJob?.id,
+                projectId: selectedJob?.projectId,
                 tenantId: user?.tenantId,
                 userId: user?.id,
                 attachmentType: 'complete',
@@ -336,10 +330,10 @@ export default function MyQueue() {
                 setCompleteUploadedFiles(prev => [...prev, ...result.successfulFiles]);
             }
             if (result.errors?.length) {
-                Swal.fire({ icon: 'warning', title: 'บางไฟล์ไม่สามารถอัปโหลดได้', text: result.errors.join('\n'), confirmButtonColor: '#e11d48' });
+                showAlert('warning', 'บางไฟล์ไม่สามารถอัปโหลดได้', result.errors.join('\n'));
             }
         } catch (err) {
-            Swal.fire({ icon: 'error', title: 'อัปโหลดไฟล์ไม่สำเร็จ', text: err.message, confirmButtonColor: '#e11d48' });
+            showAlert('error', 'อัปโหลดไฟล์ไม่สำเร็จ', err.message);
         } finally {
             setCompleteUploadingFile(false);
             e.target.value = '';
@@ -352,7 +346,7 @@ export default function MyQueue() {
     const handleCompleteRemoveFile = async (fileId) => {
         const result = await fileUploadService.deleteFile(fileId, user?.id);
         if (!result.success) {
-            Swal.fire({ icon: 'error', title: 'ลบไฟล์ไม่สำเร็จ', text: result.error || 'ไม่สามารถลบไฟล์นี้ได้', confirmButtonColor: '#e11d48' });
+            showAlert('error', 'ลบไฟล์ไม่สำเร็จ', result.error || 'ไม่สามารถลบไฟล์นี้ได้');
             return;
         }
         setCompleteUploadedFiles(prev => prev.filter(f => f.id !== fileId));
@@ -382,12 +376,7 @@ export default function MyQueue() {
      */
     const handleCompleteJob = async () => {
         if (!finalLink.trim() && completeUploadedFiles.length === 0) {
-            return Swal.fire({
-                icon: 'warning',
-                title: 'กรุณาระบุลิงก์หรือแนบไฟล์',
-                text: 'ต้องการลิงก์ผลงาน หรือแนบเอกสารส่งมอบอย่างน้อย 1 ไฟล์',
-                confirmButtonColor: '#e11d48'
-            });
+            return showAlert('warning', 'กรุณาระบุลิงก์หรือแนบไฟล์', 'ต้องการลิงก์ผลงาน หรือแนบเอกสารส่งมอบอย่างน้อย 1 ไฟล์');
         }
         if (isCompleting) return;
 
@@ -411,26 +400,16 @@ export default function MyQueue() {
                 attachments,
                 deliveredItems: buildDeliveredItemsPayload(completeDeliveredItems)
             });
-            await Swal.fire({
-                icon: 'success',
-                title: 'ส่งมอบงานสำเร็จ!',
-                text: 'ระบบได้แจ้งเตือนไปยังผู้สั่งงานเรียบร้อยแล้ว',
-                confirmButtonColor: '#e11d48'
-            });
+            await showAlert('success', 'ส่งมอบงานสำเร็จ!', 'ระบบได้แจ้งเตือนไปยังผู้สั่งงานเรียบร้อยแล้ว');
             setShowCompleteModal(false);
             setFinalLink('');
             setCompleteNote('');
             setCompleteUploadedFiles([]);
             setSelectedJob(null);
-            setActiveTab('completed');
+            fetchJobs();
             fetchAllTabCounts();
         } catch (err) {
-            Swal.fire({
-                icon: 'error',
-                title: 'ส่งงานไม่สำเร็จ',
-                text: err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์',
-                confirmButtonColor: '#e11d48'
-            });
+            showAlert('error', 'ส่งงานไม่สำเร็จ', err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์');
         } finally {
             setIsCompleting(false);
         }
@@ -460,33 +439,55 @@ export default function MyQueue() {
      */
     const handleRebrief = async () => {
         if (!rebriefReason.trim()) {
-            return Swal.fire({
-                icon: 'warning',
-                title: 'กรุณาระบุเหตุผล',
-                confirmButtonColor: '#e11d48'
-            });
+            return showAlert('warning', 'กรุณาระบุเหตุผล');
         }
         try {
             await httpClient.post(`/jobs/${selectedJob.id}/rebrief`, {
                 reason: rebriefReason.trim()
             });
-            await Swal.fire({
-                icon: 'success',
-                title: 'ขอ Rebrief สำเร็จ',
-                text: 'ระบบได้แจ้งเตือนไปยัง Requester แล้ว',
-                confirmButtonColor: '#e11d48'
-            });
+            await showAlert('success', 'ขอ Rebrief สำเร็จ', 'ระบบได้แจ้งเตือนไปยัง Requester แล้ว');
             setShowRebriefModal(false);
             setRebriefReason('');
             setSelectedJob(null);
             fetchJobs();
+            fetchAllTabCounts();
         } catch (err) {
-            Swal.fire({
-                icon: 'error',
-                title: 'ขอ Rebrief ไม่สำเร็จ',
-                text: err.response?.data?.message || err.message,
-                confirmButtonColor: '#e11d48'
-            });
+            showAlert('error', 'ขอ Rebrief ไม่สำเร็จ', err.response?.data?.message || err.message);
+        }
+    };
+
+    const handleRejectByAssignee = async (job, e) => {
+        if (e) e.stopPropagation();
+
+        setSelectedJob(job);
+        setRejectReason('');
+        setShowRejectModal(true);
+    };
+
+    const handleConfirmReject = async () => {
+        if (!rejectReason.trim()) {
+            showAlert('warning', 'กรุณาระบุเหตุผลในการปฏิเสธงาน');
+            return;
+        }
+
+        if (!selectedJob?.id || isRejecting) {
+            return;
+        }
+
+        setIsRejecting(true);
+
+        try {
+            await api.rejectJobByAssignee(selectedJob.id, rejectReason.trim());
+            await showAlert('success', 'ส่งคำขอปฏิเสธงานแล้ว', 'ระบบได้ส่งคำขอไปยังผู้อนุมัติเรียบร้อยแล้ว');
+            setShowRejectModal(false);
+            setRejectReason('');
+            setSelectedJob(null);
+            fetchJobs();
+            fetchAllTabCounts();
+        } catch (err) {
+            showAlert('error', 'ปฏิเสธงานไม่สำเร็จ', err.response?.data?.message || err.message || 'เกิดข้อผิดพลาด');
+        } finally {
+            setIsRejecting(false);
         }
     };
 
@@ -506,39 +507,6 @@ export default function MyQueue() {
             case 'warning': return 'border-l-4 border-l-yellow-400';
             default: return 'border-l-4 border-l-green-500';
         }
-    };
-
-    /**
-     * Helper: แสดงข้อความ SLA
-     */
-    const renderSLAText = (job) => {
-        const slaBadge = resolveSlaBadgePresentation({
-            status: job.status,
-            deadline: job.deadline,
-            completedAt: job.completedAt
-        });
-
-        if (slaBadge.key === 'completed_on_time') return <span className="text-green-600 font-medium">เสร็จสิ้น</span>;
-        if (slaBadge.key === 'completed_late') return <span className="text-orange-600 font-medium">{slaBadge.text}</span>;
-
-        if (job.hoursRemaining === null) return <span className="text-gray-400">ไม่มี deadline</span>;
-
-        const style = job.healthStatus === 'critical' ? 'text-red-600 font-bold'
-            : job.healthStatus === 'warning' ? 'text-yellow-600 font-medium'
-                : 'text-green-600';
-
-        let text;
-        if (job.hoursRemaining < 0) {
-            text = `เลยกำหนด ${Math.abs(job.hoursRemaining).toFixed(1)} ชม.`;
-        } else if (job.hoursRemaining < 24) {
-            text = `เหลือ ${job.hoursRemaining.toFixed(1)} ชม.`;
-        } else {
-            const daysLeft = Math.floor(job.hoursRemaining / 24);
-            const hrsLeft = Math.round(job.hoursRemaining % 24);
-            text = `เหลือ ${daysLeft} วัน ${hrsLeft} ชม.`;
-        }
-
-        return <span className={style}>{text}</span>;
     };
 
     /**
@@ -567,9 +535,6 @@ export default function MyQueue() {
      * Helper: แสดงวันที่รับงาน และ ควรเริ่มงานภายใน
      */
     const renderDateInfo = (job) => {
-        const acceptedStr = job.acceptanceDate
-            ? new Date(job.acceptanceDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
-            : null;
         const shouldStartStr = job.shouldStartBy
             ? new Date(job.shouldStartBy).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })
             : null;
@@ -577,11 +542,6 @@ export default function MyQueue() {
 
         return (
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 mt-1">
-                {acceptedStr && (
-                    <span title="วันที่รับงาน">
-                        📥 รับงาน: {acceptedStr}
-                    </span>
-                )}
                 {shouldStartStr && (
                     <span className={isPastShouldStart ? 'text-orange-600 font-semibold' : ''} title="ควรเริ่มงานภายในวันที่นี้เพื่อให้ทันส่งตาม SLA">
                         {isPastShouldStart ? '⚡' : '🎯'} ควรเริ่มภายใน: {shouldStartStr}
@@ -610,16 +570,15 @@ export default function MyQueue() {
     };
 
     const projectFilteredJobs = jobs.filter(job => filterProject === 'all' || job.projectName === filterProject);
+    const normalizedSearch = localSearch.trim().toLowerCase();
+
     const filteredJobs = projectFilteredJobs
-        .filter(job => matchesSuperSearch(job, searchTerm, [
-            item => item.djId,
-            item => item.id,
-            item => item.subject,
-            item => item.projectName,
-            item => item.status,
-            item => item.priority,
-            item => item.assignee,
-        ]))
+        .filter(job => {
+            if (!normalizedSearch) return true;
+            const djId = String(job.djId || '').toLowerCase();
+            const subject = String(job.subject || '').toLowerCase();
+            return djId.includes(normalizedSearch) || subject.includes(normalizedSearch);
+        })
         .sort((a, b) => {
             const weightDiff = getSortWeight(b) - getSortWeight(a);
             if (weightDiff !== 0) return weightDiff;
@@ -639,27 +598,7 @@ export default function MyQueue() {
             return 0;
         });
 
-    useEffect(() => {
-        setSuperSearchMeta({ resultCount: filteredJobs.length, totalCount: projectFilteredJobs.length });
-    }, [filteredJobs.length, projectFilteredJobs.length, setSuperSearchMeta]);
-
-    // แบ่งกลุ่มงาน: urgent, risk (overdue + shouldStart passed), normal
-    const urgentJobs = filteredJobs.filter(j => j.priority?.toLowerCase() === 'urgent' && activeTab !== 'completed');
-    const riskJobs = filteredJobs.filter(j => {
-        if (j.priority?.toLowerCase() === 'urgent') return false;
-        if (activeTab === 'completed') return false;
-        return (j.hoursRemaining !== null && j.hoursRemaining < 0) ||
-            (j.shouldStartBy && new Date() > new Date(j.shouldStartBy)) ||
-            j.healthStatus === 'critical';
-    });
-    const normalJobs = filteredJobs.filter(j => {
-        if (j.priority?.toLowerCase() === 'urgent' && activeTab !== 'completed') return false;
-        const isRisk = (j.hoursRemaining !== null && j.hoursRemaining < 0) ||
-            (j.shouldStartBy && new Date() > new Date(j.shouldStartBy)) ||
-            j.healthStatus === 'critical';
-        if (isRisk && activeTab !== 'completed') return false;
-        return true;
-    });
+    const canSubmitComplete = Boolean(finalLink.trim()) || completeUploadedFiles.length > 0;
 
     return (
         <div className="space-y-4 sm:space-y-5 lg:space-y-6">
@@ -670,7 +609,7 @@ export default function MyQueue() {
                     <p className="text-gray-500">จัดการงานที่ได้รับมอบหมายและตรวจสอบกำหนดส่ง</p>
                 </div>
                 {/* Stats Summary */}
-                <div className="flex gap-4">
+                <div className="flex flex-wrap gap-3">
                     <div className="bg-white px-4 py-2 rounded-lg shadow-sm border border-gray-400">
                         <span className="text-sm text-gray-500 block">งานทั้งหมด</span>
                         <span className="text-xl font-bold text-rose-600">{jobs.length}</span>
@@ -689,13 +628,13 @@ export default function MyQueue() {
             {/* Toolbar: Search & Filter (ซ่อนเมื่ออยู่ใน Timeline tab) */}
             {activeTab !== 'timeline' && (
                 <div className="bg-white p-4 rounded-xl border border-gray-400 shadow-sm grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-4">
-                    <div className="flex-1 relative">
-                        <DocumentMagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <div className="relative">
+                        <DocumentMagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                         <input
                             type="text"
-                            placeholder="ค้นหา DJ ID, ชื่องาน..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="ค้นหา DJ ID หรือหัวข้องาน..."
+                            value={localSearch}
+                            onChange={(e) => setLocalSearch(e.target.value)}
                             className="w-full pl-10 pr-4 py-2 border border-gray-400 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:outline-none"
                         />
                     </div>
@@ -774,8 +713,8 @@ export default function MyQueue() {
                 /* Timeline View */
                 <TimelineView jobs={filteredJobs} onJobClick={handleViewDetail} />
             ) : (
-                /* Job List View */
-                <div className="space-y-4">
+                /* Job List View (Responsive) */
+                <div className="bg-white rounded-xl border border-gray-300 shadow-sm">
                     {loading ? (
                         <div className="text-center py-10 text-gray-500">กำลังโหลดข้อมูล...</div>
                     ) : filteredJobs.length === 0 ? (
@@ -785,48 +724,139 @@ export default function MyQueue() {
                             <p className="text-gray-500">ลองปรับเปลี่ยนตัวกรองหรือคำค้นหา</p>
                         </div>
                     ) : (
-                        <div className="space-y-6">
-                            {/* Section: งานด่วน */}
-                            {urgentJobs.length > 0 && (
-                                <div>
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <ExclamationTriangleIcon className="w-4 h-4 text-red-600" />
-                                        <h3 className="text-sm font-bold text-red-700 uppercase tracking-wide">งานด่วน ({urgentJobs.length})</h3>
-                                    </div>
-                                    <div className="grid gap-3">
-                                        {urgentJobs.map((job) => <JobCard key={job.id} job={job} activeTab={activeTab} onView={handleViewDetail} onOpenCompleteModal={handleOpenCompleteModal} onOpenDraftModal={handleOpenDraftModal} onOpenRebriefModal={handleOpenRebriefModal} renderSLAText={renderSLAText} renderSLABar={renderSLABar} renderDateInfo={renderDateInfo} getHealthBorderColor={getHealthBorderColor} />)}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Section: ใกล้เลย SLA / เกินกำหนด */}
-                            {riskJobs.length > 0 && (
-                                <div>
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <ClockIcon className="w-4 h-4 text-orange-500" />
-                                        <h3 className="text-sm font-bold text-orange-600 uppercase tracking-wide">ต้องดำเนินการ / ใกล้เลย SLA ({riskJobs.length})</h3>
-                                    </div>
-                                    <div className="grid gap-3">
-                                        {riskJobs.map((job) => <JobCard key={job.id} job={job} activeTab={activeTab} onView={handleViewDetail} onOpenCompleteModal={handleOpenCompleteModal} onOpenDraftModal={handleOpenDraftModal} onOpenRebriefModal={handleOpenRebriefModal} renderSLAText={renderSLAText} renderSLABar={renderSLABar} renderDateInfo={renderDateInfo} getHealthBorderColor={getHealthBorderColor} />)}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Section: งานปกติ */}
-                            {normalJobs.length > 0 && (
-                                <div>
-                                    {(urgentJobs.length > 0 || riskJobs.length > 0) && (
-                                        <div className="flex items-center gap-2 mb-3">
-                                            <ClipboardDocumentListIcon className="w-4 h-4 text-gray-500" />
-                                            <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide">งานปกติ ({normalJobs.length})</h3>
+                        <>
+                            {/* === Mobile: card list (hidden on md+) === */}
+                            <div className="md:hidden divide-y divide-gray-100">
+                                {filteredJobs.map((job) => {
+                                    const isDraftReview = job.status === 'draft_review';
+                                    const isPredecessorPending = job.predecessorDjId && job.predecessorStatus &&
+                                        !['completed', 'approved'].includes(job.predecessorStatus);
+                                    const isUrgent = job.priority?.toLowerCase() === 'urgent' && activeTab !== 'completed';
+                                    const workStatus = getQueueCardStatus({ job, activeTab, isUrgent, isDraftReview, isPredecessorPending });
+                                    const canComplete = ASSIGNEE_COMPLETE_ACTION_STATUSES.includes(job.status);
+                                    const canDA = ASSIGNEE_DRAFT_REBRIEF_ACTION_STATUSES.includes(job.status);
+                                    const canRej = ASSIGNEE_REJECTABLE_STATUSES.includes(job.status);
+                                    const btnBase = 'py-2 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+                                    return (
+                                        <div
+                                            key={job.id}
+                                            onClick={() => handleViewDetail(job.id)}
+                                            className="p-4 cursor-pointer hover:bg-rose-50/40 active:bg-rose-50/60"
+                                        >
+                                            {/* Row 1: DJ ID + project + work status */}
+                                            <div className="flex items-start justify-between gap-2 mb-1.5">
+                                                <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                                                    <span className="font-bold text-rose-700 text-sm">{job.djId || `DJ-${job.id}`}</span>
+                                                    {isUrgent && (
+                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-700">URGENT</span>
+                                                    )}
+                                                    {job.projectName && (
+                                                        <span className="text-xs text-gray-400 truncate max-w-[120px]">{job.projectName}</span>
+                                                    )}
+                                                </div>
+                                                <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${workStatus.className}`}>
+                                                    {workStatus.text}
+                                                </span>
+                                            </div>
+                                            {/* Row 2: subject */}
+                                            <p className="text-sm font-medium text-gray-900 line-clamp-2 mb-2">{job.subject || '-'}</p>
+                                            {/* Row 3: meta */}
+                                            <div className="flex items-center justify-between gap-2 text-xs text-gray-500 mb-1">
+                                                <span>{job.requesterName || '-'}</span>
+                                                <span>กำหนดส่ง {formatQueueDate(job.deadline || job.dueDate)}</span>
+                                            </div>
+                                            {/* Row 4: approval badge */}
+                                            <div className="mb-3">
+                                                <Badge status={job.status} />
+                                            </div>
+                                            {/* Row 5: action buttons */}
+                                            {activeTab === 'in_progress' && (
+                                                <div className="grid grid-cols-2 gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                                    <button type="button" onClick={(e) => handleOpenCompleteModal(job, e)} disabled={!canComplete || isDraftReview} className={`${btnBase} ${ACTION_BUTTON_STYLES.complete}`}>ส่งงาน</button>
+                                                    <button type="button" onClick={(e) => handleOpenDraftModal(job, e)} disabled={!canDA || isDraftReview} className={`${btnBase} ${ACTION_BUTTON_STYLES.draft}`}>ส่ง Draft</button>
+                                                    <button type="button" onClick={(e) => handleOpenRebriefModal(job, e)} disabled={!canDA || isDraftReview} className={`${btnBase} ${ACTION_BUTTON_STYLES.rebrief}`}>Rebrief</button>
+                                                    <button type="button" onClick={(e) => handleRejectByAssignee(job, e)} disabled={!canRej} className={`${btnBase} ${ACTION_BUTTON_STYLES.reject}`}>ปฏิเสธงาน</button>
+                                                </div>
+                                            )}
                                         </div>
-                                    )}
-                                    <div className="grid gap-3">
-                                        {normalJobs.map((job) => <JobCard key={job.id} job={job} activeTab={activeTab} onView={handleViewDetail} onOpenCompleteModal={handleOpenCompleteModal} onOpenDraftModal={handleOpenDraftModal} onOpenRebriefModal={handleOpenRebriefModal} renderSLAText={renderSLAText} renderSLABar={renderSLABar} renderDateInfo={renderDateInfo} getHealthBorderColor={getHealthBorderColor} />)}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* === Desktop: table (hidden on mobile) === */}
+                            <div className="hidden md:block overflow-x-auto rounded-xl">
+                                <table className="min-w-[960px] w-full text-sm">
+                                    <thead className="bg-gray-50 border-b border-gray-200">
+                                        <tr className="text-left text-gray-700">
+                                            <th className="px-4 py-3 font-semibold">เลขที่ DJ</th>
+                                            <th className="px-4 py-3 font-semibold">โครงการ</th>
+                                            <th className="px-4 py-3 font-semibold">หัวข้อ</th>
+                                            <th className="px-4 py-3 font-semibold">สถานะอนุมัติ</th>
+                                            <th className="px-4 py-3 font-semibold">สถานะงาน</th>
+                                            <th className="px-4 py-3 font-semibold hidden lg:table-cell">วันที่สร้าง</th>
+                                            <th className="px-4 py-3 font-semibold">กำหนดส่ง</th>
+                                            <th className="px-4 py-3 font-semibold hidden lg:table-cell">คนเปิดงาน</th>
+                                            <th className="px-4 py-3 font-semibold">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {filteredJobs.map((job) => {
+                                            const isDraftReview = job.status === 'draft_review';
+                                            const isPredecessorPending = job.predecessorDjId && job.predecessorStatus &&
+                                                !['completed', 'approved'].includes(job.predecessorStatus);
+                                            const isUrgent = job.priority?.toLowerCase() === 'urgent' && activeTab !== 'completed';
+                                            const workStatus = getQueueCardStatus({
+                                                job,
+                                                activeTab,
+                                                isUrgent,
+                                                isDraftReview,
+                                                isPredecessorPending
+                                            });
+
+                                            return (
+                                                <tr
+                                                    key={job.id}
+                                                    onClick={() => handleViewDetail(job.id)}
+                                                    className="hover:bg-rose-50/30 cursor-pointer align-top"
+                                                >
+                                                    <td className="px-4 py-3 whitespace-nowrap">
+                                                        <div className="font-semibold text-rose-700">{job.djId || `DJ-${job.id}`}</div>
+                                                        {isUrgent && (
+                                                            <span className="inline-flex mt-1 items-center px-2 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-700">URGENT</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap max-w-[140px] truncate">{job.projectName || '-'}</td>
+                                                    <td className="px-4 py-3 max-w-[280px]">
+                                                        <p className="line-clamp-2 font-medium text-gray-900">{job.subject || '-'}</p>
+                                                    </td>
+                                                    <td className="px-4 py-3 whitespace-nowrap">
+                                                        <Badge status={job.status} />
+                                                    </td>
+                                                    <td className="px-4 py-3 whitespace-nowrap">
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${workStatus.className}`}>
+                                                            {workStatus.text}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-gray-600 hidden lg:table-cell">{formatQueueDate(job.createdAt)}</td>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-gray-600">{formatQueueDate(job.deadline || job.dueDate)}</td>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-gray-700 hidden lg:table-cell">{job.requesterName || '-'}</td>
+                                                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                                                        <ActionButtonsCell
+                                                            job={job}
+                                                            activeTab={activeTab}
+                                                            onOpenCompleteModal={handleOpenCompleteModal}
+                                                            onOpenDraftModal={handleOpenDraftModal}
+                                                            onOpenRebriefModal={handleOpenRebriefModal}
+                                                            onRejectByAssignee={handleRejectByAssignee}
+                                                        />
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </>
                     )}
                 </div>
             )}
@@ -836,35 +866,122 @@ export default function MyQueue() {
                 isOpen={showDraftModal}
                 onClose={() => { setShowDraftModal(false); setSelectedJob(null); }}
                 job={selectedJob}
-                onSuccess={fetchJobs}
+                onSuccess={() => {
+                    fetchJobs();
+                    fetchAllTabCounts();
+                }}
                 currentUser={user}
             />
 
             {/* Rebrief Modal */}
             {showRebriefModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg p-6 max-w-md w-full">
-                        <h3 className="text-lg font-bold mb-4 text-orange-600">🔄 ขอข้อมูลเพิ่มเติม (Rebrief)</h3>
-                        <p className="text-sm text-gray-600 mb-4">
-                            ระบุเหตุผลที่ต้องการข้อมูลเพิ่มเติมจาก Requester
-                        </p>
-                        <label className="block mb-2 text-sm font-medium">
-                            เหตุผล <span className="text-red-500">*</span>
-                        </label>
-                        <textarea
-                            className="w-full border rounded p-2 mb-4"
-                            rows={4}
-                            value={rebriefReason}
-                            onChange={e => setRebriefReason(e.target.value)}
-                            placeholder="เช่น ข้อมูล brief ไม่ชัดเจน, ต้องการ reference เพิ่มเติม..."
-                        />
-                        <div className="flex gap-2 justify-end">
-                            <Button variant="ghost" onClick={() => {
-                                setShowRebriefModal(false);
-                                setRebriefReason('');
-                                setSelectedJob(null);
-                            }}>ยกเลิก</Button>
-                            <Button variant="primary" onClick={handleRebrief}>ส่งคำขอ</Button>
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full overflow-hidden">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/70">
+                            <h3 className="text-lg font-bold text-amber-700">ขอข้อมูลเพิ่มเติม (Rebrief)</h3>
+                            <button
+                                onClick={() => {
+                                    setShowRebriefModal(false);
+                                    setRebriefReason('');
+                                    setSelectedJob(null);
+                                }}
+                                className="text-slate-400 hover:text-slate-600"
+                                aria-label="ปิดหน้าต่าง Rebrief"
+                            >
+                                <XCircleIcon className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <p className="text-sm text-slate-600 mb-4">
+                                ระบุเหตุผลที่ต้องการข้อมูลเพิ่มเติมจาก Requester
+                            </p>
+                            <label className="block mb-2 text-sm font-medium">
+                                เหตุผล <span className="text-red-500">*</span>
+                            </label>
+                            <textarea
+                                className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm leading-6 mb-3 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 focus:outline-none"
+                                rows={5}
+                                value={rebriefReason}
+                                onChange={e => setRebriefReason(e.target.value)}
+                                placeholder="เช่น ข้อมูล brief ไม่ชัดเจน, ต้องการ reference เพิ่มเติม..."
+                            />
+                            <div className="text-xs text-slate-500 mb-4">
+                                ข้อความนี้จะถูกส่งให้ผู้เปิดงานเพื่อปรับ brief และส่งข้อมูลกลับมา
+                            </div>
+                            <div className="flex gap-2 justify-end">
+                                <Button variant="secondary" onClick={() => {
+                                    setShowRebriefModal(false);
+                                    setRebriefReason('');
+                                    setSelectedJob(null);
+                                }}>ยกเลิก</Button>
+                                <Button variant="primary" className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300" onClick={handleRebrief}>ส่งคำขอ</Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Reject Modal */}
+            {showRejectModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full overflow-hidden">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/70">
+                            <h3 className="text-lg font-bold text-rose-700">ปฏิเสธงาน</h3>
+                            <button
+                                onClick={() => {
+                                    if (isRejecting) return;
+                                    setShowRejectModal(false);
+                                    setRejectReason('');
+                                    setSelectedJob(null);
+                                }}
+                                className="text-slate-400 hover:text-slate-600"
+                                aria-label="ปิดหน้าต่างปฏิเสธงาน"
+                                disabled={isRejecting}
+                            >
+                                <XCircleIcon className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <p className="text-sm text-slate-600 mb-4">
+                                ระบุเหตุผลในการปฏิเสธงาน {selectedJob?.djId || (selectedJob?.id ? `DJ-${selectedJob.id}` : '')}
+                            </p>
+                            <label className="block mb-2 text-sm font-medium">
+                                เหตุผลในการปฏิเสธ <span className="text-red-500">*</span>
+                            </label>
+                            <textarea
+                                className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm leading-6 mb-3 focus:ring-2 focus:ring-rose-200 focus:border-rose-400 focus:outline-none"
+                                rows={5}
+                                value={rejectReason}
+                                onChange={e => setRejectReason(e.target.value)}
+                                placeholder="เช่น งานไม่อยู่ในขอบเขตความรับผิดชอบ หรือข้อมูลยังไม่เพียงพอ..."
+                                maxLength={500}
+                                disabled={isRejecting}
+                            />
+                            <div className="flex items-center justify-between text-xs text-slate-500 mb-4">
+                                <span>เหตุผลนี้จะถูกส่งให้ผู้อนุมัติใช้ประกอบการพิจารณา</span>
+                                <span>{rejectReason.length}/500</span>
+                            </div>
+                            <div className="flex gap-2 justify-end">
+                                <Button
+                                    variant="secondary"
+                                    disabled={isRejecting}
+                                    onClick={() => {
+                                        setShowRejectModal(false);
+                                        setRejectReason('');
+                                        setSelectedJob(null);
+                                    }}
+                                >
+                                    ยกเลิก
+                                </Button>
+                                <Button
+                                    variant="primary"
+                                    className="bg-rose-500 hover:bg-rose-600 disabled:bg-rose-300"
+                                    disabled={isRejecting}
+                                    onClick={handleConfirmReject}
+                                >
+                                    {isRejecting ? 'กำลังส่งคำขอ...' : 'ยืนยันปฏิเสธ'}
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -873,10 +990,10 @@ export default function MyQueue() {
             {/* Complete Modal */}
             {showCompleteModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90dvh] overflow-y-auto">
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-2xl w-full max-h-[90dvh] overflow-y-auto">
                         {/* Header */}
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
-                            <h3 className="text-lg font-bold text-green-600">✅ ส่งงาน (Complete)</h3>
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 sticky top-0 bg-white z-10">
+                            <h3 className="text-lg font-bold text-emerald-700">ส่งงาน (Complete)</h3>
                             <button onClick={handleCloseCompleteModal} disabled={isCompleting} className="text-gray-400 hover:text-gray-600 disabled:opacity-50">
                                 <XCircleIcon className="w-6 h-6" />
                             </button>
@@ -888,6 +1005,12 @@ export default function MyQueue() {
                                 ระบุลิงก์ผลงาน หรือแนบไฟล์ส่งมอบ <span className="font-medium text-gray-700">(อย่างใดอย่างหนึ่ง)</span>
                             </p>
 
+                            <div className={`rounded-lg border px-3 py-2 text-sm ${canSubmitComplete ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+                                {canSubmitComplete
+                                    ? 'พร้อมส่งงานแล้ว: คุณสามารถกดปุ่มส่งงานได้ทันที'
+                                    : 'สถานะยังไม่พร้อมส่ง: เพิ่มลิงก์ผลงานหรือแนบไฟล์อย่างน้อย 1 รายการ'}
+                            </div>
+
                             {/* Link */}
                             <div>
                                 <label className="block mb-1.5 text-sm font-medium text-gray-700 flex items-center gap-1.5">
@@ -896,7 +1019,7 @@ export default function MyQueue() {
                                 </label>
                                 <input
                                     type="text"
-                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 focus:outline-none"
                                     value={finalLink}
                                     onChange={e => setFinalLink(e.target.value)}
                                     placeholder="https://drive.google.com/... หรือ https://figma.com/..."
@@ -914,7 +1037,7 @@ export default function MyQueue() {
                                     className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
                                         completeUploadingFile
                                             ? 'opacity-50 cursor-not-allowed border-gray-200 bg-gray-50'
-                                            : 'cursor-pointer border-gray-300 hover:border-green-400 hover:bg-green-50/30'
+                                            : 'cursor-pointer border-slate-300 hover:border-emerald-300 hover:bg-emerald-50/50'
                                     }`}
                                 >
                                     <input
@@ -971,7 +1094,7 @@ export default function MyQueue() {
                                     หมายเหตุ <span className="font-normal text-gray-400">(ไม่บังคับ)</span>
                                 </label>
                                 <textarea
-                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 focus:outline-none"
                                     rows={3}
                                     value={completeNote}
                                     onChange={e => setCompleteNote(e.target.value)}
@@ -982,12 +1105,12 @@ export default function MyQueue() {
 
                         {/* Footer */}
                         <div className="flex gap-2 px-6 py-4 border-t border-gray-200 sticky bottom-0 bg-white">
-                            <Button variant="ghost" onClick={handleCloseCompleteModal} disabled={isCompleting} className="flex-1">ยกเลิก</Button>
+                            <Button variant="secondary" onClick={handleCloseCompleteModal} disabled={isCompleting} className="flex-1">ยกเลิก</Button>
                             <Button
-                                variant="primary"
+                                variant="success"
                                 onClick={handleCompleteJob}
-                                disabled={isCompleting || completeUploadingFile || (!finalLink.trim() && completeUploadedFiles.length === 0)}
-                                className="flex-1 bg-green-600 hover:bg-green-700"
+                                disabled={isCompleting || completeUploadingFile || !canSubmitComplete}
+                                className="flex-1 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300"
                             >
                                 {isCompleting ? 'กำลังส่งงาน...' : 'ส่งงาน'}
                             </Button>
@@ -1007,7 +1130,122 @@ function FolderIcon(props) {
     );
 }
 
-function JobCard({ job, activeTab, onView, onOpenCompleteModal, onOpenDraftModal, onOpenRebriefModal, renderSLAText, renderSLABar, renderDateInfo, getHealthBorderColor }) {
+const formatQueueDate = (value) => {
+    if (!value) return '-';
+    return new Date(value).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
+};
+
+const formatQueueTimeText = (hoursRemaining, mode = 'remaining') => {
+    if (hoursRemaining === null || hoursRemaining === undefined) return 'ไม่มี deadline';
+
+    const absoluteHours = Math.abs(Number(hoursRemaining) || 0);
+    if (mode === 'overdue') {
+        if (absoluteHours < 24) return 'เลยกำหนดแล้ววันนี้';
+        return `เลยกำหนดแล้ว ${Math.max(1, Math.floor(absoluteHours / 24))} วัน`;
+    }
+
+    if (absoluteHours < 24) return 'ต้องเร่งส่งวันนี้';
+    return `เหลือ ${Math.max(1, Math.floor(absoluteHours / 24))} วัน`;
+};
+
+const getQueueCardStatus = ({ job, activeTab, isUrgent, isDraftReview, isPredecessorPending }) => {
+    if (activeTab === 'completed') {
+        return { text: 'ส่งมอบแล้ว', className: 'border-green-200 bg-green-50 text-green-700' };
+    }
+    if (isDraftReview) {
+        return { text: 'รอตรวจ Draft', className: 'border-purple-200 bg-purple-50 text-purple-700' };
+    }
+    if (isPredecessorPending) {
+        return { text: `รอ ${job.predecessorDjId}`, className: 'border-slate-200 bg-slate-50 text-slate-600' };
+    }
+    if (job.hoursRemaining !== null && job.hoursRemaining < 0) {
+        return { text: formatQueueTimeText(job.hoursRemaining, 'overdue'), className: 'border-red-200 bg-red-50 text-red-700' };
+    }
+    if (isUrgent || (job.hoursRemaining !== null && job.hoursRemaining < 24)) {
+        return { text: 'ต้องเร่งส่งวันนี้', className: 'border-red-200 bg-red-50 text-red-700' };
+    }
+    if (job.healthStatus === 'warning') {
+        return { text: 'ใกล้ครบกำหนด', className: 'border-amber-200 bg-amber-50 text-amber-700' };
+    }
+    return { text: 'กำลังดำเนินการ', className: 'border-blue-200 bg-blue-50 text-blue-700' };
+};
+
+function QueueInfoBox({ label, value, children }) {
+    return (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 min-w-0">
+            <p className="text-xs font-medium text-slate-500">{label}</p>
+            <div className="mt-0.5 text-sm font-semibold text-slate-900 truncate">
+                {children || value || '-'}
+            </div>
+        </div>
+    );
+}
+
+function ActionButtonsCell({
+    job,
+    activeTab,
+    onOpenCompleteModal,
+    onOpenDraftModal,
+    onOpenRebriefModal,
+    onRejectByAssignee
+}) {
+    if (activeTab !== 'in_progress') {
+        return <span className="text-xs text-gray-400">-</span>;
+    }
+
+    const isDraftReview = job.status === 'draft_review';
+    const canComplete = ASSIGNEE_COMPLETE_ACTION_STATUSES.includes(job.status);
+    const canDraftAndRebrief = ASSIGNEE_DRAFT_REBRIEF_ACTION_STATUSES.includes(job.status);
+    const canReject = ASSIGNEE_REJECTABLE_STATUSES.includes(job.status);
+
+    const baseClass = 'w-full min-h-[38px] px-2 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed';
+
+    return (
+        <div className="grid grid-cols-2 gap-1.5 min-w-[220px]">
+            <button
+                type="button"
+                onClick={(e) => onOpenCompleteModal(job, e)}
+                disabled={!canComplete || isDraftReview}
+                className={`${baseClass} ${ACTION_BUTTON_STYLES.complete}`}
+                title={isDraftReview ? 'รอตรวจ Draft ล่าสุด' : 'ส่งงาน'}
+            >
+                ส่งงาน
+            </button>
+
+            <button
+                type="button"
+                onClick={(e) => onOpenDraftModal(job, e)}
+                disabled={!canDraftAndRebrief || isDraftReview}
+                className={`${baseClass} ${ACTION_BUTTON_STYLES.draft}`}
+                title={isDraftReview ? 'รอตรวจ Draft ล่าสุด' : 'ส่ง Draft'}
+            >
+                ส่ง Draft
+            </button>
+
+            <button
+                type="button"
+                onClick={(e) => onOpenRebriefModal(job, e)}
+                disabled={!canDraftAndRebrief || isDraftReview}
+                className={`${baseClass} ${ACTION_BUTTON_STYLES.rebrief}`}
+                title={isDraftReview ? 'รอตรวจ Draft ล่าสุด' : 'Rebrief'}
+            >
+                Rebrief
+            </button>
+
+            <button
+                type="button"
+                onClick={(e) => onRejectByAssignee(job, e)}
+                disabled={!canReject}
+                className={`${baseClass} ${ACTION_BUTTON_STYLES.reject}`}
+                title="ปฏิเสธงาน"
+            >
+                ปฏิเสธงาน
+            </button>
+        </div>
+    );
+}
+
+function JobCard({ job, activeTab, onView, onOpenCompleteModal, onOpenDraftModal, onOpenRebriefModal, renderSLABar, renderDateInfo, getHealthBorderColor }) {
     const isUrgent = job.priority?.toLowerCase() === 'urgent' && activeTab !== 'completed';
     const isDraftReview = job.status === 'draft_review';
     const draftReviewReason = 'รอผู้ตรวจพิจารณา Draft ล่าสุด';
@@ -1017,37 +1255,38 @@ function JobCard({ job, activeTab, onView, onOpenCompleteModal, onOpenDraftModal
     // สถานะที่แสดงปุ่มดำเนินการ (เหมือน JobActionPanel)
     const actionStatuses = ['approved', 'assigned', 'in_progress', 'rework', 'correction', 'returned', 'draft_review'];
     const canDoActions = actionStatuses.includes(job.status);
+    const primaryStatus = getQueueCardStatus({ job, activeTab, isUrgent, isDraftReview, isPredecessorPending });
 
     return (
         <div
             onClick={() => onView(job.id)}
             className={`
-                bg-white rounded-lg shadow-sm border border-gray-200 p-4
+                bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5
                 hover:shadow-md transition-shadow cursor-pointer relative
                 ${getHealthBorderColor(job.healthStatus)}
-                ${isUrgent ? 'bg-red-50/40' : ''}
+                ${isUrgent ? 'bg-red-50/30' : ''}
             `}
         >
-            <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
+            <div className="flex flex-col gap-4">
                 <div className="flex-1 min-w-0">
                     {/* DJ ID + Type + Badges */}
-                    <div className="flex items-center flex-wrap gap-2 mb-1">
-                        <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">
+                    <div className="flex items-center flex-wrap gap-2">
+                        <span className="text-xs font-mono bg-slate-100 px-2.5 py-1 rounded-lg text-slate-700 border border-slate-200">
                             {job.djId}
                         </span>
                         {job.jobTypeName && (
-                            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
+                            <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100">
                                 {job.jobTypeName}
                             </span>
                         )}
                         {isUrgent && (
-                            <span className="text-xs font-bold px-2 py-0.5 rounded bg-red-100 text-red-700 animate-pulse">
-                                🔥 Urgent
+                            <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-red-100 text-red-700 border border-red-200">
+                                URGENT
                             </span>
                         )}
                         {isPredecessorPending && (
-                            <span className="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-500 border border-gray-200" title={`รอ ${job.predecessorDjId}`}>
-                                ⛓ รอ {job.predecessorDjId}
+                            <span className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 border border-slate-200" title={`รอ ${job.predecessorDjId}`}>
+                                รอ {job.predecessorDjId}
                             </span>
                         )}
                         {isDraftReview && (
@@ -1056,22 +1295,13 @@ function JobCard({ job, activeTab, onView, onOpenCompleteModal, onOpenDraftModal
                     </div>
 
                     {/* Subject */}
-                    <h3 className="text-base font-bold text-gray-900 truncate">{job.subject}</h3>
+                    <h3 className="mt-3 text-lg sm:text-xl font-bold text-slate-950 leading-snug">{job.subject}</h3>
 
-                    {/* Project + SLA time */}
-                    <div className="flex items-center flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500 mt-1">
-                        {job.projectName && (
-                            <span className="flex items-center gap-1">
-                                <FolderIcon className="w-3.5 h-3.5" /> {job.projectName}
-                            </span>
-                        )}
-                        <span className="flex items-center gap-1">
-                            <ClockIcon className="w-3.5 h-3.5" />
-                            {renderSLAText(job)}
-                        </span>
-                        {job.deadline && activeTab !== 'completed' && (
-                            <span className="text-xs text-gray-400" title="กำหนดส่ง">
-                                📅 {new Date(job.deadline).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}
+                    <div className={`mt-4 flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm font-semibold ${primaryStatus.className}`}>
+                        <span>{primaryStatus.text}</span>
+                        {(job.deadline || job.dueDate) && (
+                            <span className="shrink-0 text-right text-xs font-medium opacity-80">
+                                กำหนดส่ง {formatQueueDate(job.deadline || job.dueDate)}
                             </span>
                         )}
                     </div>
@@ -1080,85 +1310,91 @@ function JobCard({ job, activeTab, onView, onOpenCompleteModal, onOpenDraftModal
                     {renderDateInfo(job)}
 
                     {isDraftReview && (
-                        <div className="mt-2 text-xs text-purple-700 bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
-                            ⏳ ส่ง Draft แล้ว และอยู่ระหว่างการตรวจสอบ
+                        <div className="mt-3 text-sm text-purple-700 bg-purple-50 border border-purple-100 rounded-lg px-3 py-2">
+                            รอตรวจ Draft
                         </div>
                     )}
+
+                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                        <QueueInfoBox label="โปรเจกต์" value={job.projectName}>
+                            <span className="inline-flex items-center gap-1.5 min-w-0">
+                                <FolderIcon className="w-4 h-4 shrink-0 text-slate-400" />
+                                <span className="truncate">{job.projectName || '-'}</span>
+                            </span>
+                        </QueueInfoBox>
+                        <QueueInfoBox label="ผู้สั่งงาน" value={job.requesterName}>
+                            <span className="inline-flex items-center gap-2 min-w-0">
+                                <img
+                                    src={job.requesterAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(job.requesterName || 'U')}&background=random&size=32`}
+                                    alt={job.requesterName || 'Requester'}
+                                    className="w-5 h-5 rounded-full border border-slate-200 shrink-0"
+                                />
+                                <span className="truncate">{job.requesterName || '-'}</span>
+                            </span>
+                        </QueueInfoBox>
+                        <QueueInfoBox label="กำหนดส่ง" value={formatQueueDate(job.deadline || job.dueDate)} />
+                    </div>
 
                     {/* SLA Progress Bar */}
                     {renderSLABar(job)}
                 </div>
+            </div>
 
-                {/* Action Section */}
-                <div className="flex items-center md:flex-col md:items-end gap-2 shrink-0">
-                    <div className="flex items-center gap-1.5">
-                        <img
-                            src={job.requesterAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(job.requesterName || 'U')}&background=random&size=32`}
-                            alt={job.requesterName}
-                            className="w-6 h-6 rounded-full border border-gray-200"
-                            title={`ผู้สั่งงาน: ${job.requesterName}`}
-                        />
-                        <span className="text-xs text-gray-400 hidden md:block">{job.requesterName}</span>
-                    </div>
-
-                    {activeTab === 'in_progress' && onOpenCompleteModal && (
+            {/* Action Buttons Row — ส่งงาน / ส่ง Draft / ขอ Rebrief */}
+            {activeTab === 'in_progress' && (onOpenCompleteModal || canDoActions) && (
+                <div className="flex flex-col sm:flex-row gap-2 mt-4 pt-4 border-t border-slate-100">
+                    {/* ส่งงาน — แสดงเสมอเมื่ออยู่ใน in_progress */}
+                    {onOpenCompleteModal && (
                         <button
                             onClick={(e) => onOpenCompleteModal(job, e)}
                             disabled={isDraftReview}
-                            title={isDraftReview ? draftReviewReason : 'ส่งงาน'}
-                            className={`flex items-center gap-1 px-3 py-1.5 text-white text-xs font-medium rounded-lg shadow-sm transition-colors ${
+                            title={isDraftReview ? draftReviewReason : 'ส่งงาน (Complete)'}
+                            className={`min-h-[44px] flex-1 flex items-center justify-center gap-2 px-4 py-3 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors ${
                                 isDraftReview
-                                    ? 'bg-gray-300 cursor-not-allowed'
+                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                     : 'bg-green-500 hover:bg-green-600'
                             }`}
                         >
-                            <CheckCircleIcon className="w-3.5 h-3.5" /> ส่งงาน
+                            <CheckCircleIcon className="w-4 h-4 flex-shrink-0" />
+                            ส่งงาน
                         </button>
                     )}
-                    {activeTab === 'waiting' && (
-                        <span className="text-xs text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full border border-purple-100">
-                            ⏳ รอตรวจ
-                        </span>
-                    )}
-                </div>
-            </div>
-
-            {/* Action Buttons Row - ส่ง Draft / ขอ Rebrief (เหมือนกล่องดำเนินการใน JobDetail) */}
-            {canDoActions && activeTab === 'in_progress' && (
-                <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
-                    {onOpenDraftModal && (
+                    {/* ส่ง Draft + ขอ Rebrief — แสดงเฉพาะสถานะที่ทำได้ */}
+                    {canDoActions && onOpenDraftModal && (
                         <button
                             onClick={(e) => onOpenDraftModal(job, e)}
                             disabled={isDraftReview}
-                            title={isDraftReview ? draftReviewReason : 'ส่ง Draft'}
-                            className={`flex items-center gap-1 px-3 py-1.5 text-white text-xs font-medium rounded-lg shadow-sm transition-colors ${
+                            title={isDraftReview ? draftReviewReason : 'ส่ง Draft ให้ตรวจสอบ'}
+                            className={`min-h-[44px] flex-1 flex items-center justify-center gap-2 px-4 py-3 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors ${
                                 isDraftReview
-                                    ? 'bg-gray-300 cursor-not-allowed'
+                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                     : 'bg-blue-500 hover:bg-blue-600'
                             }`}
                         >
-                            <PencilSquareIcon className="w-3.5 h-3.5" /> ส่ง Draft
+                            <PencilSquareIcon className="w-4 h-4 flex-shrink-0" />
+                            ส่ง Draft
                         </button>
                     )}
-                    {onOpenRebriefModal && (
+                    {canDoActions && onOpenRebriefModal && (
                         <button
                             onClick={(e) => onOpenRebriefModal(job, e)}
                             disabled={isDraftReview}
-                            title={isDraftReview ? draftReviewReason : 'ขอ Rebrief'}
-                            className={`flex items-center gap-1 px-3 py-1.5 text-white text-xs font-medium rounded-lg shadow-sm transition-colors ${
+                            title={isDraftReview ? draftReviewReason : 'ขอข้อมูลเพิ่มเติม (Rebrief)'}
+                            className={`min-h-[44px] flex-1 flex items-center justify-center gap-2 px-4 py-3 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors ${
                                 isDraftReview
-                                    ? 'bg-gray-300 cursor-not-allowed'
+                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                     : 'bg-orange-500 hover:bg-orange-600'
                             }`}
                         >
-                            <ArrowPathIcon className="w-3.5 h-3.5" /> ขอ Rebrief
+                            <ArrowPathIcon className="w-4 h-4 flex-shrink-0" />
+                            ขอ Rebrief
                         </button>
                     )}
                 </div>
             )}
 
             {isDraftReview && activeTab === 'in_progress' && (
-                <p className="mt-2 text-xs text-gray-500">ปุ่มดำเนินการถูกปิดชั่วคราว: {draftReviewReason}</p>
+                <p className="mt-2 text-xs text-purple-600 font-medium">{draftReviewReason}</p>
             )}
         </div>
     );

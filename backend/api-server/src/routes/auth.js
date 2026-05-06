@@ -550,6 +550,12 @@ router.get('/verify', authenticateToken, setRLSContextMiddleware, async (req, re
       });
     }
 
+    const userRoles = user.userRoles.map((ur) => ur.roleName).filter(Boolean);
+    const rolePriority = ['Admin', 'Approver', 'Assignee', 'Requester', 'Member'];
+    const primaryRole = rolePriority.find((role) =>
+      userRoles.some((r) => String(r).toLowerCase() === role.toLowerCase())
+    ) || userRoles[0] || 'Member';
+
     // Map user data to IUser format for frontend
     const formattedUser = {
       id: user.id,
@@ -559,7 +565,8 @@ router.get('/verify', authenticateToken, setRLSContextMiddleware, async (req, re
       lastName: user.lastName,
       fullName: `${user.firstName} ${user.lastName}`.trim(),
       displayName: user.displayName || `${user.firstName} ${user.lastName}`.trim(),
-      roleName: user.userRoles?.[0]?.roleName || 'Member',
+      roleName: primaryRole,
+      roles: userRoles,
       isActive: user.isActive,
       createdAt: user.createdAt
     };

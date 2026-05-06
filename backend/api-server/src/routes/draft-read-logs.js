@@ -67,6 +67,19 @@ const getDisplayName = (user) => {
   return user.displayName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Requester';
 };
 
+const buildDraftViewNotification = ({ job, attachmentName = null, source = 'link' }) => {
+  const readableSource = source === 'attachment' ? 'ไฟล์ Draft' : 'ลิงก์ Draft';
+  const title = `👀 มีการเปิด${readableSource} งาน ${job.djId}`;
+  const actorName = getDisplayName(job.requester);
+  const suffix = attachmentName ? ` "${attachmentName}"` : '';
+
+  return {
+    title,
+    message: `${actorName} เปิดดู${readableSource}${suffix} ในงาน "${job.subject}"`,
+    type: source === 'attachment' ? 'draft_file_viewed' : 'draft_link_viewed'
+  };
+};
+
 /**
  * POST /api/draft-read-logs/:jobId
  * บันทึกการเปิดอ่าน Draft Submission
@@ -78,7 +91,10 @@ const getDisplayName = (user) => {
 router.post('/:jobId', async (req, res) => {
   try {
     const { jobId } = req.params;
+    const { source = 'link', attachmentId = null, fileName = null } = req.body || {};
+    const normalizedSource = ['attachment', 'link', 'preview'].includes(String(source)) ? String(source) : 'link';
     const parsedJobId = parseInt(jobId, 10);
+    const parsedAttachmentId = attachmentId == null ? null : parseInt(attachmentId, 10);
     const userId = req.user.userId;
     const tenantId = req.user.tenantId;
 
@@ -109,96 +125,10 @@ router.post('/:jobId', async (req, res) => {
       select: { 
         id: true, 
         requesterId: true,
-        status: true
-      }
-    });
-
-    if (!job) {
-      return res.status(404).json({
-        success: false,
-        error: 'JOB_NOT_FOUND',
-        message: 'ไม่พบงานที่ระบุ'
-      });
-    }
-
-    // ตรวจสอบว่า User เป็น Requester ของงานนี้หรือไม่
-    if (String(job.requesterId) !== String(userId)) {
-      return res.status(403).json({
-        success: false,
-        error: 'FORBIDDEN',
-        message: 'คุณไม่มีสิทธิ์เข้าถึงงานนี้'
-      });
-    }
-
-    // บันทึก Read Log (ถ้ามีอยู่แล้วจะ skip เนื่องจาก unique constraint)
-    const readLog = await prisma.$executeRaw`
-      INSERT INTO "draft_read_logs" ("tenant_id", "job_id", "user_id", "ip_address", "user_agent")
-      VALUES (${tenantId}, ${parsedJobId}, ${userId}, ${ipAddress}, ${userAgent})
-      ON CONFLICT ("job_id", "user_id") DO NOTHING
-      RETURNING *
-    `;
-
-    // ดึงข้อมูล Read Log ที่บันทึกไว้
-    const existingLog = await prisma.$queryRaw`
-      SELECT * FROM "draft_read_logs"
-      WHERE "job_id" = ${parsedJobId} AND "user_id" = ${userId}
-      LIMIT 1
-    `;
-
-    const logData = existingLog[0];
-
-    res.json({
-      success: true,
-      message: 'บันทึกการเปิดอ่านเรียบร้อยแล้ว',
-      data: {
-        jobId: parsedJobId,
-        userId,
-        readAt: logData?.read_at,
-        ipAddress: logData?.ip_address,
-        isFirstRead: readLog > 0 // true ถ้าเป็นครั้งแรกที่อ่าน
-      }
-    });
-
-  } catch (error) {
-    console.error('[Draft Read Log] Error recording read:', error);
-    res.status(500).json({
-      success: false,
-      error: 'SERVER_ERROR',
-      message: 'เกิดข้อผิดพลาดในการบันทึกการเปิดอ่าน'
-    });
-  }
-});
-
-/**
- * POST /api/draft-read-logs/:jobId/files/:attachmentId/view
- * บันทึกการเปิดดู draft attachment และแจ้งเตือน assignee ครั้งแรกเท่านั้น
- */
-router.post('/:jobId/files/:attachmentId/view', async (req, res) => {
-  try {
-    const parsedJobId = parseInt(req.params.jobId, 10);
-    const parsedAttachmentId = parseInt(req.params.attachmentId, 10);
-    const userId = req.user.userId;
-    const tenantId = req.user.tenantId;
-
-    if (Number.isNaN(parsedJobId) || Number.isNaN(parsedAttachmentId)) {
-      return res.status(400).json({
-        success: false,
-        error: 'INVALID_INPUT',
-        message: 'Job ID หรือ Attachment ID ไม่ถูกต้อง'
-      });
-    }
-
-    const job = await prisma.job.findFirst({
-      where: {
-        id: parsedJobId,
-        tenantId
-      },
-      select: {
-        id: true,
+        assigneeId: true,
         djId: true,
         subject: true,
-        requesterId: true,
-        assigneeId: true,
+        status: true,
         draftFiles: true,
         requester: {
           select: {
@@ -219,81 +149,133 @@ router.post('/:jobId/files/:attachmentId/view', async (req, res) => {
       });
     }
 
+    // ตรวจสอบว่า User เป็น Requester ของงานนี้หรือไม่
     if (String(job.requesterId) !== String(userId)) {
       return res.status(403).json({
         success: false,
         error: 'FORBIDDEN',
-        message: 'เฉพาะ requester ของงานนี้เท่านั้นที่บันทึกการเปิดดูไฟล์ได้'
+        message: 'คุณไม่มีสิทธิ์เข้าถึงงานนี้'
       });
     }
 
-    const draftAttachmentIds = extractDraftAttachmentIds(job.draftFiles);
-    if (!draftAttachmentIds.has(parsedAttachmentId)) {
+    if (parsedAttachmentId != null && Number.isNaN(parsedAttachmentId)) {
       return res.status(400).json({
         success: false,
-        error: 'ATTACHMENT_NOT_IN_DRAFT',
-        message: 'ไฟล์นี้ไม่ได้อยู่ใน Draft ของงานนี้'
+        error: 'INVALID_ATTACHMENT_ID',
+        message: 'Attachment ID ไม่ถูกต้อง'
       });
     }
 
-    const attachment = await prisma.mediaFile.findFirst({
-      where: {
-        id: parsedAttachmentId,
-        tenantId,
-        jobId: parsedJobId
-      },
-      select: {
-        id: true,
-        fileName: true
+    let attachment = null;
+    if (parsedAttachmentId != null) {
+      const draftAttachmentIds = extractDraftAttachmentIds(job.draftFiles);
+
+      if (!draftAttachmentIds.has(parsedAttachmentId)) {
+        return res.status(400).json({
+          success: false,
+          error: 'ATTACHMENT_NOT_IN_DRAFT',
+          message: 'ไฟล์นี้ไม่ได้อยู่ใน Draft ของงานนี้'
+        });
       }
-    });
 
-    if (!attachment) {
-      return res.status(404).json({
-        success: false,
-        error: 'ATTACHMENT_NOT_FOUND',
-        message: 'ไม่พบไฟล์ที่ระบุ'
+      attachment = await prisma.mediaFile.findFirst({
+        where: {
+          id: parsedAttachmentId,
+          tenantId,
+          jobId: parsedJobId
+        },
+        select: {
+          id: true,
+          fileName: true
+        }
       });
+
+      if (!attachment) {
+        return res.status(404).json({
+          success: false,
+          error: 'ATTACHMENT_NOT_FOUND',
+          message: 'ไม่พบไฟล์ที่ระบุ'
+        });
+      }
     }
 
-    const insertResult = await prisma.$queryRaw`
-      INSERT INTO "draft_attachment_view_logs" ("tenant_id", "job_id", "attachment_id", "viewer_user_id")
-      VALUES (${tenantId}, ${parsedJobId}, ${parsedAttachmentId}, ${userId})
-      ON CONFLICT ("job_id", "attachment_id", "viewer_user_id") DO NOTHING
-      RETURNING "id", "first_viewed_at"
+    // บันทึก Read Log (ถ้ามีอยู่แล้วจะ skip เนื่องจาก unique constraint)
+    const readLog = await prisma.$executeRaw`
+      INSERT INTO "draft_read_logs" ("tenant_id", "job_id", "user_id", "ip_address", "user_agent")
+      VALUES (${tenantId}, ${parsedJobId}, ${userId}, ${ipAddress}, ${userAgent})
+      ON CONFLICT ("job_id", "user_id") DO NOTHING
+      RETURNING *
     `;
 
-    const isFirstView = Array.isArray(insertResult) && insertResult.length > 0;
-    const firstViewedAt = insertResult?.[0]?.first_viewed_at || null;
+    // ดึงข้อมูล Read Log ที่บันทึกไว้
+    const existingLog = await prisma.$queryRaw`
+      SELECT * FROM "draft_read_logs"
+      WHERE "job_id" = ${parsedJobId} AND "user_id" = ${userId}
+      LIMIT 1
+    `;
 
-    if (isFirstView && job.assigneeId && String(job.assigneeId) !== String(userId)) {
+    const logData = existingLog[0];
+
+    let attachmentViewRecorded = false;
+    let firstViewedAt = null;
+    if (attachment) {
+      const insertResult = await prisma.$queryRaw`
+        INSERT INTO "draft_attachment_view_logs" ("tenant_id", "job_id", "attachment_id", "viewer_user_id")
+        VALUES (${tenantId}, ${parsedJobId}, ${parsedAttachmentId}, ${userId})
+        ON CONFLICT ("job_id", "attachment_id", "viewer_user_id") DO NOTHING
+        RETURNING "id", "first_viewed_at"
+      `;
+
+      attachmentViewRecorded = Array.isArray(insertResult) && insertResult.length > 0;
+      firstViewedAt = insertResult?.[0]?.first_viewed_at || null;
+    }
+
+    const shouldNotifyAssignee =
+      job.assigneeId &&
+      String(job.assigneeId) !== String(userId) &&
+      (
+        attachmentViewRecorded ||
+        (!attachment && readLog > 0)
+      );
+
+    if (shouldNotifyAssignee) {
+      const notification = buildDraftViewNotification({
+        job,
+        attachmentName: attachment?.fileName || fileName || null,
+        source: attachment ? 'attachment' : normalizedSource
+      });
+
       await notifyUserRealtime({
         req,
         tenantId,
         userId: job.assigneeId,
-        type: 'draft_file_viewed',
-        title: `👀 มีการเปิดไฟล์ Draft งาน ${job.djId}`,
-        message: `${getDisplayName(job.requester)} เปิดดูไฟล์ "${attachment.fileName}" ในงาน "${job.subject}"`,
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
         link: `/jobs/${parsedJobId}`
       });
     }
 
-    return res.json({
+    res.json({
       success: true,
+      message: 'บันทึกการเปิดอ่านเรียบร้อยแล้ว',
       data: {
         jobId: parsedJobId,
-        attachmentId: parsedAttachmentId,
-        isFirstView,
+        userId,
+        readAt: logData?.read_at,
+        ipAddress: logData?.ip_address,
+        isFirstRead: readLog > 0, // true ถ้าเป็นครั้งแรกที่อ่าน
+        attachmentViewRecorded,
         firstViewedAt
-      },
-      message: isFirstView ? 'บันทึกการเปิดดูไฟล์ครั้งแรกเรียบร้อยแล้ว' : 'ไฟล์นี้ถูกบันทึกการเปิดดูไว้แล้ว'
+      }
     });
+
   } catch (error) {
-    console.error('[Draft Read Log] Error recording attachment view:', error);
-    return res.status(500).json({
+    console.error('[Draft Read Log] Error recording read:', error);
+    res.status(500).json({
       success: false,
-      error: 'ATTACHMENT_VIEW_LOG_FAILED',
-      message: 'เกิดข้อผิดพลาดในการบันทึกการเปิดดูไฟล์'
+      error: 'SERVER_ERROR',
+      message: 'เกิดข้อผิดพลาดในการบันทึกการเปิดอ่าน'
     });
   }
 });

@@ -352,6 +352,7 @@ export default function JobDetail() {
         try {
             const result = await fileUploadService.uploadMultipleFiles(files, {
                 jobId: job?.id,
+                projectId: job?.projectId,
                 tenantId: user?.tenantId,
                 userId: user?.id,
                 attachmentType: 'complete',
@@ -779,9 +780,12 @@ export default function JobDetail() {
                             {job.subject}
                         </p>
                         {job.parentJob && (
-                            <span className="inline-block mt-2 text-rose-600 bg-rose-50 px-2 py-0.5 rounded text-xs border border-rose-100 font-medium">
-                                📎 Parent: {job.parentJob.djId}
-                            </span>
+                            <button
+                                onClick={() => navigate(`/jobs/${job.parentJob.id}`)}
+                                className="inline-block mt-2 text-rose-600 bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded text-xs border border-rose-100 font-medium cursor-pointer transition-colors"
+                            >
+                                📎 Parent: {job.parentJob.djId} →
+                            </button>
                         )}
                     </div>
                 </div>
@@ -859,11 +863,11 @@ export default function JobDetail() {
                                     );
                                 })()}
 
-                                {/* Delivered Work (Only visible if completed/closed) */}
-                                <JobDeliveryCard job={job} />
+                                {/* Delivered Work (hide for parent jobs) */}
+                                {!job.isParent && <JobDeliveryCard job={job} />}
 
-                                {/* Draft Review Card (Only visible when status = draft_review) */}
-                                <DraftCard job={job} currentUser={user} onSuccess={loadJob} />
+                                {/* Draft Review Card (hide for parent jobs) */}
+                                {!job.isParent && <DraftCard job={job} currentUser={user} onSuccess={loadJob} />}
 
                                 {/* Assignee Info */}
                                 <div className="bg-white px-4 py-5 sm:px-6 shadow sm:rounded-lg">
@@ -923,18 +927,38 @@ export default function JobDetail() {
             {/* Reject Modal */}
             {showRejectModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90dvh] overflow-y-auto">
-                        <h3 className="text-lg font-bold mb-4 text-red-600">ปฏิเสธงาน</h3>
-                        <textarea
-                            className="w-full border rounded p-2 mb-4"
-                            rows={4}
-                            placeholder="เหตุผล..."
-                            value={rejectReason}
-                            onChange={e => setRejectReason(e.target.value)}
-                        />
-                        <div className="flex gap-2 justify-end">
-                            <Button variant="ghost" onClick={() => setShowRejectModal(false)}>ยกเลิก</Button>
-                            <Button variant="danger" onClick={handleReject}>ยืนยัน</Button>
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full overflow-hidden">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/70">
+                            <h3 className="text-lg font-bold text-rose-700">ปฏิเสธงาน</h3>
+                            <button
+                                onClick={() => setShowRejectModal(false)}
+                                className="text-slate-400 hover:text-slate-600"
+                                aria-label="ปิดหน้าต่างปฏิเสธงาน"
+                            >
+                                <XMarkIcon className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <p className="text-sm text-slate-600 mb-4">
+                                ระบุเหตุผลในการปฏิเสธงาน
+                            </p>
+                            <label className="block mb-2 text-sm font-medium">
+                                เหตุผล <span className="text-red-500">*</span>
+                            </label>
+                            <textarea
+                                className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm leading-6 mb-3 focus:ring-2 focus:ring-rose-200 focus:border-rose-400 focus:outline-none"
+                                rows={5}
+                                placeholder="เหตุผล..."
+                                value={rejectReason}
+                                onChange={e => setRejectReason(e.target.value)}
+                            />
+                            <div className="text-xs text-slate-500 mb-4">
+                                เหตุผลนี้จะถูกส่งให้ผู้อนุมัติใช้ประกอบการพิจารณา
+                            </div>
+                            <div className="flex gap-2 justify-end">
+                                <Button variant="secondary" onClick={() => setShowRejectModal(false)}>ยกเลิก</Button>
+                                <Button variant="primary" className="!bg-rose-500 !hover:bg-rose-600 !disabled:bg-rose-300" onClick={handleReject}>ยืนยันปฏิเสธ</Button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -943,10 +967,10 @@ export default function JobDetail() {
             {/* Complete Modal */}
             {showCompleteModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90dvh] overflow-y-auto">
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-2xl w-full max-h-[90dvh] overflow-y-auto">
                         {/* Header */}
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
-                            <h3 className="text-lg font-bold text-green-600">✅ ส่งงาน (Complete)</h3>
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 sticky top-0 bg-white z-10">
+                            <h3 className="text-lg font-bold text-emerald-700">ส่งงาน (Complete)</h3>
                             <button onClick={handleCloseCompleteModal} disabled={isCompleting} className="text-gray-400 hover:text-gray-600 disabled:opacity-50">
                                 <XMarkIcon className="w-6 h-6" />
                             </button>
@@ -958,6 +982,12 @@ export default function JobDetail() {
                                 ระบุลิงก์ผลงาน หรือแนบไฟล์ส่งมอบ <span className="font-medium text-gray-700">(อย่างใดอย่างหนึ่ง)</span>
                             </p>
 
+                            <div className={`rounded-lg border px-3 py-2 text-sm ${(finalLink.trim() || completeUploadedFiles.length > 0) ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+                                {(finalLink.trim() || completeUploadedFiles.length > 0)
+                                    ? 'พร้อมส่งงานแล้ว: คุณสามารถกดปุ่มส่งงานได้ทันที'
+                                    : 'สถานะยังไม่พร้อมส่ง: เพิ่มลิงก์ผลงานหรือแนบไฟล์อย่างน้อย 1 รายการ'}
+                            </div>
+
                             {/* Link */}
                             <div>
                                 <label className="block mb-1.5 text-sm font-medium text-gray-700 flex items-center gap-1.5">
@@ -966,7 +996,7 @@ export default function JobDetail() {
                                 </label>
                                 <input
                                     type="text"
-                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent disabled:bg-gray-50"
+                                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 focus:outline-none disabled:bg-gray-50"
                                     value={finalLink}
                                     onChange={e => setFinalLink(e.target.value)}
                                     placeholder="https://drive.google.com/... หรือ https://figma.com/..."
@@ -985,7 +1015,7 @@ export default function JobDetail() {
                                     className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
                                         isCompleting || completeUploadingFile
                                             ? 'opacity-50 cursor-not-allowed border-gray-200 bg-gray-50'
-                                            : 'cursor-pointer border-gray-300 hover:border-green-400 hover:bg-green-50/30'
+                                            : 'cursor-pointer border-slate-300 hover:border-emerald-300 hover:bg-emerald-50/50'
                                     }`}
                                 >
                                     <input
@@ -1037,7 +1067,7 @@ export default function JobDetail() {
                                     หมายเหตุ <span className="font-normal text-gray-400">(ไม่บังคับ)</span>
                                 </label>
                                 <textarea
-                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent disabled:bg-gray-50"
+                                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 focus:outline-none disabled:bg-gray-50"
                                     rows={3}
                                     value={completeNote}
                                     onChange={e => setCompleteNote(e.target.value)}
@@ -1048,12 +1078,12 @@ export default function JobDetail() {
 
                         {/* Footer */}
                         <div className="flex gap-2 px-6 py-4 border-t border-gray-200 sticky bottom-0 bg-white">
-                            <Button variant="ghost" onClick={handleCloseCompleteModal} disabled={isCompleting} className="flex-1">ยกเลิก</Button>
+                            <Button variant="secondary" onClick={handleCloseCompleteModal} disabled={isCompleting} className="flex-1">ยกเลิก</Button>
                             <Button
-                                variant="primary"
+                                variant="success"
                                 onClick={handleCompleteJob}
                                 disabled={isCompleting || completeUploadingFile || (!finalLink.trim() && completeUploadedFiles.length === 0)}
-                                className="flex-1"
+                                className="flex-1 !bg-emerald-500 !hover:bg-emerald-600 !disabled:bg-emerald-300"
                             >
                                 {isCompleting ? (
                                     <>
@@ -1087,7 +1117,7 @@ export default function JobDetail() {
                         />
                         <div className="flex gap-2 justify-end">
                             <Button variant="ghost" onClick={() => setShowAssigneeRejectModal(false)}>ยกเลิก</Button>
-                            <Button variant="danger" onClick={handleAssigneeReject}>ยืนยันปฏิเสธ</Button>
+                            <Button variant="primary" className="!bg-rose-500 !hover:bg-rose-600 !disabled:bg-rose-300" onClick={handleAssigneeReject}>ยืนยันปฏิเสธ</Button>
                         </div>
                     </div>
                 </div>
@@ -1324,27 +1354,44 @@ export default function JobDetail() {
             {/* Rebrief Modal */}
             {showRebriefModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90dvh] overflow-y-auto">
-                        <h3 className="text-lg font-bold mb-4 text-orange-600">🔄 ขอข้อมูลเพิ่มเติม (Rebrief)</h3>
-                        <p className="text-sm text-gray-600 mb-4">
-                            ระบุเหตุผลที่ต้องการข้อมูลเพิ่มเติมจาก Requester
-                        </p>
-                        <label className="block mb-2 text-sm font-medium">
-                            เหตุผล <span className="text-red-500">*</span>
-                        </label>
-                        <textarea
-                            className="w-full border rounded p-2 mb-4"
-                            rows={4}
-                            value={rebriefReason}
-                            onChange={e => setRebriefReason(e.target.value)}
-                            placeholder="เช่น ข้อมูล brief ไม่ชัดเจน, ต้องการ reference เพิ่มเติม..."
-                        />
-                        <div className="flex gap-2 justify-end">
-                            <Button variant="ghost" onClick={() => {
-                                setShowRebriefModal(false);
-                                setRebriefReason('');
-                            }}>ยกเลิก</Button>
-                            <Button variant="primary" onClick={handleRebrief}>ส่งคำขอ</Button>
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full overflow-hidden">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/70">
+                            <h3 className="text-lg font-bold text-amber-700">ขอข้อมูลเพิ่มเติม (Rebrief)</h3>
+                            <button
+                                onClick={() => {
+                                    setShowRebriefModal(false);
+                                    setRebriefReason('');
+                                }}
+                                className="text-slate-400 hover:text-slate-600"
+                                aria-label="ปิดหน้าต่าง Rebrief"
+                            >
+                                <XMarkIcon className="w-6 h-6" />
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            <p className="text-sm text-slate-600 mb-4">
+                                ระบุเหตุผลที่ต้องการข้อมูลเพิ่มเติมจาก Requester
+                            </p>
+                            <label className="block mb-2 text-sm font-medium">
+                                เหตุผล <span className="text-red-500">*</span>
+                            </label>
+                            <textarea
+                                className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm leading-6 mb-3 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 focus:outline-none"
+                                rows={5}
+                                value={rebriefReason}
+                                onChange={e => setRebriefReason(e.target.value)}
+                                placeholder="เช่น ข้อมูล brief ไม่ชัดเจน, ต้องการ reference เพิ่มเติม..."
+                            />
+                            <div className="text-xs text-slate-500 mb-4">
+                                ข้อความนี้จะถูกส่งให้ผู้เปิดงานเพื่อปรับ brief และส่งข้อมูลกลับมา
+                            </div>
+                            <div className="flex gap-2 justify-end">
+                                <Button variant="secondary" onClick={() => {
+                                    setShowRebriefModal(false);
+                                    setRebriefReason('');
+                                }}>ยกเลิก</Button>
+                                <Button variant="primary" className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300" onClick={handleRebrief}>ส่งคำขอ</Button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1353,59 +1400,75 @@ export default function JobDetail() {
             {/* Submit Rebrief Modal (Requester) */}
             {showSubmitRebriefModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg p-4 sm:p-6 max-w-lg w-full max-h-[90dvh] overflow-y-auto">
-                        <h3 className="text-lg font-bold mb-4 text-orange-600">📤 ส่งข้อมูลเพิ่มเติม</h3>
-                        
-                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
-                            <p className="text-sm text-gray-700 mb-1">
-                                <strong>คำขอจาก Assignee:</strong>
-                            </p>
-                            <p className="text-sm text-gray-800">
-                                {job?.rebriefReason || 'ไม่ระบุ'}
-                            </p>
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-lg w-full overflow-hidden">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/70">
+                            <h3 className="text-lg font-bold text-amber-700">ส่งข้อมูลเพิ่มเติม</h3>
+                            <button
+                                onClick={() => {
+                                    setShowSubmitRebriefModal(false);
+                                    setRebriefResponse('');
+                                    setRebriefDescription('');
+                                    setRebriefBriefLink('');
+                                }}
+                                className="text-slate-400 hover:text-slate-600"
+                                aria-label="ปิดหน้าต่างส่งข้อมูลเพิ่มเติม"
+                            >
+                                <XMarkIcon className="w-6 h-6" />
+                            </button>
                         </div>
+                        
+                        <div className="p-6">
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                                <p className="text-sm text-gray-700 mb-1">
+                                    <strong>คำขอจาก Assignee:</strong>
+                                </p>
+                                <p className="text-sm text-gray-800">
+                                    {job?.rebriefReason || 'ไม่ระบุ'}
+                                </p>
+                            </div>
 
-                        <label className="block mb-2 text-sm font-medium">
-                            คำตอบ/ข้อมูลเพิ่มเติม <span className="text-red-500">*</span>
-                        </label>
-                        <textarea
-                            className="w-full border rounded p-2 mb-4"
-                            rows={4}
-                            value={rebriefResponse}
-                            onChange={e => setRebriefResponse(e.target.value)}
-                            placeholder="อธิบายข้อมูลเพิ่มเติมที่ Assignee ต้องการ..."
-                        />
+                            <label className="block mb-2 text-sm font-medium">
+                                คำตอบ/ข้อมูลเพิ่มเติม <span className="text-red-500">*</span>
+                            </label>
+                            <textarea
+                                className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm leading-6 mb-3 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 focus:outline-none"
+                                rows={4}
+                                value={rebriefResponse}
+                                onChange={e => setRebriefResponse(e.target.value)}
+                                placeholder="อธิบายข้อมูลเพิ่มเติมที่ Assignee ต้องการ..."
+                            />
 
-                        <label className="block mb-2 text-sm font-medium">
-                            อัปเดต Description (ไม่บังคับ)
-                        </label>
-                        <textarea
-                            className="w-full border rounded p-2 mb-4"
-                            rows={3}
-                            value={rebriefDescription}
-                            onChange={e => setRebriefDescription(e.target.value)}
-                            placeholder="แก้ไขหรือเพิ่มรายละเอียดงาน..."
-                        />
+                            <label className="block mb-2 text-sm font-medium">
+                                อัปเดต Description (ไม่บังคับ)
+                            </label>
+                            <textarea
+                                className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm leading-6 mb-3 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 focus:outline-none"
+                                rows={3}
+                                value={rebriefDescription}
+                                onChange={e => setRebriefDescription(e.target.value)}
+                                placeholder="แก้ไขหรือเพิ่มรายละเอียดงาน..."
+                            />
 
-                        <label className="block mb-2 text-sm font-medium">
-                            อัปเดต Brief Link (ไม่บังคับ)
-                        </label>
-                        <input
-                            type="text"
-                            className="w-full border rounded p-2 mb-4"
-                            value={rebriefBriefLink}
-                            onChange={e => setRebriefBriefLink(e.target.value)}
-                            placeholder="https://..."
-                        />
+                            <label className="block mb-2 text-sm font-medium">
+                                อัปเดต Brief Link (ไม่บังคับ)
+                            </label>
+                            <input
+                                type="text"
+                                className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm leading-6 mb-4 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 focus:outline-none"
+                                value={rebriefBriefLink}
+                                onChange={e => setRebriefBriefLink(e.target.value)}
+                                placeholder="https://..."
+                            />
 
-                        <div className="flex gap-2 justify-end">
-                            <Button variant="ghost" onClick={() => {
-                                setShowSubmitRebriefModal(false);
-                                setRebriefResponse('');
-                                setRebriefDescription('');
-                                setRebriefBriefLink('');
-                            }}>ยกเลิก</Button>
-                            <Button variant="primary" onClick={handleSubmitRebrief}>ส่งข้อมูล</Button>
+                            <div className="flex gap-2 justify-end">
+                                <Button variant="secondary" onClick={() => {
+                                    setShowSubmitRebriefModal(false);
+                                    setRebriefResponse('');
+                                    setRebriefDescription('');
+                                    setRebriefBriefLink('');
+                                }}>ยกเลิก</Button>
+                                <Button variant="primary" className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300" onClick={handleSubmitRebrief}>ส่งข้อมูล</Button>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -74,6 +74,7 @@ model Tenant {
   notifications        Notification[]
   holidays             Holiday[]
   mediaFiles           MediaFile[]
+  draftReadLogs        DraftReadLog[]
   draftAttachmentViewLogs DraftAttachmentViewLog[]
   auditLogs            AuditLog[]
   userRequests         UserRequest[]
@@ -135,6 +136,7 @@ model User {
   assignedProjects     ProjectJobAssignment[] @relation("AssignedProjects")
   assignedBuds         BudJobAssignment[]     @relation("AssignedBuds")
   mediaFiles           MediaFile[]
+  draftReadLogs        DraftReadLog[]         @relation("DraftReadLogs")
   draftAttachmentViewLogs DraftAttachmentViewLog[] @relation("DraftAttachmentViewLogs")
   passwordResets       PasswordResetRequest[]
   jobActivities        JobActivity[]
@@ -358,6 +360,7 @@ model Job {
   jobItems        DesignJobItem[]
   attachments     JobAttachment[]
   deliverables    JobDeliverable[]
+  draftReadLogs   DraftReadLog[]
   approvals       Approval[]
   activityLogs    ActivityLog[]    @relation("JobActivityLogs")
   comments        JobComment[]
@@ -858,6 +861,27 @@ model DraftAttachmentViewLog {
   @@index([attachmentId])
   @@index([viewerUserId])
   @@map("draft_attachment_view_logs")
+}
+
+model DraftReadLog {
+  id         Int      @id @default(autoincrement())
+  tenantId   Int      @map("tenant_id")
+  jobId      Int      @map("job_id")
+  userId     Int      @map("user_id")
+  ipAddress  String?  @map("ip_address") @db.VarChar(100)
+  userAgent  String?  @map("user_agent") @db.Text
+  readAt     DateTime @default(now()) @map("read_at") @db.Timestamptz
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  user   User   @relation("DraftReadLogs", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, userId])
+  @@index([tenantId])
+  @@index([jobId])
+  @@index([userId])
+  @@map("draft_read_logs")
 }
 
 model UserScopeAssignment {

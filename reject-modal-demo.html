@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reject Job Modal - Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', 'Noto Sans Thai', sans-serif; }
+        .modal-overlay {
+            background: rgba(0, 0, 0, 0.45);
+            backdrop-filter: blur(4px);
+        }
+        .modal-enter {
+            animation: modalIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.96) translateY(8px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .textarea-focus:focus {
+            outline: none;
+            border-color: #f43f5e;
+            box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.12);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <!-- Trigger Button -->
+    <button onclick="openModal()" 
+            class="bg-red-600 hover:bg-red-700 text-white font-semibold px-6 py-3 rounded-xl shadow-lg transition-all hover:shadow-xl active:scale-95">
+        🚫 เปิดหน้าต่างปฏิเสธงาน
+    </button>
+
+    <!-- Modal -->
+    <div id="rejectModal" class="fixed inset-0 z-50 hidden">
+        <!-- Overlay -->
+        <div class="modal-overlay absolute inset-0" onclick="closeModal()"></div>
+        
+        <!-- Modal Content -->
+        <div class="relative z-10 flex items-center justify-center min-h-screen p-4">
+            <div class="modal-enter bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden">
+                
+                <!-- Header -->
+                <div class="px-6 pt-6 pb-4">
+                    <div class="flex items-start gap-4">
+                        <!-- Warning Icon -->
+                        <div class="flex-shrink-0 w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center border border-amber-100">
+                            <svg class="w-6 h-6 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+                            </svg>
+                        </div>
+                        
+                        <!-- Title & Description -->
+                        <div class="flex-1 min-w-0">
+                            <h2 class="text-xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                                ปฏิเสธงาน
+                            </h2>
+                            <p class="mt-1 text-sm text-slate-500">
+                                ระบุเหตุผลในการปฏิเสธงาน <span class="font-semibold text-rose-600">DJ-2024-00152</span>
+                            </p>
+                        </div>
+                        
+                        <!-- Close Button -->
+                        <button onclick="closeModal()" 
+                                class="flex-shrink-0 w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors">
+                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Body -->
+                <div class="px-6 pb-2">
+                    <label for="rejectReason" class="block text-sm font-semibold text-slate-700 mb-2">
+                        เหตุผลในการปฏิเสธ <span class="text-red-500">*</span>
+                    </label>
+                    <textarea 
+                        id="rejectReason"
+                        rows="5"
+                        maxlength="500"
+                        placeholder="เช่น งานไม่อยู่ในขอบเขตความรับผิดชอบ หรือข้อมูลยังไม่เพียงพอ..."
+                        class="textarea-focus w-full px-3.5 py-3 rounded-xl border border-slate-300 text-sm leading-6 text-slate-700 placeholder-slate-400 resize-none transition-all"
+                        oninput="updateCharCount(this)"></textarea>
+                    <div class="flex justify-between items-center mt-2">
+                        <span class="text-xs text-slate-400">เหตุผลนี้จะถูกส่งให้ผู้อนุมัติใช้ประกอบการพิจารณา</span>
+                        <span id="charCount" class="text-xs text-slate-400">0/500</span>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="px-6 py-5 bg-slate-50/50 border-t border-slate-100 mt-4">
+                    <div class="flex flex-col-reverse sm:flex-row gap-2.5">
+                        <button onclick="closeModal()" 
+                                class="w-full sm:w-auto px-5 py-2.5 rounded-lg text-sm font-semibold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 hover:border-slate-400 transition-all active:scale-[0.98]">
+                            ยกเลิก
+                        </button>
+                        <button onclick="submitReject()" 
+                                id="submitBtn"
+                                disabled
+                                class="w-full sm:w-auto px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-600 transition-all active:scale-[0.98] shadow-sm hover:shadow-md">
+                            ยืนยันปฏิเสธ
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed top-4 right-4 z-50 transform translate-x-full transition-transform duration-300">
+        <div class="bg-white rounded-xl shadow-lg border border-slate-200 px-4 py-3 flex items-center gap-3 min-w-[320px]">
+            <div class="w-8 h-8 bg-green-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                <svg class="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                </svg>
+            </div>
+            <div>
+                <p class="text-sm font-semibold text-slate-800">ส่งคำขอปฏิเสธงานแล้ว</p>
+                <p class="text-xs text-slate-500">ระบบได้ส่งคำขอไปยังผู้อนุมัติเรียบร้อยแล้ว</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const modal = document.getElementById('rejectModal');
+        const textarea = document.getElementById('rejectReason');
+        const submitBtn = document.getElementById('submitBtn');
+        const charCount = document.getElementById('charCount');
+
+        function openModal() {
+            modal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            setTimeout(() => textarea.focus(), 100);
+        }
+
+        function closeModal() {
+            modal.classList.add('hidden');
+            document.body.style.overflow = '';
+            textarea.value = '';
+            updateCharCount(textarea);
+        }
+
+        function updateCharCount(el) {
+            const len = el.value.length;
+            charCount.textContent = `${len}/500`;
+            submitBtn.disabled = len === 0;
+        }
+
+        function submitReject() {
+            const reason = textarea.value.trim();
+            if (!reason) return;
+            
+            closeModal();
+            showToast();
+        }
+
+        function showToast() {
+            const toast = document.getElementById('toast');
+            toast.classList.remove('translate-x-full');
+            setTimeout(() => {
+                toast.classList.add('translate-x-full');
+            }, 3000);
+        }
+
+        // Close on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+                closeModal();
+            }
+        });
+    </script>
+</body>
+</html>

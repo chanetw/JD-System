@@ -41,6 +41,18 @@ const jobService = new JobService();
 const notificationService = new NotificationService();
 const magicLinkService = new MagicLinkService();
 const APP_TIMEZONE = process.env.APP_TIMEZONE || 'Asia/Bangkok';
+const ASSIGNEE_ACTIVE_QUEUE_STATUSES = [
+  'approved',
+  'assigned',
+  'in_progress',
+  'correction',
+  'rework',
+  'returned',
+  'pending_dependency',
+  'draft_review',
+  'pending_rebrief',
+  'rebrief_submitted'
+];
 
 const router = express.Router();
 
@@ -79,7 +91,8 @@ const toIsoStringOrNull = (value) => {
 
 const triggerUrgentRescheduleIfNeeded = async (job, prisma) => {
   try {
-    if (!job || String(job.priority || '').toLowerCase() !== 'urgent' || !job.assigneeId) {
+    const readyStatuses = ['assigned', 'in_progress'];
+    if (!job || String(job.priority || '').toLowerCase() !== 'urgent' || !job.assigneeId || !readyStatuses.includes(job.status)) {
       return null;
     }
 
@@ -885,16 +898,15 @@ router.get('/', async (req, res) => {
       if (status === 'todo') {
         where.status = { in: ['assigned'] };
       } else if (status === 'in_progress') {
-        // รวม: approved, assigned, in_progress, correction, rework, returned, pending_dependency, draft_review
-        where.status = { in: ['approved', 'assigned', 'in_progress', 'correction', 'rework', 'returned', 'pending_dependency', 'draft_review'] };
+        where.status = { in: ASSIGNEE_ACTIVE_QUEUE_STATUSES };
       } else if (status === 'completed') {
-        where.status = { in: ['completed', 'closed'] };
+        where.status = { in: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] };
       } else if (status === 'rejected') {
         where.status = { in: ['rejected', 'rejected_by_assignee'] };
       } else if (status === 'waiting') {
         where.status = { in: ['correction', 'pending_approval'] };
       } else if (status === 'done') {
-        where.status = { in: ['completed', 'closed'] };
+        where.status = { in: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] };
       } else if (status === 'all') {
         // No status filter - return all jobs
       } else {
@@ -905,7 +917,7 @@ router.get('/', async (req, res) => {
     // Default behavior for dashboard queue: hide completed/closed when includeCompleted=false
     // Keep explicit status filter precedence (e.g. status=completed should still work).
     if (!status && !shouldIncludeCompleted) {
-      const completedExclusion = { status: { notIn: ['completed', 'closed'] } };
+      const completedExclusion = { status: { notIn: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] } };
       if (where.status) {
         where.AND = [...(where.AND || []), completedExclusion];
       } else {
@@ -1087,7 +1099,7 @@ router.get('/counts', async (req, res) => {
     const tenantId = req.user.tenantId;
 
     const statusGroups = {
-      in_progress: ['approved', 'assigned', 'in_progress', 'correction', 'rework', 'returned', 'pending_dependency', 'draft_review'],
+      in_progress: ASSIGNEE_ACTIVE_QUEUE_STATUSES,
       completed: ['completed', 'closed'],
       rejected: ['rejected', 'rejected_by_assignee', 'assignee_rejected'],
       todo: ['assigned'],
@@ -1201,15 +1213,15 @@ router.get('/dashboard-stats', async (req, res) => {
       if (status === 'todo') {
         baseWhere.status = { in: ['assigned'] };
       } else if (status === 'in_progress') {
-        baseWhere.status = { in: ['approved', 'assigned', 'in_progress', 'correction', 'rework', 'returned', 'pending_dependency'] };
+        baseWhere.status = { in: ASSIGNEE_ACTIVE_QUEUE_STATUSES };
       } else if (status === 'completed') {
-        baseWhere.status = { in: ['completed', 'closed'] };
+        baseWhere.status = { in: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] };
       } else if (status === 'rejected') {
         baseWhere.status = { in: ['rejected', 'rejected_by_assignee'] };
       } else if (status === 'waiting') {
         baseWhere.status = { in: ['correction', 'pending_approval'] };
       } else if (status === 'done') {
-        baseWhere.status = { in: ['completed', 'closed'] };
+        baseWhere.status = { in: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] };
       } else if (status === 'all') {
         // No status filter - return all jobs
       } else {
@@ -1420,15 +1432,15 @@ router.get('/dashboard-jobs', async (req, res) => {
       if (status === 'todo') {
         where.status = { in: ['assigned'] };
       } else if (status === 'in_progress') {
-        where.status = { in: ['approved', 'assigned', 'in_progress', 'correction', 'rework', 'returned', 'pending_dependency'] };
+        where.status = { in: ASSIGNEE_ACTIVE_QUEUE_STATUSES };
       } else if (status === 'completed') {
-        where.status = { in: ['completed', 'closed'] };
+        where.status = { in: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] };
       } else if (status === 'rejected') {
         where.status = { in: ['rejected', 'rejected_by_assignee'] };
       } else if (status === 'waiting') {
         where.status = { in: ['correction', 'pending_approval'] };
       } else if (status === 'done') {
-        where.status = { in: ['completed', 'closed'] };
+        where.status = { in: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] };
       } else if (status === 'all') {
         // No status filter - return all jobs
       } else {
@@ -2181,7 +2193,7 @@ router.get('/:id', async (req, res) => {
           }
         },
         requester: {
-          select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, email: true }
+          select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, email: true, phone: true }
         },
         assignee: {
           select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, email: true }
@@ -2357,7 +2369,8 @@ router.get('/:id', async (req, res) => {
       requester: {
         id: job.requester?.id,
         name: `${job.requester?.firstName || ''} ${job.requester?.lastName || ''}`.trim(),
-        email: job.requester?.email,
+        email: job.requester?.email || null,
+        phone: job.requester?.phone || null,
         avatar: job.requester?.avatarUrl
       },
       assigneeId: job.assigneeId,
@@ -2876,6 +2889,7 @@ router.post('/parent-child', async (req, res) => {
               jobTypeId: parseInt(childConfig.jobTypeId),
               isActive: true
             },
+            orderBy: { id: 'asc' },
             select: { assigneeId: true }
           });
 
@@ -3487,16 +3501,8 @@ router.post('/:id/reassign', async (req, res) => {
       return res.status(400).json({ success: false, message: 'งานแม่ไม่สามารถมอบหมายงานได้' });
     }
 
-    // Permission Check: Owner, Assignee, Admin, Manager
-    // This uses Prisma which bypasses RLS
-    // Role checks are usually done up the chain, or we just trust the token
-    const isOwnerOrAssignee = job.requesterId === userId || job.assigneeId === userId;
-    const { hasRole } = await import('../helpers/roleHelper.js');
-    const isAdminOrManager = hasRole(req.user.roles, 'admin') || hasRole(req.user.roles, 'manager');
-
-    if (!isOwnerOrAssignee && !isAdminOrManager) {
-      return res.status(403).json({ success: false, message: 'ไม่มีสิทธิ์ย้ายงาน' });
-    }
+    // Permission policy: allow reassignment for all authenticated roles within the same tenant.
+    // We only keep business guards (job exists, non-parent, target assignee valid/active).
 
     // 2. ตรวจสอบ Assignee ใหม่
     const newAssignee = await prisma.user.findUnique({
@@ -3669,82 +3675,89 @@ router.post('/:id/assign', async (req, res) => {
       return res.status(400).json({ success: false, message: 'ไม่สามารถมอบหมายให้ผู้ใช้ที่ปิดการใช้งานได้' });
     }
 
+    const isPendingApprovalStatus = job.status === 'pending_approval' || job.status?.startsWith('pending_level_');
+
     // 4. Update job
     const updateData = {
       assignee: { connect: { id: Number(assigneeId) } },
       assignedAt: new Date(),
     };
-    // ถ้า job ผ่านการอนุมัติแล้ว (approved/pending_approval) → เปลี่ยนเป็น assigned
-    if (['approved', 'pending_approval'].includes(job.status)) {
+    // ถ้า job ผ่านการอนุมัติแล้ว → เปลี่ยนเป็น assigned
+    if (job.status === 'approved') {
       updateData.status = 'assigned';
-      updateData.startedAt = new Date();
     }
 
     const updatedJob = await prisma.job.update({ where: { id: Number(id) }, data: updateData });
 
-    await triggerUrgentRescheduleIfNeeded(updatedJob, prisma);
+    if (updatedJob.status === 'assigned') {
+      await triggerUrgentRescheduleIfNeeded(updatedJob, prisma);
+    }
 
     // 5. Log activity
     await prisma.activityLog.create({
       data: {
         jobId: Number(id),
         userId,
-        action: 'assigned',
-        message: `มอบหมายงานให้ ${newAssignee.firstName} ${newAssignee.lastName}`
+        action: isPendingApprovalStatus ? 'assignee_selected_pending_approval' : 'assigned',
+        message: isPendingApprovalStatus
+          ? `กำหนดผู้รับงานระหว่างรออนุมัติ: ${newAssignee.firstName} ${newAssignee.lastName}`
+          : `มอบหมายงานให้ ${newAssignee.firstName} ${newAssignee.lastName}`
       }
     });
 
     // 6. Notifications (non-blocking)
-    try {
-      const skipAssignedDelivery = await shouldSkipRecentJobAssignedDelivery({
-        prisma,
-        tenantId,
-        userId: Number(assigneeId),
-        jobId: Number(id)
-      });
-
-      if (skipAssignedDelivery) {
-        console.log(`[Assign] Skip duplicate assignment delivery for ${job.djId} (assigneeId=${assigneeId})`);
-      } else {
-        await notificationService.createNotification({
+    if (!isPendingApprovalStatus) {
+      try {
+        const skipAssignedDelivery = await shouldSkipRecentJobAssignedDelivery({
           tenantId,
+          prisma,
           userId: Number(assigneeId),
-          type: 'job_assigned',
-          title: `👤 คุณได้รับมอบหมายงาน: ${job.djId}`,
-          message: `งาน "${job.subject}" ถูกมอบหมายให้คุณ`,
-          link: `/jobs/${id}`
+          jobId: Number(id)
         });
-      }
 
-      if (!skipAssignedDelivery && newAssignee.email) {
-        const emailService = new EmailService();
-        const magicLink = await magicLinkService.createJobActionLink({
-          userId: Number(assigneeId),
-          jobId: Number(id),
-          action: 'view',
-          djId: job.djId
-        });
-        const emailHtml = createJobAssignmentEmail({
-          djId: job.djId,
-          subject: job.subject,
-          priority: job.priority || 'normal',
-          dueDate: job.dueDate ? new Date(job.dueDate).toLocaleDateString('th-TH') : null,
-          magicLink,
-          assigneeName: `${newAssignee.firstName} ${newAssignee.lastName}`
-        });
-        await emailService.sendEmail(
-          newAssignee.email,
-          `👤 คุณได้รับมอบหมายงาน: ${job.djId}`,
-          emailHtml
-        ).catch(err => console.warn('[Assign] Email failed:', err.message));
+        if (skipAssignedDelivery) {
+          console.log(`[Assign] Skip duplicate assignment delivery for ${job.djId} (assigneeId=${assigneeId})`);
+        } else {
+          await notificationService.createNotification({
+            tenantId,
+            userId: Number(assigneeId),
+            type: 'job_assigned',
+            title: `👤 คุณได้รับมอบหมายงาน: ${job.djId}`,
+            message: `งาน "${job.subject}" ถูกมอบหมายให้คุณ`,
+            link: `/jobs/${id}`
+          });
+        }
+
+        if (!skipAssignedDelivery && newAssignee.email) {
+          const emailService = new EmailService();
+          const magicLink = await magicLinkService.createJobActionLink({
+            userId: Number(assigneeId),
+            jobId: Number(id),
+            action: 'view',
+            djId: job.djId
+          });
+          const emailHtml = createJobAssignmentEmail({
+            djId: job.djId,
+            subject: job.subject,
+            priority: job.priority || 'normal',
+            dueDate: job.dueDate ? new Date(job.dueDate).toLocaleDateString('th-TH') : null,
+            magicLink,
+            assigneeName: `${newAssignee.firstName} ${newAssignee.lastName}`
+          });
+          await emailService.sendEmail(
+            newAssignee.email,
+            `👤 คุณได้รับมอบหมายงาน: ${job.djId}`,
+            emailHtml
+          ).catch(err => console.warn('[Assign] Email failed:', err.message));
+        }
+      } catch (notiErr) {
+        console.warn('[Assign] Notification failed (non-blocking):', notiErr.message);
       }
-    } catch (notiErr) {
-      console.warn('[Assign] Notification failed (non-blocking):', notiErr.message);
     }
 
     res.json({
       success: true,
-      message: 'มอบหมายงานสำเร็จ',
+      message: isPendingApprovalStatus ? 'บันทึกผู้รับงานแล้ว รอการอนุมัติก่อนเริ่มงาน' : 'มอบหมายงานสำเร็จ',
       data: {
         assignee: {
           id: newAssignee.id,
@@ -4049,54 +4062,6 @@ router.post('/:id/extend', async (req, res) => {
       extensionDays,
       reason
     );
-
-    // Notify Requester
-    try {
-      const prisma = getDatabase();
-      const job = await prisma.job.findUnique({
-        where: { id: jobId },
-        select: { requesterId: true, djId: true, subject: true, tenantId: true, assignee: { select: { firstName: true, lastName: true } } }
-      });
-      if (job?.requesterId && !isSameUserId(job.requesterId, userId)) {
-        await notificationService.createNotification({
-          tenantId: job.tenantId,
-          userId: job.requesterId,
-          type: 'job_extended',
-          title: `⏰ งาน ${job.djId} ขอขยายเวลา ${extensionDays} วัน`,
-          message: `${job.assignee?.firstName || 'ผู้รับงาน'} ขอขยายเวลางาน "${job.subject}" เหตุผล: ${reason}`,
-          link: `/jobs/${jobId}`
-        }).catch(err => console.warn('[Extend] Noti failed:', err.message));
-
-        // Email Requester with Magic Link
-        const requester = await prisma.user.findUnique({
-          where: { id: job.requesterId },
-          select: { email: true, firstName: true, lastName: true }
-        });
-        if (requester?.email) {
-          const emailService = new EmailService();
-          const magicLink = await magicLinkService.createJobActionLink({
-            userId: job.requesterId,
-            jobId: jobId,
-            action: 'view',
-            djId: job.djId
-          });
-          const emailHtml = createJobExtensionEmail({
-            djId: job.djId,
-            subject: job.subject,
-            assigneeName: `${job.assignee?.firstName || 'ผู้รับงาน'} ${job.assignee?.lastName || ''}`,
-            extensionDays,
-            newDueDate: updatedJob.dueDate ? new Date(updatedJob.dueDate).toLocaleDateString('th-TH') : '-',
-            reason,
-            magicLink,
-            requesterName: `${requester.firstName} ${requester.lastName}`
-          });
-          await emailService.sendEmail(requester.email, `⏰ งาน ${job.djId} ขอขยายเวลา`, emailHtml)
-            .catch(err => console.warn('[Extend] Email failed:', err.message));
-        }
-      }
-    } catch (notiErr) {
-      console.warn('[Extend] Notification failed (non-blocking):', notiErr.message);
-    }
 
     res.json({
       success: true,

@@ -1,5 +1,11 @@
 import React, { useState } from 'react';
 import { CheckIcon, XMarkIcon, UserIcon, ExclamationCircleIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { ACTION_BUTTON_STYLES } from '@shared/utils/alertHelper';
+import {
+    ASSIGNEE_DRAFT_REBRIEF_ACTION_STATUSES,
+    ASSIGNEE_EXTENDABLE_STATUSES,
+    ASSIGNEE_REJECTABLE_STATUSES,
+} from '@shared/constants/jobStatus';
 
 const JobActionPanel = ({
     job,
@@ -78,16 +84,15 @@ const JobActionPanel = ({
                 <div className="flex gap-3">
                     <button
                         onClick={onApprove}
-                        className="flex-1 py-3 px-4 bg-rose-500 text-white rounded-xl font-medium hover:bg-rose-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                        className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors shadow-sm ${ACTION_BUTTON_STYLES.complete}`}
                     >
                         <CheckIcon className="w-5 h-5" />
                         Approve & Next
                     </button>
                     <button
                         onClick={onOpenRejectModal}
-                        className="flex-1 py-3 px-4 bg-amber-500 text-white rounded-xl font-medium hover:bg-amber-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                        className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject}`}
                     >
-                        <XMarkIcon className="w-5 h-5" />
                         Reject / Return
                     </button>
                 </div>
@@ -239,10 +244,11 @@ const JobActionPanel = ({
         // ✅ FIX: Check role first - only assignee or admin can see these buttons
         if (jobRole !== 'assignee' && jobRole !== 'admin') return null;
 
-        const normalStatuses = ['assigned', 'in_progress', 'rework', 'approved', 'correction', 'returned', 'draft_review'];
+        const normalStatuses = ASSIGNEE_DRAFT_REBRIEF_ACTION_STATUSES;
+        const pendingRebriefStatus = job.status === 'pending_rebrief';
         const rebriefSubmittedStatus = job.status === 'rebrief_submitted';
 
-        if (!normalStatuses.includes(job.status) && !rebriefSubmittedStatus) return null;
+        if (!normalStatuses.includes(job.status) && !pendingRebriefStatus && !rebriefSubmittedStatus) return null;
 
         return (
             <div className={`bg-white rounded-xl border ${theme?.borderClass || 'border-gray-400'} shadow-sm p-6 mb-6`}>
@@ -254,16 +260,15 @@ const JobActionPanel = ({
                         <div className="flex gap-3">
                             <button
                                 onClick={onOpenCompleteModal}
-                                className="flex-1 py-3 px-4 bg-green-500 text-white rounded-xl font-medium hover:bg-green-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                                className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors shadow-sm ${ACTION_BUTTON_STYLES.complete}`}
                             >
                                 <CheckIcon className="w-5 h-5" />
                                 ส่งงาน
                             </button>
                             <button
                                 onClick={onOpenAssigneeRejectModal}
-                                className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                                className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject}`}
                             >
-                                <XMarkIcon className="w-5 h-5" />
                                 ปฏิเสธงาน
                             </button>
                         </div>
@@ -273,7 +278,7 @@ const JobActionPanel = ({
                             {onOpenDraftModal && (
                                 <button
                                     onClick={onOpenDraftModal}
-                                    className="flex-1 py-2 px-4 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 flex items-center justify-center gap-2 transition-colors text-sm"
+                                    className={`flex-1 py-2 px-4 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors text-sm ${ACTION_BUTTON_STYLES.draft}`}
                                 >
                                     📝 ส่ง Draft ให้ตรวจ
                                 </button>
@@ -281,18 +286,20 @@ const JobActionPanel = ({
                             {onOpenRebriefModal && (
                                 <button
                                     onClick={onOpenRebriefModal}
-                                    className="flex-1 py-2 px-4 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 flex items-center justify-center gap-2 transition-colors text-sm"
+                                    className={`flex-1 py-2 px-4 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors text-sm ${ACTION_BUTTON_STYLES.rebrief}`}
                                 >
                                     🔄 ขอ Rebrief
                                 </button>
                             )}
                         </div>
 
-                        {/* Extend Button - Only show after rejection denial */}
-                        {onOpenExtendModal && job.rejectionDeniedAt && (
+                        {/* Extend Button - Show whenever the current assignee can request more time */}
+                        {onOpenExtendModal && ASSIGNEE_EXTENDABLE_STATUSES.includes(job.status) && (
                             <div className="mt-3 p-3 bg-rose-50 border border-rose-200 rounded-lg">
                                 <p className="text-xs text-rose-700 mb-2">
-                                    💡 คำขอปฏิเสธงานไม่ได้รับอนุมัติ หากต้องการเวลาเพิ่มเติม กรุณาขอ Extend
+                                    {job.rejectionDeniedAt
+                                        ? '💡 คำขอปฏิเสธงานไม่ได้รับอนุมัติ หากต้องการเวลาเพิ่มเติม กรุณาขอ Extend'
+                                        : '💡 หากต้องการเวลาเพิ่มเติมในการทำงาน คุณสามารถขอ Extend เพื่อเลื่อน Due Date ได้'}
                                 </p>
                                 <button
                                     onClick={onOpenExtendModal}
@@ -302,6 +309,24 @@ const JobActionPanel = ({
                                 </button>
                             </div>
                         )}
+                    </div>
+                )}
+
+                {pendingRebriefStatus && (
+                    <div className="space-y-3">
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+                            <p className="text-sm text-amber-800">
+                                งานกำลังรอผู้เปิดงานตอบกลับคำขอ Rebrief หากติดค้างต่อเนื่อง คุณยังสามารถส่งคำขอปฏิเสธงานได้
+                            </p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={onOpenAssigneeRejectModal}
+                                className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject}`}
+                            >
+                                ปฏิเสธงาน
+                            </button>
+                        </div>
                     </div>
                 )}
 
@@ -316,22 +341,21 @@ const JobActionPanel = ({
                         <div className="grid grid-cols-3 gap-2">
                             <button
                                 onClick={onAcceptRebrief}
-                                className="py-3 px-3 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 flex items-center justify-center gap-1 transition-colors text-sm"
+                                className={`py-3 px-3 rounded-lg font-medium flex items-center justify-center gap-1 transition-colors text-sm ${ACTION_BUTTON_STYLES.complete}`}
                             >
                                 <CheckIcon className="w-4 h-4" />
                                 รับงาน
                             </button>
                             <button
                                 onClick={onOpenRebriefModal}
-                                className="py-3 px-3 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 flex items-center justify-center gap-1 transition-colors text-sm"
+                                className={`py-3 px-3 rounded-lg font-medium flex items-center justify-center gap-1 transition-colors text-sm ${ACTION_BUTTON_STYLES.rebrief}`}
                             >
                                 🔄 Rebrief อีก
                             </button>
                             <button
                                 onClick={onOpenAssigneeRejectModal}
-                                className="py-3 px-3 bg-red-500 text-white rounded-lg font-medium hover:bg-red-600 flex items-center justify-center gap-1 transition-colors text-sm"
+                                className={`py-3 px-3 rounded-lg font-medium flex items-center justify-center transition-colors text-sm ${ACTION_BUTTON_STYLES.reject}`}
                             >
-                                <XMarkIcon className="w-4 h-4" />
                                 ปฏิเสธ
                             </button>
                         </div>
@@ -363,20 +387,26 @@ const JobActionPanel = ({
         return (
             <div className="bg-white rounded-xl border border-red-200 shadow-sm p-6 bg-red-50 mb-6">
                 <h2 className="font-semibold text-red-800 mb-2">ผู้รับงานปฏิเสธงาน</h2>
-                <p className="text-sm text-red-700 mb-4">
+                <p className="text-sm text-red-700 mb-2">
                     <strong>เหตุผล:</strong> {job.rejectionComment || 'ไม่ระบุ'}
                 </p>
+                <div className="bg-amber-50 border border-amber-200 rounded-md p-3 mb-4">
+                    <p className="text-sm text-amber-800">
+                        ⏰ <strong>กำหนด 1 วันทำการ:</strong> ผู้อนุมัติจะต้องตัดสินใจว่า approve
+                        คำขอปฏิเสธนี้ หรือไม่ ภายในเวลา 1 วันทำการ
+                        หากเกินกำหนดระบบจะปฏิเสธงานโดยอัตโนมัติ
+                    </p>
+                </div>
                 <div className="flex gap-3">
                     <button
                         onClick={onConfirmAssigneeRejection}
-                        className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                        className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject}`}
                     >
-                        <XMarkIcon className="w-5 h-5" />
                         ยืนยันปฏิเสธงาน
                     </button>
                     <button
                         onClick={onDenyRejection}
-                        className="flex-1 py-3 px-4 bg-rose-500 text-white rounded-xl font-medium hover:bg-rose-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                        className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors shadow-sm ${ACTION_BUTTON_STYLES.neutral}`}
                     >
                         <CheckIcon className="w-5 h-5" />
                         ไม่อนุมัติคำขอ (ให้ทำต่อ)
@@ -431,14 +461,14 @@ const JobActionPanel = ({
                 <div className="flex gap-3">
                     <button
                         onClick={onConfirmClose}
-                        className="flex-1 py-3 px-4 bg-green-500 text-white rounded-xl font-medium hover:bg-green-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                        className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors shadow-sm ${ACTION_BUTTON_STYLES.complete}`}
                     >
                         <CheckIcon className="w-5 h-5" />
                         ยืนยันปิดงาน
                     </button>
                     <button
                         onClick={onRequestRevision}
-                        className="flex-1 py-3 px-4 bg-amber-500 text-white rounded-xl font-medium hover:bg-amber-600 flex items-center justify-center gap-2 transition-colors shadow-sm"
+                        className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors shadow-sm ${ACTION_BUTTON_STYLES.rebrief}`}
                     >
                         <XMarkIcon className="w-5 h-5" />
                         ขอให้แก้ไข

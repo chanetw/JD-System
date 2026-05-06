@@ -37,6 +37,7 @@ Source of truth:
 | SMTP_FROM | DJ System <noreply@example.com> | Optional | from address |
 | STORAGE_PROVIDER | local | Optional | local หรือ provider อื่นตามการตั้งค่า |
 | UPLOADS_DIR | /app/uploads | Optional | path เก็บไฟล์ |
+| MAX_UPLOAD_SIZE_MB | 50 | Optional | ขนาดไฟล์สูงสุดต่อไฟล์สำหรับ `/api/storage/upload` |
 
 ## Backend: Job Chaining / Feature Flags
 

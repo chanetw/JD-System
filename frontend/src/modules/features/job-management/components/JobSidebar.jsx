@@ -1,6 +1,6 @@
 import React from 'react';
-import { UserIcon, PencilIcon, CheckIcon, ClockIcon } from '@heroicons/react/24/outline';
-import Badge from '@shared/components/Badge';
+import { PencilIcon, CheckIcon, ClockIcon, EnvelopeIcon, PhoneIcon } from '@heroicons/react/24/outline';
+import MiniJobChain from './MiniJobChain';
 
 const isParentJob = (job) => job?.isParent === true || job?.isParent === 1;
 
@@ -20,6 +20,12 @@ const getParentJobAssignees = (job) => {
     return [...new Set(names)];
 };
 
+const getRequesterName = (job) => {
+    if (!job) return '-';
+    if (typeof job.requester === 'string') return job.requester.trim() || '-';
+    return job.requesterName || job.requester?.displayName || job.requester?.name || [job.requester?.firstName, job.requester?.lastName].filter(Boolean).join(' ').trim() || '-';
+};
+
 const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
     if (!job) return null;
 
@@ -29,6 +35,9 @@ const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
     const isAssignee = String(job.assigneeId) === String(currentUser?.id);
     const parentAssignees = getParentJobAssignees(job);
     const singleAssigneeName = getAssigneeName(job.assignee);
+    const requesterName = getRequesterName(job);
+    const requesterEmail = job.requester?.email || null;
+    const requesterPhone = job.requester?.phone || null;
     
     // สถานะที่ไม่ควรให้เปลี่ยนผู้รับผิดชอบ
     const lockedStatuses = ['draft_review', 'completed', 'pending_rebrief', 'rejected', 'closed'];
@@ -55,6 +64,8 @@ const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
                             {job.priority || 'Normal'}
                         </span>
                     </div>
+
+                    <MiniJobChain job={job} />
 
                     <div className="pt-2 border-t border-gray-100">
                         <label className="text-sm text-gray-500 block mb-2">ผู้รับผิดชอบ (Assignee)</label>
@@ -84,10 +95,7 @@ const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
                                     <div className="w-8 h-8 bg-rose-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
                                         {singleAssigneeName?.[0]?.toUpperCase() || 'U'}
                                     </div>
-                                    <div>
-                                        <p className="text-sm font-medium text-gray-900">{singleAssigneeName || 'Unassigned'}</p>
-                                        <p className="text-xs text-gray-500">Graphic Designer</p>
-                                    </div>
+                                    <p className="text-sm font-medium text-gray-900">{singleAssigneeName || 'Unassigned'}</p>
                                 </div>
                             )}
                             {canReassign && (
@@ -105,13 +113,40 @@ const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
 
                     <div className="pt-2 border-t border-gray-100">
                         <label className="text-sm text-gray-500 block mb-2">ผู้สั่งงาน (Requester)</label>
-                        <div className="flex items-center gap-3 bg-gray-50 p-2 rounded-lg">
-                            <div className="w-8 h-8 bg-indigo-500 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-                                {(job.requesterName || job.requester)?.[0]?.toUpperCase() || 'R'}
+                        <div className="flex items-start gap-3 bg-gray-50 p-3 rounded-lg">
+                            <div className="w-9 h-9 bg-indigo-500 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+                                {requesterName?.[0]?.toUpperCase() || 'R'}
                             </div>
-                            <div>
-                                <p className="text-sm font-medium text-gray-900">{job.requesterName || job.requester || '-'}</p>
-                                <p className="text-xs text-gray-500">Requester</p>
+                            <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium text-gray-900">{requesterName}</p>
+                                <p className="text-xs text-gray-500 mb-2">Requester</p>
+                                <div className="space-y-1.5">
+                                    {requesterEmail && (
+                                        <a
+                                            href={`mailto:${requesterEmail}`}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="flex min-h-[32px] items-center gap-2 rounded-md border border-indigo-100 bg-white px-2.5 py-1.5 text-xs font-medium text-indigo-700 hover:border-indigo-200 hover:bg-indigo-50"
+                                            title={requesterEmail}
+                                        >
+                                            <EnvelopeIcon className="w-4 h-4 flex-shrink-0" />
+                                            <span className="truncate">{requesterEmail}</span>
+                                        </a>
+                                    )}
+                                    {requesterPhone && (
+                                        <a
+                                            href={`tel:${requesterPhone}`}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="flex min-h-[32px] items-center gap-2 rounded-md border border-indigo-100 bg-white px-2.5 py-1.5 text-xs font-medium text-indigo-700 hover:border-indigo-200 hover:bg-indigo-50"
+                                            title={requesterPhone}
+                                        >
+                                            <PhoneIcon className="w-4 h-4 flex-shrink-0" />
+                                            <span className="truncate">{requesterPhone}</span>
+                                        </a>
+                                    )}
+                                    {!requesterEmail && !requesterPhone && (
+                                        <p className="text-xs text-gray-500">ไม่มีข้อมูลติดต่อ</p>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>

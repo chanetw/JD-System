@@ -84,6 +84,45 @@ async function addWorkingDaysWithTenantHolidays({ db, tenantId, startDate, worki
 }
 
 /**
+ * นับจำนวน "วันทำการที่ผ่านครบแล้ว" ระหว่าง 2 เวลา
+ * ตัวอย่าง: 23:55 -> 00:05 วันถัดไป ต้องยังเป็น 0 วันทำการ
+ * @param {Date|string} startDate - วันเริ่มต้น
+ * @param {Date|string} endDate - วันสิ้นสุด
+ * @param {number} tenantId - tenant ID สำหรับ load holidays
+ * @param {Object} db - database client (optional)
+ * @returns {Promise<number>} จำนวนวันทำการที่ผ่านครบแล้ว
+ */
+async function countWorkingDaysBetween(startDate, endDate, tenantId, db = prisma) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start >= end) {
+        return 0;
+    }
+
+    let workingDays = 0;
+    let checkpoint = new Date(start);
+
+    while (true) {
+        const nextWorkingDayBoundary = await addWorkingDaysWithTenantHolidays({
+            db,
+            tenantId,
+            startDate: checkpoint,
+            workingDays: 1
+        });
+
+        if (nextWorkingDayBoundary > end) {
+            break;
+        }
+
+        workingDays += 1;
+        checkpoint = nextWorkingDayBoundary;
+    }
+
+    return workingDays;
+}
+
+/**
  * คำนวณ Due Date จาก Acceptance Date และ SLA
  * @param {Date|string} acceptanceDate - วันที่รับงาน
  * @param {number} slaDays - จำนวนวันตาม SLA
@@ -156,12 +195,11 @@ async function applyAutoExtension(jobId, extensionDays, originalDueDate, transac
     // บันทึก Activity Log
     await db.activityLog.create({
         data: {
-            tenantId: updatedJob.tenantId,
             jobId: updatedJob.id,
             userId: job.requesterId, // System action on behalf of requester
             action: 'job_auto_extended',
-            description: `ระบบ Extend งานอัตโนมัติ ${extensionDays} วัน เนื่องจากการอนุมัติล่าช้า`,
-            metadata: {
+            message: `ระบบ Extend งานอัตโนมัติ ${extensionDays} วัน เนื่องจากการอนุมัติล่าช้า`,
+            detail: {
                 extensionDays,
                 originalDueDate: format(originalDueDate, 'yyyy-MM-dd'),
                 newDueDate: format(newDueDate, 'yyyy-MM-dd'),
@@ -233,12 +271,11 @@ async function extendJobManually(jobId, userId, extensionDays, reason) {
     // บันทึก Activity Log
     await prisma.activityLog.create({
         data: {
-            tenantId: job.tenantId,
             jobId: job.id,
             userId: userId,
             action: 'job_extended',
-            description: `ขอ Extend งาน ${extensionDays} วัน: ${reason}`,
-            metadata: {
+            message: `ขอ Extend งาน ${extensionDays} วัน: ${reason}`,
+            detail: {
                 extensionDays,
                 originalDueDate: format(originalDueDate, 'yyyy-MM-dd'),
                 previousDueDate: format(currentDueDate, 'yyyy-MM-dd'),
@@ -401,7 +438,9 @@ export {
     applyAutoExtension,
     extendJobManually,
     calculateSequentialTimeline,
-    getJobSlaInfo
+    getJobSlaInfo,
+    countWorkingDaysBetween,
+    addWorkingDaysWithTenantHolidays
 };
 
 export default {
@@ -410,5 +449,7 @@ export default {
     applyAutoExtension,
     extendJobManually,
     calculateSequentialTimeline,
-    getJobSlaInfo
+    getJobSlaInfo,
+    countWorkingDaysBetween,
+    addWorkingDaysWithTenantHolidays
 };

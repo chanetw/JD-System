@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import api from '@shared/services/apiDatabase';
-import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import { FormSelect } from '@shared/components/FormInput';
 import Button from '@shared/components/Button';
 import Modal from '@shared/components/Modal';
-import { matchesSuperSearch } from '@shared/utils/superSearch';
 
 const isUserActive = (user) => {
     if (!user) return false;
@@ -27,8 +25,7 @@ const isUserActive = (user) => {
  * @param {Function} onSaveSuccess - Callback ที่ถูกเรียกเมื่อบันทึกสำเร็จ
  */
 export default function AssignmentMatrix({ projectId: propProjectId, assignees: propAssignees, onSaveSuccess }) {
-    const superSearchQuery = useSuperSearchStore(state => state.query);
-    const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
+    const [localSearch, setLocalSearch] = useState('');
 
     // === State ===
     const [projects, setProjects] = useState([]);
@@ -195,18 +192,16 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
         })
         .filter(Boolean);
     const filteredJobTypes = jobTypes.filter(type => {
+        if (!localSearch.trim()) return true;
+        const q = localSearch.toLowerCase();
         const current = matrix.find(m => m.jobTypeId === type.id);
-        return matchesSuperSearch({ ...type, assigneeName: current?.assigneeName, assigneeEmail: current?.assigneeEmail }, superSearchQuery, [
-            value => value.name,
-            value => value.description,
-            value => value.assigneeName,
-            value => value.assigneeEmail,
-        ]);
+        return (
+            type.name?.toLowerCase().includes(q) ||
+            type.description?.toLowerCase().includes(q) ||
+            current?.assigneeName?.toLowerCase().includes(q) ||
+            current?.assigneeEmail?.toLowerCase().includes(q)
+        );
     });
-
-    useEffect(() => {
-        setSuperSearchMeta({ resultCount: filteredJobTypes.length, totalCount: jobTypes.length });
-    }, [filteredJobTypes.length, jobTypes.length, setSuperSearchMeta]);
 
     return (
         <div className="bg-white rounded-lg border border-gray-400 mt-4 p-4 shadow-sm">
@@ -240,9 +235,18 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
                 </div>
             ) : (
                 <>
-                    <p className="text-sm text-gray-500 mb-4">
+                    <p className="text-sm text-gray-500 mb-3">
                         ตั้งค่าผู้รับงานเริ่มต้นสำหรับแต่ละประเภทงาน เมื่อ User เลือกโครงการและประเภทงานนี้ ระบบจะเลือกผู้รับงานให้อัตโนมัติ
                     </p>
+                    <div className="mb-3">
+                        <input
+                            type="text"
+                            placeholder="ค้นหาประเภทงาน หรือชื่อผู้รับงาน..."
+                            value={localSearch}
+                            onChange={e => setLocalSearch(e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none"
+                        />
+                    </div>
 
                     {inactiveAssignmentRows.length > 0 && (
                         <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3">

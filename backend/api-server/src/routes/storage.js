@@ -177,7 +177,8 @@ const sendStoredFile = async (req, res, { disposition = 'attachment' } = {}) => 
  */
 router.post('/upload', uploadSingleFile, async (req, res) => {
   try {
-    const { folder, jobId, projectId } = req.body;
+    const { folder, jobId } = req.body;
+    let { projectId } = req.body;
     const file = req.file;
 
     if (!file) {
@@ -186,6 +187,17 @@ router.post('/upload', uploadSingleFile, async (req, res) => {
         error: 'NO_FILE',
         message: 'กรุณาเลือกไฟล์'
       });
+    }
+
+    // Fallback: ถ้ามี jobId แต่ไม่มี projectId ให้ lookup จากตาราง jobs
+    if (jobId && !projectId) {
+      const job = await prisma.job.findFirst({
+        where: { id: parseInt(jobId), tenantId: req.user.tenantId },
+        select: { projectId: true }
+      });
+      if (job?.projectId) {
+        projectId = job.projectId;
+      }
     }
 
     let uploadResult;

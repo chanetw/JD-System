@@ -17,6 +17,7 @@ import { Link } from 'react-router-dom';
 import { Card } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
+import { showAlert } from '@shared/utils/alertHelper';
 import { matchesSuperSearch } from '@shared/utils/superSearch';
 
 // Icons
@@ -140,8 +141,31 @@ export default function ApprovalsQueue() {
         if (j.isCurrentApprover === false) return false;
         return true;
     }).length;
-    const approvedCount = jobs.filter(j => j.historyData?.category === 'approved').length;
-    const notApprovedCount = jobs.filter(j => j.historyData?.category === 'not_approved').length;
+
+    const isAutoHistoryRecord = (job) => {
+        const comment = String(job?.historyData?.comment || '').toLowerCase();
+        return (
+            comment.includes('auto-approved') ||
+            comment.includes('auto approved') ||
+            comment.includes('implicit approval') ||
+            comment.includes('skipped approval')
+        );
+    };
+
+    const isManualApprovalHistoryJob = (job) => {
+        if (!job?.historyData?.category) return false;
+        if (job.isParent) return false;
+        if (!job.assigneeId) return false;
+        if (isAutoHistoryRecord(job)) return false;
+        return true;
+    };
+
+    const approvedCount = jobs.filter(j =>
+        isManualApprovalHistoryJob(j) && j.historyData?.category === 'approved'
+    ).length;
+    const notApprovedCount = jobs.filter(j =>
+        isManualApprovalHistoryJob(j) && j.historyData?.category === 'not_approved'
+    ).length;
 
     /** การคัดกรองข้อมูลตามแท็บสถานะ (Tab Filtering) */
     const tabFilteredJobs = jobs.filter(job => {
@@ -158,11 +182,11 @@ export default function ApprovalsQueue() {
         }
         if (activeTab === 'approved') {
             // ✅ งานที่ User นี้เคยอนุมัติแล้ว
-            return job.historyData?.category === 'approved';
+            return isManualApprovalHistoryJob(job) && job.historyData?.category === 'approved';
         }
         if (activeTab === 'not_approved') {
             // ✅ งานที่ User นี้เคยปฏิเสธหรือตีกลับ
-            return job.historyData?.category === 'not_approved';
+            return isManualApprovalHistoryJob(job) && job.historyData?.category === 'not_approved';
         }
         return false;
     });
@@ -214,8 +238,11 @@ export default function ApprovalsQueue() {
         currentPage * itemsPerPage
     );
 
-    // จัดกลุ่มงานสำหรับแสดงผล
-    const groupedJobs = groupJobsByPredecessor(paginatedJobs);
+    // จัดกลุ่มงานเฉพาะแท็บรออนุมัติเท่านั้น
+    // ประวัติอนุมัติ/ไม่อนุมัติ ต้องแสดงรายการแบบ 1:1 ให้จำนวนตรงกับ badge
+    const groupedJobs = activeTab === 'waiting'
+        ? groupJobsByPredecessor(paginatedJobs)
+        : paginatedJobs.map(job => ({ ...job, children: [] }));
 
     // Reset page when tab changes
     useEffect(() => {
@@ -243,7 +270,7 @@ export default function ApprovalsQueue() {
             setSelectedJobId(null);
             loadData(); // โหลดข้อมูลใหม่เพื่ออัปเดตสถานะหน้าจอ
         } catch (error) {
-            alert('ไม่สามารถอนุมัติงานได้: ' + error.message);
+            showAlert('error', 'ไม่สามารถอนุมัติงานได้', error.message);
         } finally {
             setIsApproving(false);
         }
@@ -267,7 +294,7 @@ export default function ApprovalsQueue() {
             setRejectComment('');
             loadData();
         } catch (error) {
-            alert('ไม่สามารถปฏิเสธงานได้: ' + error.message);
+            showAlert('error', 'ไม่สามารถปฏิเสธงานได้', error.message);
         }
     };
 
@@ -597,7 +624,7 @@ export default function ApprovalsQueue() {
 
                         <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3">
                             <Button variant="secondary" onClick={() => setShowRejectModal(false)}>ยกเลิก</Button>
-                            <Button variant="primary" onClick={handleConfirmReject}>ยืนยันการดำเนินการ</Button>
+                            <Button variant="danger" onClick={handleConfirmReject}>ยืนยันการดำเนินการ</Button>
                         </div>
                     </div>
                 </div>
@@ -697,7 +724,6 @@ function ApprovalMobileCard({
                             อนุมัติ
                         </Button>
                         <Button variant="danger" className="text-sm" onClick={onReject}>
-                            <XMarkIcon className="h-4 w-4" />
                             ปฏิเสธ
                         </Button>
                     </>
@@ -868,8 +894,8 @@ function AccordionRow({ sequence, pkId, id, project, bud, type, subject, request
                                 <button onClick={onApprove} className="p-2 text-green-500 hover:text-green-700 hover:bg-green-50 rounded-lg" title="อนุมัติ">
                                     <CheckIcon className="w-4 h-4" />
                                 </button>
-                                <button onClick={onReject} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="ตีกลับ / ปฏิเสธ">
-                                    <XMarkIcon className="w-4 h-4" />
+                                <button onClick={onReject} className="px-2.5 py-1.5 text-white bg-red-600 hover:bg-red-700 rounded-lg" title="ตีกลับ / ปฏิเสธ">
+                                    <span className="text-xs font-semibold">ปฏิเสธ</span>
                                 </button>
                             </>
                         )}

@@ -1,6 +1,6 @@
 # DJ System Docker Handoff (DevOps)
 
-เอกสาร handoff สำหรับ build, push, deploy, verify และ rollback ระบบ DJ บน production ด้วย Docker Compose โดยยึดหลัก immutable image tags ไม่ใช้ `latest` เป็นค่าหลักในการขึ้น prod
+เอกสารส่งต่อสำหรับ DevOps เพื่อ `pull`, `deploy`, `verify` และ `rollback` ระบบ DJ บน production ด้วย Docker Compose โดยอิง image ที่ build และ push ขึ้น Docker Hub แล้ว
 
 ---
 
@@ -8,224 +8,136 @@
 
 | รายการ | ค่า |
 |---|---|
-| Release tag | `v2026.04.27-e002338` |
-| วันที่ build | 2026-04-27 |
-| Commit | `e002338` (HEAD → main) |
-| Backend image | `chanetw/dj-system-backend:v2026.04.27-e002338` |
-| Frontend image | `chanetw/dj-system-frontend:v2026.04.27-e002338` |
+| Release tag | `20260430-3525d07` |
+| วันที่ build | `2026-04-30` |
+| Commit | `3525d07` |
+| Backend image | `chanetw/dj-system-backend:20260430-3525d07` |
+| Frontend image | `chanetw/dj-system-frontend:20260430-3525d07` |
+| Backend digest | `sha256:4e9c4f5a352e962ed94331bb504a591011ab438e63e38ff3afb8d6b8e8e4aa81` |
+| Frontend digest | `sha256:b17659156b8699a3f759ab7480596a469d1b1fb0bb5ac4b97bb7b86a6ae4e404` |
+| Docker Hub mutable tags | `chanetw/dj-system-backend:latest`, `chanetw/dj-system-frontend:latest` |
 | Platforms | `linux/amd64`, `linux/arm64` |
-| GitHub repo | https://github.com/chanetw/JD-System |
+| GitHub repo | `https://github.com/chanetw/JD-System` |
 
-ตรวจสอบ manifest ได้ที่:
+ตรวจสอบ manifest:
 ```bash
-docker buildx imagetools inspect chanetw/dj-system-backend:v2026.04.27-e002338
-docker buildx imagetools inspect chanetw/dj-system-frontend:v2026.04.27-e002338
+docker buildx imagetools inspect chanetw/dj-system-backend:20260430-3525d07
+docker buildx imagetools inspect chanetw/dj-system-frontend:20260430-3525d07
+```
+
+หมายเหตุ:
+- production ควร pin ด้วย immutable tag `20260430-3525d07`
+- `latest` มีไว้เพื่อความสะดวกในการทดสอบหรือ pull แบบเร็ว ไม่ควรใช้เป็นค่าหลักของ rollout production
+
+---
+
+## 1) Handoff package ที่ต้องส่งให้ DevOps
+
+### ไฟล์จาก repository
+
+ทั้งหมดอยู่ใน branch ที่จะ deploy
+
+| ไฟล์ | วัตถุประสงค์ |
+|---|---|
+| `docker-compose.prod.yml` | Compose หลักสำหรับ production |
+| `scripts/deploy-docker.sh` | Deploy แบบกำหนด target และ release tag |
+| `scripts/deploy-hub.sh` | Deploy แบบ one-command จาก Docker Hub |
+| `scripts/verify-deployment.sh` | ตรวจ health หลัง deploy |
+| `scripts/build-arm.sh` | Build/push multi-arch สำหรับ release ถัดไป |
+| `frontend/nginx.conf` | Frontend reverse proxy config ภายใน container |
+| `backend/api-server/Dockerfile` | Backend production image definition |
+| `frontend/Dockerfile` | Frontend production image definition |
+
+### ไฟล์ secret / env ที่ต้องส่งแยก
+
+| ไฟล์ | วัตถุประสงค์ |
+|---|---|
+| `backend/api-server/.env.production` | env หลักของ backend/prod |
+| `backend/api-server/envprod.txt` | env/notes เพิ่มเติม ถ้ายังใช้งานในฝั่ง server |
+
+### ข้อมูลที่แนบกับ release นี้
+
+1. Release tag: `20260430-3525d07`
+2. Backend digest: `sha256:4e9c4f5a352e962ed94331bb504a591011ab438e63e38ff3afb8d6b8e8e4aa81`
+3. Frontend digest: `sha256:b17659156b8699a3f759ab7480596a469d1b1fb0bb5ac4b97bb7b86a6ae4e404`
+4. Platforms: `linux/amd64`, `linux/arm64`
+5. Migration ใหม่: `backend/prisma/migrations/20260430000000_add_draft_read_logs`
+
+### สิ่งที่เปลี่ยนใน release นี้
+
+- แยก logic `assign` ออกจาก `approved` ให้ชัดขึ้น:
+  - งานที่ยัง `pending_approval` หรือ `pending_level_*` สามารถเลือกผู้รับงานได้
+  - แต่ยังไม่เปลี่ยนเป็น `assigned` จนกว่าจะ approved จริง
+- งาน urgent ที่ยังไม่อยู่ในสถานะพร้อมทำงานจริง จะไม่ trigger urgent SLA reschedule
+- เพิ่ม draft read log / notification เมื่อ requester เปิด draft link หรือไฟล์
+- ปรับ My Queue card และ Sidebar รายละเอียดงาน
+- เพิ่มข้อมูลติดต่อ requester ใน job detail
+
+---
+
+## 2) Production image refs ที่ต้องใช้
+
+แนะนำให้ DevOps ใช้ tag ตรงนี้เท่านั้นใน rollout นี้
+
+```bash
+BACKEND_IMAGE=chanetw/dj-system-backend:20260430-3525d07
+FRONTEND_IMAGE=chanetw/dj-system-frontend:20260430-3525d07
+```
+
+ถ้าต้อง pin แบบ digest:
+
+```bash
+BACKEND_IMAGE=chanetw/dj-system-backend@sha256:4e9c4f5a352e962ed94331bb504a591011ab438e63e38ff3afb8d6b8e8e4aa81
+FRONTEND_IMAGE=chanetw/dj-system-frontend@sha256:b17659156b8699a3f759ab7480596a469d1b1fb0bb5ac4b97bb7b86a6ae4e404
 ```
 
 ---
 
-## 1) สิ่งที่ต้องส่งให้ DevOps (Handoff Package)
-
-### ไฟล์ที่ต้องส่ง (จาก Git repository)
-
-ทั้งหมดอยู่ใน repository `github.com/chanetw/JD-System` branch `main`
-
-| ไฟล์ | วัตถุประสงค์ |
-|---|---|
-| `docker-compose.prod.yml` | ไฟล์ Compose หลักสำหรับ production |
-| `scripts/deploy-docker.sh` | Deploy script มาตรฐาน (pull + up + health) |
-| `scripts/deploy-hub.sh` | Deploy แบบ one-command สำหรับ Docker Hub flow |
-| `scripts/verify-deployment.sh` | ตรวจสอบ health หลัง deploy |
-| `scripts/build-arm.sh` | Build multi-arch แล้ว push Docker Hub |
-| `frontend/nginx.conf` | Nginx config ภายใน frontend container |
-
-### ไฟล์ Secret/Env ที่ต้องส่งแยก (ไม่มีใน Git)
-
-> ไฟล์เหล่านี้ไม่ commit เข้า repository ต้องส่งผ่านช่องทางที่ปลอดภัย เช่น secret manager หรือ encrypted file
-
-| ไฟล์ | วัตถุประสงค์ |
-|---|---|
-| `backend/api-server/.env.production` | ค่า env หลักของ backend (DATABASE_URL, JWT_SECRET, SMTP, ฯลฯ) |
-| `backend/api-server/envprod.txt` | ค่า env เพิ่มเติม (SMTP config, third-party keys) |
-
-### ข้อมูลที่แนบมาพร้อมกัน
-
-1. Release tag: `v2026.04.27-e002338`
-2. Rollback tag ก่อนหน้า: ดูจาก `docker buildx imagetools inspect chanetw/dj-system-backend:latest`
-3. Migration status: มี Prisma migration ใหม่ 1 รายการ (`20260424000000_remove_rejection_requests`) — รัน auto ตอน backend start
-4. Changelog / breaking changes: ดูหัวข้อ "สิ่งที่เปลี่ยนแปลง" ด้านล่าง
-
-### สิ่งที่เปลี่ยนแปลงใน release นี้
-
-- ลบ rejection request system ออก (table + routes + UI)
-- แก้ MyQueue navigation flicker (tab state sync)
-- แก้ Thai filename garbling บน file upload
-- Portal: Media Portal เปลี่ยน tab เป็น dropdown พร้อม file count
-- Portal: ซ่อนไฟล์ที่ยังไม่ผูกกับ job จากหน้า portal
-
----
-
-## 2) Prerequisites ของเครื่องที่ DevOps ใช้งาน
-
-### สำหรับเครื่องที่ทำ build/push image (ถ้า build เอง)
+## 3) Prerequisites บน production server
 
 | รายการ | ข้อกำหนด |
 |---|---|
-| Docker Engine | ≥ 24.x พร้อม `docker buildx` |
-| Docker Desktop | ≥ 4.x หรือ Docker Engine + buildx plugin |
-| Docker Hub login | `docker login` ด้วย account `chanetw` |
-| Platform | macOS/Linux (รองรับ QEMU emulation สำหรับ cross-arch) |
-| Network | เข้าถึง `registry-1.docker.io` ได้ |
-| Source code | `git clone https://github.com/chanetw/JD-System.git` |
+| Docker Engine | `24.x+` |
+| Docker Compose | `v2.x+` |
+| OS | Linux `amd64` หรือ `arm64` |
+| พอร์ต default | `80`, `3000`, `5434` |
+| Disk space | อย่างน้อย `10 GB` สำหรับ images / volumes / uploads |
+| Env file | ต้องมี `backend/api-server/.env.production` |
 
-ตรวจสอบ buildx:
-```bash
-docker buildx version
-docker buildx ls
-```
-
-### สำหรับ Production Server
-
-| รายการ | ข้อกำหนด |
-|---|---|
-| Docker Engine | ≥ 24.x |
-| Docker Compose | ≥ v2.x (CLI plugin ไม่ใช่ standalone) |
-| OS | Linux (amd64 หรือ arm64) |
-| พอร์ตที่เปิด | 80 (frontend), 3000 (backend), 5434 (postgres) หรือตาม override |
-| Disk space | ≥ 10 GB สำหรับ images + postgres volume + uploads |
-| `.env.production` | ต้องสร้างก่อน deploy (ดู section 4) |
-
-ตรวจสอบ docker compose:
+ตรวจสอบขั้นต่ำ:
 ```bash
 docker compose version
-# ต้องได้ v2.x ขึ้นไป ไม่ใช่ docker-compose v1
+docker info
 ```
 
 ---
 
-## 3) Image strategy สำหรับ production
+## 4) ขั้นตอน deploy มาตรฐาน
 
-ข้อกำหนด
-- ใช้ immutable tag ทุกครั้ง รูปแบบ `v<วันที่>-<commit short SHA>` เช่น `v2026.04.27-e002338`
-- ไม่ใช้ `:latest` เป็น release หลักสำหรับ production
-- frontend และ backend ต้องใช้ release tag เดียวกันในหนึ่ง rollout
-
-image refs มาตรฐาน
-- `chanetw/dj-system-backend:<release-tag>`
-- `chanetw/dj-system-frontend:<release-tag>`
-
-หมายเหตุ
-- `docker-compose.prod.yml` รองรับ override ผ่าน env vars `BACKEND_IMAGE` และ `FRONTEND_IMAGE`
-- production script จะ block การใช้ `:latest` ใน pull mode โดย default
-
----
-
-## 4) ตัวอย่างไฟล์ .env.production ที่ต้องเตรียม
-
-สร้างไฟล์ `backend/api-server/.env.production` บน production server ตามนี้:
-
-```env
-# === Database ===
-DATABASE_URL=postgresql://djuser:<password>@localhost:5432/djsystem
-
-# === Auth ===
-JWT_SECRET=<สตริง random ≥ 32 ตัว สร้างด้วย: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))">
-JWT_EXPIRES_IN=7d
-NODE_ENV=production
-
-# === Origin ===
-ALLOWED_ORIGINS=https://your-domain.com
-FRONTEND_URL=https://your-domain.com
-
-# === Storage ===
-STORAGE_PROVIDER=local
-UPLOAD_DIR=/app/uploads
-
-# === SMTP (ถ้าใช้ email) ===
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_USER=noreply@example.com
-SMTP_PASS=<password>
-SMTP_FROM=DJ System <noreply@example.com>
-```
-
-> **หมายเหตุ:** `SMTP_FROM` ต้องไม่มี quote ครอบ ใช้ `SMTP_FROM=Name <mail@example.com>` เท่านั้น
-> Password ใน DATABASE_URL ห้ามมีตัวอักษร `+`, `/`, `=` ให้ใช้ hex password แทน
-
----
-
-## 5) ขั้นตอนสร้าง image สำหรับ up version (Developer ทำ)
-
-> **DevOps ไม่ต้อง build เอง** — image push ขึ้น Docker Hub แล้ว ข้ามไป section 6 ได้เลย
-
-กรณีต้องการ build ใหม่จาก source:
-```bash
-# clone source code
-git clone https://github.com/chanetw/JD-System.git
-cd JD-System
-
-# build + push multi-arch พร้อม tag immutable และ latest
-COMMIT=$(git rev-parse --short HEAD)
-RELEASE_TAG="v$(date +%Y.%m.%d)-${COMMIT}"
-./scripts/build-arm.sh --push --release-tag "${RELEASE_TAG}" --tag-latest
-```
-
-ผลลัพธ์ที่ต้องได้
-- `chanetw/dj-system-backend:<release-tag>` พร้อม `linux/amd64` และ `linux/arm64`
-- `chanetw/dj-system-frontend:<release-tag>` พร้อม `linux/amd64` และ `linux/arm64`
-- `:latest` ถูกอัปเดตด้วย
-
----
-
-## 6) ขั้นตอน deploy มาตรฐานบน production server
-
-### ขั้นตอนทำครั้งแรก (First-time setup)
+### วิธี A — ใช้ deploy script
 
 ```bash
-# 1. clone repo
-git clone https://github.com/chanetw/JD-System.git
-cd JD-System
+export RELEASE_TAG=20260430-3525d07
 
-# 2. สร้างไฟล์ env (ดู section 4)
-cp backend/api-server/.env.example backend/api-server/.env.production
-# แก้ไขค่าให้ถูกต้อง
-nano backend/api-server/.env.production
-
-# 3. deploy ครั้งแรกพร้อม local postgres
-export RELEASE_TAG=v2026.04.27-e002338
-./scripts/deploy-docker.sh --target all --action pull --release-tag "${RELEASE_TAG}" --with-local-db
-
-# 4. ตรวจสอบ
-./scripts/verify-deployment.sh
-```
-
-### ขั้นตอน update version ปกติ
-
-#### วิธี A — ใช้ deploy script (แนะนำ)
-
-```bash
-export RELEASE_TAG=v2026.04.27-e002338
-
-# deploy backend ก่อน (รัน migration อัตโนมัติ)
 ./scripts/deploy-docker.sh --target backend --action pull --release-tag "${RELEASE_TAG}"
 ./scripts/verify-deployment.sh
 
-# deploy frontend
 ./scripts/deploy-docker.sh --target frontend --action pull --release-tag "${RELEASE_TAG}"
 ./scripts/verify-deployment.sh
 ```
 
-#### วิธี B — ใช้ deploy-hub script (one-command)
+### วิธี B — ใช้ deploy-hub script
 
 ```bash
-export RELEASE_TAG=v2026.04.27-e002338
+export RELEASE_TAG=20260430-3525d07
 ./scripts/deploy-hub.sh --release-tag "${RELEASE_TAG}"
 ```
 
-#### วิธี C — one-off manual
+### วิธี C — manual compose
 
 ```bash
-export RELEASE_TAG=v2026.04.27-e002338
+export RELEASE_TAG=20260430-3525d07
+
 BACKEND_IMAGE=chanetw/dj-system-backend:${RELEASE_TAG} \
 FRONTEND_IMAGE=chanetw/dj-system-frontend:${RELEASE_TAG} \
 docker compose -f docker-compose.prod.yml pull backend frontend
@@ -235,118 +147,78 @@ FRONTEND_IMAGE=chanetw/dj-system-frontend:${RELEASE_TAG} \
 docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate backend frontend
 ```
 
-สิ่งที่ deploy script ทำให้อัตโนมัติ
-- ตรวจ env required vars ก่อน deploy
-- ตรวจ compose config
-- block `:latest` ใน pull mode (เพื่อความปลอดภัย)
-- รัน `prisma migrate deploy` สำหรับ backend ก่อน up service
-- รอ health check ของ backend และ frontend
+ถ้าขึ้นครั้งแรกพร้อม database local:
+```bash
+export RELEASE_TAG=20260430-3525d07
+./scripts/deploy-docker.sh --target all --action pull --release-tag "${RELEASE_TAG}" --with-local-db
+```
 
 ---
 
-## 7) Verification หลัง deploy
+## 5) Verification หลัง deploy
 
 ```bash
 ./scripts/verify-deployment.sh
 ```
 
-กรณีใช้พอร์ต custom:
-```bash
-BACKEND_URL=http://localhost:13000 \
-FRONTEND_URL=http://localhost:8080 \
-./scripts/verify-deployment.sh
-```
-
-Acceptance checklist ขั้นต่ำ
-1. `docker compose -f docker-compose.prod.yml ps` ต้องขึ้นครบ ไม่มี Restarting
-2. `GET /health` → HTTP 200
-3. `GET /api/version` → HTTP 200 ทั้งตรง backend และผ่าน frontend proxy
-4. `GET /` → โหลดหน้า login ได้
-5. ไม่มี restart loop หลัง 2 นาที
+Acceptance checklist:
+1. `docker compose -f docker-compose.prod.yml ps` ขึ้นครบ และไม่มี `Restarting`
+2. `GET /health` ของ backend ได้ `HTTP 200`
+3. `GET /api/version` ได้ `HTTP 200`
+4. `GET /` โหลด frontend ได้
+5. ไม่มี restart loop หลัง deploy เกิน 2 นาที
 
 ---
 
-## 8) การตั้งพอร์ตและ reverse proxy
+## 6) Rollback
 
-ค่า mapping ปัจจุบัน (default)
-
-| Service | Host port | Container port |
-|---|---|---|
-| Frontend (Nginx) | 80 | 80 |
-| Backend (Express) | 3000 | 3000 |
-| PostgreSQL | 5434 | 5432 |
-
-Override ผ่าน env:
-```env
-BACKEND_HOST_PORT=13000
-FRONTEND_HOST_PORT=8080
-POSTGRES_PORT=15432
-```
-
-กรณีมี reverse proxy หน้า (nginx/caddy/traefik)
-1. Proxy รับ HTTPS แล้ว forward ไป frontend port
-2. Frontend nginx ภายใน container จะ proxy `/api/` และ `/socket.io/` ต่อไปยัง backend
-3. ไม่ต้อง expose backend port ออก public
-4. ผูก bind เป็น loopback:
-
-```yaml
-# docker-compose.prod.yml override
-frontend:
-  ports:
-    - "127.0.0.1:8080:80"
-backend:
-  ports:
-    - "127.0.0.1:13000:3000"
-```
-
----
-
-## 9) Rollback procedure
+rollback แบบ tag ก่อนหน้า:
 
 ```bash
-# ดู release tag ก่อนหน้า
-docker buildx imagetools inspect chanetw/dj-system-backend:latest
+export PREV_TAG=<previous-release-tag>
 
-# rollback ไป tag ก่อนหน้า
-export PREV_TAG=v2026.04.23-78d91b7
 ./scripts/deploy-docker.sh --target backend --action pull --release-tag "${PREV_TAG}"
 ./scripts/deploy-docker.sh --target frontend --action pull --release-tag "${PREV_TAG}"
 ./scripts/verify-deployment.sh
 ```
 
-สิ่งที่ต้องทำก่อน rollback
+สิ่งที่ต้องทำก่อน rollback:
 1. เก็บ logs: `docker compose -f docker-compose.prod.yml logs --tail=500 > incident.log`
 2. ยืนยันว่าปัญหาอยู่ที่ release ไม่ใช่ infra หรือ database
-3. ถ้ามี migration ใหม่ต้องพิจารณา rollback database ด้วยแยกต่างหาก
+3. ถ้ามี migration ใหม่ ให้ประเมิน compatibility ของ schema กับ release ก่อนหน้า
 
 ---
 
-## 10) Incident quick checks
+## 7) หมายเหตุจาก build ที่ DevOps ควรรู้
 
-```bash
-# ดู container status ทั้งหมด
-docker compose -f docker-compose.prod.yml ps
+รายการนี้ไม่ใช่ blocker ของการ deploy release นี้ แต่ควรรับรู้ไว้
 
-# ดู logs ทั้งหมด
-docker compose -f docker-compose.prod.yml logs --tail=200
+### Frontend
 
-# ดู logs live
-docker compose -f docker-compose.prod.yml logs -f backend frontend postgres
+- Vite เตือนว่า bundle หลักใหญ่ (`>500kB`)
+- มี warning เรื่อง dynamic import ของ `Dashboard.jsx` แต่ยังมี static import ซ้ำ
+- ผลกระทบคือโหลดหน้าแรกอาจช้ากว่าที่ควร แต่ไม่ทำให้ container start fail
 
-# เก็บ diagnostics เมื่อเกิด 502
-./scripts/collect-502-diagnostics.sh
-```
+### Backend / Frontend dependencies
+
+- `npm audit` ยังรายงาน vulnerabilities:
+  - frontend: `15` รายการ
+  - backend: `20` รายการ
+- เป็น technical debt ด้าน dependency security ไม่ใช่ blocker ของ release นี้
+
+### Docker build warning
+
+- frontend มี warning จาก Docker linter ว่าใช้ `ARG/ENV` กับ `VITE_AUTH_MODE`
+- ค่านี้เป็น runtime/build config ทั่วไป ไม่ใช่ secret
+- ไม่มีผลต่อการใช้งาน production ใน release นี้
 
 ---
 
-## 11) Handoff checklist สำหรับ DevOps
+## 8) Handoff checklist สำหรับ DevOps
 
-ทีม Dev ต้องส่งข้อมูลชุดนี้ทุกครั้งก่อนขึ้น prod
-
-- [ ] Release tag (เช่น `v2026.04.27-e002338`)
-- [ ] Image manifest inspect ผ่านทั้ง backend + frontend
-- [ ] Changelog / breaking changes
-- [ ] มี Prisma migration ใหม่หรือไม่ (ถ้ามีให้ระบุชื่อ migration)
-- [ ] Rollback tag ก่อนหน้าที่ใช้ได้ทันที
-- [ ] ไฟล์ `.env.production` ที่อัปเดตแล้ว (ถ้ามี env ใหม่)
-- [ ] ยืนยันว่า build ผ่านและ `docker buildx imagetools inspect` แสดง amd64 + arm64 ครบ
+- [ ] ใช้ image tag `20260430-3525d07` หรือ pin digest
+- [ ] ตรวจ manifest แล้วมี `linux/amd64` และ `linux/arm64`
+- [ ] มี `backend/api-server/.env.production` ครบ
+- [ ] รับทราบว่ามี Prisma migration `20260430000000_add_draft_read_logs`
+- [ ] ตรวจ health หลัง deploy ด้วย `scripts/verify-deployment.sh`
+- [ ] เตรียม previous tag สำหรับ rollback ก่อนเริ่ม rollout
