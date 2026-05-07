@@ -14,7 +14,10 @@ import {
   createEmailTemplate,
   createJobApprovalEmail,
   createJobAssignmentEmail,
-  createJobRejectionEmail
+  createJobRejectionEmail,
+  createJobPriorityChangedEmail,
+  createJobHardDeletedEmail,
+  createJobChainDeletedEmail
 } from '../utils/emailTemplates.js';
 
 export class NotificationService {
@@ -237,6 +240,47 @@ export class NotificationService {
                   } else {
                     emailResult = await this.emailService.sendCustomEmail(user.email, title, genericEmailHtml);
                   }
+                  break;
+                case 'priority_changed':
+                  emailResult = await this.emailService.sendEmail(
+                    user.email,
+                    title,
+                    createJobPriorityChangedEmail({
+                      djId: emailData.jobId,
+                      subject: emailData.jobSubject,
+                      oldPriority: emailData.oldPriority,
+                      newPriority: emailData.newPriority,
+                      newDueDate: emailData.newDueDate,
+                      reason: emailData.reason,
+                      updatedBy: emailData.updatedBy || `${user.firstName} ${user.lastName}`.trim()
+                    })
+                  );
+                  break;
+                case 'job_deleted_hard':
+                  emailResult = await this.emailService.sendEmail(
+                    user.email,
+                    title,
+                    createJobHardDeletedEmail({
+                      djId: emailData.jobId,
+                      subject: emailData.jobSubject,
+                      reason: emailData.reason,
+                      deletedBy: emailData.deletedBy || `${user.firstName} ${user.lastName}`.trim(),
+                      affectedDjIds: emailData.affectedDjIds,
+                      deletedAt: emailData.deletedAt
+                    })
+                  );
+                  break;
+                case 'job_deleted_chain':
+                  emailResult = await this.emailService.sendEmail(
+                    user.email,
+                    title,
+                    createJobChainDeletedEmail({
+                      affectedDjIds: emailData.affectedDjIds,
+                      reason: emailData.reason,
+                      deletedBy: emailData.deletedBy || `${user.firstName} ${user.lastName}`.trim(),
+                      deletedAt: emailData.deletedAt
+                    })
+                  );
                   break;
                 case 'job_status_changed':
                   emailResult = await this.emailService.notifyJobStatusChanged({

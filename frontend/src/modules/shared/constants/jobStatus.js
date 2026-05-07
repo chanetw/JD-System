@@ -200,7 +200,56 @@ export const ASSIGNEE_DRAFT_REBRIEF_ACTION_STATUSES = [
 ];
 
 // ========================================
-// 8. Helper Functions
+// 8. Priority Constants (simplified: normal | urgent only)
+// ========================================
+
+/**
+ * ค่า priority ที่รับได้ในระบบ (create/edit)
+ * หลัง simplify: รับเฉพาะ normal และ urgent เท่านั้น
+ */
+export const VALID_PRIORITIES = ['normal', 'urgent'];
+
+/**
+ * Label สำหรับแสดงผล priority
+ */
+export const PRIORITY_LABELS = {
+    normal: 'ปกติ',
+    urgent: 'ด่วน',
+};
+
+/**
+ * Priority options สำหรับ dropdown/selector
+ */
+export const PRIORITY_OPTIONS = [
+    { value: 'normal', label: 'ปกติ' },
+    { value: 'urgent', label: 'ด่วน' },
+];
+
+/**
+ * Normalize ค่า priority จากข้อมูลเก่าให้ตกอยู่ในช่วงที่รับได้
+ * ค่าเก่า: high -> normal, low -> normal, null/undefined -> normal
+ */
+export const normalizePriority = (raw) => {
+    if (!raw) return 'normal';
+    const lower = String(raw).toLowerCase().trim();
+    if (VALID_PRIORITIES.includes(lower)) return lower;
+    if (['high', 'low', 'medium'].includes(lower)) return 'normal';
+    return 'normal';
+};
+
+// ========================================
+// 9. Notification Event Types
+// ========================================
+
+export const JOB_NOTIFICATION_EVENTS = {
+    STATUS_CHANGED: 'job_status_changed',
+    PRIORITY_CHANGED: 'priority_changed',
+    HARD_DELETED: 'job_deleted_hard',
+    CHAIN_DELETED: 'job_deleted_chain',
+};
+
+// ========================================
+// 10. Helper Functions
 // ========================================
 
 /**

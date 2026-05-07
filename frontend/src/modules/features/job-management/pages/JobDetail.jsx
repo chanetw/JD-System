@@ -12,6 +12,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { api } from '@shared/services/apiService';
 import httpClient from '@shared/services/httpClient';
+import { jobService } from '@shared/services/modules/jobService';
 import Swal from 'sweetalert2';
 import { fileUploadService } from '@shared/services/modules/fileUploadService';
 import { adminService } from '@shared/services/modules/adminService';
@@ -732,6 +733,176 @@ export default function JobDetail() {
         }
     };
 
+    // ============================================
+    // Admin: Hard Delete Handler
+    // ============================================
+    const handleHardDeleteJob = async () => {
+        const childCount = job.childJobs?.length || 0;
+        const isChain = job.isParent === true || job.isParent === 1;
+
+        // Step 1: Confirm with impact summary
+        const step1 = await Swal.fire({
+            title: 'ลบงานถาวร (Hard Delete)',
+            html: `
+                <div class="text-left text-sm space-y-2">
+                    <p class="text-red-700 font-semibold">การลบนี้ไม่สามารถกู้คืนได้</p>
+                    <div class="bg-red-50 border border-red-200 rounded-lg p-3">
+                        <p>จะลบข้อมูลต่อไปนี้:</p>
+                        <ul class="list-disc list-inside mt-1">
+                            <li>งาน: <strong>${job.djId}</strong></li>
+                            ${isChain ? `<li>งานลูก: <strong>${childCount} งาน</strong></li>` : ''}
+                            <li>ข้อมูลที่สัมพันธ์ทั้งหมด</li>
+                        </ul>
+                    </div>
+                </div>
+            `,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d92d20',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: 'ดำเนินการต่อ',
+            cancelButtonText: 'ยกเลิก',
+        });
+
+        if (!step1.isConfirmed) return;
+
+        // Step 2: Ask for reason
+        const step2 = await Swal.fire({
+            title: 'เหตุผลการลบ',
+            input: 'textarea',
+            inputLabel: 'กรุณาระบุเหตุผล',
+            inputPlaceholder: 'เช่น งานถูกสร้างผิดทั้งหมด',
+            inputValidator: (value) => !value?.trim() && 'กรุณาระบุเหตุผล',
+            showCancelButton: true,
+            confirmButtonColor: '#d92d20',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: 'ลบถาวร',
+            cancelButtonText: 'ยกเลิก',
+        });
+
+        if (!step2.isConfirmed) return;
+
+        try {
+            const response = await jobService.hardDeleteJob(job.id, step2.value.trim());
+
+            if (response.success) {
+                await Swal.fire({
+                    icon: 'success',
+                    title: 'ลบงานสำเร็จ',
+                    html: `ลบงาน ${job.djId} และงานลูก ${response.data.deletedChildCount} งาน ถาวรแล้ว`,
+                    confirmButtonColor: '#0f4c81',
+                    timer: 3000,
+                });
+                // Navigate back to job list
+                navigate('/jobs');
+            } else {
+                throw new Error(response.error || 'ลบงานไม่สำเร็จ');
+            }
+        } catch (err) {
+            Swal.fire({
+                icon: 'error',
+                title: 'ลบงานไม่สำเร็จ',
+                text: err.response?.data?.message || err.message,
+                confirmButtonColor: '#d92d20',
+            });
+        }
+    };
+
+    // ============================================
+    // Admin: Edit Priority Handler
+    // ============================================
+    const handleEditJobPriority = async () => {
+        const currentPriority = normalizePriority(job.priority);
+
+        // Step 1: Select new priority
+        const step1 = await Swal.fire({
+            title: 'แก้ไข Priority งาน',
+            html: `
+                <div class="text-left text-sm space-y-3">
+                    <p>Priority ปัจจุบัน: <strong>${currentPriority === 'urgent' ? 'ด่วน' : 'ปกติ'}</strong></p>
+                    <label class="block font-medium">Priority ใหม่:</label>
+                    <select id="swal-priority" class="swal2-input">
+                        <option value="normal" ${currentPriority === 'normal' ? 'selected' : ''}>ปกติ (Normal)</option>
+                        <option value="urgent" ${currentPriority === 'urgent' ? 'selected' : ''}>ด่วน (Urgent)</option>
+                    </select>
+                    ${job.isParent ? `
+                    <label class="block font-medium mt-3">ขอบเขตการแก้ไข:</label>
+                    <select id="swal-scope" class="swal2-input">
+                        <option value="single">แก้เฉพาะงานนี้</option>
+                        <option value="chain">แก้ทั้ง Chain (Parent + ลูก)</option>
+                    </select>
+                    ` : ''}
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonColor: '#0f4c81',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: 'ดำเนินการต่อ',
+            cancelButtonText: 'ยกเลิก',
+            preConfirm: () => ({
+                priority: document.getElementById('swal-priority').value,
+                scope: document.getElementById('swal-scope')?.value || 'single',
+            }),
+        });
+
+        if (!step1.isConfirmed) return;
+        const { priority: newPriority, scope } = step1.value;
+
+        if (newPriority === currentPriority) {
+            Swal.fire({ icon: 'info', title: 'Priority ไม่เปลี่ยนแปลง', confirmButtonColor: '#0f4c81' });
+            return;
+        }
+
+        // Step 2: Ask for reason
+        const step2 = await Swal.fire({
+            title: `เปลี่ยนจาก ${currentPriority === 'urgent' ? 'ด่วน' : 'ปกติ'} เป็น ${newPriority === 'urgent' ? 'ด่วน' : 'ปกติ'}`,
+            input: 'textarea',
+            inputLabel: 'เหตุผลการแก้ไข',
+            inputPlaceholder: 'เช่น ปรับกลับเป็นงานปกติหลังลูกค้ายืนยัน',
+            inputValidator: (value) => !value?.trim() && 'กรุณาระบุเหตุผล',
+            showCancelButton: true,
+            confirmButtonColor: '#0f4c81',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: 'บันทึก',
+            cancelButtonText: 'ยกเลิก',
+        });
+
+        if (!step2.isConfirmed) return;
+
+        try {
+            const response = await jobService.editJobPriority(
+                job.id,
+                newPriority,
+                step2.value.trim(),
+                scope,
+            );
+
+            if (response.success) {
+                const data = response.data;
+                const dueDateMsg = data.dueDateChanged
+                    ? `<br>กำหนดส่งใหม่: <strong>${new Date(data.newDueDate).toLocaleDateString('th-TH')}</strong>`
+                    : '';
+
+                await Swal.fire({
+                    icon: 'success',
+                    title: 'แก้ไข Priority สำเร็จ',
+                    html: `${job.djId}: ${data.oldPriority === 'urgent' ? 'ด่วน' : 'ปกติ'} → ${data.newPriority === 'urgent' ? 'ด่วน' : 'ปกติ'}${dueDateMsg}`,
+                    confirmButtonColor: '#0f4c81',
+                });
+                loadJob();
+            } else {
+                throw new Error(response.error || 'แก้ไข Priority ไม่สำเร็จ');
+            }
+        } catch (err) {
+            Swal.fire({
+                icon: 'error',
+                title: 'แก้ไข Priority ไม่สำเร็จ',
+                text: err.response?.data?.message || err.message,
+                confirmButtonColor: '#d92d20',
+            });
+        }
+    };
+
 
     // ============================================
     // Render
@@ -828,6 +999,8 @@ export default function JobDetail() {
                                     onOpenRebriefModal={() => setShowRebriefModal(true)}
                                     onAcceptRebrief={handleAcceptRebrief}
                                     onOpenSubmitRebriefModal={() => setShowSubmitRebriefModal(true)}
+                                    onHardDeleteJob={handleHardDeleteJob}
+                                    onEditJobPriority={handleEditJobPriority}
                                 />
 
                                   {/* Rejection Alert สำหรับ flow ปฏิเสธงานแบบเดิม */}

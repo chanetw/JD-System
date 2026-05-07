@@ -409,6 +409,88 @@ export function createJobStatusChangedEmail({ jobId, newStatus, jobSubject, upda
 }
 
 /**
+ * สร้าง Email สำหรับแจ้งเตือน Priority เปลี่ยน
+ */
+export function createJobPriorityChangedEmail({ djId, subject, oldPriority, newPriority, newDueDate, reason, updatedBy }) {
+  const priorityLabel = (p) => p === 'urgent' ? 'ด่วน' : 'ปกติ';
+  const dueDateText = newDueDate ? new Date(newDueDate).toLocaleDateString('th-TH') : null;
+
+  const content = `
+    <h2>ปรับ Priority งาน</h2>
+    <div class="info-box">
+      <p><strong>รหัสงาน:</strong> ${djId}</p>
+      <p><strong>หัวข้อ:</strong> ${subject}</p>
+      <p><strong>Priority เดิม:</strong> ${priorityLabel(oldPriority)}</p>
+      <p><strong>Priority ใหม่:</strong> <span style="color: ${newPriority === 'urgent' ? '#dc2626' : '#10b981'};">${priorityLabel(newPriority)}</span></p>
+      ${dueDateText ? `<p><strong>กำหนดส่งใหม่:</strong> ${dueDateText}</p>` : ''}
+      <p><strong>เหตุผล:</strong> ${reason || '-'}</p>
+      <p><strong>โดย:</strong> ${updatedBy || 'Admin'}</p>
+    </div>
+    <p>กรุณาตรวจสอบรายละเอียดงานในระบบ</p>
+  `;
+
+  return createEmailTemplate({
+    title: `ปรับ Priority งาน ${djId}`,
+    heading: '🔔 ปรับ Priority งาน',
+    content,
+  });
+}
+
+/**
+ * สร้าง Email สำหรับแจ้งเตือนงานถูกลบถาวร
+ */
+export function createJobHardDeletedEmail({ djId, subject, reason, deletedBy, affectedDjIds, deletedAt }) {
+  const deletedAtText = deletedAt ? new Date(deletedAt).toLocaleString('th-TH') : '-';
+  const affectedList = affectedDjIds ? affectedDjIds.split(', ').join('<br>• ') : djId;
+
+  const content = `
+    <h2>งานถูกลบถาวร</h2>
+    <div class="info-box" style="border-left-color: #dc2626; background-color: #fef2f2;">
+      <p><strong>รหัสงาน:</strong> ${djId}</p>
+      ${subject ? `<p><strong>หัวข้อ:</strong> ${subject}</p>` : ''}
+      <p><strong>เหตุผล:</strong> ${reason || '-'}</p>
+      <p><strong>ลบโดย:</strong> ${deletedBy || 'Admin'}</p>
+      <p><strong>วันที่ลบ:</strong> ${deletedAtText}</p>
+      ${affectedDjIds && affectedDjIds !== djId ? `<p><strong>งานที่ได้รับผลกระทบ:</strong><br>• ${affectedList}</p>` : ''}
+    </div>
+    <p>งานนี้ถูกลบถาวรจากระบบแล้ว ไม่สามารถกู้คืนได้</p>
+    <p>หากมีข้อสงสัย กรุณาติดต่อ Admin</p>
+  `;
+
+  return createEmailTemplate({
+    title: `งานถูกลบถาวร: ${djId}`,
+    heading: '🗑️ งานถูกลบถาวร',
+    content,
+  });
+}
+
+/**
+ * สร้าง Email สำหรับแจ้งเตือนงานชุดถูกลบถาวร
+ */
+export function createJobChainDeletedEmail({ affectedDjIds, reason, deletedBy, deletedAt }) {
+  const deletedAtText = deletedAt ? new Date(deletedAt).toLocaleString('th-TH') : '-';
+  const affectedList = affectedDjIds ? affectedDjIds.split(', ').join('<br>• ') : '-';
+
+  const content = `
+    <h2>งานชุดถูกลบถาวร</h2>
+    <div class="info-box" style="border-left-color: #dc2626; background-color: #fef2f2;">
+      <p><strong>งานที่ถูกลบ:</strong><br>• ${affectedList}</p>
+      <p><strong>เหตุผล:</strong> ${reason || '-'}</p>
+      <p><strong>ลบโดย:</strong> ${deletedBy || 'Admin'}</p>
+      <p><strong>วันที่ลบ:</strong> ${deletedAtText}</p>
+    </div>
+    <p>งานชุดนี้ถูกลบถาวรจากระบบแล้ว ไม่สามารถกู้คืนได้</p>
+    <p>หากมีข้อสงสัย กรุณาติดต่อ Admin</p>
+  `;
+
+  return createEmailTemplate({
+    title: `งานถูกลบถาวร (ชุด)`,
+    heading: '🗑️ งานชุดถูกลบถาวร',
+    content,
+  });
+}
+
+/**
  * สร้าง Email สำหรับแจ้งเตือนงานใกล้ deadline
  */
 export function createJobDeadlineEmail({ assigneeName, jobId, jobSubject, deadline }) {
@@ -555,6 +637,9 @@ export default {
   createForgotPasswordEmail,
   createUserCreatedEmail,
   createJobStatusChangedEmail,
+  createJobPriorityChangedEmail,
+  createJobHardDeletedEmail,
+  createJobChainDeletedEmail,
   createJobDeadlineEmail,
   createStaleJobReminderEmail,
   createSlaDeadlineReminderEmail,

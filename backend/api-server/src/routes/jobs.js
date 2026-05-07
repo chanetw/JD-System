@@ -22,6 +22,18 @@ import EmailService from '../services/emailService.js';
 import NotificationService from '../services/notificationService.js';
 import MagicLinkService from '../services/magicLinkService.js';
 import {
+  parseWritablePriority,
+  normalizePriority,
+  VALID_PRIORITIES,
+  JOB_NOTIFICATION_EVENTS,
+  getNotificationRecipients,
+  AUDIT_ACTION_HARD_DELETE,
+  AUDIT_ACTION_CHAIN_DELETE,
+  AUDIT_ACTION_PRIORITY_EDIT,
+  AUDIT_ACTION_CHAIN_PRIORITY_EDIT,
+  MAX_CHAIN_DELETE_LIMIT,
+} from '../constants/jobConstants.js';
+import {
   fetchEffectiveItemCountMap,
   fetchEffectiveItemTotal,
   getEffectiveItemQuantity
@@ -514,6 +526,115 @@ const buildJobChainContext = async (job, prisma) => {
     total: orderedJobs.length,
     jobs: orderedJobs.map(chainJob => mapChainJobSummary(chainJob, job.id))
   };
+};
+
+const ADMIN_ACTION_USER_SELECT = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  email: true,
+};
+
+const ADMIN_ACTION_JOB_SELECT = {
+  id: true,
+  tenantId: true,
+  djId: true,
+  subject: true,
+  status: true,
+  priority: true,
+  isParent: true,
+  requesterId: true,
+  assigneeId: true,
+  parentJobId: true,
+  predecessorId: true,
+  nextJobId: true,
+  acceptanceDate: true,
+  createdAt: true,
+  dueDate: true,
+  originalDueDate: true,
+  slaDays: true,
+  requester: { select: ADMIN_ACTION_USER_SELECT },
+  assignee: { select: ADMIN_ACTION_USER_SELECT },
+  jobType: {
+    select: {
+      id: true,
+      name: true,
+      slaWorkingDays: true,
+    }
+  }
+};
+
+const collectAffectedJobs = async ({ prisma, rootJobId, tenantId, includeDescendants = false }) => {
+  const visited = new Set();
+  const affectedJobs = [];
+
+  const visit = async (jobId) => {
+    if (!jobId || visited.has(jobId)) return;
+
+    const currentJob = await prisma.job.findUnique({
+      where: { id: jobId },
+      select: ADMIN_ACTION_JOB_SELECT,
+    });
+
+    if (!currentJob || currentJob.tenantId !== tenantId) return;
+
+    visited.add(jobId);
+    affectedJobs.push(currentJob);
+
+    if (!includeDescendants) return;
+
+    const linkedJobs = await prisma.job.findMany({
+      where: {
+        tenantId,
+        OR: [
+          { parentJobId: currentJob.id },
+          { predecessorId: currentJob.id },
+          ...(currentJob.nextJobId ? [{ id: currentJob.nextJobId }] : []),
+        ]
+      },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    for (const linkedJob of linkedJobs) {
+      await visit(linkedJob.id);
+    }
+  };
+
+  await visit(rootJobId);
+
+  return affectedJobs;
+};
+
+const recalculateDueDateForPriorityChange = async ({ db, tenantId, job, oldPriority, newPriority }) => {
+  let newDueDate = job.dueDate;
+  let slaRecalcResult = null;
+
+  if (oldPriority === 'urgent' && newPriority === 'normal') {
+    const acceptanceDate = job.acceptanceDate || job.createdAt;
+    const slaDays = job.slaDays || job.jobType?.slaWorkingDays || 3;
+
+    if (acceptanceDate && slaDays) {
+      const calculatedDueDate = await jobAcceptanceService.addWorkingDaysWithTenantHolidays({
+        db,
+        tenantId,
+        startDate: new Date(acceptanceDate),
+        workingDays: slaDays,
+      });
+
+      if (calculatedDueDate) {
+        newDueDate = calculatedDueDate;
+        slaRecalcResult = {
+          basis: acceptanceDate,
+          slaDays,
+          oldDueDate: job.dueDate?.toISOString(),
+          newDueDate: calculatedDueDate.toISOString(),
+        };
+      }
+    }
+  }
+
+  return { newDueDate, slaRecalcResult };
 };
 
 /**
@@ -1615,7 +1736,7 @@ router.post('/', async (req, res) => {
       jobTypeId,
       subject,
       dueDate,
-      priority = 'normal',
+      priority: rawPriority = 'normal',
       objective,
       headline,
       subHeadline,
@@ -1623,6 +1744,16 @@ router.post('/', async (req, res) => {
       assigneeId,
       items = []
     } = req.body;
+
+    // Validate canonical priority for write paths only
+    const priority = parseWritablePriority(rawPriority);
+    if (!priority) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_PRIORITY',
+        message: `ค่า priority ต้องเป็น ${VALID_PRIORITIES.join(' หรือ ')} เท่านั้น`
+      });
+    }
 
     // ตรวจสอบ Required Fields
     if (!projectId || !jobTypeId || !subject || !dueDate) {
@@ -2570,7 +2701,7 @@ router.post('/parent-child', async (req, res) => {
     const {
       projectId,
       subject,
-      priority = 'normal',
+      priority: rawPriority = 'normal',
       status,         // Optional: 'draft' to save as draft
       brief = {},
       objective,      // Fallback fields (for backward compatibility)
@@ -2583,6 +2714,16 @@ router.post('/parent-child', async (req, res) => {
       deadline,
       items = []      // Job items (ขนาด, จำนวนชิ้นงาน)
     } = req.body;
+
+    // Validate canonical priority for write paths only
+    const priority = parseWritablePriority(rawPriority);
+    if (!priority) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_PRIORITY',
+        message: `ค่า priority ต้องเป็น ${VALID_PRIORITIES.join(' หรือ ')} เท่านั้น`
+      });
+    }
 
     // Check if this is a draft save
     const isDraft = status === 'draft';
@@ -5244,6 +5385,519 @@ router.post('/:id/accept-rebrief', async (req, res) => {
       success: false,
       error: 'ACCEPT_REBRIEF_FAILED',
       message: 'ไม่สามารถรับงานได้'
+    });
+  }
+});
+
+// ==========================================
+// Admin: Hard Delete Job
+// ==========================================
+
+/**
+ * DELETE /api/jobs/:id/hard-delete
+ * Admin hard delete งาน (ลบถาวร ไม่สามารถกู้คืนได้)
+ *
+ * ถ้าเป็น parent job จะลบ child jobs ทั้งหมดตามไปด้วย
+ * เหตุผลการลบถูกเก็บใน audit_logs ก่อนลบจริง
+ * ส่ง notification ทั้งกระดิ่งและอีเมลให้ requester + assignee ก่อนลบ
+ *
+ * @body {string} reason - เหตุผลการลบ (required)
+ * @body {string} confirmText - ต้องพิมพ์ "DELETE" เพื่อยืนยัน (required)
+ */
+router.delete('/:id/hard-delete', async (req, res) => {
+  try {
+    const prisma = getDatabase();
+    const jobId = parseInt(req.params.id);
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
+    const { reason, confirmText } = req.body;
+
+    // Authorization: Admin only
+    if (!hasAdminPrivileges(req.user)) {
+      return res.status(403).json({
+        success: false,
+        error: 'FORBIDDEN',
+        message: 'เฉพาะ Admin เท่านั้นที่สามารถลบงานถาวรได้'
+      });
+    }
+
+    // Validation: reason required
+    if (!reason || reason.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'REASON_REQUIRED',
+        message: 'กรุณาระบุเหตุผลการลบงาน'
+      });
+    }
+
+    // Validation: confirm text
+    if (confirmText !== 'DELETE') {
+      return res.status(400).json({
+        success: false,
+        error: 'CONFIRM_REQUIRED',
+        message: 'กรุณาพิมพ์ DELETE เพื่อยืนยันการลบ'
+      });
+    }
+
+    const jobsToDelete = await collectAffectedJobs({
+      prisma,
+      rootJobId: jobId,
+      tenantId,
+      includeDescendants: true,
+    });
+    const job = jobsToDelete[0];
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        error: 'JOB_NOT_FOUND',
+        message: 'ไม่พบงานที่ระบุ'
+      });
+    }
+
+    const descendantJobs = jobsToDelete.slice(1);
+    const jobIdsToDelete = jobsToDelete.map(affectedJob => affectedJob.id);
+
+    // Safety limit
+    if (descendantJobs.length > MAX_CHAIN_DELETE_LIMIT) {
+      return res.status(400).json({
+        success: false,
+        error: 'CHAIN_TOO_LARGE',
+        message: `งานที่ได้รับผลกระทบเกินขีดจำกัด (${descendantJobs.length} > ${MAX_CHAIN_DELETE_LIMIT}) กรุณาติดต่อ Admin`
+      });
+    }
+
+    // Collect all notification recipients (deduplicated)
+    const allRecipientIds = new Set();
+    for (const j of jobsToDelete) {
+      if (j.requesterId) allRecipientIds.add(j.requesterId);
+      if (j.assigneeId) allRecipientIds.add(j.assigneeId);
+    }
+    // Remove the admin who is performing the delete (they don't need notification)
+    allRecipientIds.delete(userId);
+
+    const isChainDelete = jobsToDelete.length > 1;
+    const eventType = isChainDelete ? JOB_NOTIFICATION_EVENTS.CHAIN_DELETED : JOB_NOTIFICATION_EVENTS.HARD_DELETED;
+    const affectedDjIds = jobsToDelete.map(j => j.djId).join(', ');
+
+    // ============================================
+    // Step 1: Write audit log + delete in one transaction
+    // Only commit the audit if the delete really succeeds.
+    // ============================================
+    await prisma.$transaction(async (tx) => {
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId,
+          action: isChainDelete ? AUDIT_ACTION_CHAIN_DELETE : AUDIT_ACTION_HARD_DELETE,
+          entityType: 'job',
+          entityId: jobId,
+          oldValues: {
+            djId: job.djId,
+            subject: job.subject,
+            status: job.status,
+            priority: job.priority,
+            requesterId: job.requesterId,
+            assigneeId: job.assigneeId,
+          },
+          newValues: {
+            reason: reason.trim(),
+            deletedBy: userId,
+            deletedAt: new Date().toISOString(),
+            affectedJobIds: jobIdsToDelete,
+            affectedDjIds,
+            childCount: descendantJobs.length,
+          },
+        }
+      });
+
+      // Preserve shift history for surviving jobs, and remove logs that belong to deleted jobs.
+      await tx.slaShiftLog.updateMany({
+        where: {
+          urgentJobId: { in: jobIdsToDelete },
+          jobId: { notIn: jobIdsToDelete }
+        },
+        data: { urgentJobId: null }
+      });
+
+      await tx.slaShiftLog.deleteMany({
+        where: { jobId: { in: jobIdsToDelete } }
+      });
+
+      // Break internal + upstream references first so the hard delete can succeed reliably.
+      await tx.job.updateMany({
+        where: {
+          tenantId,
+          id: { in: jobIdsToDelete }
+        },
+        data: {
+          parentJobId: null,
+          predecessorId: null,
+          nextJobId: null,
+        }
+      });
+
+      await tx.job.updateMany({
+        where: {
+          tenantId,
+          id: { notIn: jobIdsToDelete },
+          nextJobId: { in: jobIdsToDelete }
+        },
+        data: { nextJobId: null }
+      });
+
+      await tx.job.updateMany({
+        where: {
+          tenantId,
+          id: { notIn: jobIdsToDelete },
+          predecessorId: { in: jobIdsToDelete }
+        },
+        data: { predecessorId: null }
+      });
+
+      const deletedJobs = await tx.job.deleteMany({
+        where: {
+          tenantId,
+          id: { in: jobIdsToDelete }
+        }
+      });
+
+      if (deletedJobs.count !== jobIdsToDelete.length) {
+        throw new Error(`ลบงานได้ไม่ครบ (${deletedJobs.count}/${jobIdsToDelete.length})`);
+      }
+    });
+
+    // ============================================
+    // Step 2: Send notifications (AFTER delete commit)
+    // ============================================
+    const notificationResults = { inApp: 0, email: 0, emailFailed: 0 };
+
+    for (const recipientId of allRecipientIds) {
+      try {
+        const notificationResult = await notificationService.sendNotification({
+          tenantId,
+          userIds: [recipientId],
+          type: eventType,
+          title: isChainDelete
+            ? `งานถูกลบถาวร (ชุด: ${affectedDjIds})`
+            : `งานถูกลบถาวร (${job.djId})`,
+          message: isChainDelete
+            ? `Admin ได้ลบงานชุดนี้ถาวร: ${affectedDjIds} เหตุผล: ${reason.trim()}`
+            : `Admin ได้ลบงาน ${job.djId} ถาวร เหตุผล: ${reason.trim()}`,
+          link: null,
+          sendEmail: process.env.ENABLE_EMAIL_NOTIFICATIONS === 'true',
+          emailData: {
+            jobId: job.djId,
+            jobSubject: job.subject,
+            reason: reason.trim(),
+            deletedBy: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || 'Admin',
+            affectedDjIds,
+            deletedAt: new Date().toISOString(),
+          },
+          io: req.app.get('io'),
+        });
+
+        notificationResults.inApp += notificationResult?.results?.database?.sent || 0;
+        notificationResults.email += notificationResult?.results?.email?.sent || 0;
+        notificationResults.emailFailed += notificationResult?.results?.email?.failed || 0;
+      } catch (notifError) {
+        console.error('[HardDelete] Notification failed for user', recipientId, notifError.message);
+        if (process.env.ENABLE_EMAIL_NOTIFICATIONS === 'true') {
+          notificationResults.emailFailed++;
+        }
+      }
+    }
+
+    console.log(`[HardDelete] Job ${job.djId} deleted by user ${userId}. Descendants: ${descendantJobs.length}. Reason: ${reason.trim()}`);
+
+    res.json({
+      success: true,
+      data: {
+        deletedJobId: job.id,
+        deletedDjId: job.djId,
+        deletedChildCount: descendantJobs.length,
+        totalDeleted: jobsToDelete.length,
+        notifications: notificationResults,
+      }
+    });
+
+  } catch (error) {
+    console.error('[HardDelete] Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'HARD_DELETE_FAILED',
+      message: 'ไม่สามารถลบงานได้: ' + error.message
+    });
+  }
+});
+
+// ==========================================
+// Admin: Edit Job Priority + SLA Recalculation
+// ==========================================
+
+/**
+ * POST /api/jobs/:id/edit-priority
+ * Admin แก้ไข priority ของงาน (เฉพาะ normal ↔ urgent)
+ * เมื่อเปลี่ยน urgent → normal จะคำนวณ due date ใหม่จากวันที่สั่งงานเดิม
+ *
+ * @body {string} priority - ค่าใหม่: 'normal' | 'urgent' (required)
+ * @body {string} reason - เหตุผลการแก้ไข (required)
+ * @body {string} scope - 'single' | 'chain' (default: 'single')
+ */
+router.post('/:id/edit-priority', async (req, res) => {
+  try {
+    const prisma = getDatabase();
+    const jobId = parseInt(req.params.id);
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
+    const { priority: rawPriority, reason, scope = 'single' } = req.body;
+
+    // Authorization: Admin only
+    if (!hasAdminPrivileges(req.user)) {
+      return res.status(403).json({
+        success: false,
+        error: 'FORBIDDEN',
+        message: 'เฉพาะ Admin เท่านั้นที่สามารถแก้ไข priority ได้'
+      });
+    }
+
+    // Validate canonical priority for write paths only
+    const newPriority = parseWritablePriority(rawPriority);
+    if (!newPriority) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_PRIORITY',
+        message: `ค่า priority ต้องเป็น ${VALID_PRIORITIES.join(' หรือ ')} เท่านั้น`
+      });
+    }
+
+    if (!['single', 'chain'].includes(scope)) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_SCOPE',
+        message: 'scope ต้องเป็น single หรือ chain เท่านั้น'
+      });
+    }
+
+    // Validate reason
+    if (!reason || reason.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'REASON_REQUIRED',
+        message: 'กรุณาระบุเหตุผลการแก้ไข'
+      });
+    }
+
+    const affectedJobs = await collectAffectedJobs({
+      prisma,
+      rootJobId: jobId,
+      tenantId,
+      includeDescendants: scope === 'chain',
+    });
+    const job = affectedJobs[0];
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        error: 'JOB_NOT_FOUND',
+        message: 'ไม่พบงานที่ระบุ'
+      });
+    }
+
+    if (scope === 'chain' && affectedJobs.length - 1 > MAX_CHAIN_DELETE_LIMIT) {
+      return res.status(400).json({
+        success: false,
+        error: 'CHAIN_TOO_LARGE',
+        message: `งานที่ได้รับผลกระทบเกินขีดจำกัด (${affectedJobs.length - 1} > ${MAX_CHAIN_DELETE_LIMIT}) กรุณาติดต่อ Admin`
+      });
+    }
+
+    const hasChanges = affectedJobs.some(affectedJob => affectedJob.priority !== newPriority);
+    if (!hasChanges) {
+      return res.status(400).json({
+        success: false,
+        error: 'PRIORITY_UNCHANGED',
+        message: 'Priority ไม่เปลี่ยนแปลง'
+      });
+    }
+    const updatePlans = [];
+    for (const affectedJob of affectedJobs) {
+      const oldPriority = normalizePriority(affectedJob.priority);
+      const { newDueDate, slaRecalcResult } = await recalculateDueDateForPriorityChange({
+        db: prisma,
+        tenantId,
+        job: affectedJob,
+        oldPriority,
+        newPriority,
+      });
+
+      updatePlans.push({
+        job: affectedJob,
+        oldPriority,
+        oldDueDate: affectedJob.dueDate,
+        newDueDate,
+        slaRecalcResult,
+      });
+    }
+
+    const updatedPlans = await prisma.$transaction(async (tx) => {
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId,
+          action: scope === 'chain' ? AUDIT_ACTION_CHAIN_PRIORITY_EDIT : AUDIT_ACTION_PRIORITY_EDIT,
+          entityType: 'job',
+          entityId: job.id,
+          oldValues: {
+            affectedJobs: updatePlans.map(plan => ({
+              id: plan.job.id,
+              djId: plan.job.djId,
+              priority: plan.job.priority,
+              dueDate: plan.oldDueDate?.toISOString() || null,
+            })),
+          },
+          newValues: {
+            reason: reason.trim(),
+            scope,
+            newPriority,
+            affectedJobIds: updatePlans.map(plan => plan.job.id),
+            affectedDjIds: updatePlans.map(plan => plan.job.djId),
+          },
+          userIp: req.ip,
+          userAgent: req.get('user-agent') || null,
+        }
+      });
+
+      for (const plan of updatePlans) {
+        await tx.job.update({
+          where: { id: plan.job.id },
+          data: {
+            priority: newPriority,
+            dueDate: plan.newDueDate,
+            originalDueDate: plan.job.originalDueDate || plan.oldDueDate,
+          }
+        });
+
+        await tx.activityLog.create({
+          data: {
+            jobId: plan.job.id,
+            userId,
+            action: JOB_NOTIFICATION_EVENTS.PRIORITY_CHANGED,
+            message: `เปลี่ยน Priority จาก ${plan.oldPriority} เป็น ${newPriority}`,
+            detail: {
+              oldPriority: plan.oldPriority,
+              newPriority,
+              reason: reason.trim(),
+              dueDateChanged: plan.oldDueDate?.getTime() !== plan.newDueDate?.getTime(),
+              oldDueDate: plan.oldDueDate?.toISOString(),
+              newDueDate: plan.newDueDate?.toISOString(),
+              slaRecalc: plan.slaRecalcResult,
+              scope,
+            },
+          }
+        });
+
+        await tx.jobActivity.create({
+          data: {
+            jobId: plan.job.id,
+            tenantId,
+            userId,
+            activityType: JOB_NOTIFICATION_EVENTS.PRIORITY_CHANGED,
+            description: `Admin เปลี่ยน Priority จาก ${plan.oldPriority} เป็น ${newPriority}. เหตุผล: ${reason.trim()}`,
+            metadata: {
+              oldPriority: plan.oldPriority,
+              newPriority,
+              oldDueDate: plan.oldDueDate?.toISOString(),
+              newDueDate: plan.newDueDate?.toISOString(),
+              scope,
+            },
+          }
+        });
+      }
+
+      return updatePlans;
+    });
+
+    const notificationResults = { inApp: 0, email: 0, emailFailed: 0 };
+    for (const plan of updatedPlans) {
+      const recipientIds = getNotificationRecipients(JOB_NOTIFICATION_EVENTS.PRIORITY_CHANGED, plan.job)
+        .filter(id => id !== userId);
+
+      for (const recipientId of recipientIds) {
+        try {
+          const dueDateMsg = plan.slaRecalcResult
+            ? ` กำหนดส่งใหม่: ${plan.newDueDate.toLocaleDateString('th-TH')}`
+            : '';
+
+          const notificationResult = await notificationService.sendNotification({
+            tenantId,
+            userIds: [recipientId],
+            type: JOB_NOTIFICATION_EVENTS.PRIORITY_CHANGED,
+            title: `ปรับ Priority งาน ${plan.job.djId}`,
+            message: `งาน ${plan.job.djId} เปลี่ยนจาก ${plan.oldPriority === 'urgent' ? 'ด่วน' : 'ปกติ'} เป็น ${newPriority === 'urgent' ? 'ด่วน' : 'ปกติ'}${dueDateMsg}`,
+            link: `/jobs/${plan.job.id}`,
+            sendEmail: process.env.ENABLE_EMAIL_NOTIFICATIONS === 'true',
+            emailData: {
+              jobId: plan.job.djId,
+              jobSubject: plan.job.subject,
+              oldPriority: plan.oldPriority,
+              newPriority,
+              reason: reason.trim(),
+              newDueDate: plan.newDueDate?.toISOString(),
+              updatedBy: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || 'Admin',
+            },
+            io: req.app.get('io'),
+          });
+
+          notificationResults.inApp += notificationResult?.results?.database?.sent || 0;
+          notificationResults.email += notificationResult?.results?.email?.sent || 0;
+          notificationResults.emailFailed += notificationResult?.results?.email?.failed || 0;
+        } catch (notifError) {
+          console.error('[EditPriority] Notification failed for user', recipientId, notifError.message);
+          if (process.env.ENABLE_EMAIL_NOTIFICATIONS === 'true') {
+            notificationResults.emailFailed++;
+          }
+        }
+      }
+    }
+
+    const rootPlan = updatedPlans[0];
+    const chainResult = scope === 'chain'
+      ? {
+          totalChildren: Math.max(updatedPlans.length - 1, 0),
+          updates: updatedPlans.slice(1).map(plan => ({
+            id: plan.job.id,
+            djId: plan.job.djId,
+            updated: true,
+            dueDateChanged: plan.oldDueDate?.getTime() !== plan.newDueDate?.getTime(),
+          }))
+        }
+      : null;
+
+    console.log(`[EditPriority] Job ${job.djId}: ${rootPlan.oldPriority} → ${newPriority}. Affected: ${updatedPlans.length}. By user ${userId}`);
+
+    res.json({
+      success: true,
+      data: {
+        id: job.id,
+        djId: job.djId,
+        oldPriority: rootPlan.oldPriority,
+        newPriority,
+        oldDueDate: rootPlan.oldDueDate?.toISOString(),
+        newDueDate: rootPlan.newDueDate?.toISOString(),
+        dueDateChanged: !!rootPlan.slaRecalcResult,
+        slaRecalc: rootPlan.slaRecalcResult,
+        chain: chainResult,
+        notifications: notificationResults,
+      }
+    });
+
+  } catch (error) {
+    console.error('[EditPriority] Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'EDIT_PRIORITY_FAILED',
+      message: 'ไม่สามารถแก้ไข priority ได้: ' + error.message
     });
   }
 });

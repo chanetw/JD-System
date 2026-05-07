@@ -923,5 +923,61 @@ export const jobService = {
             console.error('[jobService] getJobActivities error:', error);
             return { success: false, data: [], error: error.message };
         }
+    },
+
+    // ==========================================
+    // Admin: Hard Delete + Edit Priority
+    // ==========================================
+
+    /**
+     * Admin hard delete งาน (ลบถาวร)
+     * @param {number} jobId
+     * @param {string} reason - เหตุผลการลบ (required)
+     * @returns {Promise<object>} { success, data: { deletedDjId, totalDeleted, ... } }
+     */
+    hardDeleteJob: async (jobId, reason) => {
+        try {
+            const response = await httpClient.delete(`/jobs/${jobId}/hard-delete`, {
+                data: { reason, confirmText: 'DELETE' }
+            });
+
+            if (!response.data.success) {
+                console.warn('[jobService] Hard delete failed:', response.data.message);
+                return { success: false, error: response.data.message };
+            }
+
+            return { success: true, data: response.data.data };
+        } catch (error) {
+            console.error('[jobService] hardDeleteJob error:', error);
+            return { success: false, error: error.response?.data?.message || error.message };
+        }
+    },
+
+    /**
+     * Admin แก้ไข priority ของงาน (normal ↔ urgent)
+     * @param {number} jobId
+     * @param {string} priority - 'normal' | 'urgent'
+     * @param {string} reason - เหตุผลการแก้ไข (required)
+     * @param {string} scope - 'single' | 'chain'
+     * @returns {Promise<object>} { success, data: { oldPriority, newPriority, newDueDate, ... } }
+     */
+    editJobPriority: async (jobId, priority, reason, scope = 'single') => {
+        try {
+            const response = await httpClient.post(`/jobs/${jobId}/edit-priority`, {
+                priority,
+                reason,
+                scope
+            });
+
+            if (!response.data.success) {
+                console.warn('[jobService] Edit priority failed:', response.data.message);
+                return { success: false, error: response.data.message };
+            }
+
+            return { success: true, data: response.data.data };
+        } catch (error) {
+            console.error('[jobService] editJobPriority error:', error);
+            return { success: false, error: error.response?.data?.message || error.message };
+        }
     }
 };

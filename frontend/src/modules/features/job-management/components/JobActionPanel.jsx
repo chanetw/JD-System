@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckIcon, XMarkIcon, UserIcon, ExclamationCircleIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { CheckIcon, XMarkIcon, UserIcon, ExclamationCircleIcon, CheckCircleIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline';
 import { ACTION_BUTTON_STYLES } from '@shared/utils/alertHelper';
 import {
     ASSIGNEE_DRAFT_REBRIEF_ACTION_STATUSES,
@@ -26,7 +26,9 @@ const JobActionPanel = ({
     onOpenDraftModal, // ส่ง Draft ให้ตรวจ
     onOpenRebriefModal, // ขอ Rebrief
     onAcceptRebrief, // รับงานหลัง Rebrief
-    onOpenSubmitRebriefModal // Requester ส่งข้อมูลเพิ่ม
+    onOpenSubmitRebriefModal, // Requester ส่งข้อมูลเพิ่ม
+    onHardDeleteJob, // Admin: ลบงานถาวร
+    onEditJobPriority, // Admin: แก้ไข priority
 }) => {
     const [selectedAssignee, setSelectedAssignee] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -478,6 +480,42 @@ const JobActionPanel = ({
         );
     };
 
+    // ==========================================
+    // Admin Actions: Hard Delete + Edit Priority
+    // ==========================================
+    const renderAdminActions = () => {
+        if (!isAdmin) return null;
+
+        return (
+            <div className="mt-4 pt-4 border-t border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                    Admin Actions
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        onClick={onEditJobPriority}
+                        className="flex-1 py-2.5 px-3 rounded-lg font-medium text-sm flex items-center justify-center gap-2 bg-[#0f4c81] text-white hover:bg-[#0a3a63] transition-colors shadow-sm"
+                    >
+                        <PencilIcon className="w-4 h-4" />
+                        แก้ไข Priority / SLA
+                    </button>
+                    <button
+                        onClick={onHardDeleteJob}
+                        className="flex-1 py-2.5 px-3 rounded-lg font-medium text-sm flex items-center justify-center gap-2 bg-[#d92d20] text-white hover:bg-[#b91c1c] transition-colors shadow-sm"
+                    >
+                        <TrashIcon className="w-4 h-4" />
+                        ลบงานถาวร
+                    </button>
+                </div>
+                {job.isParent && (
+                    <p className="text-xs text-amber-700 mt-2 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                        งานนี้เป็นงานพ่วง — การลบจะลบงานลูกทั้งหมดตามไปด้วย
+                    </p>
+                )}
+            </div>
+        );
+    };
+
     return (
         <>
             {renderApprovalActions()}
@@ -487,6 +525,7 @@ const JobActionPanel = ({
             {renderAssigneeRejectionConfirm()}
             {renderRebriefPanel()}
             {renderCloseActions()}
+            {renderAdminActions()}
         </>
     );
 };
