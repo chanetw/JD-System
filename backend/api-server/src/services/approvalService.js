@@ -2213,17 +2213,29 @@ export class ApprovalService extends BaseService {
       });
 
       // 4. Notify Admins
-      // Get Admins (assuming role 'admin')
-      // Note: Adjust role filter based on actual schema role implementation (UserRole table or role field)
-      // Here assuming simple role field or relation. If role is 'admin' string in User model:
-      const admins = await this.prisma.user.findMany({
+      // Get Admins via userRoles relation (matches contact.js pattern)
+      const allTenantUsers = await this.prisma.user.findMany({
         where: {
-          tenantId: job.requester?.tenantId || 1, // Scope by tenant
+          tenantId: job.requester?.tenantId || 1,
           isActive: true,
-          role: 'admin' // Or use userRoles relation if needed
         },
-        select: { id: true, email: true, firstName: true }
+        include: {
+          userRoles: { where: { isActive: true } },
+        },
       });
+
+      const isAdminRoleName = (roleName) => {
+        const normalized = String(roleName || '').toLowerCase();
+        return normalized === 'admin' || normalized === 'superadmin';
+      };
+
+      const admins = allTenantUsers
+        .filter(user => user.userRoles.some(ur => isAdminRoleName(ur.roleName)))
+        .map(user => ({
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+        }));
 
       // Send Emails
       if (admins.length > 0) {
