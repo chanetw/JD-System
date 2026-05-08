@@ -126,6 +126,7 @@ function Dashboard() {
     const [panelTotal, setPanelTotal] = useState(0);
     const [panelHasMore, setPanelHasMore] = useState(false);
     const [panelLoading, setPanelLoading] = useState(false);
+    const panelLoadingRef = useRef(false); // ใช้ ref แทน state สำหรับ guard ใน useCallback เพื่อไม่ให้เกิด dependency cycle
 
     // IntersectionObserver sentinel refs
     const sentinelRef = useRef(null);     // KPI Drill-down panel sentinel
@@ -231,7 +232,8 @@ function Dashboard() {
     // Fetch Page of Drill-down Jobs
     // ============================================
     const fetchPanelJobs = useCallback(async (type, page, append = false) => {
-        if (!type || panelLoading) return;
+        if (!type || panelLoadingRef.current) return;
+        panelLoadingRef.current = true;
         setPanelLoading(true);
         try {
             const { jobs: newJobs, total, hasMore } = await api.getDashboardJobs(type, page, 20, dashboardApiFilters);
@@ -248,9 +250,10 @@ function Dashboard() {
         } catch (err) {
             console.error('fetchPanelJobs error:', err);
         } finally {
+            panelLoadingRef.current = false;
             setPanelLoading(false);
         }
-    }, [panelLoading, dashboardApiFilters]);
+    }, [dashboardApiFilters]);
 
     // ============================================
     // Toggle Panel เมื่อกด KPI Card
@@ -261,22 +264,19 @@ function Dashboard() {
             setActivePanel(null);
             setPanelJobs([]);
         } else {
-            // เปิด Panel ใหม่และดึงหน้าแรก
+            // เปิด Panel ใหม่ — useEffect จะ trigger fetchPanelJobs เอง
             setActivePanel(type);
-            setPanelJobs([]);
-            setPanelPage(1);
-            setPanelHasMore(false);
-            fetchPanelJobs(type, 1, false);
         }
-    }, [activePanel, fetchPanelJobs]);
+    }, [activePanel]);
 
+    // ดึงข้อมูล drill-down เมื่อ activePanel เปลี่ยน หรือ filters เปลี่ยน
     useEffect(() => {
         if (!activePanel) return;
         setPanelJobs([]);
         setPanelPage(1);
         setPanelHasMore(false);
         fetchPanelJobs(activePanel, 1, false);
-    }, [activePanel, fetchPanelJobs]);
+    }, [activePanel, dashboardApiFilters]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ============================================
     // IntersectionObserver: โหลดเพิ่ม เมื่อ scroll ถึง sentinel
