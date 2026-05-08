@@ -36,12 +36,18 @@ const formatUploadError = (error, maxFileSizeBytes) => {
     const backendMessage = error?.response?.data?.message;
     const backendError = error?.response?.data?.error;
 
-    if (backendMessage) {
+    // ถ้า backend ส่งข้อความมาเอง ใช้ของ backend เลย (จะบอก limit ที่ถูกต้อง)
+    if (backendMessage && backendError !== 'FILE_TOO_LARGE') {
         return backendMessage;
     }
 
-    if (status === 413 || backendError === 'FILE_TOO_LARGE') {
-        return `ไฟล์มีขนาดใหญ่เกินกำหนด (สูงสุด ${maxMb}MB ต่อไฟล์)`;
+    if (status === 413) {
+        // 413 มาจาก proxy/nginx ไม่ใช่ backend — แจ้งให้ชัด
+        return `ไฟล์มีขนาดใหญ่เกินกำหนด (สูงสุด ${maxMb}MB ต่อไฟล์) — ถ้าไฟล์เล็กกว่า ${maxMb}MB กรุณาลองใหม่`;
+    }
+
+    if (backendError === 'FILE_TOO_LARGE') {
+        return backendMessage || `ไฟล์มีขนาดใหญ่เกินกำหนด (สูงสุด ${maxMb}MB ต่อไฟล์)`;
     }
 
     if (status === 415 || backendError === 'INVALID_FILE') {

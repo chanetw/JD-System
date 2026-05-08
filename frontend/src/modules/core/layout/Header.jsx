@@ -11,6 +11,7 @@
 
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import Swal from 'sweetalert2';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { useNotificationStore } from '@core/stores/notificationStore';
 import { useSuperSearchStore } from '@core/stores/superSearchStore';
@@ -173,13 +174,9 @@ export default function Header({ sidebarCollapsed = false, onMobileMenuClick }) 
                                 ) : notifications.length === 0 ? (
                                     <div className="p-4 text-center text-slate-400 text-sm">ไม่มีรายการแจ้งเตือน</div>
                                 ) : (
-                                    notifications.map(noti => (
-                                        <Link
-                                            key={noti.id}
-                                            to={noti.link}
-                                            onClick={() => { markAsRead(noti.id); setShowNoti(false); }}
-                                            className={`block px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 ${!noti.isRead ? 'bg-rose-50/30' : ''}`}
-                                        >
+                                    notifications.map(noti => {
+                                        const sharedClass = `block px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 ${!noti.isRead ? 'bg-rose-50/30' : ''}`;
+                                        const inner = (
                                             <div className="flex gap-3">
                                                 <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${!noti.isRead ? 'bg-rose-500' : 'bg-transparent'}`}></div>
                                                 <div>
@@ -192,8 +189,33 @@ export default function Header({ sidebarCollapsed = false, onMobileMenuClick }) 
                                                     </p>
                                                 </div>
                                             </div>
+                                        );
+                                        if (!noti.link) {
+                                            return (
+                                                <div
+                                                    key={noti.id}
+                                                    onClick={() => {
+                                                        markAsRead(noti.id);
+                                                        setShowNoti(false);
+                                                        Swal.fire({ icon: 'info', title: 'งานนี้ถูกลบแล้ว', text: 'งานนี้ถูกลบออกจากระบบแล้ว ไม่สามารถเปิดดูได้', confirmButtonColor: '#e11d48' });
+                                                    }}
+                                                    className={`cursor-pointer ${sharedClass}`}
+                                                >
+                                                    {inner}
+                                                </div>
+                                            );
+                                        }
+                                        return (
+                                        <Link
+                                            key={noti.id}
+                                            to={noti.link}
+                                            onClick={() => { markAsRead(noti.id); setShowNoti(false); }}
+                                            className={sharedClass}
+                                        >
+                                            {inner}
                                         </Link>
-                                    ))
+                                        );
+                                    })
                                 )}
                             </div>
                         </div>

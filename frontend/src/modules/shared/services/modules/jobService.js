@@ -288,6 +288,12 @@ export const jobService = {
             return mapped;
 
         } catch (error) {
+            const code = error.response?.data?.error;
+            if (code === 'JOB_NOT_FOUND' || code === 'INSUFFICIENT_PERMISSIONS') {
+                const err = new Error(error.response.data.message || 'Job error');
+                err.code = code;
+                throw err;
+            }
             console.error('[jobService] getJobById error:', error);
             return null;
         }
@@ -562,13 +568,25 @@ export const jobService = {
 
     // --- Dashboard Stats ---
 
+    _buildDashboardParams: (filtersOrStatus = {}, legacyAssigneeFilter = '') => {
+        const filters = typeof filtersOrStatus === 'object' && filtersOrStatus !== null
+            ? filtersOrStatus
+            : { status: filtersOrStatus, assignee: legacyAssigneeFilter };
+
+        const params = {};
+        if (filters.status && String(filters.status).trim()) params.status = String(filters.status).trim();
+        if (filters.assignee && String(filters.assignee).trim()) params.assignee = String(filters.assignee).trim();
+        if (filters.projectId) params.projectId = filters.projectId;
+        if (filters.budId) params.budId = filters.budId;
+        if (typeof filters.includeCompleted === 'boolean') params.includeCompleted = filters.includeCompleted ? 'true' : 'false';
+        if (filters.q && String(filters.q).trim()) params.q = String(filters.q).trim();
+        return params;
+    },
+
     // ⚡ Performance: ใช้ Backend API ที่ใช้ COUNT() แทนการดึงทุก row
-    getDashboardStats: async (user, statusFilter, assigneeFilter) => {
+    getDashboardStats: async (_user, filtersOrStatus = {}, legacyAssigneeFilter = '') => {
         try {
-            const role = _extractRoleParam(user);
-            const params = { role };
-            if (statusFilter && statusFilter.trim()) params.status = statusFilter.trim();
-            if (assigneeFilter && assigneeFilter.trim()) params.assignee = assigneeFilter.trim();
+            const params = jobService._buildDashboardParams(filtersOrStatus, legacyAssigneeFilter);
             
             const response = await httpClient.get('/jobs/dashboard-stats', { params });
             if (!response.data.success) {
@@ -590,11 +608,16 @@ export const jobService = {
      * @param {number} limit - จำนวนต่อหน้า (default: 20)
      * @returns {{ jobs: Array, total: number, page: number, hasMore: boolean }}
      */
-    getDashboardJobs: async (type, page = 1, limit = 20, user = null) => {
+    getDashboardJobs: async (type, page = 1, limit = 20, filters = {}) => {
         try {
-            const role = _extractRoleParam(user);
+            const params = {
+                type,
+                page,
+                limit,
+                ...jobService._buildDashboardParams(filters)
+            };
             const response = await httpClient.get('/jobs/dashboard-jobs', {
-                params: { type, page, limit, role }
+                params
             });
             if (!response.data.success) {
                 console.warn('getDashboardJobs API failed:', response.data.message);
@@ -604,6 +627,27 @@ export const jobService = {
         } catch (err) {
             console.error('getDashboardJobs error:', err);
             return { jobs: [], total: 0, page: 1, hasMore: false };
+        }
+    },
+
+    getDashboardList: async (filters = {}) => {
+        try {
+            const response = await httpClient.get('/jobs/dashboard-list', {
+                params: jobService._buildDashboardParams(filters)
+            });
+
+            if (!response.data.success) {
+                console.warn('getDashboardList API failed:', response.data.message);
+                return { jobs: [], total: 0 };
+            }
+
+            return {
+                jobs: Array.isArray(response.data.data) ? response.data.data : [],
+                total: response.data.total || 0
+            };
+        } catch (err) {
+            console.error('getDashboardList error:', err);
+            return { jobs: [], total: 0 };
         }
     },
 

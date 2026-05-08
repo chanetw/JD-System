@@ -49,7 +49,10 @@ async function main() {
 
     // 3. Admin User
     console.log('📋 Step 3: Creating Admin User...');
-    const email = 'admin@sena.co.th';
+    // ⚠️  WARNING: chanetw@sena.co.th (id=4) exists as a REAL user in production.
+    // Running this seed on production will overwrite that account's passwordHash.
+    // Use a dedicated test email (e.g. admin-test@sena.co.th) if running against prod DB.
+    const email = 'chanetw@sena.co.th';
     const passwordHash = await bcrypt.hash('P@ssw0rd', 10);
 
     const user = await prisma.user.upsert({

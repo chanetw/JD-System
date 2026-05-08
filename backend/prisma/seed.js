@@ -65,8 +65,11 @@ async function main() {
     console.log('📋 Step 3: Creating Users...');
     const defaultPassword = await bcrypt.hash('P@ssw0rd', 10);
 
+    // ⚠️  WARNING: chanetw@sena.co.th (id=4) exists as a REAL user in production.
+    // Running this seed on production will upsert and overwrite that account's passwordHash.
+    // Use a dedicated test email (e.g. admin-test@sena.co.th) if running against prod DB.
     const usersData = [
-        { email: 'admin@sena.co.th', firstName: 'Admin', lastName: 'System', displayName: 'Admin', role: 'admin' },
+        { email: 'chanetw@sena.co.th', firstName: 'Admin', lastName: 'System', displayName: 'Admin', role: 'admin' },
         { email: 'approver@sena.co.th', firstName: 'Somchai', lastName: 'Jaidee', displayName: 'สมชาย', role: 'approver' },
         { email: 'requester@sena.co.th', firstName: 'Wipa', lastName: 'Suksri', displayName: 'วิภา', role: 'requester' },
         { email: 'designer@sena.co.th', firstName: 'Karn', lastName: 'Thongdee', displayName: 'กานต์', role: 'assignee' },
@@ -264,7 +267,7 @@ async function main() {
     console.log('┌──────────────────────────┬────────────┬──────────┐');
     console.log('│ Email                    │ Password   │ Role     │');
     console.log('├──────────────────────────┼────────────┼──────────┤');
-    console.log('│ admin@sena.co.th         │ P@ssw0rd   │ admin    │');
+    console.log('│ chanetw@sena.co.th       │ P@ssw0rd   │ admin    │');
     console.log('│ approver@sena.co.th      │ P@ssw0rd   │ approver │');
     console.log('│ requester@sena.co.th     │ P@ssw0rd   │ requester│');
     console.log('│ designer@sena.co.th      │ P@ssw0rd   │ assignee │');

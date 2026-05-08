@@ -511,20 +511,9 @@ router.get('/config', async (req, res) => {
   try {
     const config = {
       storageProvider: getStorageMode(),
-      maxFileSize: '10MB',
-      allowedTypes: [
-        'image/jpeg',
-        'image/png',
-        'image/gif',
-        'image/webp',
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'text/plain',
-        'application/zip'
-      ]
+      maxFileSize: `${MAX_UPLOAD_SIZE_MB}MB`,
+      maxFileSizeBytes: MAX_UPLOAD_SIZE_BYTES,
+      allowedTypes: ALLOWED_UPLOAD_MIME_TYPES
     };
 
     res.json({

@@ -7,8 +7,8 @@ async function main() {
     console.log('1. Logging in...');
     try {
         const loginRes = await axios.post(`${API_URL}/v2/auth/login`, {
-            email: 'admin@sena.co.th',
-            password: 'Sena#1775',
+            email: 'chanetw@sena.co.th',
+            password: 'P@ssw0rd',
             tenantId: 1  // SENA tenant
         });
 

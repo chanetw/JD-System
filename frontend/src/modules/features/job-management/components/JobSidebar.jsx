@@ -154,7 +154,7 @@ const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
             </div>
 
             {/* Approval Chain Visualization */}
-            {job.flowSnapshot && (
+            {job.flowSnapshot && !parentJob && (
                 <div className="bg-white rounded-xl border border-gray-400 shadow-sm p-6 overflow-hidden">
                     <h2 className="font-semibold text-gray-900 mb-4">เส้นทางการอนุมัติ (Approval Chain)</h2>
 

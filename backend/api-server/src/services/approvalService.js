@@ -2213,29 +2213,16 @@ export class ApprovalService extends BaseService {
       });
 
       // 4. Notify Admins
-      // Get Admins via userRoles relation (matches contact.js pattern)
       const allTenantUsers = await this.prisma.user.findMany({
         where: {
           tenantId: job.requester?.tenantId || 1,
-          isActive: true,
+          isActive: true
         },
-        include: {
-          userRoles: { where: { isActive: true } },
-        },
+        select: { id: true, email: true, firstName: true, userRoles: { where: { isActive: true }, select: { roleName: true } } }
       });
-
-      const isAdminRoleName = (roleName) => {
-        const normalized = String(roleName || '').toLowerCase();
-        return normalized === 'admin' || normalized === 'superadmin';
-      };
-
-      const admins = allTenantUsers
-        .filter(user => user.userRoles.some(ur => isAdminRoleName(ur.roleName)))
-        .map(user => ({
-          id: user.id,
-          email: user.email,
-          firstName: user.firstName,
-        }));
+      const admins = allTenantUsers.filter(u =>
+        u.userRoles.some(ur => ['admin', 'superadmin'].includes(ur.roleName?.toLowerCase()))
+      );
 
       // Send Emails
       if (admins.length > 0) {

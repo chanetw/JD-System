@@ -1266,6 +1266,162 @@ router.get('/counts', async (req, res) => {
   }
 });
 
+const DASHBOARD_TERMINAL_STATUSES = [
+  'completed',
+  'closed',
+  'cancelled',
+  'rejected',
+  'rejected_by_assignee',
+  'assignee_rejected'
+];
+
+const DASHBOARD_DUE_EXCLUDED_STATUSES = [
+  'completed',
+  'closed',
+  'cancelled'
+];
+
+const DASHBOARD_OVERDUE_EXCLUDED_STATUSES = [...DASHBOARD_TERMINAL_STATUSES];
+
+const normalizeDashboardQueryValue = (value) => String(value || '').trim();
+
+const parseOptionalIntQuery = (value) => {
+  if (value == null || value === '') return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const buildNameContainsCondition = (value) => ({
+  OR: [
+    { displayName: { contains: value, mode: 'insensitive' } },
+    { firstName: { contains: value, mode: 'insensitive' } },
+    { lastName: { contains: value, mode: 'insensitive' } }
+  ]
+});
+
+const buildDashboardStatusCondition = (status) => {
+  if (!status) return null;
+
+  switch (status) {
+    case 'todo':
+      return { status: { in: ['assigned'] } };
+    case 'in_progress':
+      return { status: { in: ASSIGNEE_ACTIVE_QUEUE_STATUSES } };
+    case 'completed':
+      return { status: { in: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] } };
+    case 'rejected':
+      return { status: { in: ['rejected', 'rejected_by_assignee', 'assignee_rejected'] } };
+    case 'waiting':
+      return { status: { in: ['correction', 'pending_approval'] } };
+    case 'done':
+      return { status: { in: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] } };
+    case 'all':
+      return null;
+    default:
+      return { status };
+  }
+};
+
+const buildDashboardSearchConditions = (query) => {
+  const normalizedQuery = normalizeDashboardQueryValue(query).toLowerCase();
+  if (!normalizedQuery) return [];
+
+  const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return [];
+
+  return tokens.map((token) => {
+    const orConditions = [
+      { djId: { contains: token, mode: 'insensitive' } },
+      { subject: { contains: token, mode: 'insensitive' } },
+      { status: { contains: token, mode: 'insensitive' } },
+      { project: { is: { name: { contains: token, mode: 'insensitive' } } } },
+      { jobType: { is: { name: { contains: token, mode: 'insensitive' } } } },
+      { requester: { is: buildNameContainsCondition(token) } },
+      { assignee: { is: buildNameContainsCondition(token) } }
+    ];
+
+    if (/^\d+$/.test(token)) {
+      orConditions.push({ id: Number.parseInt(token, 10) });
+    }
+
+    return { OR: orConditions };
+  });
+};
+
+const buildDashboardWhere = ({
+  tenantId,
+  status,
+  assignee,
+  projectId,
+  budId,
+  includeCompleted = false,
+  q,
+  type = null,
+  todayStart = null,
+  todayEnd = null
+}) => {
+  const where = {
+    tenantId,
+    isParent: false
+  };
+
+  const andConditions = [];
+  const normalizedStatus = normalizeDashboardQueryValue(status);
+  const normalizedAssignee = normalizeDashboardQueryValue(assignee);
+  const parsedProjectId = parseOptionalIntQuery(projectId);
+  const parsedBudId = parseOptionalIntQuery(budId);
+  const shouldIncludeCompleted = String(includeCompleted) === 'true' || includeCompleted === true;
+
+  const statusCondition = buildDashboardStatusCondition(normalizedStatus);
+  if (statusCondition) {
+    andConditions.push(statusCondition);
+  } else if (!shouldIncludeCompleted) {
+    andConditions.push({ status: { notIn: DASHBOARD_TERMINAL_STATUSES } });
+  }
+
+  if (parsedProjectId) {
+    andConditions.push({ projectId: parsedProjectId });
+  }
+
+  if (parsedBudId) {
+    andConditions.push({ project: { is: { budId: parsedBudId } } });
+  }
+
+  if (normalizedAssignee) {
+    andConditions.push({ assignee: { is: buildNameContainsCondition(normalizedAssignee) } });
+  }
+
+  andConditions.push(...buildDashboardSearchConditions(q));
+
+  switch (type) {
+    case 'newToday':
+      if (todayStart && todayEnd) {
+        andConditions.push({ createdAt: { gte: todayStart, lte: todayEnd } });
+      }
+      break;
+    case 'dueToday':
+      if (todayStart && todayEnd) {
+        andConditions.push({ dueDate: { gte: todayStart, lte: todayEnd } });
+      }
+      andConditions.push({ status: { notIn: DASHBOARD_DUE_EXCLUDED_STATUSES } });
+      break;
+    case 'overdue':
+      if (todayStart) {
+        andConditions.push({ dueDate: { lt: todayStart } });
+      }
+      andConditions.push({ status: { notIn: DASHBOARD_OVERDUE_EXCLUDED_STATUSES } });
+      break;
+    default:
+      break;
+  }
+
+  if (andConditions.length > 0) {
+    where.AND = andConditions;
+  }
+
+  return where;
+};
+
 /**
  * Helper: สร้าง Prisma where clause ตาม role ของ user
  * ใช้กับ dashboard-stats และ dashboard-jobs
@@ -1317,59 +1473,19 @@ router.get('/dashboard-stats', async (req, res) => {
     const prisma = getDatabase();
     const userId = req.user.userId;
     const tenantId = req.user.tenantId;
-    const roleParam = req.query.role || 'requester';
-    const { status, assignee } = req.query;
-    console.log(`[Dashboard Stats] Params: role=${roleParam}, status=${status}, assignee=${assignee}`);
+    const { status, assignee, projectId, budId, includeCompleted, q } = req.query;
+    console.log(`[Dashboard Stats] Params: status=${status}, assignee=${assignee}, projectId=${projectId}, budId=${budId}, includeCompleted=${includeCompleted}, q=${q}`);
 
     const { dayStart: todayStart, dayEnd: todayEnd } = getDayBoundsInTimeZone(new Date(), APP_TIMEZONE);
-
-    // สร้าง role filter
-    const roleFilter = buildDashboardRoleFilter(roleParam, userId);
-    let baseWhere = roleFilter
-      ? { tenantId, isParent: false, ...roleFilter }
-      : { tenantId, isParent: false };
-
-    // Status filtering (copy จาก /jobs)
-    if (status) {
-      if (status === 'todo') {
-        baseWhere.status = { in: ['assigned'] };
-      } else if (status === 'in_progress') {
-        baseWhere.status = { in: ASSIGNEE_ACTIVE_QUEUE_STATUSES };
-      } else if (status === 'completed') {
-        baseWhere.status = { in: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] };
-      } else if (status === 'rejected') {
-        baseWhere.status = { in: ['rejected', 'rejected_by_assignee'] };
-      } else if (status === 'waiting') {
-        baseWhere.status = { in: ['correction', 'pending_approval'] };
-      } else if (status === 'done') {
-        baseWhere.status = { in: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] };
-      } else if (status === 'all') {
-        // No status filter - return all jobs
-      } else {
-        baseWhere.status = status;
-      }
-    }
-
-    // Assignee filtering (copy จาก /jobs)
-    if (assignee) {
-      baseWhere.assignee = {
-        is: {
-          OR: [
-            { displayName: { contains: assignee, mode: 'insensitive' } },
-            { firstName: { contains: assignee, mode: 'insensitive' } },
-            { lastName: { contains: assignee, mode: 'insensitive' } }
-          ]
-        }
-      };
-    }
-
-    const EXCLUDED_STATUSES = ['completed', 'closed', 'cancelled'];
-    const OVERDUE_EXCLUDED_STATUSES = [
-      ...EXCLUDED_STATUSES,
-      'rejected',
-      'rejected_by_assignee',
-      'assignee_rejected'
-    ];
+    const baseWhere = buildDashboardWhere({
+      tenantId,
+      status,
+      assignee,
+      projectId,
+      budId,
+      includeCompleted,
+      q
+    });
 
     // ดึงทุก count ด้วย Promise.all ใน parallel
     const [
@@ -1384,23 +1500,48 @@ router.get('/dashboard-stats', async (req, res) => {
     ] = await Promise.all([
       // งานสร้างวันนี้
       prisma.job.count({
-        where: { ...baseWhere, createdAt: { gte: todayStart, lte: todayEnd } }
+        where: buildDashboardWhere({
+          tenantId,
+          status,
+          assignee,
+          projectId,
+          budId,
+          includeCompleted,
+          q,
+          type: 'newToday',
+          todayStart,
+          todayEnd
+        })
       }),
       // งานถึงกำหนดวันนี้
       prisma.job.count({
-        where: {
-          ...baseWhere,
-          dueDate: { gte: todayStart, lte: todayEnd },
-          status: { notIn: EXCLUDED_STATUSES }
-        }
+        where: buildDashboardWhere({
+          tenantId,
+          status,
+          assignee,
+          projectId,
+          budId,
+          includeCompleted,
+          q,
+          type: 'dueToday',
+          todayStart,
+          todayEnd
+        })
       }),
       // งาน overdue
       prisma.job.count({
-        where: {
-          ...baseWhere,
-          dueDate: { lt: todayStart },
-          status: { notIn: OVERDUE_EXCLUDED_STATUSES }
-        }
+        where: buildDashboardWhere({
+          tenantId,
+          status,
+          assignee,
+          projectId,
+          budId,
+          includeCompleted,
+          q,
+          type: 'overdue',
+          todayStart,
+          todayEnd
+        })
       }),
       // งานทั้งหมด
       prisma.job.count({ where: baseWhere }),
@@ -1496,12 +1637,10 @@ router.get('/dashboard-jobs', async (req, res) => {
   try {
     const prisma = getDatabase();
     const tenantId = req.user.tenantId;
-    const userId = req.user.userId;
 
     // ดึง query params และ validate
     const type = req.query.type || 'newToday'; // newToday | dueToday | overdue
-    const roleParam = req.query.role || 'requester';
-    const { status, assignee } = req.query;
+    const { status, assignee, projectId, budId, includeCompleted, q } = req.query;
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
     const skip = (page - 1) * limit;
@@ -1509,116 +1648,22 @@ router.get('/dashboard-jobs', async (req, res) => {
     // คำนวณช่วงวันที่สำหรับ filter
     const { dayStart: todayStart, dayEnd: todayEnd } = getDayBoundsInTimeZone(new Date(), APP_TIMEZONE);
 
-    // สร้าง role filter
-    const roleFilter = buildDashboardRoleFilter(roleParam, userId);
-
-    // สร้าง where clause ตามประเภท (ไม่รวม Parent Jobs ให้ตัวเลขตรงกับ stats)
-    const EXCLUDED_STATUSES = ['completed', 'closed', 'cancelled'];
-    const OVERDUE_EXCLUDED_STATUSES = [
-      ...EXCLUDED_STATUSES,
-      'rejected',
-      'rejected_by_assignee',
-      'assignee_rejected'
-    ];
-    let where = roleFilter
-      ? { tenantId, isParent: false, ...roleFilter }
-      : { tenantId, isParent: false };
-    switch (type) {
-      case 'newToday':
-        // งานที่สร้างในวันนี้
-        where = { ...where, createdAt: { gte: todayStart, lte: todayEnd } };
-        break;
-      case 'dueToday':
-        // งานครบกำหนดวันนี้ และยังไม่เสร็จ
-        where = {
-          ...where,
-          dueDate: { gte: todayStart, lte: todayEnd },
-          status: { notIn: EXCLUDED_STATUSES }
-        };
-        break;
-      case 'overdue':
-        // งานเลยกำหนด และยังไม่เสร็จ
-        where = {
-          ...where,
-          dueDate: { lt: todayStart },
-          status: { notIn: EXCLUDED_STATUSES }
-        };
-        break;
-      default:
-        return res.status(400).json({ success: false, error: 'INVALID_TYPE', message: 'type ต้องเป็น newToday, dueToday หรือ overdue' });
+    if (!['newToday', 'dueToday', 'overdue'].includes(type)) {
+      return res.status(400).json({ success: false, error: 'INVALID_TYPE', message: 'type ต้องเป็น newToday, dueToday หรือ overdue' });
     }
 
-    // Status filtering (copy จาก dashboard-stats)
-    if (status) {
-      if (status === 'todo') {
-        where.status = { in: ['assigned'] };
-      } else if (status === 'in_progress') {
-        where.status = { in: ASSIGNEE_ACTIVE_QUEUE_STATUSES };
-      } else if (status === 'completed') {
-        where.status = { in: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] };
-      } else if (status === 'rejected') {
-        where.status = { in: ['rejected', 'rejected_by_assignee'] };
-      } else if (status === 'waiting') {
-        where.status = { in: ['correction', 'pending_approval'] };
-      } else if (status === 'done') {
-        where.status = { in: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] };
-      } else if (status === 'all') {
-        // No status filter - return all jobs
-      } else {
-        where.status = status;
-      }
-    }
-
-    // Assignee filtering (copy จาก dashboard-stats)
-    if (assignee) {
-      where.assignee = {
-        is: {
-          OR: [
-            { displayName: { contains: assignee, mode: 'insensitive' } },
-            { firstName: { contains: assignee, mode: 'insensitive' } },
-            { lastName: { contains: assignee, mode: 'insensitive' } }
-          ]
-        }
-      };
-    }
-
-    // Overdue panel must always exclude rejected statuses, regardless of status filter.
-    if (type === 'overdue') {
-      if (typeof where.status === 'string') {
-        if (OVERDUE_EXCLUDED_STATUSES.includes(where.status)) {
-          return res.json({
-            success: true,
-            data: {
-              jobs: [],
-              total: 0,
-              page,
-              limit,
-              hasMore: false
-            }
-          });
-        }
-      } else if (where.status?.in && Array.isArray(where.status.in)) {
-        const filteredStatuses = where.status.in.filter(s => !OVERDUE_EXCLUDED_STATUSES.includes(s));
-        if (filteredStatuses.length === 0) {
-          return res.json({
-            success: true,
-            data: {
-              jobs: [],
-              total: 0,
-              page,
-              limit,
-              hasMore: false
-            }
-          });
-        }
-        where.status = { in: filteredStatuses };
-      } else {
-        const existingNotIn = Array.isArray(where.status?.notIn) ? where.status.notIn : [];
-        where.status = {
-          notIn: [...new Set([...existingNotIn, ...OVERDUE_EXCLUDED_STATUSES])]
-        };
-      }
-    }
+    const where = buildDashboardWhere({
+      tenantId,
+      status,
+      assignee,
+      projectId,
+      budId,
+      includeCompleted,
+      q,
+      type,
+      todayStart,
+      todayEnd
+    });
 
     // ดึงข้อมูลและนับ total พร้อมกัน
     const [jobs, total] = await Promise.all([
@@ -1651,7 +1696,7 @@ router.get('/dashboard-jobs', async (req, res) => {
     const transformedJobs = jobs.map(job => {
       const dueDateObj = job.dueDate ? new Date(job.dueDate) : null;
       const isOverdue = dueDateObj && dueDateObj < todayStart &&
-        !OVERDUE_EXCLUDED_STATUSES.includes(job.status);
+        !DASHBOARD_OVERDUE_EXCLUDED_STATUSES.includes(job.status);
       const overdueDays = isOverdue
         ? Math.floor((todayStart - dueDateObj) / (1000 * 60 * 60 * 24))
         : 0;
@@ -1691,6 +1736,123 @@ router.get('/dashboard-jobs', async (req, res) => {
   } catch (error) {
     console.error('[Jobs] Get dashboard jobs error:', error.message);
     res.status(500).json({ success: false, error: 'GET_DASHBOARD_JOBS_FAILED' });
+  }
+});
+
+router.get('/dashboard-list', async (req, res) => {
+  try {
+    const prisma = getDatabase();
+    const tenantId = req.user.tenantId;
+    const parsedProjectId = parseOptionalIntQuery(req.query.projectId);
+    const parsedBudId = parseOptionalIntQuery(req.query.budId);
+    const shouldIncludeCompleted = req.query.includeCompleted === 'true';
+
+    const where = { tenantId };
+
+    if (parsedProjectId) {
+      where.projectId = parsedProjectId;
+    }
+
+    if (parsedBudId) {
+      where.project = { is: { budId: parsedBudId } };
+    }
+
+    if (!shouldIncludeCompleted) {
+      where.status = { notIn: DASHBOARD_TERMINAL_STATUSES };
+    }
+
+    const jobs = await prisma.job.findMany({
+      where,
+      select: {
+        id: true,
+        djId: true,
+        subject: true,
+        status: true,
+        priority: true,
+        dueDate: true,
+        startedAt: true,
+        completedAt: true,
+        createdAt: true,
+        acceptanceDate: true,
+        slaDays: true,
+        activityLogs: {
+          select: { createdAt: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1
+        },
+        projectId: true,
+        project: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            budId: true
+          }
+        },
+        jobType: {
+          select: { id: true, name: true, icon: true, colorTheme: true, slaWorkingDays: true }
+        },
+        requesterId: true,
+        requester: {
+          select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, email: true }
+        },
+        assigneeId: true,
+        assignee: {
+          select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, isActive: true, email: true }
+        },
+        isParent: true,
+        parentJobId: true,
+        predecessorId: true
+      },
+      orderBy: [
+        { dueDate: 'asc' },
+        { createdAt: 'desc' }
+      ]
+    });
+
+    const transformed = jobs.map(j => ({
+      id: j.id,
+      djId: j.djId,
+      subject: j.subject,
+      status: j.status,
+      priority: j.priority,
+      jobType: j.jobType?.name,
+      jobTypeId: j.jobType?.id || null,
+      jobTypeIcon: j.jobType?.icon,
+      jobTypeColor: j.jobType?.colorTheme,
+      slaWorkingDays: j.jobType?.slaWorkingDays,
+      project: j.project?.name,
+      projectId: j.projectId,
+      projectCode: j.project?.code,
+      budId: j.project?.budId || null,
+      deadline: j.dueDate,
+      createdAt: j.createdAt,
+      acceptanceDate: j.acceptanceDate,
+      startedAt: j.startedAt,
+      slaDays: j.slaDays,
+      updatedAt: j.completedAt || j.activityLogs?.[0]?.createdAt || j.createdAt,
+      requesterId: j.requesterId,
+      requester: j.requester,
+      requesterAvatar: j.requester?.avatarUrl,
+      assigneeId: j.assigneeId,
+      assignee: j.assignee,
+      assigneeIsActive: j.assignee?.isActive ?? true,
+      assigneeAvatar: j.assignee?.avatarUrl,
+      isParent: j.isParent || false,
+      parentJobId: j.parentJobId || null,
+      completedAt: j.completedAt,
+      predecessorId: j.predecessorId || null,
+      lastActivityAt: j.activityLogs?.[0]?.createdAt || j.createdAt
+    }));
+
+    res.json({
+      success: true,
+      data: transformed,
+      total: transformed.length
+    });
+  } catch (error) {
+    console.error('[Jobs] Get dashboard list error:', error.message);
+    res.status(500).json({ success: false, error: 'GET_DASHBOARD_LIST_FAILED' });
   }
 });
 

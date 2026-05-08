@@ -1004,7 +1004,8 @@ export default function CreateDJ() {
                 const result = await fileUploadService.uploadFile(file, {
                     tenantId: user?.tenant_id || 1,
                     userId: user?.id,
-                    attachmentType: 'brief'
+                    attachmentType: 'brief',
+                    maxFileSize: BRIEF_MAX_TOTAL_SIZE
                 });
                 if (result.success && result.data) {
                     setBriefFiles(prev => [...prev, {

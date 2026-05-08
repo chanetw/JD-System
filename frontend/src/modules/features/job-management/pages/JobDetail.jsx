@@ -18,6 +18,7 @@ import { fileUploadService } from '@shared/services/modules/fileUploadService';
 import { adminService } from '@shared/services/modules/adminService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { ROLE_V1_DISPLAY, getJobRole, JOB_ROLE_THEMES, hasAnyRole } from '@shared/utils/permission.utils';
+import { normalizePriority } from '@shared/constants/jobStatus';
 import { formatDateToThai } from '@shared/utils/dateUtils';
 import Badge from '@shared/components/Badge';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
@@ -218,7 +219,13 @@ export default function JobDetail() {
             }
         } catch (err) {
             console.error('Failed load job:', err);
-            setError('เกิดข้อผิดพลาดในการโหลดข้อมูล');
+            if (err.code === 'JOB_NOT_FOUND') {
+                setError('JOB_DELETED');
+            } else if (err.code === 'INSUFFICIENT_PERMISSIONS') {
+                navigate('/jobs');
+            } else {
+                setError('เกิดข้อผิดพลาดในการโหลดข้อมูล');
+            }
         } finally {
             setIsLoading(false);
         }
@@ -814,29 +821,61 @@ export default function JobDetail() {
     const handleEditJobPriority = async () => {
         const currentPriority = normalizePriority(job.priority);
 
+        const swalBaseConfig = {
+            confirmButtonColor: '#0f4c81',
+            cancelButtonColor: '#6b7280',
+            width: 'auto',
+            maxWidth: '480px',
+            padding: '1.5em',
+            grow: 'row',
+            scrollbarPadding: false,
+            customClass: {
+                popup: 'rounded-xl shadow-2xl !w-[92vw] sm:!w-auto sm:!max-w-[480px]',
+                title: 'text-lg font-semibold text-gray-800 pb-2',
+                htmlContainer: 'overflow-visible',
+                confirmButton: 'px-5 py-2 text-sm font-medium rounded-lg',
+                cancelButton: 'px-5 py-2 text-sm font-medium rounded-lg',
+            },
+            backdrop: 'rgba(0,0,0,0.45)',
+        };
+
         // Step 1: Select new priority
         const step1 = await Swal.fire({
+            ...swalBaseConfig,
             title: 'แก้ไข Priority งาน',
             html: `
-                <div class="text-left text-sm space-y-3">
-                    <p>Priority ปัจจุบัน: <strong>${currentPriority === 'urgent' ? 'ด่วน' : 'ปกติ'}</strong></p>
-                    <label class="block font-medium">Priority ใหม่:</label>
-                    <select id="swal-priority" class="swal2-input">
-                        <option value="normal" ${currentPriority === 'normal' ? 'selected' : ''}>ปกติ (Normal)</option>
-                        <option value="urgent" ${currentPriority === 'urgent' ? 'selected' : ''}>ด่วน (Urgent)</option>
-                    </select>
+                <div class="text-left text-sm space-y-4">
+                    <div class="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                        <p class="text-gray-500 text-xs mb-1">Priority ปัจจุบัน</p>
+                        <p class="font-semibold ${currentPriority === 'urgent' ? 'text-red-600' : 'text-emerald-600'}">
+                            ${currentPriority === 'urgent' ? 'ด่วน (Urgent)' : 'ปกติ (Normal)'}
+                        </p>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <label for="swal-priority" class="block text-sm font-medium text-gray-700">Priority ใหม่</label>
+                        <select id="swal-priority" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm
+                            focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 outline-none transition-all bg-white
+                            text-gray-800 cursor-pointer hover:border-gray-400">
+                            <option value="normal" ${currentPriority === 'normal' ? 'selected' : ''}>ปกติ (Normal)</option>
+                            <option value="urgent" ${currentPriority === 'urgent' ? 'selected' : ''}>ด่วน (Urgent)</option>
+                        </select>
+                    </div>
+
                     ${job.isParent ? `
-                    <label class="block font-medium mt-3">ขอบเขตการแก้ไข:</label>
-                    <select id="swal-scope" class="swal2-input">
-                        <option value="single">แก้เฉพาะงานนี้</option>
-                        <option value="chain">แก้ทั้ง Chain (Parent + ลูก)</option>
-                    </select>
+                    <div class="space-y-1.5">
+                        <label for="swal-scope" class="block text-sm font-medium text-gray-700">ขอบเขตการแก้ไข</label>
+                        <select id="swal-scope" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm
+                            focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 outline-none transition-all bg-white
+                            text-gray-800 cursor-pointer hover:border-gray-400">
+                            <option value="single">แก้เฉพาะงานนี้</option>
+                            <option value="chain">แก้ทั้ง Chain (Parent + ลูก)</option>
+                        </select>
+                    </div>
                     ` : ''}
                 </div>
             `,
             showCancelButton: true,
-            confirmButtonColor: '#0f4c81',
-            cancelButtonColor: '#6b7280',
             confirmButtonText: 'ดำเนินการต่อ',
             cancelButtonText: 'ยกเลิก',
             preConfirm: () => ({
@@ -849,22 +888,40 @@ export default function JobDetail() {
         const { priority: newPriority, scope } = step1.value;
 
         if (newPriority === currentPriority) {
-            Swal.fire({ icon: 'info', title: 'Priority ไม่เปลี่ยนแปลง', confirmButtonColor: '#0f4c81' });
+            Swal.fire({
+                icon: 'info',
+                title: 'Priority ไม่เปลี่ยนแปลง',
+                confirmButtonColor: '#0f4c81',
+                customClass: { popup: 'rounded-xl shadow-2xl' },
+            });
             return;
         }
 
         // Step 2: Ask for reason
         const step2 = await Swal.fire({
-            title: `เปลี่ยนจาก ${currentPriority === 'urgent' ? 'ด่วน' : 'ปกติ'} เป็น ${newPriority === 'urgent' ? 'ด่วน' : 'ปกติ'}`,
-            input: 'textarea',
-            inputLabel: 'เหตุผลการแก้ไข',
-            inputPlaceholder: 'เช่น ปรับกลับเป็นงานปกติหลังลูกค้ายืนยัน',
-            inputValidator: (value) => !value?.trim() && 'กรุณาระบุเหตุผล',
+            ...swalBaseConfig,
+            title: `เปลี่ยนจาก ${currentPriority === 'urgent' ? 'ด่วน' : 'ปกติ'} → ${newPriority === 'urgent' ? 'ด่วน' : 'ปกติ'}`,
+            html: `
+                <div class="text-left text-sm space-y-3">
+                    <label for="swal-reason" class="block text-sm font-medium text-gray-700">เหตุผลการแก้ไข</label>
+                    <textarea id="swal-reason" rows="3" placeholder="เช่น ปรับกลับเป็นงานปกติหลังลูกค้ายืนยัน"
+                        class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm resize-none
+                        focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 outline-none transition-all bg-white
+                        text-gray-800 placeholder-gray-400"></textarea>
+                    <p class="text-xs text-gray-400">กรุณาระบุเหตุผลอย่างน้อย 1 คำ</p>
+                </div>
+            `,
             showCancelButton: true,
-            confirmButtonColor: '#0f4c81',
-            cancelButtonColor: '#6b7280',
             confirmButtonText: 'บันทึก',
             cancelButtonText: 'ยกเลิก',
+            preConfirm: () => {
+                const value = document.getElementById('swal-reason').value?.trim();
+                if (!value) {
+                    Swal.showValidationMessage('กรุณาระบุเหตุผล');
+                    return false;
+                }
+                return value;
+            },
         });
 
         if (!step2.isConfirmed) return;
@@ -873,7 +930,7 @@ export default function JobDetail() {
             const response = await jobService.editJobPriority(
                 job.id,
                 newPriority,
-                step2.value.trim(),
+                step2.value,
                 scope,
             );
 
@@ -888,6 +945,7 @@ export default function JobDetail() {
                     title: 'แก้ไข Priority สำเร็จ',
                     html: `${job.djId}: ${data.oldPriority === 'urgent' ? 'ด่วน' : 'ปกติ'} → ${data.newPriority === 'urgent' ? 'ด่วน' : 'ปกติ'}${dueDateMsg}`,
                     confirmButtonColor: '#0f4c81',
+                    customClass: { popup: 'rounded-xl shadow-2xl' },
                 });
                 loadJob();
             } else {
@@ -899,6 +957,7 @@ export default function JobDetail() {
                 title: 'แก้ไข Priority ไม่สำเร็จ',
                 text: err.response?.data?.message || err.message,
                 confirmButtonColor: '#d92d20',
+                customClass: { popup: 'rounded-xl shadow-2xl' },
             });
         }
     };
@@ -910,7 +969,14 @@ export default function JobDetail() {
     if (isLoading) return <LoadingSpinner />;
     if (error || !job) return (
         <div className="flex flex-col items-center justify-center min-h-screen text-red-500">
-            {error || 'ไม่พบงาน'}
+            {error === 'JOB_DELETED' ? (
+                <>
+                    <p className="text-lg font-semibold">งานนี้ถูกลบแล้ว</p>
+                    <p className="text-sm text-slate-400 mt-1">งานนี้ถูกลบออกจากระบบโดย Admin</p>
+                </>
+            ) : (
+                <p>{error || 'ไม่พบงาน'}</p>
+            )}
             <Link to="/jobs" className="text-rose-500 mt-4 font-medium hover:underline">← กลับหน้าหลัก</Link>
         </div>
     );
@@ -994,7 +1060,6 @@ export default function JobDetail() {
                                     onOpenAssigneeRejectModal={() => setShowAssigneeRejectModal(true)}
                                     onConfirmAssigneeRejection={openConfirmRejectionModal}
                                     onDenyRejection={() => setShowDenyRejectionModal(true)}
-                                    onOpenExtendModal={() => setShowExtendModal(true)}
                                     onOpenDraftModal={() => setShowDraftModal(true)}
                                     onOpenRebriefModal={() => setShowRebriefModal(true)}
                                     onAcceptRebrief={handleAcceptRebrief}

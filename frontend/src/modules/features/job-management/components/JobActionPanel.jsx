@@ -3,7 +3,6 @@ import { CheckIcon, XMarkIcon, UserIcon, ExclamationCircleIcon, CheckCircleIcon,
 import { ACTION_BUTTON_STYLES } from '@shared/utils/alertHelper';
 import {
     ASSIGNEE_DRAFT_REBRIEF_ACTION_STATUSES,
-    ASSIGNEE_EXTENDABLE_STATUSES,
     ASSIGNEE_REJECTABLE_STATUSES,
 } from '@shared/constants/jobStatus';
 
@@ -22,7 +21,6 @@ const JobActionPanel = ({
     onOpenAssigneeRejectModal,
     onConfirmAssigneeRejection,
     onDenyRejection, // เพิ่ม callback สำหรับ Deny Rejection
-    onOpenExtendModal, // เพิ่ม callback สำหรับ Extend Modal
     onOpenDraftModal, // ส่ง Draft ให้ตรวจ
     onOpenRebriefModal, // ขอ Rebrief
     onAcceptRebrief, // รับงานหลัง Rebrief
@@ -243,6 +241,8 @@ const JobActionPanel = ({
 
     // 3. Assignee Actions (Start/Complete)
     const renderAssigneeActions = () => {
+        // Parent jobs cannot have assignee actions
+        if (job.isParent === true || job.isParent === 1) return null;
         // ✅ FIX: Check role first - only assignee or admin can see these buttons
         if (jobRole !== 'assignee' && jobRole !== 'admin') return null;
 
@@ -295,22 +295,6 @@ const JobActionPanel = ({
                             )}
                         </div>
 
-                        {/* Extend Button - Show whenever the current assignee can request more time */}
-                        {onOpenExtendModal && ASSIGNEE_EXTENDABLE_STATUSES.includes(job.status) && (
-                            <div className="mt-3 p-3 bg-rose-50 border border-rose-200 rounded-lg">
-                                <p className="text-xs text-rose-700 mb-2">
-                                    {job.rejectionDeniedAt
-                                        ? '💡 คำขอปฏิเสธงานไม่ได้รับอนุมัติ หากต้องการเวลาเพิ่มเติม กรุณาขอ Extend'
-                                        : '💡 หากต้องการเวลาเพิ่มเติมในการทำงาน คุณสามารถขอ Extend เพื่อเลื่อน Due Date ได้'}
-                                </p>
-                                <button
-                                    onClick={onOpenExtendModal}
-                                    className="w-full py-2 px-4 bg-rose-500 text-white rounded-lg font-medium hover:bg-rose-600 flex items-center justify-center gap-2 transition-colors text-sm"
-                                >
-                                    🔄 ขอ Extend งาน
-                                </button>
-                            </div>
-                        )}
                     </div>
                 )}
 
@@ -369,6 +353,7 @@ const JobActionPanel = ({
 
     // 4. Assignee Rejection Confirmation (Approver/Requester)
     const renderAssigneeRejectionConfirm = () => {
+        if (job.isParent === true || job.isParent === 1) return null;
         if (job.status !== 'assignee_rejected') return null;
 
         // ✅ Permission Check: Only show to Approver, Requester, or Admin
@@ -420,6 +405,7 @@ const JobActionPanel = ({
 
     // 5. Rebrief Panel (Requester)
     const renderRebriefPanel = () => {
+        if (job.isParent === true || job.isParent === 1) return null;
         if (job.status !== 'pending_rebrief') return null;
 
         // Check if current user is requester (String comparison เพื่อป้องกัน type mismatch)
@@ -452,6 +438,7 @@ const JobActionPanel = ({
 
     // 6. Close/Revision Actions (Requester)
     const renderCloseActions = () => {
+        if (job.isParent === true || job.isParent === 1) return null;
         if (job.status !== 'pending_close') return null;
 
         return (

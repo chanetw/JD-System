@@ -59,6 +59,15 @@ const KPI_CONFIG = {
     },
 };
 
+const DASHBOARD_TERMINAL_STATUSES = [
+    'completed',
+    'closed',
+    'cancelled',
+    'rejected',
+    'rejected_by_assignee',
+    'assignee_rejected',
+];
+
 const getPersonDisplayName = (person) => {
     if (!person) return '';
     if (typeof person === 'string') return person;
@@ -86,17 +95,17 @@ function Dashboard() {
 
     // KPI Stats
     const [stats, setStats] = useState({ newToday: 0, dueToday: 0, overdue: 0, totalJobs: 0, totalItems: 0, assigneeSummary: [] });
+    const [masterData, setMasterData] = useState({ buds: [], projects: [] });
 
-    // My Queue jobs list — Lazy Load
+    // Dashboard jobs list — full dataset for local view transforms + pagination
     const [jobs, setJobs] = useState([]);
     const [queuePage, setQueuePage] = useState(1);
-    const [queueHasMore, setQueueHasMore] = useState(false);
     const [queueLoading, setQueueLoading] = useState(false);
-    const [queueTotal, setQueueTotal] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
-    const [filter, setFilter] = useState('all');
     const [assigneeFilter, setAssigneeFilter] = useState('');  // string ชื่อ assignee ที่กรอง
     const [statusFilter, setStatusFilter] = useState('');      // status ที่ต้องการกรอง
+    const [budFilter, setBudFilter] = useState('');
+    const [projectFilter, setProjectFilter] = useState('');
     const [includeCompleted, setIncludeCompleted] = useState(false); // false = ซ่อน completed/closed โดยค่าเริ่มต้น
     const [viewMode, setViewMode] = useState('flat');          // 'flat' | 'parent' — View Mode Toggle
     const [expandedRows, setExpandedRows] = useState(new Set()); // Parent IDs ที่กางอยู่ (Parent View)
@@ -120,165 +129,128 @@ function Dashboard() {
 
     // IntersectionObserver sentinel refs
     const sentinelRef = useRef(null);     // KPI Drill-down panel sentinel
-    const queueSentinelRef = useRef(null); // My Queue sentinel
+
+    const normalizedSearchQuery = useMemo(() => superSearchQuery.trim(), [superSearchQuery]);
+
+    const dashboardApiFilters = useMemo(() => ({
+        status: statusFilter,
+        assignee: assigneeFilter,
+        budId: budFilter,
+        projectId: projectFilter,
+        includeCompleted,
+        q: normalizedSearchQuery,
+    }), [statusFilter, assigneeFilter, budFilter, projectFilter, includeCompleted, normalizedSearchQuery]);
+
+    const dashboardListFilters = useMemo(() => ({
+        budId: budFilter,
+        projectId: projectFilter,
+        includeCompleted,
+    }), [budFilter, projectFilter, includeCompleted]);
 
     // ============================================
-    // Helper: สร้าง role param เดียวกับ getJobsByRole
-    // ============================================
-    const getRoleParam = useCallback(() => {
-        let allRoles = [];
-        if (user?.roles && Array.isArray(user.roles) && user.roles.length > 0) {
-            allRoles = user.roles.map(r => (typeof r === 'string' ? r : r?.name || '')).filter(Boolean);
-        }
-        if (allRoles.length === 0) {
-            allRoles = [user?.roleName || user?.role?.name || user?.role || 'requester'];
-        }
-        return allRoles.map(r => r.toLowerCase()).join(',');
-    }, [user]);
-
-    // ============================================
-    // Load Holidays (สำหรับคำนวณ working days SLA)
+    // Load reference data (holidays + master data)
     // ============================================
     useEffect(() => {
         if (!user) return;
-        const loadHolidays = async () => {
+        const loadReferenceData = async () => {
             try {
-                const response = await httpClient.get('/holidays');
-                if (response.data.success) {
-                    setHolidays(response.data.data || []);
+                const [holidayResponse, masterDataResponse] = await Promise.all([
+                    httpClient.get('/holidays'),
+                    api.getMasterData()
+                ]);
+
+                if (holidayResponse.data.success) {
+                    setHolidays(holidayResponse.data.data || []);
                 }
+
+                setMasterData({
+                    buds: masterDataResponse?.buds || [],
+                    projects: masterDataResponse?.projects || [],
+                });
             } catch (err) {
-                console.warn('[Dashboard] Could not load holidays:', err.message);
+                console.warn('[Dashboard] Could not load reference data:', err.message);
             }
         };
-        loadHolidays();
+        loadReferenceData();
     }, [user]);
 
-    // ============================================
-    // Load Dashboard Stats on mount and filter change
-    // ============================================
-    useEffect(() => {
+    const fetchDashboardStats = useCallback(async () => {
         if (!user) return;
-        const loadStats = async () => {
-            try {
-                const statsData = await api.getDashboardStats(user, statusFilter, assigneeFilter);
-                setStats(statsData);
-            } catch (err) {
-                console.error('Error loading stats:', err);
-            }
-        };
-        loadStats();
-    }, [user, statusFilter, assigneeFilter]);
-
-    // ============================================
-    // Load My Queue (ครั้งแรก และเมื่อ filter เปลี่ยน)
-    // ============================================
-    const fetchQueueJobs = useCallback(async (pageNum, append = false, overrideStatus, overrideAssignee, overrideIncludeCompleted) => {
-        if (!user) return;
-        if (append && queueLoading) return; // ป้องกันโหลดซ้ำเฉพาะ infinite scroll
-        setQueueLoading(true);
-        if (!append) setIsLoading(true);
         try {
-            const roleParam = getRoleParam();
-            // ใช้ override ถ้ามี (จาก useEffect filter change) มิฉะนั้นใช้ค่าจาก closure
-            const activeStatus = overrideStatus !== undefined ? overrideStatus : statusFilter;
-            const activeAssignee = overrideAssignee !== undefined ? overrideAssignee : assigneeFilter;
-            const activeIncludeCompleted = overrideIncludeCompleted !== undefined ? overrideIncludeCompleted : includeCompleted;
-            const params = {
-                role: roleParam,
-                page: pageNum,
-                limit: pageSize,
-                includeCompleted: activeIncludeCompleted ? 'true' : 'false'
-            };
-            if (activeStatus) params.status = activeStatus;
-            if (activeAssignee) params.assignee = activeAssignee;
-            console.log(`[Dashboard] Fetch params:`, params);
-            const response = await httpClient.get('/jobs', { params });
-            if (response.data.success) {
-                const newJobs = Array.isArray(response.data.data) ? response.data.data : [];
-                const total = response.data.pagination?.total || 0;
-                const totalPages = response.data.pagination?.totalPages || 1;
-                
-                // Console log: แสดงจำนวนรายการที่ดึงมา
-                console.log(`[Dashboard] Page ${pageNum}: ดึงมา ${newJobs.length} รายการ (จาก API) | ทั้งหมด ${total} รายการ | หน้าทั้งหมด ${totalPages} หน้า`);
-                setJobs(prev => {
-                    if (!append) return newJobs;
-                    // Deduplicate: ใช้ Map เพื่อป้องกัน duplicate key จาก pagination shift
-                    const merged = new Map();
-                    prev.forEach(j => merged.set(j.id, j));
-                    newJobs.forEach(j => merged.set(j.id, j));
-                    return Array.from(merged.values());
-                });
-                setQueuePage(pageNum);
-                setQueueTotal(total);
-                setQueueHasMore(pageNum < totalPages);
-            }
+            const statsData = await api.getDashboardStats(user, dashboardApiFilters);
+            setStats(statsData);
         } catch (err) {
-            console.error('Error loading queue jobs:', err);
+            console.error('Error loading stats:', err);
+        }
+    }, [user, dashboardApiFilters]);
+
+    const fetchQueueJobs = useCallback(async () => {
+        if (!user) return;
+
+        setQueueLoading(true);
+        setIsLoading(true);
+
+        try {
+            const response = await api.getDashboardList(dashboardListFilters);
+            const nextJobs = Array.isArray(response.jobs) ? response.jobs : [];
+            setJobs(nextJobs);
+        } catch (err) {
+            console.error('Error loading dashboard jobs:', err);
+            setJobs([]);
         } finally {
             setQueueLoading(false);
-            if (!append) setIsLoading(false);
+            setIsLoading(false);
         }
-    }, [user, queueLoading, getRoleParam, statusFilter, assigneeFilter, includeCompleted, pageSize]);
+    }, [user, dashboardListFilters]);
 
-    // โหลดครั้งแรกเมื่อ user หรือ filter เปลี่ยน
+    // ============================================
+    // Load Dashboard stats when dashboard filters/search change
+    // ============================================
     useEffect(() => {
         if (!user) return;
-        setJobs([]);
         setQueuePage(1);
-        fetchQueueJobs(1, false);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user, filter]);
+        setExpandedRows(new Set());
+        fetchDashboardStats();
+    }, [user, fetchDashboardStats]);
 
-    // Reset หน้า 1 เมื่อ statusFilter หรือ assigneeFilter เปลี่ยน
+    // ============================================
+    // Load full dataset when project/BU scope changes
+    // ============================================
     useEffect(() => {
         if (!user) return;
-        setJobs([]);
         setQueuePage(1);
-        fetchQueueJobs(1, false, statusFilter, assigneeFilter);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [statusFilter, assigneeFilter, includeCompleted]);
+        setExpandedRows(new Set());
+        fetchQueueJobs();
+    }, [user, fetchQueueJobs]);
 
-    // Reset หน้า 1 เมื่อ pageSize เปลี่ยน
     useEffect(() => {
-        if (!user) return;
-        setJobs([]);
         setQueuePage(1);
-        fetchQueueJobs(1, false);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [pageSize]);
+    }, [pageSize, viewMode, sortMode, statusFilter, assigneeFilter, includeCompleted, budFilter, projectFilter, normalizedSearchQuery]);
 
     // ============================================
     // Fetch Page of Drill-down Jobs
     // ============================================
-    const fetchPanelJobs = useCallback(async (type, page, append = false, statusFilter, assigneeFilter) => {
+    const fetchPanelJobs = useCallback(async (type, page, append = false) => {
         if (!type || panelLoading) return;
         setPanelLoading(true);
         try {
-            const params = { type, page, limit: 20, role: getRoleParam() };
-            if (statusFilter && statusFilter.trim()) params.status = statusFilter.trim();
-            if (assigneeFilter && assigneeFilter.trim()) params.assignee = assigneeFilter.trim();
-            
-            const response = await httpClient.get('/jobs/dashboard-jobs', { params });
-            if (response.data.success) {
-                const { jobs: newJobs, total, hasMore } = response.data.data;
-                setPanelJobs(prev => {
-                    if (!append) return newJobs;
-                    const merged = new Map();
-                    prev.forEach(j => merged.set(j.id, j));
-                    newJobs.forEach(j => merged.set(j.id, j));
-                    return Array.from(merged.values());
-                });
-                setPanelTotal(total);
-                setPanelHasMore(hasMore);
-                setPanelPage(page);
-            }
+            const { jobs: newJobs, total, hasMore } = await api.getDashboardJobs(type, page, 20, dashboardApiFilters);
+            setPanelJobs(prev => {
+                if (!append) return newJobs;
+                const merged = new Map();
+                prev.forEach(j => merged.set(j.id, j));
+                newJobs.forEach(j => merged.set(j.id, j));
+                return Array.from(merged.values());
+            });
+            setPanelTotal(total);
+            setPanelHasMore(hasMore);
+            setPanelPage(page);
         } catch (err) {
             console.error('fetchPanelJobs error:', err);
         } finally {
             setPanelLoading(false);
         }
-    }, [panelLoading]);
+    }, [panelLoading, dashboardApiFilters]);
 
     // ============================================
     // Toggle Panel เมื่อกด KPI Card
@@ -294,9 +266,17 @@ function Dashboard() {
             setPanelJobs([]);
             setPanelPage(1);
             setPanelHasMore(false);
-            fetchPanelJobs(type, 1, false, statusFilter, assigneeFilter);
+            fetchPanelJobs(type, 1, false);
         }
-    }, [activePanel, fetchPanelJobs, statusFilter, assigneeFilter]);
+    }, [activePanel, fetchPanelJobs]);
+
+    useEffect(() => {
+        if (!activePanel) return;
+        setPanelJobs([]);
+        setPanelPage(1);
+        setPanelHasMore(false);
+        fetchPanelJobs(activePanel, 1, false);
+    }, [activePanel, fetchPanelJobs]);
 
     // ============================================
     // IntersectionObserver: โหลดเพิ่ม เมื่อ scroll ถึง sentinel
@@ -307,31 +287,14 @@ function Dashboard() {
             (entries) => {
                 const entry = entries[0];
                 if (entry.isIntersecting && panelHasMore && !panelLoading && activePanel) {
-                    fetchPanelJobs(activePanel, panelPage + 1, true, statusFilter, assigneeFilter);
+                    fetchPanelJobs(activePanel, panelPage + 1, true);
                 }
             },
             { threshold: 0.1 }
         );
         observer.observe(sentinelRef.current);
         return () => observer.disconnect();
-    }, [sentinelRef, panelHasMore, panelLoading, activePanel, panelPage, fetchPanelJobs, statusFilter, assigneeFilter]);
-
-    // ============================================
-    // IntersectionObserver: My Queue infinite scroll
-    // ============================================
-    useEffect(() => {
-        if (!queueSentinelRef.current) return;
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (entries[0].isIntersecting && queueHasMore && !queueLoading) {
-                    fetchQueueJobs(queuePage + 1, true);
-                }
-            },
-            { threshold: 0.1 }
-        );
-        observer.observe(queueSentinelRef.current);
-        return () => observer.disconnect();
-    }, [queueSentinelRef, queueHasMore, queueLoading, queuePage, fetchQueueJobs]);
+    }, [sentinelRef, panelHasMore, panelLoading, activePanel, panelPage, fetchPanelJobs]);
 
     // ============================================
     // Helper Functions for Parent View
@@ -357,10 +320,10 @@ function Dashboard() {
 
     // Handler เมื่อส่ง Draft สำเร็จ
     const handleDraftSuccess = useCallback(() => {
-        // Reload queue jobs
         setQueuePage(1);
-        fetchQueueJobs(false);
-    }, [fetchQueueJobs]);
+        fetchDashboardStats();
+        fetchQueueJobs();
+    }, [fetchDashboardStats, fetchQueueJobs]);
 
     const calculateParentApprovalStatus = useCallback((children) => {
         if (!children || children.length === 0) return null;
@@ -391,7 +354,7 @@ function Dashboard() {
         if (!children || children.length === 0) return null;
         
         // กรอง child ที่ยัง active (ไม่ใช่ terminal status)
-        const terminalStatuses = ['completed', 'closed', 'cancelled'];
+        const terminalStatuses = DASHBOARD_TERMINAL_STATUSES;
         const activeChildren = children.filter(c => !terminalStatuses.includes(c.status));
         
         if (activeChildren.length === 0) return null; // ปิดหมดแล้ว
@@ -411,7 +374,7 @@ function Dashboard() {
     const getParentSlaPriority = useCallback((children) => {
         if (!children || children.length === 0) return 999999; // ไม่มี child = priority ต่ำสุด
         
-        const terminalStatuses = ['completed', 'closed', 'cancelled'];
+        const terminalStatuses = DASHBOARD_TERMINAL_STATUSES;
         const activeChildren = children.filter(c => !terminalStatuses.includes(c.status));
         
         if (activeChildren.length === 0) return 999998; // ปิดหมดแล้ว = priority ต่ำรองลงมา
@@ -441,6 +404,7 @@ function Dashboard() {
     }, []);
 
     const getAssigneeName = useCallback((job) => getPersonDisplayName(job?.assignee), []);
+    const getRequesterName = useCallback((job) => getPersonDisplayName(job?.requester), []);
 
     const buildParentViewJobs = useCallback((sourceJobs) => {
         const result = [...sourceJobs];
@@ -507,17 +471,27 @@ function Dashboard() {
     // Filter Logic with View Mode Support
     // ============================================
 
-    const filteredJobs = useMemo(() => {
-        let result = [...jobs];
+    const queueSourceJobs = useMemo(() => {
+        return jobs.filter(job => includeCompleted || !DASHBOARD_TERMINAL_STATUSES.includes(job.status));
+    }, [jobs, includeCompleted]);
 
-        // 1. Apply View Mode Logic (แสดงทุก jobs เพื่อให้ครบ 20 รายการ)
+    const filteredJobs = useMemo(() => {
+        let result = [...queueSourceJobs];
+
+        // 1. Apply View Mode Logic
         if (viewMode === 'flat') {
             result = result.filter(job => !job.isParent);
+            if (statusFilter) {
+                result = result.filter(job => matchesStatusFilter(job.status, statusFilter));
+            }
+            if (assigneeFilter) {
+                result = result.filter(job => getAssigneeName(job) === assigneeFilter);
+            }
         } else if (viewMode === 'parent') {
             result = buildParentViewJobs(result);
         }
 
-        result = result.filter(job => matchesSuperSearch(job, superSearchQuery, [
+        result = result.filter(job => matchesSuperSearch(job, normalizedSearchQuery, [
             item => item.djId,
             item => item.id,
             item => item.subject,
@@ -525,9 +499,19 @@ function Dashboard() {
             item => item.projectName,
             item => item.jobType,
             item => item.jobTypeName,
+            item => getRequesterName(item),
             item => getAssigneeName(item),
             item => item.status,
             item => item.calculatedJobStatus,
+            item => item.children?.map(child => ({
+                djId: child.djId,
+                subject: child.subject,
+                project: child.project,
+                jobType: child.jobType,
+                requester: getRequesterName(child),
+                assignee: getAssigneeName(child),
+                status: child.status,
+            })),
         ]));
 
         // 3. Apply Sort Logic
@@ -556,18 +540,18 @@ function Dashboard() {
         }
 
         // Console log: แสดงจำนวนที่แสดงผล
-        console.log(`[Dashboard] แสดงผล ${result.length} รายการ (หน้า ${queuePage}) | View Mode: ${viewMode} | Sort: ${sortMode}`);
+        console.log(`[Dashboard] แสดงผล ${result.length} รายการ | View Mode: ${viewMode} | Sort: ${sortMode}`);
         
         return result;
-    }, [jobs, viewMode, sortMode, buildParentViewJobs, queuePage, superSearchQuery, getAssigneeName]);
+    }, [queueSourceJobs, viewMode, sortMode, buildParentViewJobs, normalizedSearchQuery, getRequesterName, getAssigneeName, statusFilter, assigneeFilter]);
 
     useEffect(() => {
-        setSuperSearchMeta({ resultCount: filteredJobs.length, totalCount: jobs.length });
-    }, [filteredJobs.length, jobs.length, setSuperSearchMeta]);
+        setSuperSearchMeta({ resultCount: filteredJobs.length, totalCount: queueSourceJobs.length });
+    }, [filteredJobs.length, queueSourceJobs.length, setSuperSearchMeta]);
 
     const filterableJobs = useMemo(() => {
-        return jobs.filter(job => !job.isParent);
-    }, [jobs]);
+        return queueSourceJobs.filter(job => !job.isParent);
+    }, [queueSourceJobs]);
 
     // รวบรวม assignee ที่มีในรายการงาน (unique)
     const assigneeOptions = [...new Set(filterableJobs.map(j => {
@@ -577,17 +561,6 @@ function Dashboard() {
         return getAssigneeName(j);
     }).flat().filter(Boolean))].sort();
 
-    const dashboardScopeLabel = useMemo(() => {
-        if (assigneeFilter) return `รายบุคคล: ${assigneeFilter}`;
-        if (hasAnyRole(user, ['Admin', 'Superadmin'])) return 'Dashboard รวม';
-        return 'ตามสิทธิ์ของคุณ';
-    }, [assigneeFilter, user]);
-
-    const dashboardScopeSubtitle = useMemo(() => {
-        if (statusFilter) return `${dashboardScopeLabel} • สถานะ ${statusFilter}`;
-        return dashboardScopeLabel;
-    }, [dashboardScopeLabel, statusFilter]);
-
     // รายการ status ที่มีในรายการงาน (unique)
     const statusOptions = [...new Set(filterableJobs.map(j => {
         if (j.isParent && j.children?.length > 0) {
@@ -595,6 +568,33 @@ function Dashboard() {
         }
         return j.status;
     }).filter(Boolean))].sort();
+
+    const projectOptions = useMemo(() => {
+        const projects = masterData.projects || [];
+        if (!budFilter) return projects;
+
+        return projects.filter(project => String(project.budId || project.bud_id || project.bud?.id || '') === String(budFilter));
+    }, [masterData.projects, budFilter]);
+
+    useEffect(() => {
+        if (projectFilter && !projectOptions.some(project => String(project.id) === String(projectFilter))) {
+            setProjectFilter('');
+        }
+    }, [projectFilter, projectOptions]);
+
+    const queueTotal = filteredJobs.length;
+    const queueTotalPages = Math.max(1, Math.ceil(queueTotal / pageSize));
+
+    useEffect(() => {
+        if (queuePage > queueTotalPages) {
+            setQueuePage(queueTotalPages);
+        }
+    }, [queuePage, queueTotalPages]);
+
+    const paginatedJobs = useMemo(() => {
+        const startIndex = (queuePage - 1) * pageSize;
+        return filteredJobs.slice(startIndex, startIndex + pageSize);
+    }, [filteredJobs, queuePage, pageSize]);
 
     if (isLoading) {
         return (
@@ -747,7 +747,10 @@ function Dashboard() {
                 <div className="p-4 border-b border-gray-400">
                     <div className="flex items-center justify-between flex-wrap gap-2">
                         <div className="flex items-center gap-2">
-                            <h2 className="text-lg font-semibold text-gray-900">รายการงานของฉัน</h2>
+                                    <div>
+                                        <h2 className="text-lg font-semibold text-gray-900">รายการงานทั้งหมด</h2>
+                                        <p className="text-xs text-gray-500">มุมมองรวมของทุกงานในระบบตาม filter ปัจจุบัน</p>
+                                    </div>
                             {queueTotal > 0 && (
                                 <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
                                     {Math.min((queuePage - 1) * pageSize + 1, queueTotal)}-{Math.min(queuePage * pageSize, queueTotal)} / {queueTotal} รายการ
@@ -787,19 +790,33 @@ function Dashboard() {
                                 className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
                             >
                                 <option value="">All Status</option>
-                                <option value="draft">draft</option>
-                                <option value="scheduled">scheduled</option>
-                                <option value="submitted">submitted</option>
-                                <option value="pending_approval">pending approval</option>
-                                <option value="approved">approved</option>
-                                <option value="assigned">assigned</option>
-                                <option value="in_progress">in progress</option>
-                                <option value="pending_review">pending review</option>
-                                <option value="pending_rework">pending rework</option>
-                                <option value="completed">completed</option>
-                                <option value="rejected">rejected</option>
-                                <option value="cancelled">cancelled</option>
-                                <option value="on_hold">on hold</option>
+                                {statusOptions.map(status => (
+                                    <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>
+                                ))}
+                            </select>
+
+                            {/* BU Filter */}
+                            <select
+                                value={budFilter}
+                                onChange={e => setBudFilter(e.target.value)}
+                                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
+                            >
+                                <option value="">ทุก BU</option>
+                                {(masterData.buds || []).map(bud => (
+                                    <option key={bud.id} value={bud.id}>{bud.name}</option>
+                                ))}
+                            </select>
+
+                            {/* Project Filter */}
+                            <select
+                                value={projectFilter}
+                                onChange={e => setProjectFilter(e.target.value)}
+                                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
+                            >
+                                <option value="">ทุกโครงการ</option>
+                                {projectOptions.map(project => (
+                                    <option key={project.id} value={project.id}>{project.name}</option>
+                                ))}
                             </select>
 
                             {/* Assignee Filter */}
@@ -825,11 +842,13 @@ function Dashboard() {
                                 แสดงงานสำเร็จ
                             </label>
 
-                            {(statusFilter || assigneeFilter || includeCompleted) && (
+                            {(statusFilter || assigneeFilter || includeCompleted || budFilter || projectFilter) && (
                                 <button
                                     onClick={() => {
                                         setStatusFilter('');
                                         setAssigneeFilter('');
+                                        setBudFilter('');
+                                        setProjectFilter('');
                                         setIncludeCompleted(false);
                                     }}
                                     className="px-3 py-1.5 text-sm rounded-lg border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors cursor-pointer"
@@ -847,17 +866,6 @@ function Dashboard() {
                                 <option value="updatedAt">เรียงตาม: อัปเดตล่าสุด</option>
                                 <option value="createdAt">เรียงตาม: งานสร้างล่าสุด</option>
                                 <option value="sla">เรียงตาม: SLA น้อยไปมาก</option>
-                            </select>
-
-                            {/* Page Size Selector */}
-                            <select
-                                value={pageSize}
-                                onChange={e => setPageSize(Number(e.target.value))}
-                                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
-                            >
-                                <option value={20}>20 / หน้า</option>
-                                <option value={50}>50 / หน้า</option>
-                                <option value={100}>100 / หน้า</option>
                             </select>
                         </div>
                     </div>
@@ -888,7 +896,7 @@ function Dashboard() {
                                     </td>
                                 </tr>
                             ) : (
-                                filteredJobs.map((job, idx) => {
+                                paginatedJobs.map((job, idx) => {
                                     const rowNum = (queuePage - 1) * pageSize + idx + 1;
                                     // === FLAT VIEW: แสดงแบบธรรมดา (เดิม) ===
                                     if (viewMode === 'flat') {
@@ -959,31 +967,44 @@ function Dashboard() {
 
                     {/* Pagination Bar */}
                     {queueTotal > 0 && (
-                        <div className="py-3 px-4 flex items-center justify-between border-t border-gray-200">
-                            <span className="text-sm text-gray-500">
-                                แสดง {Math.min((queuePage - 1) * pageSize + 1, queueTotal)}-{Math.min(queuePage * pageSize, queueTotal)} จาก {queueTotal} รายการ
-                            </span>
-                            <div className="flex items-center gap-2">
+                        <div className="border-t border-gray-200 px-4 py-3">
+                            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                <div className="text-sm text-gray-500">
+                                    แสดง {Math.min((queuePage - 1) * pageSize + 1, queueTotal)}-{Math.min(queuePage * pageSize, queueTotal)} จาก {queueTotal} รายการ
+                                </div>
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                                    <label className="flex items-center gap-2 text-sm text-gray-600">
+                                        <span>จำนวนต่อหน้า</span>
+                                        <select
+                                            value={pageSize}
+                                            onChange={e => setPageSize(Number(e.target.value))}
+                                            className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
+                                        >
+                                            <option value={20}>20 / หน้า</option>
+                                            <option value={50}>50 / หน้า</option>
+                                            <option value={100}>100 / หน้า</option>
+                                        </select>
+                                    </label>
+                                    <div className="flex items-center gap-2">
                                 <button
-                                    onClick={() => { if (queuePage > 1) fetchQueueJobs(queuePage - 1, false); }}
+                                    onClick={() => { if (queuePage > 1) setQueuePage(prev => prev - 1); }}
                                     disabled={queuePage <= 1 || queueLoading}
                                     className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${queuePage <= 1 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-gray-300 text-gray-600 hover:bg-gray-50 cursor-pointer'}`}
                                 >
                                     ← ก่อนหน้า
                                 </button>
                                 <span className="text-sm text-gray-600 font-medium">
-                                    หน้า {queuePage} / {Math.ceil(queueTotal / pageSize)}
+                                    หน้า {queuePage} / {queueTotalPages}
                                 </span>
                                 <button
-                                    onClick={() => { 
-                                        const totalPages = Math.ceil(queueTotal / pageSize);
-                                        if (queuePage < totalPages) fetchQueueJobs(queuePage + 1, false); 
-                                    }}
-                                    disabled={queuePage >= Math.ceil(queueTotal / pageSize) || queueLoading}
-                                    className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${queuePage >= Math.ceil(queueTotal / pageSize) ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-gray-300 text-gray-600 hover:bg-gray-50 cursor-pointer'}`}
+                                    onClick={() => { if (queuePage < queueTotalPages) setQueuePage(prev => prev + 1); }}
+                                    disabled={queuePage >= queueTotalPages || queueLoading}
+                                    className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${queuePage >= queueTotalPages ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-gray-300 text-gray-600 hover:bg-gray-50 cursor-pointer'}`}
                                 >
                                     ถัดไป →
                                 </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
