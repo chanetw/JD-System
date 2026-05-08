@@ -17,7 +17,6 @@ import { api } from '@shared/services/apiService';
 import { formatDateToThai } from '@shared/utils/dateUtils';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { useSuperSearchStore } from '@core/stores/superSearchStore';
-import { getUserScopes } from '@shared/utils/scopeHelpers';
 import { hasRole } from '@shared/utils/permission.utils';
 import { DJ_LIST_FILTER_OPTIONS, matchesStatusFilter } from '@shared/constants/jobStatus';
 import { resolveSlaBadgePresentation } from '@shared/utils/slaStatusResolver';
@@ -129,30 +128,9 @@ export default function DJList() {
 
             console.log(`[DJList] Loaded ${jobsData.length} jobs. First job:`, jobsData[0]);
 
-            // === Scope-based Filtering ===
-            // ⚡ Performance: ดึง scopes 1 ครั้ง แล้วใช้ซ้ำ (ไม่เรียก getUserScopes ซ้ำใน getAllowedProjectIds)
-            let scopeFilteredJobs = jobsData;
-            if (user?.id && user?.tenantId) {
-                const scopes = await getUserScopes(user.id);
-                const hasTenantScope = scopes.some(s => s.scope_level?.toLowerCase() === 'tenant');
-
-                if (!hasTenantScope && scopes.length > 0) {
-                    // ใช้ scopes ที่ดึงมาแล้วเพื่อคำนวณ allowedProjectIds ตรงนี้ แทนการเรียก getAllowedProjectIds ที่จะดึงซ้ำ
-                    const allowedProjectIds = new Set();
-                    scopes.forEach(scope => {
-                        if (scope.scope_level?.toLowerCase() === 'project' && scope.project_id) {
-                            allowedProjectIds.add(scope.project_id);
-                        }
-                    });
-                    if (allowedProjectIds.size > 0) {
-                        scopeFilteredJobs = jobsData.filter(job => allowedProjectIds.has(job.projectId || job.project_id));
-                        console.log('📋 [DJList] Filtered by scope:', scopeFilteredJobs.length, 'jobs');
-                    }
-                }
-            }
-
-            setJobs(scopeFilteredJobs);
-            setFilteredJobs(scopeFilteredJobs);
+            // Visibility is enforced by backend; UI should not further restrict by local scope rows.
+            setJobs(jobsData);
+            setFilteredJobs(jobsData);
             setMasterData(masterDataResult);
         } catch (error) {
             console.error('ไม่สามารถโหลดข้อมูลรายการงานได้:', error);

@@ -122,6 +122,25 @@ export const jobService = {
         }
     },
 
+    getApprovalActionableList: async (user) => {
+        const response = await jobService.getJobsByRole(user, {
+            approvalView: 'waiting',
+            limit: 500,
+        });
+
+        return Array.isArray(response) ? response : (response?.data || []);
+    },
+
+    getApprovalHistoryList: async (user, category = 'approved') => {
+        const normalizedCategory = category === 'not_approved' ? 'not_approved' : 'approved';
+        const response = await jobService.getJobsByRole(user, {
+            approvalView: normalizedCategory,
+            limit: 500,
+        });
+
+        return Array.isArray(response) ? response : (response?.data || []);
+    },
+
 
     /**
      * ดึงงานของผู้รับผิดชอบ (Assignee) แบ่งตามกลุ่มสถานะ

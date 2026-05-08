@@ -648,7 +648,7 @@ const recalculateDueDateForPriorityChange = async ({ db, tenantId, job, oldPrior
  */
 router.get('/', async (req, res) => {
   try {
-    const { role = 'requester', status, page = 1, limit = 50, assignee, includeCompleted } = req.query;
+    const { role = 'requester', status, page = 1, limit = 50, assignee, includeCompleted, approvalView } = req.query;
     const prisma = getDatabase();
     const userId = req.user.userId;
     const tenantId = req.user.tenantId;
@@ -661,6 +661,12 @@ router.get('/', async (req, res) => {
 
     // Multi-role support: role can be comma-separated (e.g. "requester,approver")
     const roles = role.split(',').map(r => r.trim().toLowerCase()).filter(Boolean);
+    const hasApproverRole = roles.includes('approver');
+
+    const requestHasAdminRole = roles.includes('admin') || roles.includes('superadmin');
+    const approvalHistoryWhere = requestHasAdminRole
+      ? { status: { in: ['approved', 'rejected', 'returned'] } }
+      : { approverId: userId, status: { in: ['approved', 'rejected', 'returned'] } };
 
     // Helper: build where condition for a single role
     const buildRoleCondition = async (singleRole) => {
@@ -697,6 +703,7 @@ router.get('/', async (req, res) => {
               OR: [
                 { status: 'pending_approval' },
                 { status: { startsWith: 'pending_level_' } },
+                { status: 'assignee_rejected' },
                 { status: 'pending_dependency' },  // ✅ Sequential jobs waiting for predecessor
                 { status: 'rejected' },
                 { status: 'returned' },
@@ -945,6 +952,7 @@ router.get('/', async (req, res) => {
               OR: [
                 { status: 'pending_approval' },
                 { status: { startsWith: 'pending_level_' } },
+                { status: 'assignee_rejected' },
                 { status: 'pending_dependency' },
                 { status: 'rejected' },
                 { status: 'returned' },
@@ -1096,8 +1104,22 @@ router.get('/', async (req, res) => {
             select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, isActive: true }
           },
           approvals: { // Fetch approvals for history data
-            where: { approverId: userId, status: { in: ['approved', 'rejected', 'returned'] } },
-            select: { approverId: true, status: true, approvedAt: true, createdAt: true, comment: true },
+            where: approvalHistoryWhere,
+            select: {
+              approverId: true,
+              status: true,
+              approvedAt: true,
+              createdAt: true,
+              comment: true,
+              approver: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  displayName: true,
+                  email: true
+                }
+              }
+            },
             orderBy: { createdAt: 'desc' },
             take: 1
           },
@@ -1117,20 +1139,27 @@ router.get('/', async (req, res) => {
       prisma.job.count({ where })
     ]);
 
-    const transformed = jobs.map(j => {
+    let transformed = jobs.map(j => {
       // Find history data if user has acted on this job
       let historyData = null;
       if (req.user?.userId) {
-        // We'd need the approvedJobMap here, but it's only available inside the role condition builder.
-        // Instead, we can fetch history for all returned jobs for the current user, or just use a separate query.
-        // For simplicity and performance, if the job has approvals, we find the one for the user.
-        const userApproval = j.approvals?.find(a => a.approverId === req.user.userId && ['approved', 'rejected', 'returned'].includes(a.status));
-        if (userApproval) {
+        const selectedApproval = requestHasAdminRole
+          ? j.approvals?.[0]
+          : j.approvals?.find(a => a.approverId === req.user.userId && ['approved', 'rejected', 'returned'].includes(a.status));
+
+        if (selectedApproval) {
+          const actorName = `${selectedApproval.approver?.firstName || ''} ${selectedApproval.approver?.lastName || ''}`.trim()
+            || selectedApproval.approver?.displayName
+            || selectedApproval.approver?.email
+            || null;
+
           historyData = {
-            actionDate: userApproval.approvedAt || userApproval.createdAt,
-            comment: userApproval.comment,
-            action: userApproval.status,
-            category: userApproval.status === 'approved' ? 'approved' : 'not_approved'
+            actionDate: selectedApproval.approvedAt || selectedApproval.createdAt,
+            comment: selectedApproval.comment,
+            action: selectedApproval.status,
+            category: selectedApproval.status === 'approved' ? 'approved' : 'not_approved',
+            actedBy: actorName,
+            actedById: selectedApproval.approverId
           };
         }
       }
@@ -1179,8 +1208,60 @@ router.get('/', async (req, res) => {
       }
     });
 
-    // We also need to add 'historyData' logic for returned jobs from the loaded 'historyData' where possible:
-    // This is just mapping, historyData already set correctly above inside the map function.
+    const normalizedApprovalView = String(approvalView || '').trim().toLowerCase();
+    if (normalizedApprovalView) {
+      const isPendingStatusForQueue = (jobStatus) => (
+        jobStatus === 'pending_approval'
+        || jobStatus === 'assignee_rejected'
+        || jobStatus === 'pending_dependency'
+        || String(jobStatus || '').startsWith('pending_level_')
+      );
+
+      const isActionableStatusForQueue = (jobStatus) => (
+        jobStatus === 'pending_approval'
+        || jobStatus === 'assignee_rejected'
+        || String(jobStatus || '').startsWith('pending_level_')
+      );
+
+      if (normalizedApprovalView === 'waiting') {
+        transformed = transformed.filter((job) => {
+          if (job.isParent) return false;
+          if (!isPendingStatusForQueue(job.status)) return false;
+
+          if (requestHasAdminRole) {
+            return true;
+          }
+
+          if (!hasApproverRole) {
+            return false;
+          }
+
+          if (!isActionableStatusForQueue(job.status)) {
+            return false;
+          }
+
+          return job.isCurrentApprover === true;
+        });
+      }
+
+      if (normalizedApprovalView === 'approved') {
+        transformed = transformed.filter((job) => {
+          if (job.isParent) return false;
+          if (job.historyData?.category !== 'approved') return false;
+          if (requestHasAdminRole) return true;
+          return isSameUserId(job.historyData?.actedById, userId);
+        });
+      }
+
+      if (normalizedApprovalView === 'not_approved') {
+        transformed = transformed.filter((job) => {
+          if (job.isParent) return false;
+          if (job.historyData?.category !== 'not_approved') return false;
+          if (requestHasAdminRole) return true;
+          return isSameUserId(job.historyData?.actedById, userId);
+        });
+      }
+    }
 
     res.json({
       success: true,

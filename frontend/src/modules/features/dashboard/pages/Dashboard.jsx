@@ -80,6 +80,13 @@ const getPersonDisplayName = (person) => {
     return person.email || '';
 };
 
+const truncateLabel = (value, maxLength = 28) => {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    if (text.length <= maxLength) return text;
+    return `${text.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`;
+};
+
 // ============================================
 // Main Component
 // ============================================
@@ -576,6 +583,13 @@ function Dashboard() {
         return projects.filter(project => String(project.budId || project.bud_id || project.bud?.id || '') === String(budFilter));
     }, [masterData.projects, budFilter]);
 
+    const selectedBudName = useMemo(() => {
+        if (!budFilter) return 'ทุก BU';
+
+        const selectedBud = (masterData.buds || []).find((bud) => String(bud.id) === String(budFilter));
+        return selectedBud?.name || 'ทุก BU';
+    }, [masterData.buds, budFilter]);
+
     useEffect(() => {
         if (projectFilter && !projectOptions.some(project => String(project.id) === String(projectFilter))) {
             setProjectFilter('');
@@ -745,24 +759,27 @@ function Dashboard() {
           ============================================ */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-400">
                 <div className="p-4 border-b border-gray-400">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                        <div className="flex items-center gap-2">
-                                    <div>
-                                        <h2 className="text-lg font-semibold text-gray-900">รายการงานทั้งหมด</h2>
-                                        <p className="text-xs text-gray-500">มุมมองรวมของทุกงานในระบบตาม filter ปัจจุบัน</p>
-                                    </div>
-                            {queueTotal > 0 && (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                                    {Math.min((queuePage - 1) * pageSize + 1, queueTotal)}-{Math.min(queuePage * pageSize, queueTotal)} / {queueTotal} รายการ
-                                </span>
-                            )}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
+                    <div className="space-y-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex items-center gap-2">
+                                <div>
+                                    <h2 className="text-lg font-semibold text-gray-900">รายการงานทั้งหมด</h2>
+                                    <p className="text-xs text-gray-500">มุมมองรวมของทุกงานในระบบตาม filter ปัจจุบัน</p>
+                                </div>
+                                {queueTotal > 0 && (
+                                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 whitespace-nowrap">
+                                        {Math.min((queuePage - 1) * pageSize + 1, queueTotal)}-{Math.min(queuePage * pageSize, queueTotal)} / {queueTotal} รายการ
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="w-full overflow-x-auto sm:w-auto">
+                                <div className="flex min-w-max items-center gap-2">
                             {/* View Mode Toggle */}
                             <div className="flex items-center gap-1 border border-gray-300 rounded-lg p-0.5 bg-gray-50">
                                 <button
                                     onClick={() => setViewMode('flat')}
-                                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                                    className={`px-3 py-1.5 text-sm rounded-md whitespace-nowrap transition-colors ${
                                         viewMode === 'flat'
                                             ? 'bg-white text-gray-900 font-medium shadow-sm'
                                             : 'text-gray-600 hover:text-gray-900'
@@ -772,7 +789,7 @@ function Dashboard() {
                                 </button>
                                 <button
                                     onClick={() => setViewMode('parent')}
-                                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                                    className={`px-3 py-1.5 text-sm rounded-md whitespace-nowrap transition-colors ${
                                         viewMode === 'parent'
                                             ? 'bg-white text-gray-900 font-medium shadow-sm'
                                             : 'text-gray-600 hover:text-gray-900'
@@ -781,13 +798,18 @@ function Dashboard() {
                                     🗂️ Parent View
                                 </button>
                             </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
 
 
                             {/* Status Filter */}
                             <select
                                 value={statusFilter}
                                 onChange={e => setStatusFilter(e.target.value)}
-                                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
+                                className="w-full min-h-[40px] px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
                             >
                                 <option value="">All Status</option>
                                 {statusOptions.map(status => (
@@ -799,11 +821,14 @@ function Dashboard() {
                             <select
                                 value={budFilter}
                                 onChange={e => setBudFilter(e.target.value)}
-                                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
+                                title={selectedBudName}
+                                className="w-full min-h-[40px] px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
                             >
                                 <option value="">ทุก BU</option>
                                 {(masterData.buds || []).map(bud => (
-                                    <option key={bud.id} value={bud.id}>{bud.name}</option>
+                                    <option key={bud.id} value={bud.id} title={bud.name}>
+                                        {truncateLabel(bud.name, 30)}
+                                    </option>
                                 ))}
                             </select>
 
@@ -811,7 +836,7 @@ function Dashboard() {
                             <select
                                 value={projectFilter}
                                 onChange={e => setProjectFilter(e.target.value)}
-                                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
+                                className="w-full min-h-[40px] px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
                             >
                                 <option value="">ทุกโครงการ</option>
                                 {projectOptions.map(project => (
@@ -823,7 +848,7 @@ function Dashboard() {
                             <select
                                 value={assigneeFilter}
                                 onChange={e => setAssigneeFilter(e.target.value)}
-                                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
+                                className="w-full min-h-[40px] px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
                             >
                                 <option value="">ผู้รับผิดชอบทั้งหมด</option>
                                 {assigneeOptions.map(name => (
@@ -832,7 +857,7 @@ function Dashboard() {
                             </select>
 
                             {/* Clear Filters */}
-                            <label className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-700">
+                            <label className="flex min-h-[40px] items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 whitespace-nowrap">
                                 <input
                                     type="checkbox"
                                     checked={includeCompleted}
@@ -851,7 +876,7 @@ function Dashboard() {
                                         setProjectFilter('');
                                         setIncludeCompleted(false);
                                     }}
-                                    className="px-3 py-1.5 text-sm rounded-lg border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors cursor-pointer"
+                                    className="min-h-[40px] px-3 py-1.5 text-sm rounded-lg border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors cursor-pointer whitespace-nowrap"
                                 >
                                     ✕ ล้าง filter
                                 </button>
@@ -861,7 +886,7 @@ function Dashboard() {
                             <select
                                 value={sortMode}
                                 onChange={e => setSortMode(e.target.value)}
-                                className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
+                                className="w-full min-h-[40px] px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
                             >
                                 <option value="updatedAt">เรียงตาม: อัปเดตล่าสุด</option>
                                 <option value="createdAt">เรียงตาม: งานสร้างล่าสุด</option>

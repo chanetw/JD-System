@@ -985,10 +985,25 @@ export default function JobDetail() {
     const jobRole = getJobRole(user, job);
     const theme = JOB_ROLE_THEMES[jobRole] || JOB_ROLE_THEMES.viewer;
     const canEditDeliveredQuantities = hasAnyRole(user, ['Admin']);
+    const isParentJob = job.isParent === true || job.isParent === 1;
+    const isChildJob = Boolean(job.parentJob || job.parentJobId || job.predecessorId);
+
+    const relationTerms = {
+        parent: 'งานหลัก',
+        child: 'งานย่อย',
+        standalone: 'งานเดี่ยว',
+        parentRef: 'งานหลักที่เชื่อมโยง',
+    };
+
+    const relationLabel = isParentJob
+        ? relationTerms.parent
+        : isChildJob
+            ? relationTerms.child
+            : relationTerms.standalone;
 
     const tabs = [
         { id: 'overview', label: 'ภาพรวม (Overview)', icon: DocumentTextIcon },
-        { id: 'subjobs', label: `งานย่อย (${job.childJobs?.length || 0})`, icon: QueueListIcon, hidden: !job.isParent }, // Logic corrected
+        { id: 'subjobs', label: `งานย่อย (${job.childJobs?.length || 0})`, icon: QueueListIcon, hidden: !isParentJob }, // Logic corrected
         { id: 'activity', label: 'ประวัติ (History)', icon: ClockIcon }
     ].filter(t => !t.hidden);
 
@@ -1003,6 +1018,9 @@ export default function JobDetail() {
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-3 flex-wrap">
                             <h1 className="text-xl font-bold text-gray-900">{job.djId || job.id}</h1>
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                                ประเภทงาน: {relationLabel}
+                            </span>
                             {job.priority?.toLowerCase() === 'urgent' && (
                                 <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-red-100 text-red-800 border border-red-200 animate-pulse shadow-sm">
                                     🔥 งานเร่งด่วน (Urgent)
@@ -1021,7 +1039,7 @@ export default function JobDetail() {
                                 onClick={() => navigate(`/jobs/${job.parentJob.id}`)}
                                 className="inline-block mt-2 text-rose-600 bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded text-xs border border-rose-100 font-medium cursor-pointer transition-colors"
                             >
-                                📎 Parent: {job.parentJob.djId} →
+                                📎 {relationTerms.parentRef}: {job.parentJob.djId} →
                             </button>
                         )}
                     </div>
