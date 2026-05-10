@@ -414,13 +414,18 @@ export default function UserPortal() {
                     <div className="bg-amber-50 border-b border-amber-200 overflow-hidden">
                         <style>{`
                             @keyframes news-ticker {
-                                0%   { transform: translateX(100vw); }
+                                0%   { transform: translateX(100%); }
                                 100% { transform: translateX(-100%); }
+                            }
+                            .news-ticker-wrapper {
+                                overflow: hidden;
+                                position: relative;
                             }
                             .news-ticker-text {
                                 display: inline-block;
-                                animation: news-ticker 12s linear infinite;
+                                animation: news-ticker 30s linear infinite;
                                 white-space: nowrap;
+                                padding-left: 2rem;
                             }
                             .news-ticker-text:hover {
                                 animation-play-state: paused;
@@ -428,13 +433,13 @@ export default function UserPortal() {
                         `}</style>
                         <div className="flex items-center">
                             {/* Left badge */}
-                            <div className="flex-shrink-0 flex items-center gap-1.5 bg-amber-100 text-amber-700 px-4 py-2.5 text-xs font-semibold border-r border-amber-200">
+                            <div className="flex-shrink-0 flex items-center gap-1.5 bg-amber-100 text-amber-700 px-4 py-2.5 text-xs font-semibold border-r border-amber-200 z-10">
                                 <span>📢</span>
                                 <span>ประกาศ</span>
                             </div>
                             {/* Scrolling text */}
-                            <div className="flex-1 overflow-hidden py-2.5">
-                                <span className="news-ticker-text text-sm text-amber-700 px-8">
+                            <div className="flex-1 news-ticker-wrapper py-2.5">
+                                <span className="news-ticker-text text-sm text-amber-700">
                                     {portalSettings.announcementText}
                                 </span>
                             </div>
