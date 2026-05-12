@@ -1860,6 +1860,19 @@ export class ApprovalService extends BaseService {
         }
       });
 
+      // Persist final decision so approval history uses the exact confirm timestamp and actor.
+      await this.prisma.approval.create({
+        data: {
+          tenantId: job.tenantId,
+          jobId,
+          approverId,
+          stepNumber: 1,
+          status: 'rejected',
+          approvedAt: new Date(),
+          comment: comment?.trim() || 'Confirmed assignee rejection via web'
+        }
+      });
+
       // Log Activity
       await this.logApprovalActivity({
         jobId,

@@ -749,9 +749,13 @@ router.get('/', async (req, res) => {
     const hasApproverRole = roles.includes('approver');
 
     const requestHasAdminRole = roles.includes('admin') || roles.includes('superadmin');
-    const approvalHistoryWhere = requestHasAdminRole
-      ? { status: { in: ['approved', 'rejected', 'returned'] } }
-      : { approverId: userId, status: { in: ['approved', 'rejected', 'returned'] } };
+    const approvalHistoryWhere = {
+      approverId: userId,
+      status: { in: ['approved', 'rejected', 'returned'] },
+      NOT: [
+        { comment: { startsWith: 'Auto-approved', mode: 'insensitive' } }
+      ]
+    };
 
     // Helper: build where condition for a single role
     const buildRoleCondition = async (singleRole) => {
@@ -1228,9 +1232,9 @@ router.get('/', async (req, res) => {
       // Find history data if user has acted on this job
       let historyData = null;
       if (req.user?.userId) {
-        const selectedApproval = requestHasAdminRole
-          ? j.approvals?.[0]
-          : j.approvals?.find(a => a.approverId === req.user.userId && ['approved', 'rejected', 'returned'].includes(a.status));
+        const selectedApproval = j.approvals?.find(
+          a => isSameUserId(a.approverId, req.user.userId) && ['approved', 'rejected', 'returned'].includes(a.status)
+        );
 
         if (selectedApproval) {
           const actorName = `${selectedApproval.approver?.firstName || ''} ${selectedApproval.approver?.lastName || ''}`.trim()
@@ -1334,7 +1338,6 @@ router.get('/', async (req, res) => {
           if (job.isParent) return false;
           if (job.status === 'assignee_rejected') return false;
           if (job.historyData?.category !== 'approved') return false;
-          if (requestHasAdminRole) return true;
           return isSameUserId(job.historyData?.actedById, userId);
         });
       }
@@ -1344,7 +1347,6 @@ router.get('/', async (req, res) => {
           if (job.isParent) return false;
           if (job.status === 'assignee_rejected') return false;
           if (job.historyData?.category !== 'not_approved') return false;
-          if (requestHasAdminRole) return true;
           return isSameUserId(job.historyData?.actedById, userId);
         });
       }
