@@ -6383,7 +6383,6 @@ router.post('/:id/edit-priority', async (req, res) => {
       }
     }
 
-    const rootPlan = updatedPlans[0];
     const rootDueDateChanged = rootPlan.oldDueDate?.getTime() !== rootPlan.newDueDate?.getTime();
     const chainResult = scope === 'chain'
       ? {
