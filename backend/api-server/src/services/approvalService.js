@@ -44,11 +44,67 @@ const ASSIGNEE_REJECTABLE_STATUSES = HARD_DELETE_ALLOWED_STATUSES.filter(
   (status) => !ASSIGNEE_REJECT_TERMINAL_STATUSES.includes(status) && status !== 'assignee_rejected'
 );
 
+const normalizeRoleValue = (role) => {
+  if (!role) return '';
+  if (typeof role === 'string') return role.toLowerCase();
+  return String(role.roleName || role.name || role.role || '').toLowerCase();
+};
+
+const hasAdminPrivileges = (user) => {
+  if (!user) return false;
+
+  const roles = [
+    ...(Array.isArray(user.roles) ? user.roles : []),
+    user.roleName,
+    user.role
+  ].filter(Boolean);
+
+  return roles.some((role) => ['admin', 'superadmin', 'system_admin'].includes(normalizeRoleValue(role)));
+};
+
 export class ApprovalService extends BaseService {
   constructor() {
     super();
     this.notificationService = new NotificationService();
     this.magicLinkService = new MagicLinkService();
+  }
+
+  async isAdminActor(actorUser, userId) {
+    if (hasAdminPrivileges(actorUser)) return true;
+    if (!userId) return false;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        role: true,
+        roleName: true,
+        userRoles: {
+          where: { isActive: true },
+          select: { roleName: true }
+        }
+      }
+    });
+
+    if (!user) return false;
+
+    const fallbackUser = {
+      role: user.role,
+      roleName: user.roleName,
+      roles: (user.userRoles || []).map((item) => item.roleName).filter(Boolean)
+    };
+
+    return hasAdminPrivileges(fallbackUser);
+  }
+
+  withAdminOverrideComment({ isAdmin, rawComment, defaultComment = null }) {
+    const trimmed = typeof rawComment === 'string' ? rawComment.trim() : '';
+    const baseComment = trimmed || defaultComment;
+
+    if (!baseComment) return null;
+    if (!isAdmin) return baseComment;
+    if (baseComment.startsWith('[Admin Override]')) return baseComment;
+
+    return `[Admin Override] ${baseComment}`;
   }
 
   async triggerUrgentRescheduleIfNeeded(job, prisma = this.prisma) {
@@ -730,8 +786,15 @@ export class ApprovalService extends BaseService {
    * @param {string} params.comment
    * @param {string} params.ipAddress
    */
-  async approveJobViaWeb({ jobId, approverId, comment, ipAddress }) {
+  async approveJobViaWeb({ jobId, approverId, approverUser = null, comment, ipAddress }) {
     try {
+      const isAdminOverride = await this.isAdminActor(approverUser, approverId);
+      const effectiveComment = this.withAdminOverrideComment({
+        isAdmin: isAdminOverride,
+        rawComment: comment,
+        defaultComment: null
+      });
+
       // 1. Get Job & Current Status
       const job = await this.prisma.job.findUnique({
         where: { id: jobId },
@@ -795,7 +858,7 @@ export class ApprovalService extends BaseService {
           stepNumber: currentLevel || 1,
           status: 'approved',
           approvedAt: new Date(),
-          comment: comment || null,
+          comment: effectiveComment,
           ipAddress: ipAddress || null,
           userAgent: 'web_action'
         }
@@ -1208,7 +1271,7 @@ export class ApprovalService extends BaseService {
         description: `อนุมัติงาน ${job.djId} -> ${nextStatus}`,
         ipAddress,
         metadata: {
-          comment,
+          comment: effectiveComment,
           previousStatus: job.status,
           newStatus: nextStatus,
           flowName: flow?.name || 'Default',
@@ -1241,8 +1304,15 @@ export class ApprovalService extends BaseService {
   /**
    * ปฏิเสธงานผ่าน Web Backend
    */
-  async rejectJobViaWeb({ jobId, approverId, comment, ipAddress }) {
+  async rejectJobViaWeb({ jobId, approverId, approverUser = null, comment, ipAddress }) {
     try {
+      const isAdminOverride = await this.isAdminActor(approverUser, approverId);
+      const effectiveComment = this.withAdminOverrideComment({
+        isAdmin: isAdminOverride,
+        rawComment: comment,
+        defaultComment: null
+      });
+
       const job = await this.prisma.job.findUnique({
         where: { id: jobId },
         select: { id: true, djId: true, status: true, isParent: true, tenantId: true, requesterId: true, subject: true }
@@ -1293,7 +1363,7 @@ export class ApprovalService extends BaseService {
           stepNumber: currentLevel,
           status: 'rejected',
           approvedAt: new Date(),
-          comment,
+          comment: effectiveComment,
           ipAddress: ipAddress || null,
           userAgent: 'web_action'
         }
@@ -1314,7 +1384,7 @@ export class ApprovalService extends BaseService {
       const cascadeResult = await chainService.cascadeRejectDownstream(
         jobId,
         this.prisma,
-        comment
+        effectiveComment
       );
 
       // Send notifications to affected assignees
@@ -1339,10 +1409,10 @@ export class ApprovalService extends BaseService {
         jobId,
         approverId,
         activityType: 'job_rejected',
-        description: `ปฏิเสธงาน ${job.djId} (Web Action) - เหตุผล: ${comment}`,
+        description: `ปฏิเสธงาน ${job.djId} (Web Action) - เหตุผล: ${effectiveComment}`,
         ipAddress,
         metadata: {
-          comment,
+          comment: effectiveComment,
           previousStatus: job.status
         }
       });
@@ -1354,7 +1424,7 @@ export class ApprovalService extends BaseService {
           userId: job.requesterId,
           type: 'job_rejected',
           title: `❌ งานถูกปฏิเสธ: ${job.djId}`,
-          message: `งาน "${job.subject}" ถูกปฏิเสธโดยผู้อนุมัติ เหตุผล: ${comment}`,
+          message: `งาน "${job.subject}" ถูกปฏิเสธโดยผู้อนุมัติ เหตุผล: ${effectiveComment}`,
           link: `/jobs/${jobId}`
         }).catch(err => console.warn('[Reject] Noti to requester failed:', err.message));
 
@@ -1376,7 +1446,7 @@ export class ApprovalService extends BaseService {
             const emailHtml = createJobRejectionEmail({
               djId: job.djId,
               subject: job.subject,
-              reason: comment,
+              reason: effectiveComment,
               magicLink,
               requesterName: `${requester.firstName} ${requester.lastName}`
             });
@@ -1828,8 +1898,15 @@ export class ApprovalService extends BaseService {
   /**
    * Approver ยืนยันการปฏิเสธของ Assignee → งานเปลี่ยนเป็น rejected แจ้ง Requester
    */
-  async confirmAssigneeRejection({ jobId, approverId, comment, ccEmails = [] }) {
+  async confirmAssigneeRejection({ jobId, approverId, approverUser = null, comment, ccEmails = [] }) {
     try {
+      const isAdminOverride = await this.isAdminActor(approverUser, approverId);
+      const effectiveComment = this.withAdminOverrideComment({
+        isAdmin: isAdminOverride,
+        rawComment: comment,
+        defaultComment: 'Confirmed assignee rejection via web'
+      });
+
       const job = await this.prisma.job.findUnique({
         where: { id: jobId },
         select: {
@@ -1869,7 +1946,7 @@ export class ApprovalService extends BaseService {
           stepNumber: 1,
           status: 'rejected',
           approvedAt: new Date(),
-          comment: comment?.trim() || 'Confirmed assignee rejection via web',
+          comment: effectiveComment,
           actionType: 'confirm_assignee_rejection'
         }
       });
@@ -1879,9 +1956,9 @@ export class ApprovalService extends BaseService {
         jobId,
         userId: approverId,
         activityType: 'assignee_rejection_confirmed',
-        description: `ผู้อนุมัติยืนยันการปฏิเสธงาน ${job.djId}${comment ? ` - หมายเหตุ: ${comment}` : ''}`,
+        description: `ผู้อนุมัติยืนยันการปฏิเสธงาน ${job.djId}${effectiveComment ? ` - หมายเหตุ: ${effectiveComment}` : ''}`,
         metadata: {
-          approverComment: comment,
+          approverComment: effectiveComment,
           assigneeComment: job.rejectionComment,
           previousStatus: job.status,
           ccEmails: ccEmails
@@ -1974,8 +2051,15 @@ export class ApprovalService extends BaseService {
    * @param {string} params.reason - Reason for denial
    * @returns {Promise<Object>} Result object
    */
-  async denyAssigneeRejection({ jobId, approverId, reason }) {
+  async denyAssigneeRejection({ jobId, approverId, approverUser = null, reason }) {
     try {
+      const isAdminOverride = await this.isAdminActor(approverUser, approverId);
+      const effectiveReason = this.withAdminOverrideComment({
+        isAdmin: isAdminOverride,
+        rawComment: reason,
+        defaultComment: 'Denied assignee rejection via web'
+      });
+
       const job = await this.prisma.job.findUnique({
         where: { id: jobId },
         select: {
@@ -2061,9 +2145,9 @@ export class ApprovalService extends BaseService {
         jobId,
         userId: approverId,
         activityType: 'assignee_rejection_denied',
-        description: `ผู้อนุมัติไม่อนุมัติการปฏิเสธงาน ${job.djId} - ${reason}`,
+        description: `ผู้อนุมัติไม่อนุมัติการปฏิเสธงาน ${job.djId} - ${effectiveReason}`,
         metadata: {
-          denialReason: reason,
+          denialReason: effectiveReason,
           assigneeComment: job.rejectionComment,
           previousStatus: job.status
         }
@@ -2076,7 +2160,7 @@ export class ApprovalService extends BaseService {
           userId: job.assigneeId,
           type: 'rejection_denied',
           title: `คำขอปฏิเสธงาน ${job.djId} ไม่ได้รับอนุมัติ`,
-          message: `กรุณาทำงาน "${job.subject}" ต่อ หรือขอขยายเวลา (Extend)\n\nเหตุผล: ${reason}`,
+          message: `กรุณาทำงาน "${job.subject}" ต่อ หรือขอขยายเวลา (Extend)\n\nเหตุผล: ${effectiveReason}`,
           link: `/jobs/${jobId}`
         }).catch(err => console.warn('[DenyRejection] Notification failed:', err.message));
       }
@@ -2098,7 +2182,7 @@ export class ApprovalService extends BaseService {
             content: `
               <div class="info-box">
                 <p><strong>งาน:</strong> ${job.djId} - ${job.subject}</p>
-                <p><strong>เหตุผลที่ไม่อนุมัติ:</strong> ${reason}</p>
+                <p><strong>เหตุผลที่ไม่อนุมัติ:</strong> ${effectiveReason}</p>
                 <p>หากต้องการเวลาเพิ่มเติม กรุณาใช้ฟังก์ชัน Extend งานในระบบ</p>
               </div>
             `,

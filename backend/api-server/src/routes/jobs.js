@@ -4626,6 +4626,7 @@ router.post('/:id/approve', async (req, res) => {
     const result = await approvalService.approveJobViaWeb({
       jobId,
       approverId: req.user.userId,
+      approverUser: req.user,
       comment: req.body?.comment,
       ipAddress: getRequestIpAddress(req)
     });
@@ -4660,6 +4661,7 @@ router.post('/:id/reject', async (req, res) => {
     const result = await approvalService.rejectJobViaWeb({
       jobId,
       approverId: req.user.userId,
+      approverUser: req.user,
       comment: req.body?.comment,
       ipAddress: getRequestIpAddress(req)
     });
@@ -4738,6 +4740,7 @@ router.post('/:id/confirm-assignee-rejection', async (req, res) => {
     const result = await approvalService.confirmAssigneeRejection({
       jobId,
       approverId: req.user.userId,
+      approverUser: req.user,
       comment: req.body?.comment,
       ccEmails: Array.isArray(req.body?.ccEmails) ? req.body.ccEmails : []
     });
@@ -4792,6 +4795,7 @@ router.post('/:id/deny-assignee-rejection', async (req, res) => {
     const result = await approvalService.denyAssigneeRejection({
       jobId,
       approverId: req.user.userId,
+      approverUser: req.user,
       reason: reason.trim()
     });
 
@@ -6248,6 +6252,11 @@ router.post('/:id/edit-priority', async (req, res) => {
       });
 
       for (const plan of updatePlans) {
+        const dueDateChanged = plan.oldDueDate?.getTime() !== plan.newDueDate?.getTime();
+        const dueDateChangeText = dueDateChanged
+          ? ` กำหนดส่ง: ${plan.oldDueDate ? plan.oldDueDate.toLocaleDateString('th-TH') : '-'} -> ${plan.newDueDate ? plan.newDueDate.toLocaleDateString('th-TH') : '-'}`
+          : '';
+
         await tx.job.update({
           where: { id: plan.job.id },
           data: {
@@ -6262,12 +6271,12 @@ router.post('/:id/edit-priority', async (req, res) => {
             jobId: plan.job.id,
             userId,
             action: JOB_NOTIFICATION_EVENTS.PRIORITY_CHANGED,
-            message: `เปลี่ยน Priority จาก ${plan.oldPriority} เป็น ${newPriority}`,
+            message: `เปลี่ยน Priority จาก ${plan.oldPriority} เป็น ${newPriority}${dueDateChangeText}`,
             detail: {
               oldPriority: plan.oldPriority,
               newPriority,
               reason: reason.trim(),
-              dueDateChanged: plan.oldDueDate?.getTime() !== plan.newDueDate?.getTime(),
+              dueDateChanged,
               oldDueDate: plan.oldDueDate?.toISOString(),
               suggestedDueDate: plan.suggestedDueDate?.toISOString(),
               newDueDate: plan.newDueDate?.toISOString(),
@@ -6285,7 +6294,7 @@ router.post('/:id/edit-priority', async (req, res) => {
             tenantId,
             userId,
             activityType: JOB_NOTIFICATION_EVENTS.PRIORITY_CHANGED,
-            description: `Admin เปลี่ยน Priority จาก ${plan.oldPriority} เป็น ${newPriority}. เหตุผล: ${reason.trim()}`,
+            description: `Admin เปลี่ยน Priority จาก ${plan.oldPriority} เป็น ${newPriority}.${dueDateChangeText} เหตุผล: ${reason.trim()}`,
             metadata: {
               oldPriority: plan.oldPriority,
               newPriority,
