@@ -1869,7 +1869,8 @@ export class ApprovalService extends BaseService {
           stepNumber: 1,
           status: 'rejected',
           approvedAt: new Date(),
-          comment: comment?.trim() || 'Confirmed assignee rejection via web'
+          comment: comment?.trim() || 'Confirmed assignee rejection via web',
+          actionType: 'confirm_assignee_rejection'
         }
       });
 

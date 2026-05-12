@@ -183,8 +183,10 @@ class CacheService {
 export const cacheService = new CacheService();
 
 // Run cleanup every 10 minutes
-setInterval(() => {
+const cleanupInterval = setInterval(() => {
     cacheService.cleanup();
 }, 10 * 60 * 1000); // 10 minutes
+
+cleanupInterval.unref?.();
 
 export default cacheService;

@@ -1197,6 +1197,7 @@ router.get('/', async (req, res) => {
             select: {
               approverId: true,
               status: true,
+              actionType: true,
               approvedAt: true,
               createdAt: true,
               comment: true,
@@ -1242,11 +1243,25 @@ router.get('/', async (req, res) => {
             || selectedApproval.approver?.email
             || null;
 
+          // กรณีพิเศษ: ถ้าเป็นการ confirm-assignee-rejection (actionType)
+          let category = 'not_approved';
+          if (selectedApproval.status === 'approved') {
+            category = 'approved';
+          } else if (
+            selectedApproval.status === 'rejected' &&
+            (
+              selectedApproval.actionType === 'confirm_assignee_rejection'
+              || String(selectedApproval.comment || '').toLowerCase().includes('confirmed assignee rejection')
+            )
+          ) {
+            category = 'approved';
+          }
+
           historyData = {
             actionDate: selectedApproval.approvedAt || selectedApproval.createdAt,
             comment: selectedApproval.comment,
             action: selectedApproval.status,
-            category: selectedApproval.status === 'approved' ? 'approved' : 'not_approved',
+            category,
             actedBy: actorName,
             actedById: selectedApproval.approverId
           };

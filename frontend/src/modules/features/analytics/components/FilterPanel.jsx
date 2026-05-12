@@ -14,6 +14,19 @@ import { ANALYTICS_FILTER_OPTIONS, WORK_STATUS_LABEL } from '@shared/constants/j
 export default function FilterPanel({ filters, onFiltersChange, projects = [], users = [] }) {
     const [showCustomDate, setShowCustomDate] = useState(filters.period === 'custom');
 
+    const getUserLabel = (user) => {
+        if (!user) return '';
+        if (user.name && String(user.name).trim()) return String(user.name).trim();
+        if (user.displayName && String(user.displayName).trim()) return String(user.displayName).trim();
+
+        const firstName = user.firstName || user.first_name;
+        const lastName = user.lastName || user.last_name;
+        const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+        if (fullName) return fullName;
+
+        return user.email || 'ไม่ระบุชื่อ';
+    };
+
     const handleFilterChange = (key, value) => {
         const newFilters = { ...filters, [key]: value };
         if (key === 'period' && value === 'custom') {
@@ -69,8 +82,8 @@ export default function FilterPanel({ filters, onFiltersChange, projects = [], u
 
         // Assignee
         if (filters.assigneeId) {
-            const user = users.find(u => u.id === filters.assigneeId);
-            if (user) active.push({ key: 'assigneeId', label: user.firstName || user.email });
+            const user = users.find(u => String(u.id) === String(filters.assigneeId));
+            if (user) active.push({ key: 'assigneeId', label: getUserLabel(user) });
         }
 
         return active;
@@ -208,7 +221,7 @@ export default function FilterPanel({ filters, onFiltersChange, projects = [], u
                                         <option value="">ทั้งหมด</option>
                                         {users.map(user => (
                                             <option key={user.id} value={user.id}>
-                                                {user.firstName || user.email}
+                                                {getUserLabel(user)}
                                             </option>
                                         ))}
                                     </select>

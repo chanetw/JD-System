@@ -318,24 +318,28 @@ export const adminService = {
             const jobTypes = response.data.data.jobTypes || [];
 
             // Map to match component expectations
-            const mappedData = jobTypes.map(jt => ({
-                id: jt.id,
-                name: jt.name,
-                description: jt.description,
-                sla: jt.slaWorkingDays || jt.sla, // Support both field names
-                icon: jt.icon,
-                attachments: jt.attachments || [],
-                status: jt.isActive ? 'active' : 'inactive',
-                nextJobTypeId: jt.nextJobTypeId || null, // Auto-Chain Next Job
-                // Items are already nested in master-data response
-                items: (jt.items || []).map(i => ({
-                    id: i.id,
-                    jobTypeId: jt.id, // Ensure jobTypeId is present
-                    name: i.name,
-                    defaultSize: i.defaultSize,
-                    isRequired: i.isRequired
-                }))
-            }));
+            const mappedData = jobTypes.map(jt => {
+                const isActive = jt.isActive !== false;
+                return {
+                    id: jt.id,
+                    name: jt.name,
+                    description: jt.description,
+                    sla: jt.slaWorkingDays || jt.sla, // Support both field names
+                    icon: jt.icon,
+                    attachments: jt.attachments || [],
+                    isActive,
+                    status: isActive ? 'active' : 'inactive',
+                    nextJobTypeId: jt.nextJobTypeId || null, // Auto-Chain Next Job
+                    // Items are already nested in master-data response
+                    items: (jt.items || []).map(i => ({
+                        id: i.id,
+                        jobTypeId: jt.id, // Ensure jobTypeId is present
+                        name: i.name,
+                        defaultSize: i.defaultSize,
+                        isRequired: i.isRequired
+                    }))
+                };
+            });
 
             // Cache for 30 minutes (job types change infrequently)
             cacheService.set(cacheKey, mappedData, 30 * 60 * 1000);
@@ -1524,6 +1528,8 @@ export const adminService = {
                 console.error('[adminService] Failed to save assignments:', response.data.message);
                 throw new Error(response.data.message || 'Failed to save assignments');
             }
+
+            cacheService.invalidateByPrefix('approvalFlows:');
 
             return response.data;
         } catch (error) {

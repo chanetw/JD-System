@@ -127,7 +127,7 @@ export default function AdminJobTypeSLA() {
                 sla: item.sla,
                 attachments: item.attachments || [],
                 icon: item.icon || 'social',
-                status: item.status || 'active',
+                status: item.isActive === false ? 'inactive' : (item.status || 'active'),
                 nextJobTypeId: item.nextJobTypeId || ''
             });
         } else {
@@ -159,6 +159,7 @@ export default function AdminJobTypeSLA() {
         const newItem = {
             id: selectedId || tempId,
             ...formData,
+            isActive: formData.status !== 'inactive',
             status: formData.status || 'active'
         };
 
@@ -190,7 +191,8 @@ export default function AdminJobTypeSLA() {
                 setJobTypes(prev => prev.map(jt => jt.id === tempId ? createdItem : jt));
             } else {
                 console.log('[JobTypeSLA] Calling API UpdateJobType for ID:', selectedId);
-                await api.updateJobType(selectedId, formData);
+                const updatedItem = await api.updateJobType(selectedId, formData);
+                setJobTypes(prev => prev.map(jt => jt.id === selectedId ? updatedItem : jt));
                 console.log('[JobTypeSLA] API Update success');
             }
 

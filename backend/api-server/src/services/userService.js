@@ -9,6 +9,7 @@
  */
 
 import { BaseService } from './baseService.js';
+import { cacheService } from './cacheService.js';
 import bcrypt from 'bcrypt';
 
 const normalizeRoleName = (rawRoleName) => {
@@ -24,6 +25,33 @@ const normalizeRoleName = (rawRoleName) => {
   if (['viewer'].includes(normalized)) return 'Viewer';
 
   return raw;
+};
+
+const normalizePositiveIntArray = (values = []) => [
+  ...new Set(
+    (Array.isArray(values) ? values : [])
+      .map(value => parseInt(value, 10))
+      .filter(value => Number.isInteger(value) && value > 0)
+  )
+];
+
+const assignmentPairKey = (projectId, jobTypeId) => `${projectId}:${jobTypeId}`;
+
+const buildAssignmentPairs = (projectIds, jobTypeIds) => {
+  const pairs = [];
+  const seen = new Set();
+
+  for (const projectId of projectIds) {
+    for (const jobTypeId of jobTypeIds) {
+      const key = assignmentPairKey(projectId, jobTypeId);
+      if (seen.has(key)) continue;
+
+      seen.add(key);
+      pairs.push({ projectId, jobTypeId });
+    }
+  }
+
+  return pairs;
 };
 
 export class UserService extends BaseService {
@@ -785,52 +813,85 @@ export class UserService extends BaseService {
    */
   async updateUserAssignments(userId, { jobTypeIds, budIds = [], projectIds = [] }, { executedBy, tenantId }) {
     try {
-      console.log(`[UserService] Updating assignments for user ${userId}: JobTypes=${jobTypeIds?.length}, BUDs=${budIds?.length}, Projects=${projectIds?.length}`);
+      const normalizedUserId = parseInt(userId, 10);
+      const normalizedTenantId = parseInt(tenantId, 10);
+      const normalizedJobTypeIds = normalizePositiveIntArray(jobTypeIds);
+      const normalizedBudIds = normalizePositiveIntArray(budIds);
+      const normalizedProjectIds = normalizePositiveIntArray(projectIds);
 
-      return await this.prisma.$transaction(async (tx) => {
+      console.log(`[UserService] Updating assignments for user ${normalizedUserId}: JobTypes=${normalizedJobTypeIds.length}, BUDs=${normalizedBudIds.length}, Projects=${normalizedProjectIds.length}`);
+
+      const results = await this.prisma.$transaction(async (tx) => {
+        const previousProjectAssignments = await tx.projectJobAssignment.findMany({
+          where: {
+            assigneeId: normalizedUserId,
+            isActive: true
+          },
+          select: {
+            projectId: true,
+            jobTypeId: true
+          }
+        });
+
+        const targetProjectPairs = buildAssignmentPairs(normalizedProjectIds, normalizedJobTypeIds);
+        const targetPairSet = new Set(targetProjectPairs.map(pair => assignmentPairKey(pair.projectId, pair.jobTypeId)));
+        const removedProjectPairs = (previousProjectAssignments || [])
+          .map(assignment => ({
+            projectId: parseInt(assignment.projectId, 10),
+            jobTypeId: parseInt(assignment.jobTypeId, 10)
+          }))
+          .filter(pair => Number.isInteger(pair.projectId) && Number.isInteger(pair.jobTypeId))
+          .filter(pair => !targetPairSet.has(assignmentPairKey(pair.projectId, pair.jobTypeId)));
+
         // 1. Deactivate ALL existing assignments (both BUD and Project)
         // Optimization: Run these in parallel
         await Promise.all([
           tx.budJobAssignment.updateMany({
-            where: { assigneeId: userId, tenantId },
+            where: { assigneeId: normalizedUserId, tenantId: normalizedTenantId },
             data: { isActive: false }
           }),
           tx.projectJobAssignment.updateMany({
-            where: { assigneeId: userId },
+            where: { assigneeId: normalizedUserId },
             data: { isActive: false }
           })
         ]);
 
-        const results = {
+        const transactionResults = {
           budAssignments: [],
-          projectAssignments: []
+          projectAssignments: [],
+          flowSync: {
+            updated: 0,
+            cleared: 0,
+            skippedNoFlow: 0,
+            affectedProjectIds: []
+          }
         };
 
         // 2. Create/Update BUD-level assignments (Optimized with Promise.all)
-        if (budIds && budIds.length > 0 && jobTypeIds && jobTypeIds.length > 0) {
+        if (normalizedBudIds.length > 0 && normalizedJobTypeIds.length > 0) {
           const budPromises = [];
-          for (const budId of budIds) {
-            for (const jobTypeId of jobTypeIds) {
+          for (const budId of normalizedBudIds) {
+            for (const jobTypeId of normalizedJobTypeIds) {
               budPromises.push(
                 tx.budJobAssignment.upsert({
                   where: {
                     tenantId_budId_jobTypeId: {
-                      tenantId,
+                      tenantId: normalizedTenantId,
                       budId,
                       jobTypeId
                     }
                   },
                   update: {
-                    assigneeId: userId,
+                    assigneeId: normalizedUserId,
                     isActive: true,
                     priority: 50,
                     updatedAt: new Date()
                   },
                   create: {
-                    tenantId,
+                    tenantId: normalizedTenantId,
                     budId,
                     jobTypeId,
-                    assigneeId: userId,
+                    assigneeId: normalizedUserId,
                     isActive: true,
                     priority: 50
                   }
@@ -838,56 +899,171 @@ export class UserService extends BaseService {
               );
             }
           }
-          results.budAssignments = await Promise.all(budPromises);
+          transactionResults.budAssignments = await Promise.all(budPromises);
         }
 
         // 3. Create/Update Project-level assignments (Optimized with Promise.all)
-        if (projectIds && projectIds.length > 0 && jobTypeIds && jobTypeIds.length > 0) {
+        if (targetProjectPairs.length > 0) {
           const projectPromises = [];
-          for (const projectId of projectIds) {
-            for (const jobTypeId of jobTypeIds) {
-              projectPromises.push(
-                tx.projectJobAssignment.upsert({
-                  where: {
-                    projectId_jobTypeId: {
-                      projectId,
-                      jobTypeId
-                    }
-                  },
-                  update: {
-                    assigneeId: userId,
-                    isActive: true,
-                    priority: 100,
-                    updatedAt: new Date()
-                  },
-                  create: {
+          for (const { projectId, jobTypeId } of targetProjectPairs) {
+            projectPromises.push(
+              tx.projectJobAssignment.upsert({
+                where: {
+                  projectId_jobTypeId: {
                     projectId,
                     jobTypeId,
-                    assigneeId: userId,
-                    isActive: true,
-                    priority: 100
                   }
-                })
-              );
-            }
+                },
+                update: {
+                  assigneeId: normalizedUserId,
+                  isActive: true,
+                  priority: 100,
+                  updatedAt: new Date()
+                },
+                create: {
+                  projectId,
+                  jobTypeId,
+                  assigneeId: normalizedUserId,
+                  isActive: true,
+                  priority: 100
+                }
+              })
+            );
           }
-          results.projectAssignments = await Promise.all(projectPromises);
+          transactionResults.projectAssignments = await Promise.all(projectPromises);
         }
 
-        console.log(`[UserService] ✅ Saved assignments for user ${userId}:`, {
-          budAssignments: results.budAssignments.length,
-          projectAssignments: results.projectAssignments.length
+        transactionResults.flowSync = await this.syncAssignmentApprovalFlows(tx, {
+          userId: normalizedUserId,
+          targetPairs: targetProjectPairs,
+          removedPairs: removedProjectPairs
         });
 
-        return this.successResponse(results, 'บันทึกการมอบหมายงานสำเร็จ');
+        console.log(`[UserService] ✅ Saved assignments for user ${normalizedUserId}:`, {
+          budAssignments: transactionResults.budAssignments.length,
+          projectAssignments: transactionResults.projectAssignments.length,
+          flowSync: transactionResults.flowSync
+        });
+
+        return transactionResults;
       }, {
         maxWait: 10000, // Wait for lock up to 10s
         timeout: 20000  // Transaction must finish in 20s
       });
+
+      (results.flowSync?.affectedProjectIds || []).forEach(projectId => {
+        cacheService.invalidateByPrefix(`approval_flow:${projectId}:`);
+      });
+
+      return this.successResponse(results, 'บันทึกการมอบหมายงานสำเร็จ');
     } catch (error) {
       console.error(`[UserService] Error updating assignments for user ${userId}:`, error);
       return this.handleError(error, 'UPDATE_USER_ASSIGNMENTS', 'User');
     }
+  }
+
+  async syncAssignmentApprovalFlows(tx, { userId, targetPairs = [], removedPairs = [] }) {
+    const summary = {
+      updated: 0,
+      cleared: 0,
+      skippedNoFlow: 0,
+      affectedProjectIds: []
+    };
+    const affectedProjectIds = new Set();
+
+    const normalizePairs = (pairs) => {
+      const seen = new Set();
+      return (pairs || [])
+        .map(pair => ({
+          projectId: parseInt(pair.projectId, 10),
+          jobTypeId: parseInt(pair.jobTypeId, 10)
+        }))
+        .filter(pair => Number.isInteger(pair.projectId) && pair.projectId > 0 && Number.isInteger(pair.jobTypeId) && pair.jobTypeId > 0)
+        .filter(pair => {
+          const key = assignmentPairKey(pair.projectId, pair.jobTypeId);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+    };
+
+    const normalizedTargetPairs = normalizePairs(targetPairs);
+    const normalizedRemovedPairs = normalizePairs(removedPairs);
+
+    if (normalizedTargetPairs.length > 0) {
+      const targetFlows = await tx.approvalFlow.findMany({
+        where: {
+          isActive: true,
+          OR: normalizedTargetPairs.map(pair => ({
+            projectId: pair.projectId,
+            jobTypeId: pair.jobTypeId
+          }))
+        },
+        select: {
+          id: true,
+          projectId: true,
+          jobTypeId: true
+        }
+      });
+
+      const pairsWithFlow = new Set(
+        targetFlows.map(flow => assignmentPairKey(flow.projectId, flow.jobTypeId))
+      );
+
+      summary.skippedNoFlow = normalizedTargetPairs.length - pairsWithFlow.size;
+
+      if (targetFlows.length > 0) {
+        const updateResult = await tx.approvalFlow.updateMany({
+          where: {
+            id: { in: targetFlows.map(flow => flow.id) }
+          },
+          data: {
+            autoAssignType: 'specific_user',
+            autoAssignUserId: userId,
+            updatedAt: new Date()
+          }
+        });
+
+        summary.updated = updateResult.count || 0;
+        targetFlows.forEach(flow => affectedProjectIds.add(flow.projectId));
+      }
+    }
+
+    if (normalizedRemovedPairs.length > 0) {
+      const flowsToClear = await tx.approvalFlow.findMany({
+        where: {
+          isActive: true,
+          autoAssignUserId: userId,
+          OR: normalizedRemovedPairs.map(pair => ({
+            projectId: pair.projectId,
+            jobTypeId: pair.jobTypeId
+          }))
+        },
+        select: {
+          id: true,
+          projectId: true
+        }
+      });
+
+      if (flowsToClear.length > 0) {
+        const clearResult = await tx.approvalFlow.updateMany({
+          where: {
+            id: { in: flowsToClear.map(flow => flow.id) }
+          },
+          data: {
+            autoAssignType: 'manual',
+            autoAssignUserId: null,
+            updatedAt: new Date()
+          }
+        });
+
+        summary.cleared = clearResult.count || 0;
+        flowsToClear.forEach(flow => affectedProjectIds.add(flow.projectId));
+      }
+    }
+
+    summary.affectedProjectIds = [...affectedProjectIds];
+    return summary;
   }
 
   /**

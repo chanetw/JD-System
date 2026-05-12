@@ -24,7 +24,7 @@ const isUserActive = (user) => {
  *
  * @param {Function} onSaveSuccess - Callback ที่ถูกเรียกเมื่อบันทึกสำเร็จ
  */
-export default function AssignmentMatrix({ projectId: propProjectId, assignees: propAssignees, onSaveSuccess }) {
+export default function AssignmentMatrix({ projectId: propProjectId, assignees: propAssignees, users: propUsers, onSaveSuccess }) {
     const [localSearch, setLocalSearch] = useState('');
 
     // === State ===
@@ -178,16 +178,37 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
     const sourceAssignees = propAssignees || localAssignees;
     const activeAssignees = (Array.isArray(sourceAssignees) ? sourceAssignees : []).filter(isUserActive);
     const activeAssigneeIdSet = new Set(activeAssignees.map(u => parseInt(u.id, 10)).filter(Number.isInteger));
+    const userStatusSource = Array.isArray(propUsers) && propUsers.length > 0 ? propUsers : sourceAssignees;
+    const userStatusById = new Map(
+        (Array.isArray(userStatusSource) ? userStatusSource : [])
+            .map(u => [parseInt(u.id, 10), u])
+            .filter(([id]) => Number.isInteger(id))
+    );
+
+    const getCurrentAssigneeState = (assignment) => {
+        const assigneeId = parseInt(assignment?.assigneeId, 10);
+        if (!Number.isInteger(assigneeId)) {
+            return { isSelectable: false, isActive: false, label: null };
+        }
+
+        const user = userStatusById.get(assigneeId);
+        return {
+            isSelectable: activeAssigneeIdSet.has(assigneeId),
+            isActive: user ? isUserActive(user) : assignment?.assigneeIsActive !== false,
+            label: assignment?.assigneeName || assignment?.assigneeEmail || `User #${assigneeId}`
+        };
+    };
 
     const inactiveAssignmentRows = jobTypes
         .map(type => {
             const assignment = matrix.find(m => m.jobTypeId === type.id);
             if (!assignment?.assigneeId) return null;
-            if (activeAssigneeIdSet.has(parseInt(assignment.assigneeId, 10))) return null;
+            const assigneeState = getCurrentAssigneeState(assignment);
+            if (assigneeState.isSelectable || assigneeState.isActive) return null;
 
             return {
                 jobTypeName: type.name,
-                assigneeName: assignment.assigneeName || assignment.assigneeEmail || `User #${assignment.assigneeId}`
+                assigneeName: assigneeState.label
             };
         })
         .filter(Boolean);
@@ -275,6 +296,8 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
                             <tbody className="bg-white divide-y divide-gray-400">
                                 {filteredJobTypes.map(type => {
                                     const current = matrix.find(m => m.jobTypeId === type.id);
+                                    const currentAssigneeState = getCurrentAssigneeState(current);
+                                    const showUnavailableAssignee = !!current?.assigneeId && !currentAssigneeState.isSelectable;
                                     return (
                                         <tr key={type.id} className="hover:bg-gray-50">
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 flex items-center gap-2">
@@ -282,9 +305,11 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
                                                 {type.name}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                {current?.assigneeId && !activeAssigneeIdSet.has(parseInt(current.assigneeId, 10)) && (
-                                                    <div className="mb-2 text-xs text-amber-700">
-                                                        ค่าปัจจุบันเป็นผู้ใช้ Inactive: {current.assigneeName || `User #${current.assigneeId}`}
+                                                {showUnavailableAssignee && (
+                                                    <div className={`mb-2 text-xs ${currentAssigneeState.isActive ? 'text-blue-700' : 'text-amber-700'}`}>
+                                                        {currentAssigneeState.isActive
+                                                            ? `ค่าปัจจุบันเป็นผู้ใช้ Active แต่อยู่นอกทีมผู้รับงานของโครงการนี้: ${currentAssigneeState.label}`
+                                                            : `ค่าปัจจุบันเป็นผู้ใช้ Inactive: ${currentAssigneeState.label}`}
                                                     </div>
                                                 )}
                                                 <select
@@ -293,9 +318,9 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
                                                     onChange={(e) => handleAssigneeChange(type.id, e.target.value)}
                                                 >
                                                     <option value="">-- ไม่ระบุ (ปล่อยว่าง) --</option>
-                                                    {current?.assigneeId && !activeAssigneeIdSet.has(parseInt(current.assigneeId, 10)) && (
+                                                    {showUnavailableAssignee && (
                                                         <option value={current.assigneeId} disabled>
-                                                            {`${current.assigneeName || current.assigneeEmail || `User #${current.assigneeId}`} (Inactive)`}
+                                                            {`${currentAssigneeState.label} (${currentAssigneeState.isActive ? 'Active - นอกทีมผู้รับงาน' : 'Inactive'})`}
                                                         </option>
                                                     )}
                                                     {activeAssignees.map(u => (

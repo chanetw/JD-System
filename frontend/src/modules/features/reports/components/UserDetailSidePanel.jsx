@@ -4,6 +4,7 @@
  */
 
 import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useUserPerformance } from '../hooks/useUserPerformance';
 import { X, Download, TrendingUp, Clock, CheckCircle, AlertCircle, Package } from 'lucide-react';
 
@@ -12,7 +13,14 @@ import { X, Download, TrendingUp, Clock, CheckCircle, AlertCircle, Package } fro
  * @description Popup Modal แสดงรายละเอียดผลงานของ user คนหนึ่ง
  */
 export default function UserDetailSidePanel({ userId, isOpen, onClose, startDate = null, endDate = null }) {
+  const navigate = useNavigate();
   const { data, isLoading, error } = useUserPerformance(userId, startDate, endDate);
+
+  const handleOpenJobDetail = (jobId) => {
+    if (!jobId) return;
+    onClose();
+    navigate(`/jobs/${jobId}`);
+  };
 
   // Close on ESC key
   useEffect(() => {
@@ -190,7 +198,12 @@ export default function UserDetailSidePanel({ userId, isOpen, onClose, startDate
                   </div>
                   <div className="space-y-2 max-h-40 overflow-y-auto">
                     {data.delayedJobs.map((job) => (
-                      <div key={job.id} className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors">
+                      <button
+                        key={job.id}
+                        type="button"
+                        onClick={() => handleOpenJobDetail(job.id)}
+                        className="block w-full border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors text-left"
+                      >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="text-sm font-medium text-gray-900">{job.djId}</div>
@@ -203,7 +216,7 @@ export default function UserDetailSidePanel({ userId, isOpen, onClose, startDate
                             </div>
                           </div>
                         </div>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -215,7 +228,13 @@ export default function UserDetailSidePanel({ userId, isOpen, onClose, startDate
                   <h3 className="text-sm font-semibold text-gray-900 mb-3">งานล่าสุด</h3>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
                     {data.recentJobs.map((job) => (
-                      <div key={job.id} className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors">
+                      <a
+                        key={job.id}
+                        href={`/jobs/${job.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block w-full border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors text-left"
+                      >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="text-sm font-medium text-gray-900">{job.djId}</div>
@@ -233,7 +252,7 @@ export default function UserDetailSidePanel({ userId, isOpen, onClose, startDate
                             )}
                           </div>
                         </div>
-                      </div>
+                      </a>
                     ))}
                   </div>
                 </div>

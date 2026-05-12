@@ -1683,6 +1683,7 @@ export default function AdminApprovalFlow() {
                                             <AssignmentMatrix
                                                 projectId={selectedProject.id}
                                                 assignees={responsibleTeam.assignees}
+                                                users={allUsers}
                                                 onSaveSuccess={refreshFlowsAndAssignments}
                                             />
                                         )}
