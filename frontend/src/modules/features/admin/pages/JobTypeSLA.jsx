@@ -95,7 +95,7 @@ export default function AdminJobTypeSLA() {
 
             setJobTypes(
                 (data || []).filter(
-                    t => t.name !== 'Project Group (Parent)' && t.isActive !== false
+                    t => t.name !== 'Project Group (Parent)'
                 )
             );
         } catch (error) {
@@ -340,6 +340,7 @@ export default function AdminJobTypeSLA() {
 
     // Stats Calculation
     const baseJobTypes = jobTypes.filter(j => j.name !== 'Project Group (Parent)');
+    const activeJobTypes = baseJobTypes.filter(j => j.isActive !== false);
     const filteredJobTypes = baseJobTypes.filter(item => matchesSuperSearch(item, superSearchQuery, [
         value => value.name,
         value => value.description,
@@ -347,8 +348,8 @@ export default function AdminJobTypeSLA() {
         value => value.status,
         value => value.attachments,
     ]));
-    const activeCount = filteredJobTypes.filter(j => j.isActive !== false).length;
-    const avgSLA = filteredJobTypes.length ? (filteredJobTypes.reduce((acc, curr) => acc + Number(curr.sla), 0) / filteredJobTypes.length).toFixed(1) : 0;
+    const activeCount = baseJobTypes.filter(j => j.isActive !== false).length;
+    const avgSLA = baseJobTypes.length ? (baseJobTypes.reduce((acc, curr) => acc + Number(curr.sla), 0) / baseJobTypes.length).toFixed(1) : 0;
 
     useEffect(() => {
         setSuperSearchMeta({ resultCount: filteredJobTypes.length, totalCount: baseJobTypes.length });
@@ -517,7 +518,7 @@ export default function AdminJobTypeSLA() {
                                     onChange={(e) => setFormData({ ...formData, nextJobTypeId: e.target.value })}
                                 >
                                     <option value="">-- ไม่มีการผูกงาน (None) --</option>
-                                    {jobTypes
+                                    {activeJobTypes
                                         .filter(jt => jt.id !== selectedId) // Prevent self-loop
                                         .map(jt => (
                                             <option key={jt.id} value={jt.id}>

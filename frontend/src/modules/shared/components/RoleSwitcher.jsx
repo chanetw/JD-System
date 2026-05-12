@@ -10,6 +10,7 @@
 
 import React from 'react';
 import { useAuth } from '@/store/AuthContext';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 
 export default function RoleSwitcher() {
     const { user, setUser } = useAuth();
@@ -41,17 +42,12 @@ export default function RoleSwitcher() {
     return (
         <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500">Role:</span>
-            <select
+            <ResponsiveSelect
                 value={currentRole}
                 onChange={(e) => handleRoleChange(e.target.value)}
                 className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 bg-white"
-            >
-                {roles.map(role => (
-                    <option key={role.value} value={role.value}>
-                        {role.icon} {role.label}
-                    </option>
-                ))}
-            </select>
+                options={roles.map(role => ({ value: role.value, label: `${role.icon} ${role.label}` }))}
+            />
         </div>
     );
 }

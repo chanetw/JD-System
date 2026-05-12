@@ -13,6 +13,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 import { api } from '@shared/services/apiService';
 import { formatDateToThai } from '@shared/utils/dateUtils';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
@@ -537,14 +538,15 @@ export default function DJList() {
                     </p>
                     <div className="flex items-center gap-2">
                         <span className="text-sm text-gray-500">เรียงตาม:</span>
-                        <select
+                        <ResponsiveSelect
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value)}
                             className="text-sm border border-gray-300 rounded-lg px-2 py-2"
-                        >
-                            <option value="createdDate">Created Date (ล่าสุด)</option>
-                            <option value="deadline">Deadline (ใกล้สุด)</option>
-                        </select>
+                            options={[
+                                { value: 'createdDate', label: 'Created Date (ล่าสุด)' },
+                                { value: 'deadline', label: 'Deadline (ใกล้สุด)' }
+                            ]}
+                        />
                     </div>
                 </div>
 
@@ -797,16 +799,15 @@ function FilterSelect({ label, value, onChange, options, optionLabels }) {
     return (
         <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
-            <select
+            <ResponsiveSelect
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
-            >
-                <option value="">ทั้งหมด</option>
-                {options.map(opt => (
-                    <option key={opt} value={opt}>{optionLabels?.[opt] || opt}</option>
-                ))}
-            </select>
+                options={[
+                    { value: '', label: 'ทั้งหมด' },
+                    ...options.map(opt => ({ value: opt, label: optionLabels?.[opt] || opt }))
+                ]}
+            />
         </div>
     );
 }

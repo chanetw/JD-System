@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CheckIcon, XMarkIcon, UserIcon, ExclamationCircleIcon, CheckCircleIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline';
 import { ACTION_BUTTON_STYLES } from '@shared/utils/alertHelper';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 import {
     ASSIGNEE_DRAFT_REBRIEF_ACTION_STATUSES,
     ASSIGNEE_REJECTABLE_STATUSES,
@@ -167,7 +168,7 @@ const JobActionPanel = ({
                     {/* Assignee Selector */}
                     <div className="space-y-2">
                         <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">เลือกผู้รับงาน</label>
-                        <select
+                        <ResponsiveSelect
                             value={selectedAssignee}
                             onChange={(e) => { setSelectedAssignee(e.target.value); setAssignError(''); setAssignSuccess(''); }}
                             className={`w-full px-4 py-2.5 border rounded-lg text-sm bg-white focus:ring-2 focus:outline-none transition-colors ${assignError
@@ -175,15 +176,14 @@ const JobActionPanel = ({
                                     : 'border-orange-300 focus:ring-orange-400 focus:border-orange-400'
                                 }`}
                             disabled={isLoading}
-                        >
-                            <option value="">-- เลือกผู้ดำเนินการ ({assignableUsers.length} คน) --</option>
-                            {assignableUsers.map(u => (
-                                <option key={u.id} value={u.id}>
-                                    {u.firstName} {u.lastName}
-                                    {u.displayName && u.displayName !== `${u.firstName} ${u.lastName}` ? ` (${u.displayName})` : ''}
-                                </option>
-                            ))}
-                        </select>
+                            options={[
+                                { value: '', label: `-- เลือกผู้ดำเนินการ (${assignableUsers.length} คน) --` },
+                                ...assignableUsers.map(u => ({
+                                    value: u.id,
+                                    label: `${u.firstName} ${u.lastName}${u.displayName && u.displayName !== `${u.firstName} ${u.lastName}` ? ` (${u.displayName})` : ''}`
+                                }))
+                            ]}
+                        />
 
                         {/* Inline error */}
                         {assignError && (

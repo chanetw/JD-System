@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+import ResponsiveSelect from './ResponsiveSelect';
 
 const baseInputClass = "w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-rose-500 focus:border-rose-500 disabled:bg-gray-50 disabled:text-gray-500";
 const labelClass = "block text-sm font-medium text-gray-700 mb-1";
@@ -38,13 +39,16 @@ export function FormInput({ label, required, error, className = '', ...props }) 
  */
 export function FormSelect({ label, required, children, error, className = '', ...props }) {
     return (
-        <div className={className}>
-            {label && <label className={labelClass}>{label} {required && <span className="text-red-500">*</span>}</label>}
-            <select className={`${baseInputClass} ${error ? 'border-red-300 focus:ring-red-500' : ''}`} {...props}>
-                {children}
-            </select>
-            {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
-        </div>
+        <ResponsiveSelect
+            wrapperClassName={className}
+            label={label}
+            required={required}
+            error={error}
+            className={baseInputClass}
+            {...props}
+        >
+            {children}
+        </ResponsiveSelect>
     );
 }
 

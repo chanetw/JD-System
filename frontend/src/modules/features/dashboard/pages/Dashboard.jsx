@@ -15,6 +15,7 @@ import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import api from '@shared/services/apiService';
 import httpClient from '@shared/services/httpClient';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 import { hasAnyRole } from '@shared/utils/permission.utils';
 import DraftSubmitModal from '@features/job-management/components/DraftSubmitModal';
 import { WORK_STATUS_LABEL, STATUS_COLOR, matchesStatusFilter } from '@shared/constants/jobStatus';
@@ -806,55 +807,48 @@ function Dashboard() {
 
 
                             {/* Status Filter */}
-                            <select
+                            <ResponsiveSelect
                                 value={statusFilter}
                                 onChange={e => setStatusFilter(e.target.value)}
                                 className="w-full min-h-[40px] px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
-                            >
-                                <option value="">All Status</option>
-                                {statusOptions.map(status => (
-                                    <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>
-                                ))}
-                            </select>
+                                options={[
+                                    { value: '', label: 'All Status' },
+                                    ...statusOptions.map(status => ({ value: status, label: status.replace(/_/g, ' ') }))
+                                ]}
+                            />
 
                             {/* BU Filter */}
-                            <select
+                            <ResponsiveSelect
                                 value={budFilter}
                                 onChange={e => setBudFilter(e.target.value)}
-                                title={selectedBudName}
                                 className="w-full min-h-[40px] px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
-                            >
-                                <option value="">ทุก BU</option>
-                                {(masterData.buds || []).map(bud => (
-                                    <option key={bud.id} value={bud.id} title={bud.name}>
-                                        {truncateLabel(bud.name, 30)}
-                                    </option>
-                                ))}
-                            </select>
+                                options={[
+                                    { value: '', label: 'ทุก BU' },
+                                    ...(masterData.buds || []).map(bud => ({ value: bud.id, label: truncateLabel(bud.name, 30), description: bud.name }))
+                                ]}
+                            />
 
                             {/* Project Filter */}
-                            <select
+                            <ResponsiveSelect
                                 value={projectFilter}
                                 onChange={e => setProjectFilter(e.target.value)}
                                 className="w-full min-h-[40px] px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
-                            >
-                                <option value="">ทุกโครงการ</option>
-                                {projectOptions.map(project => (
-                                    <option key={project.id} value={project.id}>{project.name}</option>
-                                ))}
-                            </select>
+                                options={[
+                                    { value: '', label: 'ทุกโครงการ' },
+                                    ...projectOptions.map(project => ({ value: project.id, label: project.name }))
+                                ]}
+                            />
 
                             {/* Assignee Filter */}
-                            <select
+                            <ResponsiveSelect
                                 value={assigneeFilter}
                                 onChange={e => setAssigneeFilter(e.target.value)}
                                 className="w-full min-h-[40px] px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
-                            >
-                                <option value="">ผู้รับผิดชอบทั้งหมด</option>
-                                {assigneeOptions.map(name => (
-                                    <option key={name} value={name}>{name}</option>
-                                ))}
-                            </select>
+                                options={[
+                                    { value: '', label: 'ผู้รับผิดชอบทั้งหมด' },
+                                    ...assigneeOptions.map(name => ({ value: name, label: name }))
+                                ]}
+                            />
 
                             {/* Clear Filters */}
                             <label className="flex min-h-[40px] items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 whitespace-nowrap">
@@ -883,15 +877,16 @@ function Dashboard() {
                             )}
 
                             {/* Sort Dropdown */}
-                            <select
+                            <ResponsiveSelect
                                 value={sortMode}
                                 onChange={e => setSortMode(e.target.value)}
                                 className="w-full min-h-[40px] px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
-                            >
-                                <option value="updatedAt">เรียงตาม: อัปเดตล่าสุด</option>
-                                <option value="createdAt">เรียงตาม: งานสร้างล่าสุด</option>
-                                <option value="sla">เรียงตาม: SLA น้อยไปมาก</option>
-                            </select>
+                                options={[
+                                    { value: 'updatedAt', label: 'เรียงตาม: อัปเดตล่าสุด' },
+                                    { value: 'createdAt', label: 'เรียงตาม: งานสร้างล่าสุด' },
+                                    { value: 'sla', label: 'เรียงตาม: SLA น้อยไปมาก' }
+                                ]}
+                            />
                         </div>
                     </div>
                 </div>
@@ -1000,15 +995,16 @@ function Dashboard() {
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
                                     <label className="flex items-center gap-2 text-sm text-gray-600">
                                         <span>จำนวนต่อหน้า</span>
-                                        <select
+                                        <ResponsiveSelect
                                             value={pageSize}
                                             onChange={e => setPageSize(Number(e.target.value))}
                                             className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
-                                        >
-                                            <option value={20}>20 / หน้า</option>
-                                            <option value={50}>50 / หน้า</option>
-                                            <option value={100}>100 / หน้า</option>
-                                        </select>
+                                            options={[
+                                                { value: 20, label: '20 / หน้า' },
+                                                { value: 50, label: '50 / หน้า' },
+                                                { value: 100, label: '100 / หน้า' }
+                                            ]}
+                                        />
                                     </label>
                                     <div className="flex items-center gap-2">
                                 <button

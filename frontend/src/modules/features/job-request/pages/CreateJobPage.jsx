@@ -15,6 +15,7 @@ import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import api from '@shared/services/apiService'; // ใช้ apiService ที่เป็น Centralized API (Support Real DB)
 import { Card, CardHeader, CardBody } from '@shared/components/Card';
 import { FormInput, FormSelect, FormTextarea } from '@shared/components/FormInput';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 import Button from '@shared/components/Button';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
 import Modal from '@shared/components/Modal';
@@ -146,6 +147,7 @@ export default function CreateDJ() {
     // === สถานะ Multi Job Type (Parent-Child) ===
     /** รายการประเภทงานที่เลือก (สำหรับ Parent-Child Jobs) */
     const [selectedJobTypes, setSelectedJobTypes] = useState([]);
+    const [newJobTypeId, setNewJobTypeId] = useState('');
 
     // === สถานะปฏิทิน SLA Preview ===
     /** เดือนและปีที่แสดงในปฏิทิน (สำหรับเลื่อนดูเดือนอื่น) */
@@ -1179,24 +1181,23 @@ export default function CreateDJ() {
 
                                 {/* ส่วนเพิ่ม Job Type ใหม่ */}
                                 <div className="mb-3 flex flex-col gap-2 sm:flex-row">
-                                    <select
+                                    <ResponsiveSelect
                                         className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"
                                         id="newJobTypeSelect"
-                                        defaultValue=""
-                                    >
-                                        <option value="">-- เลือกประเภทงานที่ต้องการเพิ่ม --</option>
-                                        {masterData.jobTypes
+                                        value={newJobTypeId}
+                                        onChange={(e) => setNewJobTypeId(e.target.value)}
+                                        options={[
+                                            { value: '', label: '-- เลือกประเภทงานที่ต้องการเพิ่ม --' },
+                                            ...masterData.jobTypes
                                             .filter(t => t.name !== 'Project Group (Parent)') // ซ่อน Parent Group
-                                            .map(t => (
-                                                <option key={t.id} value={t.id}>{t.name} ({t.sla || 7} วัน)</option>
-                                            ))}
-                                    </select>
+                                            .map(t => ({ value: t.id, label: `${t.name} (${t.sla || 7} วัน)` }))
+                                        ]}
+                                    />
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            const select = document.getElementById('newJobTypeSelect');
-                                            addJobType(select.value);
-                                            select.value = '';
+                                            addJobType(newJobTypeId);
+                                            setNewJobTypeId('');
                                         }}
                                         className="w-full rounded-lg bg-rose-600 px-4 py-2.5 text-white transition-colors hover:bg-rose-700 sm:w-auto sm:px-4 sm:py-2 flex items-center justify-center gap-1"
                                     >
@@ -1248,7 +1249,7 @@ export default function CreateDJ() {
                                                             {index > 0 && (
                                                                 <div className="flex flex-wrap items-center gap-2">
                                                                     <label className="text-xs text-gray-500">เริ่มงาน:</label>
-                                                                    <select
+                                                                    <ResponsiveSelect
                                                                         className="min-h-[36px] text-xs border border-gray-300 rounded px-2 py-1 bg-gray-100 text-gray-500 cursor-not-allowed opacity-70"
                                                                         value={jt.predecessorIndex === null ? '' : jt.predecessorIndex}
                                                                         onChange={(e) => {
@@ -1257,17 +1258,16 @@ export default function CreateDJ() {
                                                                         }}
                                                                         onClick={(e) => e.stopPropagation()} // Prevent accordion toggle
                                                                         disabled
-                                                                    >
-                                                                        <option value="">🟢 พร้อมกัน (Parallel)</option>
-                                                                        {selectedJobTypes.map((prevJt, prevIdx) => {
-                                                                            if (prevIdx >= index) return null; // Show only previous jobs
-                                                                            return (
-                                                                                <option key={prevIdx} value={prevIdx}>
-                                                                                    🔗 หลังจาก {prevIdx + 1}. {prevJt.name} เสร็จ
-                                                                                </option>
-                                                                            );
-                                                                        })}
-                                                                    </select>
+                                                                        options={[
+                                                                            { value: '', label: 'พร้อมกัน (Parallel)' },
+                                                                            ...selectedJobTypes
+                                                                                .filter((_, prevIdx) => prevIdx < index)
+                                                                                .map((prevJt, prevIdx) => ({
+                                                                                    value: prevIdx,
+                                                                                    label: `หลังจาก ${prevIdx + 1}. ${prevJt.name} เสร็จ`
+                                                                                }))
+                                                                        ]}
+                                                                    />
                                                                 </div>
                                                             )}
                                                         </div>

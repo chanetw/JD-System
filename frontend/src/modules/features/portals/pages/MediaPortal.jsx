@@ -22,6 +22,7 @@ import {
 import LoadingSpinner from '@shared/components/LoadingSpinner';
 import { matchesSuperSearch } from '@shared/utils/superSearch';
 import FileActions from '@shared/components/FileActions';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 
 export default function MediaPortal() {
     const { user } = useAuthStoreV2();
@@ -199,32 +200,25 @@ export default function MediaPortal() {
                 <label htmlFor="project-filter" className="block text-sm font-medium text-gray-700 mb-2">
                     เลือกโครงการ
                 </label>
-                <select
+                <ResponsiveSelect
                     id="project-filter"
                     value={selectedProject}
                     onChange={(e) => setSelectedProject(e.target.value)}
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-rose-400"
-                >
-                    <option value="all">ทั้งหมด ({stats.totalFiles})</option>
-                    {projectsWithFiles.length > 0 && (
-                        <optgroup label="มีไฟล์">
-                            {projectsWithFiles.map(project => (
-                                <option key={project.id} value={String(project.id)}>
-                                    {project.name} ({project.files})
-                                </option>
-                            ))}
-                        </optgroup>
-                    )}
-                    {projectsWithoutFiles.length > 0 && (
-                        <optgroup label="ยังไม่มีไฟล์">
-                            {projectsWithoutFiles.map(project => (
-                                <option key={project.id} value={String(project.id)}>
-                                    {project.name} ({project.files})
-                                </option>
-                            ))}
-                        </optgroup>
-                    )}
-                </select>
+                    options={[
+                        { value: 'all', label: `ทั้งหมด (${stats.totalFiles})` },
+                        ...projectsWithFiles.map(project => ({
+                            value: String(project.id),
+                            label: `${project.name} (${project.files})`,
+                            description: 'มีไฟล์'
+                        })),
+                        ...projectsWithoutFiles.map(project => ({
+                            value: String(project.id),
+                            label: `${project.name} (${project.files})`,
+                            description: 'ยังไม่มีไฟล์'
+                        }))
+                    ]}
+                />
             </div>
 
             {/* File Grid */}

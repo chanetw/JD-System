@@ -17,6 +17,7 @@ import { Card, CardHeader } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
 import { FormInput, FormSelect } from '@shared/components/FormInput';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 import { canApproveInProject, canBeAssignedInBud, hasRole, isAdmin as checkIsAdmin } from '@shared/utils/permission.utils';
 
 import { PlusIcon, TrashIcon, UserGroupIcon, UserIcon, ArrowLongRightIcon, ArrowRightIcon, BriefcaseIcon, CheckCircleIcon, ExclamationCircleIcon, MagnifyingGlassIcon, PencilIcon, XMarkIcon, ExclamationTriangleIcon, BoltIcon, ForwardIcon } from '@heroicons/react/24/outline';
@@ -1298,7 +1299,7 @@ export default function AdminApprovalFlow() {
                                                                             <label className="block text-sm font-medium text-blue-800 mb-2">
                                                                                 เลือก Team Lead สำหรับโครงการนี้
                                                                             </label>
-                                                                            <select
+                                                                            <ResponsiveSelect
                                                                                 value={teamLeadId || ''}
                                                                                 onChange={(e) => setTeamLeadId(e.target.value ? parseInt(e.target.value) : null)}
                                                                                 className="w-full px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900"
@@ -1314,7 +1315,7 @@ export default function AdminApprovalFlow() {
                                                                                         {user.display_name} ({user.email})
                                                                                     </option>
                                                                                 ))}
-                                                                            </select>
+                                                                            </ResponsiveSelect>
                                                                             {selectedTeamLeadInactive && (
                                                                                 <p className="mt-2 text-xs text-amber-700 flex items-center gap-1">
                                                                                     <ExclamationTriangleIcon className="w-4 h-4" />

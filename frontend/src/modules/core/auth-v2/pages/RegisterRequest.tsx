@@ -8,6 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStoreV2 } from '../../stores/authStoreV2';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 
 interface FormData {
   email: string;
@@ -240,20 +241,17 @@ const RegisterRequest: React.FC = () => {
                 <label htmlFor="departmentId" className="block text-sm font-medium text-gray-700 mb-1">
                   Department
                 </label>
-                <select
+                <ResponsiveSelect
                   id="departmentId"
                   name="departmentId"
                   value={formData.departmentId || ''}
                   onChange={handleChange}
                   className="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-400 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                >
-                  <option value="">-- Select Department --</option>
-                  {departments.map((dept) => (
-                    <option key={dept.id} value={dept.id}>
-                      {dept.name}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: '', label: '-- Select Department --' },
+                    ...departments.map((dept) => ({ value: dept.id, label: dept.name }))
+                  ]}
+                />
               </div>
             )}
 

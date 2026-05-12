@@ -14,6 +14,7 @@ import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
 import { FormInput, FormSelect } from '@shared/components/FormInput';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 import { api } from '@shared/services/apiService';
 import { adminService } from '@shared/services/modules/adminService';
 import { matchesSuperSearch } from '@shared/utils/superSearch';
@@ -354,20 +355,15 @@ export default function AdminHoliday() {
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
                         <span className="text-sm font-bold text-gray-700">เลือกปีแสดงผล:</span>
-                        <select
+                        <ResponsiveSelect
                             value={selectedYear}
                             onChange={(e) => setSelectedYear(parseInt(e.target.value))}
                             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 font-medium bg-white"
-                        >
-                            {Array.from({ length: 9 }, (_, i) => {
+                            options={Array.from({ length: 9 }, (_, i) => {
                                 const year = new Date().getFullYear() - 2 + i;
-                                return (
-                                    <option key={year} value={year}>
-                                        พ.ศ. {year + 543} ({year})
-                                    </option>
-                                );
+                                return { value: year, label: `พ.ศ. ${year + 543} (${year})` };
                             })}
-                        </select>
+                        />
                     </div>
                     <div className="flex items-center gap-3 bg-gray-50 px-3 py-2 rounded-lg border border-gray-100 shadow-sm">
                         <Legend color="bg-red-500" label="วันหยุดราชการ" />

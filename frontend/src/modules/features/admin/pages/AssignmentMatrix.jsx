@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '@shared/services/apiDatabase';
 import { FormSelect } from '@shared/components/FormInput';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 import Button from '@shared/components/Button';
 import Modal from '@shared/components/Modal';
 
@@ -237,7 +238,7 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
             {!propProjectId && (
                 <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-400">
                     <label className="block text-sm font-medium text-gray-700 mb-2">เลือกโครงการ (Select Project)</label>
-                    <select
+                    <ResponsiveSelect
                         className="w-full md:w-1/2 p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
                         value={selectedProjectId}
                         onChange={(e) => setSelectedProjectId(e.target.value)}
@@ -246,7 +247,7 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
                         {projects.map(p => (
                             <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
                         ))}
-                    </select>
+                    </ResponsiveSelect>
                 </div>
             )}
 
@@ -312,7 +313,7 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
                                                             : `ค่าปัจจุบันเป็นผู้ใช้ Inactive: ${currentAssigneeState.label}`}
                                                     </div>
                                                 )}
-                                                <select
+                                                <ResponsiveSelect
                                                     className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
                                                     value={current?.assigneeId || ''}
                                                     onChange={(e) => handleAssigneeChange(type.id, e.target.value)}
@@ -331,7 +332,7 @@ export default function AssignmentMatrix({ projectId: propProjectId, assignees: 
                                                                 `User #${u.id}`}
                                                         </option>
                                                     ))}
-                                                </select>
+                                                </ResponsiveSelect>
                                             </td>
                                         </tr>
                                     );

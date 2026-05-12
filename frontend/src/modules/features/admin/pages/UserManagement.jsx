@@ -20,6 +20,7 @@ import { generateTempPassword } from '@shared/utils/passwordGenerator';
 import { ROLES, ROLE_LABELS, ROLE_V1_DISPLAY, ROLE_V2_BADGE_COLORS, hasRole, normalizeRoleName } from '@shared/utils/permission.utils';
 import Button from '@shared/components/Button';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 import RoleSelectionCheckbox from '@shared/components/RoleSelectionCheckbox';
 import ScopeConfigPanel from '@shared/components/ScopeConfigPanel';
 import {
@@ -1445,7 +1446,7 @@ export default function UserManagementNew() {
                         {/* Department Filter */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">แผนก (Department)</label>
-                            <select
+                            <ResponsiveSelect
                                 className="w-full border-gray-300 rounded-md shadow-sm focus:border-rose-500 focus:ring-rose-500 sm:text-sm p-2 border"
                                 value={filterDepartment}
                                 onChange={(e) => setFilterDepartment(e.target.value)}
@@ -1454,13 +1455,13 @@ export default function UserManagementNew() {
                                 {masterData.departments.map(d => (
                                     <option key={d.id} value={d.id}>{d.name}</option>
                                 ))}
-                            </select>
+                            </ResponsiveSelect>
                         </div>
 
                         {/* Role Filter */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">บทบาท (Role)</label>
-                            <select
+                            <ResponsiveSelect
                                 className="w-full border-gray-300 rounded-md shadow-sm focus:border-rose-500 focus:ring-rose-500 sm:text-sm p-2 border"
                                 value={filterRole}
                                 onChange={(e) => setFilterRole(e.target.value)}
@@ -1470,13 +1471,13 @@ export default function UserManagementNew() {
                                 <option value="Requester">{ROLE_V1_DISPLAY.Requester || 'Requester'}</option>
                                 <option value="Approver">{ROLE_V1_DISPLAY.Approver || 'Approver'}</option>
                                 <option value="Assignee">{ROLE_V1_DISPLAY.Assignee || 'Assignee'}</option>
-                            </select>
+                            </ResponsiveSelect>
                         </div>
 
                         {/* Status Filter */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">สถานะ (Status)</label>
-                            <select
+                            <ResponsiveSelect
                                 className="w-full border-gray-300 rounded-md shadow-sm focus:border-rose-500 focus:ring-rose-500 sm:text-sm p-2 border"
                                 value={filterStatus}
                                 onChange={(e) => setFilterStatus(e.target.value)}
@@ -1484,7 +1485,7 @@ export default function UserManagementNew() {
                                 <option value="all">ทั้งหมด</option>
                                 <option value="active">ใช้งานอยู่ (Active)</option>
                                 <option value="inactive">ปิดใช้งาน (Inactive)</option>
-                            </select>
+                            </ResponsiveSelect>
                         </div>
                     </div>
                 </div>
@@ -2185,7 +2186,7 @@ export default function UserManagementNew() {
 
                             <div>
                                 <label className="block text-sm font-bold text-gray-900 mb-1">แผนก / สังกัด</label>
-                                <select
+                                <ResponsiveSelect
                                     value={createUserData.departmentId || ''}
                                     onChange={(e) => {
                                         const nextUserData = { ...createUserData, departmentId: e.target.value };
@@ -2201,7 +2202,7 @@ export default function UserManagementNew() {
                                     {masterData.departments.map(dept => (
                                         <option key={dept.id} value={dept.id}>{dept.name} ({dept.code})</option>
                                     ))}
-                                </select>
+                                </ResponsiveSelect>
                             </div>
 
                             <div>
@@ -2342,7 +2343,7 @@ export default function UserManagementNew() {
                                                             })()}
                                                         </button>
                                                     </div>
-                                                    <select
+                                                    <ResponsiveSelect
                                                         value={createBudFilter}
                                                         onChange={(e) => setCreateBudFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
                                                         className="w-full text-sm border border-gray-400 rounded-md px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
@@ -2370,7 +2371,7 @@ export default function UserManagementNew() {
                                                                 </option>
                                                             );
                                                         })}
-                                                    </select>
+                                                    </ResponsiveSelect>
                                                 </div>
 
                                                 <div className="border border-gray-400 shadow-sm rounded-lg h-96 overflow-y-auto bg-white">
@@ -2606,7 +2607,7 @@ export default function UserManagementNew() {
 
                                 <div>
                                     <label className="block text-sm font-bold text-gray-900 mb-1">แผนก / สังกัด</label>
-                                    <select
+                                    <ResponsiveSelect
                                         value={editModal.user.departmentId || ''}
                                         onChange={(e) => setEditModal(prev => ({ ...prev, user: { ...prev.user, departmentId: e.target.value } }))}
                                         className="w-full px-3 py-2 border border-gray-400 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
@@ -2615,7 +2616,7 @@ export default function UserManagementNew() {
                                         {masterData.departments.map(dept => (
                                             <option key={dept.id} value={dept.id}>{dept.name} ({dept.code})</option>
                                         ))}
-                                    </select>
+                                    </ResponsiveSelect>
                                 </div>
 
                                 {/* Role Selection - Multi-Role Component */}
@@ -2817,7 +2818,7 @@ export default function UserManagementNew() {
                                                             </button>
                                                         </div>
                                                         {/* BUD Filter Dropdown - aligned like Job Types box */}
-                                                        <select
+                                                        <ResponsiveSelect
                                                             value={budFilter}
                                                             onChange={(e) => setBudFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
                                                             className="w-full text-sm border border-gray-400 rounded-md px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
@@ -2845,7 +2846,7 @@ export default function UserManagementNew() {
                                                                     </option>
                                                                 );
                                                             })}
-                                                        </select>
+                                                        </ResponsiveSelect>
                                                     </div>
                                                     {/* Project List (filtered by BUD, exclude parent projects) */}
                                                     <div className="border border-gray-400 shadow-sm rounded-lg h-96 overflow-y-auto bg-white">
@@ -2933,7 +2934,7 @@ export default function UserManagementNew() {
                                                         {currentBudId && !showAllDepts && <span className="text-rose-600 font-medium"> (เฉพาะฝ่าย {selectedDeptObj?.name})</span>}
                                                         {(!currentBudId || showAllDepts) && " (ทุกแผนก)"}
                                                     </p>
-                                                    <select
+                                                    <ResponsiveSelect
                                                         value={managedDeptId || ''}
                                                         onChange={(e) => setManagedDeptId(e.target.value ? parseInt(e.target.value) : '')}
                                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
@@ -2948,7 +2949,7 @@ export default function UserManagementNew() {
                                                                     : ''}
                                                             </option>
                                                         ))}
-                                                    </select>
+                                                    </ResponsiveSelect>
                                                     <div className="flex items-start gap-2 mt-2">
                                                         <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">
                                                             ⚠️ การเปลี่ยนผู้จัดการจะทับคนเดิมทันที และบันทึก Log การเปลี่ยนแปลง

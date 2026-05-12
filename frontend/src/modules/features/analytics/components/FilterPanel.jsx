@@ -4,8 +4,9 @@
  */
 
 import { useState } from 'react';
-import { Calendar, Filter, RotateCcw, ChevronDown, X } from 'lucide-react';
+import { Calendar, Filter, RotateCcw, X } from 'lucide-react';
 import { ANALYTICS_FILTER_OPTIONS, WORK_STATUS_LABEL } from '@shared/constants/jobStatus';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 
 /**
  * @component FilterPanel
@@ -108,23 +109,21 @@ export default function FilterPanel({ filters, onFiltersChange, projects = [], u
                             <label className="block text-xs font-medium text-gray-500 mb-1.5">
                                 ช่วงเวลา
                             </label>
-                            <div className="relative">
-                                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                <select
-                                    value={filters.period || 'this_month'}
-                                    onChange={(e) => handleFilterChange('period', e.target.value)}
-                                    className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-transparent appearance-none cursor-pointer hover:bg-white transition-colors"
-                                >
-                                    <option value="this_month">เดือนนี้</option>
-                                    <option value="last_month">เดือนที่แล้ว</option>
-                                    <option value="this_quarter">ไตรมาสนี้</option>
-                                    <option value="last_quarter">ไตรมาสที่แล้ว</option>
-                                    <option value="this_year">ปีนี้</option>
-                                    <option value="last_year">ปีที่แล้ว</option>
-                                    <option value="custom">กำหนดเอง...</option>
-                                </select>
-                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                            </div>
+                            <ResponsiveSelect
+                                value={filters.period || 'this_month'}
+                                onChange={(e) => handleFilterChange('period', e.target.value)}
+                                leadingIcon={Calendar}
+                                className="bg-gray-50 border-gray-200 hover:bg-white"
+                                options={[
+                                    { value: 'this_month', label: 'เดือนนี้' },
+                                    { value: 'last_month', label: 'เดือนที่แล้ว' },
+                                    { value: 'this_quarter', label: 'ไตรมาสนี้' },
+                                    { value: 'last_quarter', label: 'ไตรมาสที่แล้ว' },
+                                    { value: 'this_year', label: 'ปีนี้' },
+                                    { value: 'last_year', label: 'ปีที่แล้ว' },
+                                    { value: 'custom', label: 'กำหนดเอง...' }
+                                ]}
+                            />
                         </div>
 
                         {/* Custom Date Range */}
@@ -166,20 +165,16 @@ export default function FilterPanel({ filters, onFiltersChange, projects = [], u
                             <label className="block text-xs font-medium text-gray-500 mb-1.5">
                                 สถานะ
                             </label>
-                            <div className="relative">
-                                <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                <select
-                                    value={filters.status || ''}
-                                    onChange={(e) => handleFilterChange('status', e.target.value || null)}
-                                    className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-transparent appearance-none cursor-pointer hover:bg-white transition-colors"
-                                >
-                                    <option value="">ทั้งหมด</option>
-                                    {ANALYTICS_FILTER_OPTIONS.map(opt => (
-                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                    ))}
-                                </select>
-                                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                            </div>
+                            <ResponsiveSelect
+                                value={filters.status || ''}
+                                onChange={(e) => handleFilterChange('status', e.target.value || null)}
+                                leadingIcon={Filter}
+                                className="bg-gray-50 border-gray-200 hover:bg-white"
+                                options={[
+                                    { value: '', label: 'ทั้งหมด' },
+                                    ...ANALYTICS_FILTER_OPTIONS.map(opt => ({ value: opt.value, label: opt.label }))
+                                ]}
+                            />
                         </div>
 
                         {/* Project */}
@@ -188,21 +183,15 @@ export default function FilterPanel({ filters, onFiltersChange, projects = [], u
                                 <label className="block text-xs font-medium text-gray-500 mb-1.5">
                                     โปรเจกต์
                                 </label>
-                                <div className="relative">
-                                    <select
-                                        value={filters.projectId || ''}
-                                        onChange={(e) => handleFilterChange('projectId', e.target.value || null)}
-                                        className="w-full px-3 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-transparent appearance-none cursor-pointer hover:bg-white transition-colors"
-                                    >
-                                        <option value="">ทั้งหมด</option>
-                                        {projects.map(project => (
-                                            <option key={project.id} value={project.id}>
-                                                {project.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                                </div>
+                                <ResponsiveSelect
+                                    value={filters.projectId || ''}
+                                    onChange={(e) => handleFilterChange('projectId', e.target.value || null)}
+                                    className="bg-gray-50 border-gray-200 hover:bg-white"
+                                    options={[
+                                        { value: '', label: 'ทั้งหมด' },
+                                        ...projects.map(project => ({ value: project.id, label: project.name }))
+                                    ]}
+                                />
                             </div>
                         )}
 
@@ -212,21 +201,15 @@ export default function FilterPanel({ filters, onFiltersChange, projects = [], u
                                 <label className="block text-xs font-medium text-gray-500 mb-1.5">
                                     ผู้รับผิดชอบ
                                 </label>
-                                <div className="relative">
-                                    <select
-                                        value={filters.assigneeId || ''}
-                                        onChange={(e) => handleFilterChange('assigneeId', e.target.value || null)}
-                                        className="w-full px-3 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 focus:border-transparent appearance-none cursor-pointer hover:bg-white transition-colors"
-                                    >
-                                        <option value="">ทั้งหมด</option>
-                                        {users.map(user => (
-                                            <option key={user.id} value={user.id}>
-                                                {getUserLabel(user)}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                                </div>
+                                <ResponsiveSelect
+                                    value={filters.assigneeId || ''}
+                                    onChange={(e) => handleFilterChange('assigneeId', e.target.value || null)}
+                                    className="bg-gray-50 border-gray-200 hover:bg-white"
+                                    options={[
+                                        { value: '', label: 'ทั้งหมด' },
+                                        ...users.map(user => ({ value: user.id, label: getUserLabel(user) }))
+                                    ]}
+                                />
                             </div>
                         )}
                     </div>

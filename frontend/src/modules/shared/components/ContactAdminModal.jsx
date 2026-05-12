@@ -7,6 +7,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import httpClient from '@shared/services/httpClient';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 
 const CATEGORIES = [
     { value: 'bug', label: 'แจ้งปัญหาการใช้งาน (Bug)' },
@@ -104,16 +105,15 @@ export default function ContactAdminModal({ isOpen, onClose }) {
                             <label className="block text-sm font-medium text-slate-700 mb-1.5">
                                 ประเภท <span className="text-red-500">*</span>
                             </label>
-                            <select
+                            <ResponsiveSelect
                                 value={form.category}
                                 onChange={(e) => setForm(f => ({ ...f, category: e.target.value }))}
                                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent bg-white"
-                            >
-                                <option value="">-- เลือกประเภท --</option>
-                                {CATEGORIES.map(c => (
-                                    <option key={c.value} value={c.value}>{c.label}</option>
-                                ))}
-                            </select>
+                                options={[
+                                    { value: '', label: '-- เลือกประเภท --' },
+                                    ...CATEGORIES.map(c => ({ value: c.value, label: c.label }))
+                                ]}
+                            />
                         </div>
 
                         <div>

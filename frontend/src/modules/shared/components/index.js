@@ -10,6 +10,7 @@
 export { default as Button } from './Button';
 export { Card, CardHeader, CardBody } from './Card';
 export { FormInput, FormSelect, FormTextarea } from './FormInput';
+export { default as ResponsiveSelect } from './ResponsiveSelect';
 export { default as Modal } from './Modal';
 export { default as FileUpload } from './FileUpload';
 export { default as Badge } from './Badge';

@@ -14,6 +14,7 @@ import { Card } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 import { useSocket } from '@shared/hooks';
 import {
     ClipboardDocumentListIcon,
@@ -136,6 +137,7 @@ export default function MyQueue() {
     const [completeNote, setCompleteNote] = useState('');
     const [completeUploadedFiles, setCompleteUploadedFiles] = useState([]);
     const [completeUploadingFile, setCompleteUploadingFile] = useState(false);
+    const [completeDragActive, setCompleteDragActive] = useState(false);
     const [completeItemsLoading, setCompleteItemsLoading] = useState(false);
     const [completeDeliveredItems, setCompleteDeliveredItems] = useState({});
     const [isCompleting, setIsCompleting] = useState(false);
@@ -282,6 +284,7 @@ export default function MyQueue() {
         setFinalLink('');
         setCompleteNote('');
         setCompleteUploadedFiles([]);
+        setCompleteDragActive(false);
         setCompleteDeliveredItems({});
         setShowCompleteModal(true);
 
@@ -303,8 +306,7 @@ export default function MyQueue() {
     /**
      * อัปโหลดไฟล์ใน Complete Modal (จำกัด 10MB รวม)
      */
-    const handleCompleteFileChange = async (e) => {
-        const files = Array.from(e.target.files);
+    const uploadCompleteFiles = async (files) => {
         if (!files.length) return;
 
         // ตรวจขนาดรวม (existing + new) ≤ 10MB
@@ -312,7 +314,6 @@ export default function MyQueue() {
         const newSize = files.reduce((sum, f) => sum + f.size, 0);
         if (existingSize + newSize > COMPLETE_MAX_TOTAL) {
             showAlert('warning', 'ขนาดไฟล์รวมเกินกำหนด', `ขนาดรวม ${((existingSize + newSize) / 1024 / 1024).toFixed(1)}MB เกินขีดจำกัด 10MB สำหรับไฟล์ส่งมอบ`);
-            e.target.value = '';
             return;
         }
 
@@ -336,8 +337,38 @@ export default function MyQueue() {
             showAlert('error', 'อัปโหลดไฟล์ไม่สำเร็จ', err.message);
         } finally {
             setCompleteUploadingFile(false);
-            e.target.value = '';
         }
+    };
+
+    const handleCompleteFileChange = async (e) => {
+        const files = Array.from(e.target.files || []);
+        await uploadCompleteFiles(files);
+        e.target.value = '';
+    };
+
+    const handleCompleteDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isCompleting && !completeUploadingFile) {
+            setCompleteDragActive(true);
+        }
+    };
+
+    const handleCompleteDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setCompleteDragActive(false);
+    };
+
+    const handleCompleteDrop = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (isCompleting || completeUploadingFile) return;
+
+        setCompleteDragActive(false);
+        const droppedFiles = Array.from(e.dataTransfer?.files || []);
+        await uploadCompleteFiles(droppedFiles);
     };
 
     /**
@@ -367,6 +398,7 @@ export default function MyQueue() {
         setCompleteUploadedFiles([]);
         setCompleteItemsLoading(false);
         setCompleteDeliveredItems({});
+        setCompleteDragActive(false);
         setIsCompleting(false);
         setSelectedJob(null);
     };
@@ -640,25 +672,27 @@ export default function MyQueue() {
                     </div>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex">
                         <div className="w-full lg:w-40">
-                            <select
+                            <ResponsiveSelect
                                 value={filterProject}
                                 onChange={(e) => setFilterProject(e.target.value)}
                                 className="w-full pl-3 pr-8 py-2 border border-gray-400 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 appearance-none bg-white"
-                            >
-                                <option value="all">ทุกโปรเจกต์</option>
-                                {projects.map(p => <option key={p} value={p}>{p}</option>)}
-                            </select>
+                                options={[
+                                    { value: 'all', label: 'ทุกโปรเจกต์' },
+                                    ...projects.map(p => ({ value: p, label: p }))
+                                ]}
+                            />
                         </div>
                         <div className="w-full lg:w-40">
-                            <select
+                            <ResponsiveSelect
                                 value={sortBy}
                                 onChange={(e) => setSortBy(e.target.value)}
                                 className="w-full pl-3 pr-8 py-2 border border-gray-400 rounded-lg text-sm focus:ring-2 focus:ring-rose-500 appearance-none bg-white"
-                            >
-                                <option value="deadline">📅 เรียงตามกำหนดส่ง</option>
-                                <option value="priority">🔥 เรียงตามความด่วน</option>
-                                <option value="newest">✨ เรียงตามงานใหม่</option>
-                            </select>
+                                options={[
+                                    { value: 'deadline', label: 'เรียงตามกำหนดส่ง' },
+                                    { value: 'priority', label: 'เรียงตามความด่วน' },
+                                    { value: 'newest', label: 'เรียงตามงานใหม่' }
+                                ]}
+                            />
                         </div>
                     </div>
                 </div>
@@ -1034,10 +1068,15 @@ export default function MyQueue() {
                                 </label>
                                 <div
                                     onClick={() => !completeUploadingFile && completeFileInputRef.current?.click()}
+                                    onDragOver={handleCompleteDragOver}
+                                    onDragLeave={handleCompleteDragLeave}
+                                    onDrop={handleCompleteDrop}
                                     className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
                                         completeUploadingFile
                                             ? 'opacity-50 cursor-not-allowed border-gray-200 bg-gray-50'
-                                            : 'cursor-pointer border-slate-300 hover:border-emerald-300 hover:bg-emerald-50/50'
+                                            : completeDragActive
+                                                ? 'cursor-pointer border-emerald-500 bg-emerald-50'
+                                                : 'cursor-pointer border-slate-300 hover:border-emerald-300 hover:bg-emerald-50/50'
                                     }`}
                                 >
                                     <input

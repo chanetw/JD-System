@@ -25,6 +25,7 @@ import Badge from '@shared/components/Badge';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
 import Button from '@shared/components/Button';
 import Tabs from '@shared/components/Tabs';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 
 // Icons
 import {
@@ -88,6 +89,7 @@ export default function JobDetail() {
     const [finalLink, setFinalLink] = useState('');
     const [completeUploadedFiles, setCompleteUploadedFiles] = useState([]);
     const [completeUploadingFile, setCompleteUploadingFile] = useState(false);
+    const [completeDragActive, setCompleteDragActive] = useState(false);
     const [completeDeliveredItems, setCompleteDeliveredItems] = useState({});
     const completeFileInputRef = useRef(null);
     const COMPLETE_MAX_TOTAL = 10 * 1024 * 1024; // 10MB รวม
@@ -348,8 +350,7 @@ export default function JobDetail() {
         }
     };
 
-    const handleCompleteFileChange = async (e) => {
-        const files = Array.from(e.target.files);
+    const uploadCompleteFiles = async (files) => {
         if (!files.length) return;
 
         const existingSize = completeUploadedFiles.reduce((sum, f) => sum + (f.fileSize || 0), 0);
@@ -361,7 +362,6 @@ export default function JobDetail() {
                 text: `ขนาดรวม ${((existingSize + newSize) / 1024 / 1024).toFixed(1)}MB เกินขีดจำกัด 10MB สำหรับไฟล์ส่งมอบ`,
                 confirmButtonColor: '#e11d48'
             });
-            e.target.value = '';
             return;
         }
 
@@ -385,8 +385,38 @@ export default function JobDetail() {
             Swal.fire({ icon: 'error', title: 'อัปโหลดไฟล์ไม่สำเร็จ', text: err.message, confirmButtonColor: '#e11d48' });
         } finally {
             setCompleteUploadingFile(false);
-            e.target.value = '';
         }
+    };
+
+    const handleCompleteFileChange = async (e) => {
+        const files = Array.from(e.target.files || []);
+        await uploadCompleteFiles(files);
+        e.target.value = '';
+    };
+
+    const handleCompleteDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isCompleting && !completeUploadingFile) {
+            setCompleteDragActive(true);
+        }
+    };
+
+    const handleCompleteDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setCompleteDragActive(false);
+    };
+
+    const handleCompleteDrop = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (isCompleting || completeUploadingFile) return;
+
+        setCompleteDragActive(false);
+        const droppedFiles = Array.from(e.dataTransfer?.files || []);
+        await uploadCompleteFiles(droppedFiles);
     };
 
     const handleCompleteRemoveFile = async (fileId) => {
@@ -416,6 +446,7 @@ export default function JobDetail() {
         setFinalLink('');
         setCompleteNote('');
         setCompleteUploadedFiles([]);
+        setCompleteDragActive(false);
         setCompleteDeliveredItems({});
         setShowCompleteModal(true);
     };
@@ -430,6 +461,7 @@ export default function JobDetail() {
         setFinalLink('');
         setCompleteNote('');
         setCompleteUploadedFiles([]);
+        setCompleteDragActive(false);
         setCompleteDeliveredItems({});
     };
 
@@ -1484,10 +1516,15 @@ export default function JobDetail() {
                                 </label>
                                 <div
                                     onClick={() => !isCompleting && !completeUploadingFile && completeFileInputRef.current?.click()}
+                                    onDragOver={handleCompleteDragOver}
+                                    onDragLeave={handleCompleteDragLeave}
+                                    onDrop={handleCompleteDrop}
                                     className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
                                         isCompleting || completeUploadingFile
                                             ? 'opacity-50 cursor-not-allowed border-gray-200 bg-gray-50'
-                                            : 'cursor-pointer border-slate-300 hover:border-emerald-300 hover:bg-emerald-50/50'
+                                            : completeDragActive
+                                                ? 'cursor-pointer border-emerald-500 bg-emerald-50'
+                                                : 'cursor-pointer border-slate-300 hover:border-emerald-300 hover:bg-emerald-50/50'
                                     }`}
                                 >
                                     <input
@@ -1760,22 +1797,17 @@ export default function JobDetail() {
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90dvh] overflow-y-auto">
                         <h3 className="text-lg font-bold mb-4">เปลี่ยนผู้รับผิดชอบ</h3>
-                        <select
+                        <ResponsiveSelect
                             className="w-full border rounded p-2 mb-4"
                             value={selectedAssignee}
                             onChange={e => setSelectedAssignee(e.target.value)}
-                        >
-                            <option value="">เลือกผู้รับงาน...</option>
-                            {users.map(u => {
-                                // กรองออกผู้รับผิดชอบปัจจุบัน ไม่ให้เลือกตัวเอง
-                                if (u.id === job?.assigneeId) {
-                                    return null;
-                                }
-                                return (
-                                    <option key={u.id} value={u.id}>{u.name}</option>
-                                );
-                            })}
-                        </select>
+                            options={[
+                                { value: '', label: 'เลือกผู้รับงาน...' },
+                                ...users
+                                    .filter(u => u.id !== job?.assigneeId)
+                                    .map(u => ({ value: u.id, label: u.name }))
+                            ]}
+                        />
                         {users.filter(u => u.id !== job?.assigneeId).length === 0 && (
                             <p className="text-xs text-amber-700 mb-3">
                                 ไม่พบผู้รับงานที่ Active สำหรับการย้ายงาน

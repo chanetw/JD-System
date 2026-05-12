@@ -12,6 +12,7 @@ import UserDetailSidePanel from '../components/UserDetailSidePanel';
 import { Search, Filter, SortAsc, Calendar } from 'lucide-react';
 import { isAdmin as checkIsAdmin } from '@shared/utils/permission.utils';
 import { matchesSuperSearch } from '@shared/utils/superSearch';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 
 /**
  * @component ReportsPage
@@ -149,35 +150,37 @@ export default function ReportsPage() {
           </div>
 
           {/* Date Range */}
-          <div className="relative">
-            <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <select
+          <div>
+            <ResponsiveSelect
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent appearance-none bg-white"
-            >
-              <option value="this_week">สัปดาห์นี้</option>
-              <option value="last_7_days">7 วันที่แล้ว</option>
-              <option value="this_month">เดือนนี้</option>
-              <option value="last_30_days">30 วันที่แล้ว</option>
-              <option value="this_quarter">ไตรมาสนี้</option>
-              <option value="this_year">ปีนี้</option>
-            </select>
+              leadingIcon={Calendar}
+              className="border-gray-300"
+              options={[
+                { value: 'this_week', label: 'สัปดาห์นี้' },
+                { value: 'last_7_days', label: '7 วันที่แล้ว' },
+                { value: 'this_month', label: 'เดือนนี้' },
+                { value: 'last_30_days', label: '30 วันที่แล้ว' },
+                { value: 'this_quarter', label: 'ไตรมาสนี้' },
+                { value: 'this_year', label: 'ปีนี้' }
+              ]}
+            />
           </div>
 
           {/* Sort */}
-          <div className="relative">
-            <SortAsc className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <select
+          <div>
+            <ResponsiveSelect
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent appearance-none bg-white"
-            >
-              <option value="onTimeRate">อัตราส่งตรงเวลา (สูง → ต่ำ)</option>
-              <option value="completedJobs">งานที่เสร็จ (มาก → น้อย)</option>
-              <option value="avgTurnaroundDays">ความเร็ว (เร็ว → ช้า)</option>
-              <option value="name">ชื่อ (A → Z)</option>
-            </select>
+              leadingIcon={SortAsc}
+              className="border-gray-300"
+              options={[
+                { value: 'onTimeRate', label: 'อัตราส่งตรงเวลา (สูง → ต่ำ)' },
+                { value: 'completedJobs', label: 'งานที่เสร็จ (มาก → น้อย)' },
+                { value: 'avgTurnaroundDays', label: 'ความเร็ว (เร็ว → ช้า)' },
+                { value: 'name', label: 'ชื่อ (A → Z)' }
+              ]}
+            />
           </div>
 
           {/* Results Count */}

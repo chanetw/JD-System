@@ -11,6 +11,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Button from '@shared/components/Button';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 import { authServiceV2 } from '@shared/services/modules/authServiceV2';
 import { 
     UserIcon, 
@@ -223,16 +224,13 @@ export default function Register() {
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
                                         คำนำหน้า
                                     </label>
-                                    <select
+                                    <ResponsiveSelect
                                         name="title"
                                         value={formData.title}
                                         onChange={handleChange}
                                         className="w-full px-3 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent"
-                                    >
-                                        {titleOptions.map(opt => (
-                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                        ))}
-                                    </select>
+                                        options={titleOptions}
+                                    />
                                 </div>
                                 <div className="col-span-3">
                                     <label className="block text-sm font-medium text-gray-700 mb-1">

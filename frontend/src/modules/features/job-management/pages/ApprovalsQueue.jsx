@@ -17,6 +17,7 @@ import { Link } from 'react-router-dom';
 import { Card } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 import { getJobActionErrorDetail, showAlert } from '@shared/utils/alertHelper';
 import { matchesSuperSearch } from '@shared/utils/superSearch';
 
@@ -764,15 +765,16 @@ export default function ApprovalsQueue() {
 
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">สาเหตุการปฏิเสธ <span className="text-red-500">*</span></label>
-                                        <select
+                                        <ResponsiveSelect
                                             value={rejectReason}
                                             onChange={(e) => setRejectReason(e.target.value)}
                                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
-                                        >
-                                            <option value="incomplete">Brief ไม่ครบถ้วน</option>
-                                            <option value="unclear">ข้อมูลไม่ชัดเจน</option>
-                                            <option value="other">อื่นๆ</option>
-                                        </select>
+                                            options={[
+                                                { value: 'incomplete', label: 'Brief ไม่ครบถ้วน' },
+                                                { value: 'unclear', label: 'ข้อมูลไม่ชัดเจน' },
+                                                { value: 'other', label: 'อื่นๆ' }
+                                            ]}
+                                        />
                                     </div>
 
                                     <div>

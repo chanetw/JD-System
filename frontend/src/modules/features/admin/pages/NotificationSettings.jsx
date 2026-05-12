@@ -14,6 +14,7 @@ import { api } from '@shared/services/apiService';
 import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import Button from '@shared/components/Button';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
+import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 import { Card, CardHeader, CardBody } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
 import Modal from '@shared/components/Modal';
@@ -575,7 +576,7 @@ export default function NotificationSettings() {
                     <div className="absolute inset-0 bg-black/50" onClick={() => setShowAddUserModal(false)} />
                     <div className="relative bg-white rounded-2xl p-6 w-full max-w-md mx-4">
                         <h3 className="text-lg font-bold mb-4">เพิ่มผู้ใช้</h3>
-                        <select
+                        <ResponsiveSelect
                             value={selectedUserId}
                             onChange={(e) => setSelectedUserId(e.target.value)}
                             className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-rose-500 mb-4"
@@ -589,7 +590,7 @@ export default function NotificationSettings() {
                                     </option>
                                 ))
                             }
-                        </select>
+                        </ResponsiveSelect>
                         <div className="flex justify-end gap-2">
                             <Button variant="outline" onClick={() => setShowAddUserModal(false)}>
                                 ยกเลิก
