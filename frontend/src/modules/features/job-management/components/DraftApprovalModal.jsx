@@ -19,13 +19,13 @@ export default function DraftApprovalModal({ isOpen, onClose, job, onSuccess, cu
     const [reviewLink, setReviewLink] = useState('');
     const [uploadedFiles, setUploadedFiles] = useState([]);
     const [uploadingFile, setUploadingFile] = useState(false);
+    const [isDragActive, setIsDragActive] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const fileInputRef = useRef(null);
 
     if (!isOpen) return null;
 
-    const handleFileChange = async (e) => {
-        const files = Array.from(e.target.files);
+    const uploadDraftReviewFiles = async (files) => {
         if (!files.length) return;
         setUploadingFile(true);
         try {
@@ -45,8 +45,38 @@ export default function DraftApprovalModal({ isOpen, onClose, job, onSuccess, cu
             Swal.fire({ icon: 'error', title: 'อัปโหลดไฟล์ไม่สำเร็จ', text: err.message, confirmButtonColor: '#e11d48' });
         } finally {
             setUploadingFile(false);
-            e.target.value = '';
         }
+    };
+
+    const handleFileChange = async (e) => {
+        const files = Array.from(e.target.files || []);
+        await uploadDraftReviewFiles(files);
+        e.target.value = '';
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isSubmitting && !uploadingFile) {
+            setIsDragActive(true);
+        }
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragActive(false);
+    };
+
+    const handleDrop = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (isSubmitting || uploadingFile) return;
+
+        setIsDragActive(false);
+        const droppedFiles = Array.from(e.dataTransfer?.files || []);
+        await uploadDraftReviewFiles(droppedFiles);
     };
 
     const cleanupUploadedFiles = async (filesToCleanup = []) => {
@@ -214,10 +244,15 @@ export default function DraftApprovalModal({ isOpen, onClose, job, onSuccess, cu
                         </label>
                         <div
                             onClick={() => !isSubmitting && !uploadingFile && fileInputRef.current?.click()}
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
                             className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
                                 isSubmitting || uploadingFile
                                     ? 'opacity-50 cursor-not-allowed border-gray-200 bg-gray-50'
-                                    : 'cursor-pointer border-gray-300 hover:border-rose-400 hover:bg-rose-50/30'
+                                    : isDragActive
+                                        ? 'cursor-pointer border-rose-500 bg-rose-50'
+                                        : 'cursor-pointer border-gray-300 hover:border-rose-400 hover:bg-rose-50/30'
                             }`}
                         >
                             <input
