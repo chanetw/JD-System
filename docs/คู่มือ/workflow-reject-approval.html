@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flow 6: ปฏิเสธงาน (ผู้อนุมัติ) - DJ System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <button class="sidebar-toggle" id="sidebarToggle" aria-label="เปิดเมนู"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg></button>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header"><div class="sidebar-logo">DJ</div><div class="sidebar-title">คู่มือการใช้งาน<span>DJ System</span></div></div>
+    <nav class="sidebar-nav">
+      <div class="sidebar-section"><div class="sidebar-section-title">เริ่มต้นใช้งาน</div><a href="index.html" class="sidebar-link"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>ภาพรวมระบบ</a><a href="status-bible.html" class="sidebar-link"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>สถานะงานทั้งหมด</a><a href="sla-working-day.html" class="sidebar-link"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>SLA และวันทำการ</a></div>
+      <div class="sidebar-section"><div class="sidebar-section-title">ขั้นตอนการทำงาน</div><a href="workflow-overview.html" class="sidebar-link"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3z"></path><path d="M14 3h7v7h-7z"></path><path d="M14 14h7v7h-7z"></path><path d="M3 14h7v7H3z"></path><line x1="10" y1="6" x2="14" y2="6"></line><line x1="10" y1="17" x2="14" y2="17"></line><line x1="17" y1="10" x2="17" y2="14"></line></svg>User Flow (ทั้งหมด)</a></div>
+      <div class="sidebar-section"><div class="sidebar-section-title">ตามบทบาท</div><a href="requester.html" class="sidebar-link"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>ผู้สั่งงาน (Requester)</a><a href="approver.html" class="sidebar-link"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>ผู้อนุมัติ (Approver)</a><a href="assignee.html" class="sidebar-link"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>ผู้รับงาน (Assignee)</a><a href="admin.html" class="sidebar-link"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>ผู้ดูแลระบบ (Admin)</a></div>
+      <div class="sidebar-section"><div class="sidebar-section-title">ขั้นสูง</div><a href="rejection-bible.html" class="sidebar-link"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>การปฏิเสธงาน</a><a href="error-bible.html" class="sidebar-link"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>Error Code & วิธีแก้</a><a href="faq.html" class="sidebar-link"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>คำถามที่พบบ่อย</a><a href="troubleshooting.html" class="sidebar-link"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>แก้ไขปัญหาเบื้องต้น</a></div>
+    </nav>
+    <div class="sidebar-footer">© 2026 DJ System<br>เวอร์ชัน 2.0</div>
+  </aside>
+
+  <main class="main-content">
+    <div class="content-header">
+      <div class="breadcrumb"><a href="index.html">คู่มือ</a><span class="breadcrumb-separator">/</span><a href="workflow-overview.html">User Flow</a><span class="breadcrumb-separator">/</span><span>Flow 6: ปฏิเสธงาน (ผู้อนุมัติ)</span></div>
+    </div>
+
+    <div class="content">
+      <h1>🔴 Flow 6: ปฏิเสธงาน (ผู้อนุมัติ)</h1>
+      <p class="lead">ผู้อนุมัติ (Approver) ปฏิเสธงานในขั้นตอน pending_approval เพราะไม่ตรงตามเกณฑ์หรือข้อมูลไม่ชัดเจน</p>
+
+      <div class="info-box highlight">
+        <h3>📊 Swimlane Diagram</h3>
+        <div class="mermaid">
+sequenceDiagram
+    actor A as Approver
+    participant UI as UI System
+    participant DB as Database
+    participant Notify as Notification
+    
+    A->>UI: ดูรายการ Approvals Pending
+    A->>UI: เลือก job ที่ต้องการปฏิเสธ
+    UI-->>A: แสดง Job Details
+    
+    A->>A: ตรวจสอบและตัดสินใจปฏิเสธ
+    
+    A->>UI: กดปุ่ม "Reject"
+    UI-->>A: แสดง rejection reason form
+    
+    A->>UI: ใส่เหตุผล (required)
+    A->>UI: (optional) ใส่ instructions to resubmit
+    
+    A->>UI: กดปุ่ม "Confirm Rejection"
+    UI->>DB: update status = "rejected"
+    UI->>DB: บันทึก rejection_reason + rejection_by
+    
+    UI->>Notify: ส่งแจ้งเตือน Requester
+    Notify-->>Notify: "Job Rejected: Please revise"
+    
+    DB-->>UI: บันทึก Activity Log
+    UI-->>A: แสดงข้อความสำเร็จ
+    UI-->>A: redirect ไป Approvals list
+        </div>
+      </div>
+
+      <h2>📋 รายละเอียด Flow</h2>
+      
+      <div class="flow-step">
+        <div class="step-number">1</div>
+        <h3>Approver ตรวจสอบ Job</h3>
+        <ul>
+          <li>Approver เข้า Job Detail ของงาน pending_approval</li>
+          <li>อ่านรายละเอียด brief, ไฟล์, และ comments</li>
+          <li>ตัดสินใจว่าจะปฏิเสธ (Reject) เพราะ:</li>
+          <ul>
+            <li>Brief ไม่ชัดเจน</li>
+            <li>ขาดข้อมูลสำคัญ</li>
+            <li>ไม่ตรง scope หรือ budget</li>
+            <li>ต้องการปรึกษา stakeholder เพิ่มเติม</li>
+          </ul>
+        </ul>
+      </div>
+
+      <div class="flow-step">
+        <div class="step-number">2</div>
+        <h3>Reject Button & Form</h3>
+        <ul>
+          <li>Approver click "Reject" button</li>
+          <li>ระบบแสดง "Rejection Reason" form</li>
+          <li><strong>Required fields:</strong></li>
+          <ul>
+            <li>Rejection reason (textarea)</li>
+            <li>Severity: Minor / Major (dropdown)</li>
+          </ul>
+          <li><strong>Optional fields:</strong></li>
+          <ul>
+            <li>Resubmit instructions (how to fix)</li>
+            <li>Requested changes (detailed list)</li>
+          </ul>
+        </ul>
+      </div>
+
+      <div class="flow-step">
+        <div class="step-number">3</div>
+        <h3>ใส่เหตุผลปฏิเสธ</h3>
+        <ul>
+          <li>Approver เขียนเหตุผล:</li>
+          <ul>
+            <li>✓ "Brief is too vague. Need specific target audience and design direction."</li>
+            <li>✓ "Missing reference files. Please attach competitor design samples."</li>
+            <li>✓ "Budget seems underestimated for this scope."</li>
+          </ul>
+          <li>Severity: Minor (ฝึกหัด) vs Major (ต้องแก้ไขมาก)</li>
+          <li>Optional: ใส่ step-by-step instructions to resubmit</li>
+        </ul>
+      </div>
+
+      <div class="flow-step">
+        <div class="step-number">4</div>
+        <h3>ยืนยันปฏิเสธ</h3>
+        <ul>
+          <li>Approver click "Confirm Rejection"</li>
+          <li>Confirmation dialog:</li>
+          <ul>
+            <li>"Job will be returned to Requester"</li>
+            <li>"They will be able to edit and resubmit"</li>
+          </ul>
+          <li>Confirm → ระบบประมวลผล</li>
+        </ul>
+      </div>
+
+      <div class="flow-step">
+        <div class="step-number">5</div>
+        <h3>ระบบประมวลผล Rejection</h3>
+        <ul>
+          <li><strong>Update Job Status:</strong> pending_approval → rejected</li>
+          <li><strong>บันทึก Rejection Details:</strong></li>
+          <ul>
+            <li>rejection_reason = Approver's text</li>
+            <li>rejection_severity = Minor / Major</li>
+            <li>rejected_by = Approver name</li>
+            <li>rejected_at = current time</li>
+          </ul>
+          <li><strong>ส่งแจ้งเตือน Requester:</strong></li>
+          <ul>
+            <li>Email: "Your job [Title] has been rejected"</li>
+            <li>Include: Rejection reason + resubmit instructions</li>
+            <li>Link: Edit + Resubmit</li>
+          </ul>
+          <li><strong>Activity Log:</strong> "Rejected by [Approver] - [Reason]"</li>
+        </ul>
+      </div>
+
+      <h2>✅ Success Criteria</h2>
+      <ul>
+        <li>✓ Job status เปลี่ยนเป็น "rejected"</li>
+        <li>✓ Rejection record สร้างขึ้นมา (พร้อม reason + severity)</li>
+        <li>✓ Notification sent ไปยัง Requester พร้อมเหตุผล</li>
+        <li>✓ Requester สามารถ edit + resubmit</li>
+        <li>✓ Activity log บันทึก rejection details</li>
+      </ul>
+
+      <h2>⚠️ Resubmission Process</h2>
+      <ul>
+        <li>Requester ได้รับแจ้งเตือนพร้อมเหตุผลปฏิเสธ</li>
+        <li>Click "Edit Job" → แก้ไข brief, ไฟล์, ฯลฯ</li>
+        <li>Click "Resubmit" → Job กลับไป pending_approval</li>
+        <li>Approver ตรวจสอบอีกครั้ง</li>
+      </ul>
+
+      <!-- Navigation -->
+      <div class="flow-navigation">
+        <a href="workflow-deliver.html" class="btn btn-secondary">← ย้อนกลับ: Flow 5</a>
+        <a href="workflow-request-rejection.html" class="btn btn-primary">ถัดไป: Flow 7 →</a>
+      </div>
+    </div>
+
+    <button class="scroll-to-top" id="scrollToTop" aria-label="กลับไปด้านบน">↑</button>
+  </main>
+
+  <style>
+    .flow-step { margin: 1.5rem 0; padding: 1rem; background: #fee2e2; border-left: 4px solid #ef4444; border-radius: 0.375rem; }
+    .flow-step .step-number { display: inline-block; width: 2rem; height: 2rem; line-height: 2rem; text-align: center; background: #ef4444; color: white; border-radius: 50%; font-weight: 600; margin-right: 0.75rem; vertical-align: middle; }
+    .flow-step h3 { margin: 0.5rem 0; display: inline-block; }
+    .flow-step ul { margin: 0.75rem 0; padding-left: 2.5rem; }
+    .flow-navigation { margin-top: 2rem; padding-top: 1.5rem; border-top: 2px solid #e2e8f0; display: flex; gap: 1rem; justify-content: space-between; }
+    .btn { padding: 0.75rem 1.5rem; border-radius: 0.375rem; text-decoration: none; font-weight: 500; display: inline-block; transition: all 0.2s ease; }
+    .btn-primary { background: #f43f5e; color: white; } .btn-primary:hover { background: #e11d48; }
+    .btn-secondary { background: #e2e8f0; color: #1f2937; } .btn-secondary:hover { background: #cbd5e1; }
+    .mermaid { background: white; border: 1px solid #e2e8f0; border-radius: 0.375rem; padding: 1rem; overflow-x: auto; margin: 1rem 0; }
+    @media (max-width: 768px) { .flow-navigation { flex-direction: column; } .btn { width: 100%; text-align: center; } }
+  </style>
+
+  <script src="js/nav.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'default' });</script>
+</body>
+</html>

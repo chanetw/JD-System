@@ -1022,14 +1022,24 @@ export const jobService = {
      * @param {string} priority - 'normal' | 'urgent'
      * @param {string} reason - เหตุผลการแก้ไข (required)
      * @param {string} scope - 'single' | 'chain'
+     * @param {object} options - { dueDateMode, manualDueDate, previewOnly }
      * @returns {Promise<object>} { success, data: { oldPriority, newPriority, newDueDate, ... } }
      */
-    editJobPriority: async (jobId, priority, reason, scope = 'single') => {
+    editJobPriority: async (jobId, priority, reason, scope = 'single', options = {}) => {
         try {
+            const {
+                dueDateMode = 'suggested',
+                manualDueDate = null,
+                previewOnly = false
+            } = options;
+
             const response = await httpClient.post(`/jobs/${jobId}/edit-priority`, {
                 priority,
                 reason,
-                scope
+                scope,
+                dueDateMode,
+                manualDueDate,
+                previewOnly
             });
 
             if (!response.data.success) {

@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>คู่มือการใช้งาน DJ System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Mobile Toggle -->
+  <button class="sidebar-toggle" id="sidebarToggle" aria-label="เปิดเมนู">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+  </button>
+
+  <!-- Sidebar Overlay -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">DJ</div>
+      <div class="sidebar-title">
+        คู่มือการใช้งาน
+        <span>DJ System</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">เริ่มต้นใช้งาน</div>
+        <a href="index.html" class="sidebar-link active">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          ภาพรวมระบบ
+        </a>
+        <a href="status-bible.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+          สถานะงานทั้งหมด
+        </a>
+        <a href="sla-working-day.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          SLA และวันทำการ
+        </a>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">ตามบทบาท</div>
+        <a href="requester.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+          ผู้สั่งงาน (Requester)
+        </a>
+        <a href="approver.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+          ผู้อนุมัติ (Approver)
+        </a>
+        <a href="assignee.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+          ผู้รับงาน (Assignee)
+        </a>
+        <a href="admin.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          ผู้ดูแลระบบ (Admin)
+        </a>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">ขั้นตอนการทำงาน</div>
+        <a href="workflow-happy-path.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+          Happy Path (เริ่มต้น)
+        </a>
+        <a href="workflow-overview.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h7v7H3z"></path><path d="M14 3h7v7h-7z"></path><path d="M14 14h7v7h-7z"></path><path d="M3 14h7v7H3z"></path><line x1="10" y1="6" x2="14" y2="6"></line><line x1="10" y1="17" x2="14" y2="17"></line><line x1="17" y1="10" x2="17" y2="14"></line></svg>
+          User Flow (ทั้งหมด)
+        </a>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">ขั้นสูง</div>
+        <a href="rejection-bible.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+          การปฏิเสธงาน
+        </a>
+        <a href="error-bible.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          Error Code & วิธีแก้
+        </a>
+        <a href="faq.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          คำถามที่พบบ่อย
+        </a>
+        <a href="troubleshooting.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+          แก้ไขปัญหาเบื้องต้น
+        </a>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      © 2026 DJ System<br>เวอร์ชัน 2.0
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="content-header">
+      <div class="breadcrumb">
+        <a href="index.html">คู่มือ</a>
+        <span class="breadcrumb-separator">/</span>
+        <span>ภาพรวมระบบ</span>
+      </div>
+      <h1 class="page-title">ภาพรวมระบบ DJ System</h1>
+    </div>
+
+    <div class="content-body">
+      <!-- Welcome Card -->
+      <div class="card">
+        <div class="card-body">
+          <p style="font-size:1.05rem; margin-bottom:1rem;">
+            <strong>DJ System</strong> เป็นแพลตฟอร์มจัดการงาน Design Job สำหรับทีม Marketing
+            รองรับการสร้างงาน อนุมัติ ติดตามความคืบหน้า และรายงานผล แบบ Real-time
+          </p>
+          <p style="margin:0; color:var(--color-text-muted);">
+            คู่มือนี้จะพาคุณเข้าใจทุกฟีเจอร์ของระบบ ตั้งแต่ขั้นพื้นฐานจนถึงขั้นสูง
+            โดยแบ่งตามบทบาทของผู้ใช้งาน
+          </p>
+        </div>
+      </div>
+
+      <!-- Quick Stats -->
+      <h2>สถิติระบบโดยสังเขป</h2>
+      <div class="nav-grid" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));">
+        <div class="card" style="margin-bottom:0;">
+          <div class="card-body" style="text-align:center;">
+            <div style="font-size:2rem; font-weight:700; color:var(--color-primary);">4</div>
+            <div style="font-size:0.875rem; color:var(--color-text-muted);">บทบาทผู้ใช้</div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:0;">
+          <div class="card-body" style="text-align:center;">
+            <div style="font-size:2rem; font-weight:700; color:var(--color-info);">10+</div>
+            <div style="font-size:0.875rem; color:var(--color-text-muted);">สถานะงาน</div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:0;">
+          <div class="card-body" style="text-align:center;">
+            <div style="font-size:2rem; font-weight:700; color:var(--color-success);">Real-time</div>
+            <div style="font-size:0.875rem; color:var(--color-text-muted);">การแจ้งเตือน</div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:0;">
+          <div class="card-body" style="text-align:center;">
+            <div style="font-size:2rem; font-weight:700; color:var(--color-warning);">SLA</div>
+            <div style="font-size:0.875rem; color:var(--color-text-muted);">ติดตามเวลา</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Role Overview -->
+      <h2>บทบาทผู้ใช้งาน</h2>
+      <p>ระบบแบ่งผู้ใช้ออกเป็น 4 บทบาทหลัก แต่ละบทบาทมีสิทธิ์และหน้าที่ต่างกัน</p>
+
+      <div class="nav-grid">
+        <a href="requester.html" class="nav-card">
+          <div class="nav-card-icon" style="background:var(--color-role-requester-bg); color:var(--color-role-requester);">📝</div>
+          <div class="nav-card-title">ผู้สั่งงาน (Requester)</div>
+          <div class="nav-card-desc">สร้างงาน แนบไฟล์ ติดตามสถานะ และรับผลงานที่เสร็จสิ้น</div>
+        </a>
+
+        <a href="approver.html" class="nav-card">
+          <div class="nav-card-icon" style="background:var(--color-role-approver-bg); color:var(--color-role-approver);">✅</div>
+          <div class="nav-card-title">ผู้อนุมัติ (Approver)</div>
+          <div class="nav-card-desc">พิจารณาอนุมัติ/ปฏิเสธงาน ตรวจสอบรายละเอียด และกำหนดผู้รับงาน</div>
+        </a>
+
+        <a href="assignee.html" class="nav-card">
+          <div class="nav-card-icon" style="background:var(--color-role-assignee-bg); color:var(--color-role-assignee);">🎨</div>
+          <div class="nav-card-title">ผู้รับงาน (Assignee)</div>
+          <div class="nav-card-desc">รับงานที่ได้รับมอบหมาย ดำเนินการ อัปโหลดผลงาน และอัปเดตความคืบหน้า</div>
+        </a>
+
+        <a href="admin.html" class="nav-card">
+          <div class="nav-card-icon" style="background:var(--color-role-admin-bg); color:var(--color-role-admin);">⚙️</div>
+          <div class="nav-card-title">ผู้ดูแลระบบ (Admin)</div>
+          <div class="nav-card-desc">จัดการประเภทงาน เส้นทางการอนุมัติ วันหยุด และการตั้งค่าระบบ</div>
+        </a>
+      </div>
+
+      <!-- Workflow Overview -->
+      <h2>เส้นทางการทำงานของงาน (Job Workflow)</h2>
+      <p>งานแต่ละชิ้นจะผ่านขั้นตอนต่างๆ ตามลำดับดังนี้</p>
+
+      <div class="card" style="border-left:4px solid #22c55e;">
+        <div class="card-body">
+          <h3 style="margin-top:0;">แนะนำสำหรับผู้เริ่มต้น: Happy Path Session</h3>
+          <p style="margin-bottom:0.75rem;">ดูเส้นทางเดียวแบบครบจบ ตั้งแต่เปิดงานจนปิดงาน: สร้างงาน -> อนุมัติ -> มอบหมาย -> ทำงาน -> ส่ง Draft -> ผู้สั่งงานอนุมัติ Draft -> ส่ง Final -> ปิดงาน</p>
+          <a href="workflow-happy-path.html" class="btn btn-success" style="text-decoration:none; display:inline-block;">เปิดหน้า Happy Path</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; margin-bottom:1rem;">
+            <span class="badge badge-info">draft</span>
+            <span style="color:var(--color-text-muted);">→</span>
+            <span class="badge badge-info">submitted</span>
+            <span style="color:var(--color-text-muted);">→</span>
+            <span class="badge badge-warning">pending_approval</span>
+            <span style="color:var(--color-text-muted);">→</span>
+            <span class="badge badge-success">approved</span>
+            <span style="color:var(--color-text-muted);">→</span>
+            <span class="badge badge-info">assigned</span>
+            <span style="color:var(--color-text-muted);">→</span>
+            <span class="badge badge-info">in_progress</span>
+            <span style="color:var(--color-text-muted);">→</span>
+            <span class="badge badge-success">completed</span>
+          </div>
+          <p style="margin:0; font-size:0.9375rem; color:var(--color-text-muted);">
+            งานอาจถูก <span class="badge badge-error" style="font-size:0.75rem;">rejected</span>
+            ได้ในหลายจุดของเส้นทาง โดยขึ้นกับบทบาทและสถานะปัจจุบัน
+          </p>
+        </div>
+      </div>
+
+      <!-- Key Concepts -->
+      <h2>ศัพท์เฉพาะที่ควรรู้</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ศัพท์</th>
+              <th>ความหมาย</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>งานหลัก (Parent Job)</strong></td>
+              <td>งานที่มีไฟล์ส่งมอบหลายชิ้น หรือมีงานย่อยแขวนอยู่</td>
+            </tr>
+            <tr>
+              <td><strong>งานย่อย (Child Job)</strong></td>
+              <td>งานที่ขึ้นอยู่กับงานหลัก ต้องรองานหลักเสร็จก่อน</td>
+            </tr>
+            <tr>
+              <td><strong>งานเดี่ยว (Standalone)</strong></td>
+              <td>งานธรรมดาที่ไม่มีความสัมพันธ์กับงานอื่น</td>
+            </tr>
+            <tr>
+              <td><strong>SLA</strong></td>
+              <td>Service Level Agreement — ระยะเวลาที่กำหนดให้งานเสร็จ</td>
+            </tr>
+            <tr>
+              <td><strong>BUD</strong></td>
+              <td>Business Unit Division — หน่วยงานย่อยที่สั่งงาน</td>
+            </tr>
+            <tr>
+              <td><strong>เส้นทางการอนุมัติ</strong></td>
+              <td>ลำดับขั้นผู้อนุมัติที่งานต้องผ่านก่อนเริ่มทำ</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Quick Links -->
+      <h2>หัวข้อยอดนิยม</h2>
+      <div class="nav-grid">
+        <a href="status-bible.html" class="nav-card">
+          <div class="nav-card-icon" style="background:#fef3c7; color:#b45309;">📊</div>
+          <div class="nav-card-title">สถานะงานทั้งหมด</div>
+          <div class="nav-card-desc">ตารางสรุปสถานะงานทุกสถานะ พร้อมสีและความหมาย</div>
+        </a>
+        <a href="rejection-bible.html" class="nav-card">
+          <div class="nav-card-icon" style="background:#fee2e2; color:#b91c1c;">🚫</div>
+          <div class="nav-card-title">การปฏิเสธงาน</div>
+          <div class="nav-card-desc">ใครปฏิเสธได้เมื่อไหร่ ผลลัพธ์เป็นอย่างไร ครบทุกเคส</div>
+        </a>
+        <a href="error-bible.html" class="nav-card">
+          <div class="nav-card-icon" style="background:#dbeafe; color:#1d4ed8;">⚠️</div>
+          <div class="nav-card-title">Error Code & วิธีแก้</div>
+          <div class="nav-card-desc">พบข้อผิดพลาดบ่อย พร้อมวิธีแก้ไขเฉพาะเจาะจง</div>
+        </a>
+        <a href="faq.html" class="nav-card">
+          <div class="nav-card-icon" style="background:#f3e8ff; color:#7e22ce;">❓</div>
+          <div class="nav-card-title">คำถามที่พบบ่อย</div>
+          <div class="nav-card-desc">รวมคำถามที่ผู้ใช้ถามบ่อยที่สุด พร้อมคำตอบสั้นๆ</div>
+        </a>
+      </div>
+
+      <!-- Page Navigation -->
+      <div class="page-nav">
+        <div></div>
+        <a href="status-bible.html">
+          <span class="page-nav-label">ถัดไป</span>
+          <span class="page-nav-title">สถานะงานทั้งหมด →</span>
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <!-- Scroll to top -->
+  <button class="scroll-top" id="scrollTop" aria-label="กลับด้านบน">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+  </button>
+
+  <script src="js/nav.js"></script>
+</body>
+</html>

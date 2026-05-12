@@ -17,7 +17,7 @@ import { Link } from 'react-router-dom';
 import { Card } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
-import { showAlert } from '@shared/utils/alertHelper';
+import { getJobActionErrorDetail, showAlert } from '@shared/utils/alertHelper';
 import { matchesSuperSearch } from '@shared/utils/superSearch';
 
 // Icons
@@ -352,7 +352,11 @@ export default function ApprovalsQueue() {
             setShowApproveModal(false);
             setSelectedJobId(null);
         } catch (error) {
-            showAlert('error', 'ไม่สามารถอนุมัติงานได้', error.message);
+            const detail = getJobActionErrorDetail(error, {
+                actionLabel: 'อนุมัติงาน',
+                fallbackTitle: 'ไม่สามารถอนุมัติงานได้'
+            });
+            showAlert('error', detail.title, detail.text);
         } finally {
             setIsApproving(false);
         }
@@ -377,7 +381,11 @@ export default function ApprovalsQueue() {
             setRejectComment('');
             setSelectedJobId(null);
         } catch (error) {
-            showAlert('error', 'ไม่สามารถปฏิเสธงานได้', error.message);
+            const detail = getJobActionErrorDetail(error, {
+                actionLabel: 'ปฏิเสธงาน',
+                fallbackTitle: 'ไม่สามารถปฏิเสธงานได้'
+            });
+            showAlert('error', detail.title, detail.text);
         }
     };
 

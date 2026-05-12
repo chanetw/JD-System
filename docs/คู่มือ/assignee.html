@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ผู้รับงาน — คู่มือ DJ System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <button class="sidebar-toggle" id="sidebarToggle" aria-label="เปิดเมนู">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+  </button>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">DJ</div>
+      <div class="sidebar-title">คู่มือการใช้งาน<span>DJ System</span></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">เริ่มต้นใช้งาน</div>
+        <a href="index.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          ภาพรวมระบบ
+        </a>
+        <a href="status-bible.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+          สถานะงานทั้งหมด
+        </a>
+        <a href="sla-working-day.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          SLA และวันทำการ
+        </a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">ตามบทบาท</div>
+        <a href="requester.html" class="sidebar-link">📝 ผู้สั่งงาน</a>
+        <a href="approver.html" class="sidebar-link">✅ ผู้อนุมัติ</a>
+        <a href="assignee.html" class="sidebar-link active">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+          ผู้รับงาน (Assignee)
+        </a>
+        <a href="admin.html" class="sidebar-link">⚙️ ผู้ดูแลระบบ</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">ขั้นสูง</div>
+        <a href="rejection-bible.html" class="sidebar-link">🚫 การปฏิเสธงาน</a>
+        <a href="error-bible.html" class="sidebar-link">⚠️ Error Code</a>
+        <a href="faq.html" class="sidebar-link">❓ คำถามที่พบบ่อย</a>
+        <a href="troubleshooting.html" class="sidebar-link">🔧 แก้ไขปัญหา</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">© 2026 DJ System<br>เวอร์ชัน 2.0</div>
+  </aside>
+
+  <main class="main-content">
+    <div class="content-header">
+      <div class="breadcrumb">
+        <a href="index.html">คู่มือ</a>
+        <span class="breadcrumb-separator">/</span>
+        <span>ผู้รับงาน</span>
+      </div>
+      <h1 class="page-title">🎨 คู่มือผู้รับงาน (Assignee)</h1>
+    </div>
+
+    <div class="content-body">
+      <div class="badge badge-role-assignee" style="margin-bottom:1rem;">บทบาท: Assignee</div>
+
+      <p>ผู้รับงานคือ Designer หรือ Developer ที่รับผิดชอบดำเนินการงานตามที่ได้รับมอบหมาย</p>
+
+      <h2>สิ่งที่คุณทำได้</h2>
+      <ul class="checklist">
+        <li>ดูคิวงานของตนเอง (My Queue)</li>
+        <li>รับงาน → เปลี่ยนสถานะเป็น in_progress</li>
+        <li>อัปโหลดไฟล์ผลงาน (Deliverables)</li>
+        <li>ส่งมอบงาน → เปลี่ยนเป็น completed</li>
+        <li>ขอปฏิเสธงาน (พร้อมเหตุผล)</li>
+        <li>แสดงความเห็นในงาน</li>
+      </ul>
+
+      <h2>หน้า My Queue</h2>
+      <p>แดชบอร์ดส่วนตัวที่รวมงานทั้งหมดของคุณ แบ่งเป็น 4 แท็บ</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>แท็บ</th>
+              <th>แสดงงานที่...</th>
+              <th>การกระทำ</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>กำลังทำ</strong></td>
+              <td><span class="badge badge-info">assigned</span> และ <span class="badge badge-info">in_progress</span></td>
+              <td>เริ่มงาน / ส่งมอบ / ปฏิเสธ</td>
+            </tr>
+            <tr>
+              <td><strong>เสร็จสิ้น</strong></td>
+              <td><span class="badge badge-success">completed</span></td>
+              <td>ดูย้อนหลัง ดาวน์โหลด</td>
+            </tr>
+            <tr>
+              <td><strong>ปฏิเสธ</strong></td>
+              <td><span class="badge badge-error">rejected</span>, <span class="badge badge-error">rejected_by_assignee</span>, <span class="badge badge-warning">assignee_rejected</span></td>
+              <td>ดูประวัติและเหตุผล</td>
+            </tr>
+            <tr>
+              <td><strong>ไทม์ไลน์</strong></td>
+              <td>กิจกรรมทั้งหมดของงาน</td>
+              <td>ดูประวัติการเปลี่ยนแปลง</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>ขั้นตอนการทำงาน</h2>
+
+      <div class="step-box">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <h4>รับงาน</h4>
+          <p>เมื่องานถูกมอบหมายให้คุณ สถานะจะเป็น <code>assigned</code> กด "เริ่มงาน" เพื่อเปลี่ยนเป็น <code>in_progress</code></p>
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <h4>ดำเนินการ</h4>
+          <p>ทำงานตามรายละเอียดที่ระบุ สามารถแสดงความเห็นถามเพิ่มเติมได้</p>
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <h4>อัปโหลดผลงาน</h4>
+          <p>แนบไฟล์ผลงานในแท็บ "ส่งมอบ" รองรับหลายไฟล์</p>
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-number">4</div>
+        <div class="step-content">
+          <h4>ส่งมอบงาน</h4>
+          <p>กด "ส่งมอบงาน" เพื่อเปลี่ยนสถานะเป็น <code>completed</code> งานจะเสร็จสิ้น</p>
+        </div>
+      </div>
+
+      <h2>การขอปฏิเสธงาน</h2>
+      <p>หากคุณไม่สามารถรับงานได้ สามารถขอปฏิเสธได้ในทุกสถานะที่ยังไม่เสร็จสิ้น</p>
+
+      <div class="alert alert-info">
+        <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+        <div>
+          <strong>ขั้นตอน:</strong> กด "ขอปฏิเสธ" → ระบุเหตุผล → รอผู้อนุมัติตัดสินใจ → หากอนุมัติ งานจะเป็น <code>rejected_by_assignee</code>
+        </div>
+      </div>
+
+      <p>ดูรายละเอียดเพิ่มเติมได้ที่ <a href="rejection-bible.html">คู่มือการปฏิเสธงาน</a></p>
+
+      <div class="page-nav">
+        <a href="approver.html">
+          <span class="page-nav-label">← ก่อนหน้า</span>
+          <span class="page-nav-title">ผู้อนุมัติ</span>
+        </a>
+        <a href="admin.html">
+          <span class="page-nav-label">ถัดไป →</span>
+          <span class="page-nav-title">ผู้ดูแลระบบ</span>
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <button class="scroll-top" id="scrollTop" aria-label="กลับด้านบน">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"></polyline></svg>
+  </button>
+  <script src="js/nav.js"></script>
+</body>
+</html>

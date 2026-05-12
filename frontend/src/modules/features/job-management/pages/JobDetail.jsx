@@ -17,9 +17,10 @@ import Swal from 'sweetalert2';
 import { fileUploadService } from '@shared/services/modules/fileUploadService';
 import { adminService } from '@shared/services/modules/adminService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
+import { getJobActionErrorDetail } from '@shared/utils/alertHelper';
 import { ROLE_V1_DISPLAY, getJobRole, JOB_ROLE_THEMES, hasAnyRole } from '@shared/utils/permission.utils';
 import { normalizePriority } from '@shared/constants/jobStatus';
-import { formatDateToThai } from '@shared/utils/dateUtils';
+import { formatDateToThai, formatDateTimeToThai } from '@shared/utils/dateUtils';
 import Badge from '@shared/components/Badge';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
 import Button from '@shared/components/Button';
@@ -310,10 +311,14 @@ export default function JobDetail() {
             });
             loadJob();
         } catch (err) {
+            const detail = getJobActionErrorDetail(err, {
+                actionLabel: 'อนุมัติงาน',
+                fallbackTitle: 'ไม่สามารถอนุมัติงานได้'
+            });
             Swal.fire({
                 icon: 'error',
-                title: 'เกิดข้อผิดพลาด',
-                text: err.message,
+                title: detail.title,
+                text: detail.text,
                 confirmButtonColor: '#e11d48'
             });
         }
@@ -335,7 +340,11 @@ export default function JobDetail() {
             setRejectReason('');
             loadJob();
         } catch (err) {
-            Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message, confirmButtonColor: '#e11d48' });
+            const detail = getJobActionErrorDetail(err, {
+                actionLabel: 'ปฏิเสธงาน',
+                fallbackTitle: 'ไม่สามารถปฏิเสธงานได้'
+            });
+            Swal.fire({ icon: 'error', title: detail.title, text: detail.text, confirmButtonColor: '#e11d48' });
         }
     };
 
@@ -528,7 +537,11 @@ export default function JobDetail() {
             setAssigneeRejectReason('');
             navigate('/assignee/my-queue?tab=rejected');
         } catch (err) {
-            Swal.fire({ icon: 'error', title: 'ปฏิเสธงานไม่สำเร็จ', text: err.message, confirmButtonColor: '#e11d48' });
+            const detail = getJobActionErrorDetail(err, {
+                actionLabel: 'ปฏิเสธงาน',
+                fallbackTitle: 'ปฏิเสธงานไม่สำเร็จ'
+            });
+            Swal.fire({ icon: 'error', title: detail.title, text: detail.text, confirmButtonColor: '#e11d48' });
         }
     };
 
@@ -566,10 +579,14 @@ export default function JobDetail() {
             setConfirmRejectionCcEmails([]);
             loadJob();
         } catch (err) {
+            const detail = getJobActionErrorDetail(err, {
+                actionLabel: 'ยืนยันการปฏิเสธงาน',
+                fallbackTitle: 'ยืนยันการปฏิเสธไม่สำเร็จ'
+            });
             await Swal.fire({
                 icon: 'error',
-                title: 'ยืนยันการปฏิเสธไม่สำเร็จ',
-                text: err.response?.data?.message || err.message,
+                title: detail.title,
+                text: detail.text,
                 confirmButtonColor: '#e11d48'
             });
         }
@@ -598,10 +615,14 @@ export default function JobDetail() {
             setDenyRejectionReason('');
             loadJob();
         } catch (err) {
+            const detail = getJobActionErrorDetail(err, {
+                actionLabel: 'ไม่อนุมัติคำขอปฏิเสธ',
+                fallbackTitle: 'ไม่สามารถดำเนินการได้'
+            });
             await Swal.fire({
                 icon: 'error',
-                title: 'เกิดข้อผิดพลาด',
-                text: err.response?.data?.message || err.message,
+                title: detail.title,
+                text: detail.text,
                 confirmButtonColor: '#e11d48'
             });
         }
@@ -825,7 +846,6 @@ export default function JobDetail() {
             confirmButtonColor: '#0f4c81',
             cancelButtonColor: '#6b7280',
             width: 'auto',
-            maxWidth: '480px',
             padding: '1.5em',
             grow: 'row',
             scrollbarPadding: false,
@@ -853,24 +873,36 @@ export default function JobDetail() {
                     </div>
 
                     <div class="space-y-1.5">
-                        <label for="swal-priority" class="block text-sm font-medium text-gray-700">Priority ใหม่</label>
-                        <select id="swal-priority" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm
-                            focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 outline-none transition-all bg-white
-                            text-gray-800 cursor-pointer hover:border-gray-400">
-                            <option value="normal" ${currentPriority === 'normal' ? 'selected' : ''}>ปกติ (Normal)</option>
-                            <option value="urgent" ${currentPriority === 'urgent' ? 'selected' : ''}>ด่วน (Urgent)</option>
-                        </select>
+                        <label class="block text-sm font-medium text-gray-700">Priority ใหม่</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <label data-choice-group="priority" data-choice-value="normal" class="cursor-pointer rounded-lg border px-3 py-2.5 text-center transition-all ${currentPriority === 'normal' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500/20' : 'border-gray-300 bg-white hover:border-gray-400'}">
+                                <input type="radio" name="swal-priority" value="normal" class="sr-only" ${currentPriority === 'normal' ? 'checked' : ''} />
+                                <span class="block text-sm font-medium text-gray-800">ปกติ</span>
+                                <span class="block text-xs text-gray-500">Normal</span>
+                            </label>
+                            <label data-choice-group="priority" data-choice-value="urgent" class="cursor-pointer rounded-lg border px-3 py-2.5 text-center transition-all ${currentPriority === 'urgent' ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500/20' : 'border-gray-300 bg-white hover:border-gray-400'}">
+                                <input type="radio" name="swal-priority" value="urgent" class="sr-only" ${currentPriority === 'urgent' ? 'checked' : ''} />
+                                <span class="block text-sm font-medium text-gray-800">ด่วน</span>
+                                <span class="block text-xs text-gray-500">Urgent</span>
+                            </label>
+                        </div>
                     </div>
 
                     ${job.isParent ? `
                     <div class="space-y-1.5">
-                        <label for="swal-scope" class="block text-sm font-medium text-gray-700">ขอบเขตการแก้ไข</label>
-                        <select id="swal-scope" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm
-                            focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 outline-none transition-all bg-white
-                            text-gray-800 cursor-pointer hover:border-gray-400">
-                            <option value="single">แก้เฉพาะงานนี้</option>
-                            <option value="chain">แก้ทั้ง Chain (Parent + ลูก)</option>
-                        </select>
+                        <label class="block text-sm font-medium text-gray-700">ขอบเขตการแก้ไข</label>
+                        <div class="grid grid-cols-1 gap-2">
+                            <label data-choice-group="scope" data-choice-value="single" class="cursor-pointer rounded-lg border border-blue-500 bg-blue-50 px-3 py-2.5 transition-all ring-2 ring-blue-500/20">
+                                <input type="radio" name="swal-scope" value="single" class="sr-only" checked />
+                                <span class="block text-sm font-medium text-gray-800">แก้เฉพาะงานนี้</span>
+                                <span class="block text-xs text-gray-500">Single</span>
+                            </label>
+                            <label data-choice-group="scope" data-choice-value="chain" class="cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2.5 transition-all hover:border-gray-400">
+                                <input type="radio" name="swal-scope" value="chain" class="sr-only" />
+                                <span class="block text-sm font-medium text-gray-800">แก้ทั้ง Chain (Parent + ลูก)</span>
+                                <span class="block text-xs text-gray-500">Chain</span>
+                            </label>
+                        </div>
                     </div>
                     ` : ''}
                 </div>
@@ -878,9 +910,40 @@ export default function JobDetail() {
             showCancelButton: true,
             confirmButtonText: 'ดำเนินการต่อ',
             cancelButtonText: 'ยกเลิก',
+            didOpen: () => {
+                const activeClasses = ['border-blue-500', 'bg-blue-50', 'ring-2', 'ring-blue-500/20'];
+                const inactiveClasses = ['border-gray-300', 'bg-white'];
+
+                const syncCardGroup = (groupName) => {
+                    const checkedValue = document.querySelector(`input[name="swal-${groupName}"]:checked`)?.value;
+                    document.querySelectorAll(`[data-choice-group="${groupName}"]`).forEach((card) => {
+                        const isActive = card.getAttribute('data-choice-value') === checkedValue;
+                        card.classList.toggle('border-blue-500', isActive);
+                        card.classList.toggle('bg-blue-50', isActive);
+                        card.classList.toggle('ring-2', isActive);
+                        card.classList.toggle('ring-blue-500/20', isActive);
+                        card.classList.toggle('border-gray-300', !isActive);
+                        card.classList.toggle('bg-white', !isActive);
+                    });
+                };
+
+                document.querySelectorAll('[data-choice-group]').forEach((card) => {
+                    card.addEventListener('click', () => {
+                        const groupName = card.getAttribute('data-choice-group');
+                        const choiceValue = card.getAttribute('data-choice-value');
+                        const input = document.querySelector(`input[name="swal-${groupName}"][value="${choiceValue}"]`);
+                        if (!input) return;
+                        input.checked = true;
+                        syncCardGroup(groupName);
+                    });
+                });
+
+                syncCardGroup('priority');
+                syncCardGroup('scope');
+            },
             preConfirm: () => ({
-                priority: document.getElementById('swal-priority').value,
-                scope: document.getElementById('swal-scope')?.value || 'single',
+                priority: document.querySelector('input[name="swal-priority"]:checked')?.value,
+                scope: document.querySelector('input[name="swal-scope"]:checked')?.value || 'single',
             }),
         });
 
@@ -897,12 +960,112 @@ export default function JobDetail() {
             return;
         }
 
-        // Step 2: Ask for reason
-        const step2 = await Swal.fire({
+        try {
+            const previewResponse = await jobService.editJobPriority(
+                job.id,
+                newPriority,
+                '',
+                scope,
+                { previewOnly: true, dueDateMode: 'suggested' }
+            );
+
+            if (!previewResponse.success) {
+                throw new Error(previewResponse.error || 'ไม่สามารถคำนวณวันแนะนำได้');
+            }
+
+            const previewData = previewResponse.data;
+            const suggestedDueDate = previewData?.suggestedDueDate ? new Date(previewData.suggestedDueDate) : null;
+            const suggestedDateLabel = suggestedDueDate ? formatDateTimeToThai(suggestedDueDate) : '-';
+            const oldDueDateLabel = job?.dueDate ? formatDateTimeToThai(new Date(job.dueDate)) : '-';
+            const suggestedDateInputValue = suggestedDueDate && !Number.isNaN(suggestedDueDate.getTime())
+                ? suggestedDueDate.toISOString().slice(0, 10)
+                : '';
+            const todayInputValue = new Date().toISOString().slice(0, 10);
+            const affectedJobsCount = Array.isArray(previewData?.affectedJobs) ? previewData.affectedJobs.length : 1;
+            const previewBasisSource = previewData?.slaRecalc?.basisSource;
+            const previewBasisMessage = previewBasisSource === 'edited_at'
+                ? 'งานนี้มีฐาน SLA เดิมอยู่ในอดีตแล้ว ระบบจึงบังคับใช้วันเวลาแก้ไขล่าสุดของ Admin + SLA เป็นวันแนะนำใหม่'
+                : 'ระบบคำนวณวันแนะนำตามฐาน SLA ของงาน และยังเปิดให้ Admin override วันที่ได้';
+            
+            // สร้างรายการงานที่กระทบ
+            const affectedJobsHTML = (Array.isArray(previewData?.affectedJobs) && previewData.affectedJobs.length > 1)
+              ? `
+                <div class="space-y-2 max-h-72 overflow-y-auto bg-gray-50/50 rounded-lg p-3 border border-gray-100">
+                  <p class="text-xs font-medium text-gray-700 sticky top-0">งานที่ได้รับผลกระทบ:</p>
+                  ${previewData.affectedJobs.map((affectedJob, idx) => {
+                    const newDueDate = affectedJob.newDueDate ? new Date(affectedJob.newDueDate) : null;
+                    const newDateLabel = newDueDate ? formatDateTimeToThai(newDueDate) : '-';
+                    const isParent = idx === 0;
+                    return `
+                    <div class="flex items-start gap-2 rounded-md p-2 ${isParent ? 'bg-blue-100/50 border border-blue-100' : 'bg-white border border-gray-200'}">
+                      <span class="text-xs font-semibold text-gray-500 min-w-6 text-center">
+                        ${isParent ? '👨' : '👧'}
+                      </span>
+                      <div class="flex-1 min-w-0">
+                        <p class="text-xs font-medium text-gray-800 truncate">
+                          ${affectedJob.djId || `ID: ${affectedJob.id}`}
+                          ${isParent ? '<span class="ml-1 text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded">งานแม่</span>' : ''}
+                        </p>
+                        <p class="text-xs text-gray-600">วันส่งเดิม: ${affectedJob.oldDueDate ? formatDateTimeToThai(new Date(affectedJob.oldDueDate)) : '-'}</p>
+                        <p class="text-xs font-semibold text-green-700">วันส่งใหม่: ${newDateLabel}</p>
+                      </div>
+                    </div>
+                    `;
+                  }).join('')}
+                </div>
+              `
+              : '';
+
+            // Step 2: Ask for reason + due date mode
+            const step2 = await Swal.fire({
             ...swalBaseConfig,
             title: `เปลี่ยนจาก ${currentPriority === 'urgent' ? 'ด่วน' : 'ปกติ'} → ${newPriority === 'urgent' ? 'ด่วน' : 'ปกติ'}`,
             html: `
-                <div class="text-left text-sm space-y-3">
+                <div class="text-left text-sm space-y-4">
+                    <div class="rounded-xl border border-blue-100 bg-blue-50/80 p-3 space-y-2">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <p class="text-xs font-medium text-blue-700">วันที่ระบบแนะนำ</p>
+                                <p class="text-sm font-semibold text-blue-950">${suggestedDateLabel}</p>
+                            </div>
+                            <span class="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-blue-700 border border-blue-100">
+                                ${scope === 'chain' ? `กระทบ ${affectedJobsCount} งาน` : 'เฉพาะงานนี้'}
+                            </span>
+                        </div>
+                        <p class="text-xs text-blue-800">กำหนดส่งเดิม: ${oldDueDateLabel}</p>
+                        <p class="text-xs ${previewBasisSource === 'edited_at' ? 'font-semibold text-amber-700' : 'text-blue-800'}">${previewBasisMessage}</p>
+                        <p class="text-xs text-blue-800">หากต้องการ override วันแนะนำ สามารถเลือกวันใหม่เองได้ด้านล่าง ระบบจะตรวจสอบวันหยุดและเวลาทำการอีกครั้งก่อนบันทึก</p>
+                    </div>
+
+                    ${affectedJobsHTML}
+
+                    <div class="space-y-2">
+                        <label class="block text-sm font-medium text-gray-700">วิธีกำหนด SLA / Due Date</label>
+                        <label class="flex items-start gap-3 rounded-lg border border-gray-200 px-3 py-2.5 cursor-pointer hover:border-blue-200">
+                            <input type="radio" name="swal-due-date-mode" value="suggested" checked class="mt-1 text-blue-600" />
+                            <span>
+                                <span class="block text-sm font-medium text-gray-800">ใช้วันที่ระบบแนะนำ</span>
+                                <span class="block text-xs text-gray-500">เหมาะเมื่อแค่อยากเปลี่ยน priority และให้ระบบคำนวณตาม SLA ปัจจุบัน</span>
+                            </span>
+                        </label>
+                        <label class="flex items-start gap-3 rounded-lg border border-gray-200 px-3 py-2.5 cursor-pointer hover:border-blue-200">
+                            <input type="radio" name="swal-due-date-mode" value="manual" class="mt-1 text-blue-600" />
+                            <span>
+                                <span class="block text-sm font-medium text-gray-800">กำหนดวันส่งเอง</span>
+                                <span class="block text-xs text-gray-500">ใช้เมื่อ admin ต้องการคุม deadline เอง ระบบจะปรับเวลาให้อยู่ในเวลาทำการถ้าจำเป็น</span>
+                            </span>
+                        </label>
+                    </div>
+
+                    <div id="swal-manual-date-wrapper" class="space-y-1.5 hidden">
+                        <label for="swal-manual-date" class="block text-sm font-medium text-gray-700">เลือกวันกำหนดส่งใหม่</label>
+                        <input id="swal-manual-date" type="date" min="${todayInputValue}" value="${suggestedDateInputValue}"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm
+                            focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 outline-none transition-all bg-white
+                            text-gray-800" />
+                        <p class="text-xs text-gray-500">ถ้าเลือกเสาร์-อาทิตย์หรือวันที่เวลาไม่อยู่ในเวลาทำการ ระบบจะปฏิเสธหรือปรับเป็นเวลาทำการที่เหมาะสม</p>
+                    </div>
+
                     <label for="swal-reason" class="block text-sm font-medium text-gray-700">เหตุผลการแก้ไข</label>
                     <textarea id="swal-reason" rows="3" placeholder="เช่น ปรับกลับเป็นงานปกติหลังลูกค้ายืนยัน"
                         class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm resize-none
@@ -914,47 +1077,100 @@ export default function JobDetail() {
             showCancelButton: true,
             confirmButtonText: 'บันทึก',
             cancelButtonText: 'ยกเลิก',
+            didRender: () => {
+                const modeInputs = document.querySelectorAll('input[name="swal-due-date-mode"]');
+                const manualDateWrapper = document.getElementById('swal-manual-date-wrapper');
+
+                const syncManualDateVisibility = () => {
+                    const selectedMode = document.querySelector('input[name="swal-due-date-mode"]:checked')?.value;
+                    if (manualDateWrapper) {
+                        manualDateWrapper.classList.toggle('hidden', selectedMode !== 'manual');
+                    }
+                };
+
+                modeInputs.forEach((input) => {
+                    input.addEventListener('change', syncManualDateVisibility);
+                });
+
+                syncManualDateVisibility();
+            },
             preConfirm: () => {
+                const dueDateMode = document.querySelector('input[name="swal-due-date-mode"]:checked')?.value || 'suggested';
+                const manualDueDate = document.getElementById('swal-manual-date')?.value || '';
                 const value = document.getElementById('swal-reason').value?.trim();
                 if (!value) {
                     Swal.showValidationMessage('กรุณาระบุเหตุผล');
                     return false;
                 }
-                return value;
+
+                if (dueDateMode === 'manual' && !manualDueDate) {
+                    Swal.showValidationMessage('กรุณาเลือกวันที่กำหนดส่งใหม่');
+                    return false;
+                }
+
+                return {
+                    reason: value,
+                    dueDateMode,
+                    manualDueDate: dueDateMode === 'manual' ? manualDueDate : null,
+                };
             },
-        });
+            });
 
-        if (!step2.isConfirmed) return;
+            if (!step2.isConfirmed) return;
 
-        try {
+            // Show loading modal while processing
+            Swal.fire({
+                title: 'กำลังดำเนินการปรับสถานะ...',
+                text: 'ระบบกำลังคำนวณ SLA และบันทึกข้อมูล',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                showConfirmButton: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                },
+            });
+
             const response = await jobService.editJobPriority(
                 job.id,
                 newPriority,
-                step2.value,
+                step2.value.reason,
                 scope,
+                {
+                    dueDateMode: step2.value.dueDateMode,
+                    manualDueDate: step2.value.manualDueDate,
+                }
             );
 
             if (response.success) {
+                Swal.close();
                 const data = response.data;
                 const dueDateMsg = data.dueDateChanged
-                    ? `<br>กำหนดส่งใหม่: <strong>${new Date(data.newDueDate).toLocaleDateString('th-TH')}</strong>`
+                    ? `<br>กำหนดส่งใหม่: <strong>${formatDateTimeToThai(new Date(data.newDueDate))}</strong>`
+                    : '';
+                const suggestedMsg = data.suggestedDueDate && data.dueDateMode === 'manual'
+                    ? `<br>วันที่ระบบแนะนำ: <strong>${formatDateTimeToThai(new Date(data.suggestedDueDate))}</strong>`
+                    : '';
+                const modeMsg = data.dueDateMode === 'manual'
+                    ? '<br><span class="text-amber-700">ใช้วันกำหนดส่งที่ Admin เลือกเอง</span>'
                     : '';
 
                 await Swal.fire({
                     icon: 'success',
-                    title: 'แก้ไข Priority สำเร็จ',
-                    html: `${job.djId}: ${data.oldPriority === 'urgent' ? 'ด่วน' : 'ปกติ'} → ${data.newPriority === 'urgent' ? 'ด่วน' : 'ปกติ'}${dueDateMsg}`,
+                    title: 'แก้ไข Priority / SLA สำเร็จ',
+                    html: `${job.djId}: ${data.oldPriority === 'urgent' ? 'ด่วน' : 'ปกติ'} → ${data.newPriority === 'urgent' ? 'ด่วน' : 'ปกติ'}${dueDateMsg}${suggestedMsg}${modeMsg}`,
                     confirmButtonColor: '#0f4c81',
                     customClass: { popup: 'rounded-xl shadow-2xl' },
                 });
                 loadJob();
             } else {
-                throw new Error(response.error || 'แก้ไข Priority ไม่สำเร็จ');
+                Swal.close();
+                throw new Error(response.error || 'แก้ไข Priority / SLA ไม่สำเร็จ');
             }
         } catch (err) {
+            Swal.close();
             Swal.fire({
                 icon: 'error',
-                title: 'แก้ไข Priority ไม่สำเร็จ',
+                title: 'แก้ไข Priority / SLA ไม่สำเร็จ',
                 text: err.response?.data?.message || err.message,
                 confirmButtonColor: '#d92d20',
                 customClass: { popup: 'rounded-xl shadow-2xl' },

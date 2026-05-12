@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SLA และวันทำการ — คู่มือ DJ System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <button class="sidebar-toggle" id="sidebarToggle" aria-label="เปิดเมนู">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+  </button>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">DJ</div>
+      <div class="sidebar-title">คู่มือการใช้งาน<span>DJ System</span></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">เริ่มต้นใช้งาน</div>
+        <a href="index.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          ภาพรวมระบบ
+        </a>
+        <a href="status-bible.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+          สถานะงานทั้งหมด
+        </a>
+        <a href="sla-working-day.html" class="sidebar-link active">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          SLA และวันทำการ
+        </a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">ตามบทบาท</div>
+        <a href="requester.html" class="sidebar-link">📝 ผู้สั่งงาน</a>
+        <a href="approver.html" class="sidebar-link">✅ ผู้อนุมัติ</a>
+        <a href="assignee.html" class="sidebar-link">🎨 ผู้รับงาน</a>
+        <a href="admin.html" class="sidebar-link">⚙️ ผู้ดูแลระบบ</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">ขั้นสูง</div>
+        <a href="rejection-bible.html" class="sidebar-link">🚫 การปฏิเสธงาน</a>
+        <a href="error-bible.html" class="sidebar-link">⚠️ Error Code</a>
+        <a href="faq.html" class="sidebar-link">❓ คำถามที่พบบ่อย</a>
+        <a href="troubleshooting.html" class="sidebar-link">🔧 แก้ไขปัญหา</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">© 2026 DJ System<br>เวอร์ชัน 2.0</div>
+  </aside>
+
+  <main class="main-content">
+    <div class="content-header">
+      <div class="breadcrumb">
+        <a href="index.html">คู่มือ</a>
+        <span class="breadcrumb-separator">/</span>
+        <span>SLA และวันทำการ</span>
+      </div>
+      <h1 class="page-title">SLA และวันทำการ</h1>
+    </div>
+
+    <div class="content-body">
+      <p>ระบบคำนวณเวลาทำงานอัตโนมัติ โดยนับเฉพาะวันทำการ (จันทร์–ศุกร์) และข้ามวันหยุดที่แอดมินตั้งค่าไว้</p>
+
+      <h2>SLA คืออะไร</h2>
+      <p><strong>SLA (Service Level Agreement)</strong> คือระยะเวลาที่กำหนดให้งานเสร็จ นับจากวันที่งานได้รับการอนุมัติ (<code>approved</code>) จนถึงวันที่ต้องส่งมอบ</p>
+
+      <div class="tip-box">
+        <div class="tip-box-title">💡 ตัวอย่าง</div>
+        <p>งานที่มี SLA = 3 วันทำการ อนุมัติวันจันทร์ → ต้องส่งมอบภายในวันพฤหัสบดี (ไม่นับเสาร์–อาทิตย์)</p>
+      </div>
+
+      <h2>วันทำการคำนวณอย่างไร</h2>
+
+      <div class="step-box">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <h4>นับเฉพาะจันทร์–ศุกร์</h4>
+          <p>เสาร์ อาทิตย์ ไม่นับเป็นวันทำการ</p>
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <h4>ข้ามวันหยุดที่แอดมินตั้งค่า</h4>
+          <p>เช่น วันขึ้นปีใหม่ สงกรานต์ วันแรงงาน ฯลฯ</p>
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <h4>เริ่มนับจากวันอนุมัติ + 1</h4>
+          <p>วันอนุมัติไม่นับเป็นวันที่ 1 นับวันถัดไปเป็นวันที่ 1 แทน</p>
+        </div>
+      </div>
+
+      <h2>ตัวอย่างการคำนวณ</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>วันอนุมัติ</th>
+              <th>SLA</th>
+              <th>วันหยุดระหว่างทาง</th>
+              <th>กำหนดส่งมอบ</th>
+              <th>หมายเหตุ</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>จันทร์ 5 พ.ค.</td>
+              <td>3 วันทำการ</td>
+              <td>ไม่มี</td>
+              <td><strong>พฤหัสบดี 8 พ.ค.</strong></td>
+              <td>จันทร์(0) → อังคาร(1) → พุธ(2) → พฤหัส(3)</td>
+            </tr>
+            <tr>
+              <td>ศุกร์ 9 พ.ค.</td>
+              <td>2 วันทำการ</td>
+              <td>ไม่มี</td>
+              <td><strong>อังคาร 13 พ.ค.</strong></td>
+              <td>ข้ามเสาร์–อาทิตย์อัตโนมัติ</td>
+            </tr>
+            <tr>
+              <td>พุธ 14 พ.ค.</td>
+              <td>3 วันทำการ</td>
+              <td>ศุกร์ 16 พ.ค. (วันหยุด)</td>
+              <td><strong>พุธ 21 พ.ค.</strong></td>
+              <td>ข้ามวันหยุด + เสาร์–อาทิตย์</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>การแจ้งเตือน SLA</h2>
+      <p>ระบบจะแจ้งเตือนอัตโนมัติเมื่อใกล้หรือเลยกำหนด SLA</p>
+
+      <ul class="checklist">
+        <li>แจ้งเตือนก่อนครบกำหนด 1 วันทำการ</li>
+        <li>แจ้งเตือนเมื่อครบกำหนด (Due Today)</li>
+        <li>แจ้งเตือนเมื่อเลยกำหนด (Overdue)</li>
+        <li>แจ้งเตือนผ่านแถบระบบ + การแจ้งเตือนส่วนตัว</li>
+      </ul>
+
+      <div class="alert alert-warning">
+        <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        <div>
+          <strong>สำคัญ:</strong> วันหยุดต้องถูกตั้งค่าล่วงหน้าโดยแอดมิน หากไม่ตั้งค่า ระบบจะนับเป็นวันทำการปกติ
+        </div>
+      </div>
+
+      <div class="page-nav">
+        <a href="status-bible.html">
+          <span class="page-nav-label">← ก่อนหน้า</span>
+          <span class="page-nav-title">สถานะงานทั้งหมด</span>
+        </a>
+        <a href="requester.html">
+          <span class="page-nav-label">ถัดไป →</span>
+          <span class="page-nav-title">ผู้สั่งงาน</span>
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <button class="scroll-top" id="scrollTop" aria-label="กลับด้านบน">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"></polyline></svg>
+  </button>
+  <script src="js/nav.js"></script>
+</body>
+</html>

@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>การปฏิเสธงาน — คู่มือ DJ System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <button class="sidebar-toggle" id="sidebarToggle" aria-label="เปิดเมนู">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+  </button>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">DJ</div>
+      <div class="sidebar-title">คู่มือการใช้งาน<span>DJ System</span></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">เริ่มต้นใช้งาน</div>
+        <a href="index.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          ภาพรวมระบบ
+        </a>
+        <a href="status-bible.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+          สถานะงานทั้งหมด
+        </a>
+        <a href="sla-working-day.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          SLA และวันทำการ
+        </a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">ตามบทบาท</div>
+        <a href="requester.html" class="sidebar-link">📝 ผู้สั่งงาน</a>
+        <a href="approver.html" class="sidebar-link">✅ ผู้อนุมัติ</a>
+        <a href="assignee.html" class="sidebar-link">🎨 ผู้รับงาน</a>
+        <a href="admin.html" class="sidebar-link">⚙️ ผู้ดูแลระบบ</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">ขั้นสูง</div>
+        <a href="rejection-bible.html" class="sidebar-link active">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+          การปฏิเสธงาน
+        </a>
+        <a href="error-bible.html" class="sidebar-link">⚠️ Error Code</a>
+        <a href="faq.html" class="sidebar-link">❓ คำถามที่พบบ่อย</a>
+        <a href="troubleshooting.html" class="sidebar-link">🔧 แก้ไขปัญหา</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">© 2026 DJ System<br>เวอร์ชัน 2.0</div>
+  </aside>
+
+  <main class="main-content">
+    <div class="content-header">
+      <div class="breadcrumb">
+        <a href="index.html">คู่มือ</a>
+        <span class="breadcrumb-separator">/</span>
+        <span>การปฏิเสธงาน</span>
+      </div>
+      <h1 class="page-title">🚫 คู่มือการปฏิเสธงาน (Rejection Bible)</h1>
+    </div>
+
+    <div class="content-body">
+      <p>เอกสารนี้อธิบายทุกเคสของการปฏิเสธงานในระบบ ใครปฏิเสธได้ เมื่อไหร่ และผลลัพธ์เป็นอย่างไร</p>
+
+      <div class="alert alert-error">
+        <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+        <div>
+          <strong>สำคัญ:</strong> การปฏิเสธงาน = งานจบสิ้น ไม่สามารถกลับมาแก้ไขได้ ผู้สั่งงานต้องสร้างงานใหม่
+        </div>
+      </div>
+
+      <h2>ภาพรวมการปฏิเสธงาน</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ผู้ปฏิเสธ</th>
+              <th>สถานะที่ปฏิเสธได้</th>
+              <th>ผลลัพธ์</th>
+              <th>ต้องระบุเหตุผล</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="badge badge-role-approver">ผู้อนุมัติ</span></td>
+              <td><span class="badge badge-warning">pending_approval</span></td>
+              <td><span class="badge badge-error">rejected</span></td>
+              <td>✅ ใช่</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-role-assignee">ผู้รับงาน</span></td>
+              <td><span class="badge badge-info">assigned</span>, <span class="badge badge-info">in_progress</span></td>
+              <td><span class="badge badge-warning">assignee_rejected</span> → รอผู้อนุมัติ</td>
+              <td>✅ ใช่</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-role-approver">ผู้อนุมัติ</span> (ตัดสิน)</td>
+              <td><span class="badge badge-warning">assignee_rejected</span></td>
+              <td><span class="badge badge-error">rejected_by_assignee</span> หรือกลับไปทำต่อ</td>
+              <td>—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>เคสที่ 1: ผู้อนุมัติปฏิเสธงาน</h2>
+
+      <div class="step-box">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <h4>ผู้อนุมัติกด "ปฏิเสธ" ในหน้า Approvals Queue</h4>
+          <p>งานต้องอยู่ในสถานะ <code>pending_approval</code></p>
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <h4>ระบุเหตุผลการปฏิเสธ</h4>
+          <p>เหตุผลจะถูกบันทึกและแสดงให้ผู้สั่งงานเห็น</p>
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <h4>งานเปลี่ยนเป็น <code>rejected</code></h4>
+          <p>งานจบสิ้น ผู้สั่งงานต้องสร้างงานใหม่</p>
+        </div>
+      </div>
+
+      <h2>เคสที่ 2: ผู้รับงานขอปฏิเสธงาน</h2>
+
+      <div class="step-box">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <h4>ผู้รับงานกด "ขอปฏิเสธ" ในหน้า My Queue</h4>
+          <p>ทำได้ในสถานะ <code>assigned</code> หรือ <code>in_progress</code></p>
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <h4>ระบุเหตุผลการขอปฏิเสธ</h4>
+          <p>เช่น งานเกินความสามารถ งานไม่ตรงสเปก ฯลฯ</p>
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <h4>งานเปลี่ยนเป็น <code>assignee_rejected</code></h4>
+          <p>รอผู้อนุมัติพิจารณาคำขอ</p>
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-number">4</div>
+        <div class="step-content">
+          <h4>ผู้อนุมัติตัดสินใจ</h4>
+          <p><strong>อนุมัติ</strong> → งานเป็น <code>rejected_by_assignee</code> (จบ) | <strong>ไม่อนุมัติ</strong> → กลับไปทำต่อ</p>
+        </div>
+      </div>
+
+      <h2>เคสที่ 3: Timeout (ครบกำหนดไม่ดำเนินการ)</h2>
+      <p>หากผู้รับงานขอปฏิเสธแล้วผู้อนุมัติไม่ดำเนินการภายในเวลาที่กำหนด ระบบจะอนุมัติอัตโนมัติ</p>
+
+      <div class="alert alert-warning">
+        <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        <div>
+          <strong>Timeout:</strong> หากผู้อนุมัติไม่ตัดสินใจภายในระยะเวลาที่กำหนด ระบบจะอนุมัติคำขอปฏิเสธอัตโนมัติ
+        </div>
+      </div>
+
+      <h2>สรุปสถานะปฏิเสธทั้งหมด</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>สถานะ</th>
+              <th>ความหมาย</th>
+              <th>ใครทำให้เกิด</th>
+              <th>แก้ไขได้ไหม</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="badge badge-error">rejected</span></td>
+              <td>ผู้อนุมัติปฏิเสธงานตั้งแต่แรก</td>
+              <td>ผู้อนุมัติ</td>
+              <td>❌ ไม่ได้ ต้องสร้างใหม่</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-warning">assignee_rejected</span></td>
+              <td>ผู้รับงานขอปฏิเสธ รอผู้อนุมัติตัดสิน</td>
+              <td>ผู้รับงาน</td>
+              <td>✅ ผู้อนุมัติสามารถไม่อนุมัติให้กลับไปทำต่อ</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-error">rejected_by_assignee</span></td>
+              <td>ผู้อนุมัติอนุมัติให้ผู้รับงานปฏิเสธ</td>
+              <td>ผู้อนุมัติ (ตัดสิน)</td>
+              <td>❌ ไม่ได้ ต้องสร้างใหม่</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="page-nav">
+        <a href="admin.html">
+          <span class="page-nav-label">← ก่อนหน้า</span>
+          <span class="page-nav-title">ผู้ดูแลระบบ</span>
+        </a>
+        <a href="error-bible.html">
+          <span class="page-nav-label">ถัดไป →</span>
+          <span class="page-nav-title">Error Code & วิธีแก้</span>
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <button class="scroll-top" id="scrollTop" aria-label="กลับด้านบน">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"></polyline></svg>
+  </button>
+  <script src="js/nav.js"></script>
+</body>
+</html>

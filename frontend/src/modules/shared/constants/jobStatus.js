@@ -167,13 +167,22 @@ export const FILTER_GROUP_MAP = {
 // 7. Assignee Action Contracts
 // ========================================
 
-export const ASSIGNEE_REJECTABLE_STATUSES = [
-    'assigned',
-    'in_progress',
-    'draft_review',
-    'pending_rebrief',
-    'rebrief_submitted',
+export const TERMINAL_JOB_STATUSES = [
+    'completed',
+    'closed',
+    'rejected',
+    'rejected_by_assignee',
+    'cancelled',
+    'partially_completed',
 ];
+
+export const ACTIVE_JOB_STATUSES = Object.keys(WORK_STATUS_LABEL).filter(
+    (status) => !TERMINAL_JOB_STATUSES.includes(status)
+);
+
+export const ASSIGNEE_REJECTABLE_STATUSES = ACTIVE_JOB_STATUSES.filter(
+    (status) => status !== 'assignee_rejected'
+);
 
 export const ASSIGNEE_COMPLETE_ACTION_STATUSES = [
     'approved',

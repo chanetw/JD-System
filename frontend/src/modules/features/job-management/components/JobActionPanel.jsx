@@ -249,6 +249,7 @@ const JobActionPanel = ({
         const normalStatuses = ASSIGNEE_DRAFT_REBRIEF_ACTION_STATUSES;
         const pendingRebriefStatus = job.status === 'pending_rebrief';
         const rebriefSubmittedStatus = job.status === 'rebrief_submitted';
+        const canRejectByAssignee = ASSIGNEE_REJECTABLE_STATUSES.includes(job.status);
 
         if (!normalStatuses.includes(job.status) && !pendingRebriefStatus && !rebriefSubmittedStatus) return null;
 
@@ -267,12 +268,14 @@ const JobActionPanel = ({
                                 <CheckIcon className="w-5 h-5" />
                                 ส่งงาน
                             </button>
-                            <button
-                                onClick={onOpenAssigneeRejectModal}
-                                className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject}`}
-                            >
-                                ปฏิเสธงาน
-                            </button>
+                            {canRejectByAssignee && (
+                                <button
+                                    onClick={onOpenAssigneeRejectModal}
+                                    className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject}`}
+                                >
+                                    ปฏิเสธงาน
+                                </button>
+                            )}
                         </div>
 
                         {/* Draft & Rebrief Buttons */}
@@ -305,14 +308,16 @@ const JobActionPanel = ({
                                 งานกำลังรอผู้เปิดงานตอบกลับคำขอ Rebrief หากติดค้างต่อเนื่อง คุณยังสามารถส่งคำขอปฏิเสธงานได้
                             </p>
                         </div>
-                        <div className="flex gap-3">
-                            <button
-                                onClick={onOpenAssigneeRejectModal}
-                                className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject}`}
-                            >
-                                ปฏิเสธงาน
-                            </button>
-                        </div>
+                        {canRejectByAssignee && (
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={onOpenAssigneeRejectModal}
+                                    className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject}`}
+                                >
+                                    ปฏิเสธงาน
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -338,15 +343,44 @@ const JobActionPanel = ({
                             >
                                 🔄 Rebrief อีก
                             </button>
-                            <button
-                                onClick={onOpenAssigneeRejectModal}
-                                className={`py-3 px-3 rounded-lg font-medium flex items-center justify-center transition-colors text-sm ${ACTION_BUTTON_STYLES.reject}`}
-                            >
-                                ปฏิเสธ
-                            </button>
+                            {canRejectByAssignee && (
+                                <button
+                                    onClick={onOpenAssigneeRejectModal}
+                                    className={`py-3 px-3 rounded-lg font-medium flex items-center justify-center transition-colors text-sm ${ACTION_BUTTON_STYLES.reject}`}
+                                >
+                                    ปฏิเสธ
+                                </button>
+                            )}
                         </div>
                     </div>
                 )}
+            </div>
+        );
+    };
+
+    // 3b. Assignee Universal Reject Action (ทุกสถานะ Active ที่รองรับการปฏิเสธ)
+    const renderAssigneeUniversalRejectAction = () => {
+        if (job.isParent === true || job.isParent === 1) return null;
+        if (jobRole !== 'assignee' && jobRole !== 'admin') return null;
+
+        const normalStatuses = ASSIGNEE_DRAFT_REBRIEF_ACTION_STATUSES;
+        const pendingRebriefStatus = job.status === 'pending_rebrief';
+        const rebriefSubmittedStatus = job.status === 'rebrief_submitted';
+        const hasRejectInPrimaryPanel = normalStatuses.includes(job.status) || pendingRebriefStatus || rebriefSubmittedStatus;
+
+        if (hasRejectInPrimaryPanel) return null;
+        if (!ASSIGNEE_REJECTABLE_STATUSES.includes(job.status)) return null;
+
+        return (
+            <div className={`bg-white rounded-xl border ${theme?.borderClass || 'border-gray-400'} shadow-sm p-6 mb-6`}>
+                <h2 className="font-semibold text-gray-900 mb-2">การดำเนินการของผู้รับงาน</h2>
+                <p className="text-sm text-gray-600 mb-4">สถานะปัจจุบันยังเป็นงานที่ดำเนินการอยู่ คุณสามารถส่งคำขอปฏิเสธงานได้</p>
+                <button
+                    onClick={onOpenAssigneeRejectModal}
+                    className={`w-full py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject}`}
+                >
+                    ปฏิเสธงาน
+                </button>
             </div>
         );
     };
@@ -381,7 +415,7 @@ const JobActionPanel = ({
                     <p className="text-sm text-amber-800">
                         ⏰ <strong>กำหนด 1 วันทำการ:</strong> ผู้อนุมัติจะต้องตัดสินใจว่า approve
                         คำขอปฏิเสธนี้ หรือไม่ ภายในเวลา 1 วันทำการ
-                        หากเกินกำหนดระบบจะปฏิเสธงานโดยอัตโนมัติ
+                        หากเกินกำหนดระบบจะยืนยันคำขอปฏิเสธอัตโนมัติ (งานจะถูกปฏิเสธ)
                     </p>
                 </div>
                 <div className="flex gap-3">
@@ -509,6 +543,7 @@ const JobActionPanel = ({
             {renderManualAssignment()}
             {renderReassignment()}
             {renderAssigneeActions()}
+            {renderAssigneeUniversalRejectAction()}
             {renderAssigneeRejectionConfirm()}
             {renderRebriefPanel()}
             {renderCloseActions()}

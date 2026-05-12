@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ผู้สั่งงาน — คู่มือ DJ System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <button class="sidebar-toggle" id="sidebarToggle" aria-label="เปิดเมนู">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+  </button>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">DJ</div>
+      <div class="sidebar-title">คู่มือการใช้งาน<span>DJ System</span></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">เริ่มต้นใช้งาน</div>
+        <a href="index.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          ภาพรวมระบบ
+        </a>
+        <a href="status-bible.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+          สถานะงานทั้งหมด
+        </a>
+        <a href="sla-working-day.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          SLA และวันทำการ
+        </a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">ตามบทบาท</div>
+        <a href="requester.html" class="sidebar-link active">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+          ผู้สั่งงาน (Requester)
+        </a>
+        <a href="approver.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+          ผู้อนุมัติ (Approver)
+        </a>
+        <a href="assignee.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+          ผู้รับงาน (Assignee)
+        </a>
+        <a href="admin.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          ผู้ดูแลระบบ (Admin)
+        </a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">ขั้นสูง</div>
+        <a href="rejection-bible.html" class="sidebar-link">🚫 การปฏิเสธงาน</a>
+        <a href="error-bible.html" class="sidebar-link">⚠️ Error Code</a>
+        <a href="faq.html" class="sidebar-link">❓ คำถามที่พบบ่อย</a>
+        <a href="troubleshooting.html" class="sidebar-link">🔧 แก้ไขปัญหา</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">© 2026 DJ System<br>เวอร์ชัน 2.0</div>
+  </aside>
+
+  <main class="main-content">
+    <div class="content-header">
+      <div class="breadcrumb">
+        <a href="index.html">คู่มือ</a>
+        <span class="breadcrumb-separator">/</span>
+        <span>ผู้สั่งงาน</span>
+      </div>
+      <h1 class="page-title">📝 คู่มือผู้สั่งงาน (Requester)</h1>
+    </div>
+
+    <div class="content-body">
+      <div class="badge badge-role-requester" style="margin-bottom:1rem;">บทบาท: Requester</div>
+
+      <p>ผู้สั่งงานคือสมาชิกทีม Marketing ที่สร้างงาน Design ส่งให้ทีม Designer/Developer ดำเนินการ</p>
+
+      <h2>สิ่งที่คุณทำได้</h2>
+      <ul class="checklist">
+        <li>สร้างงานใหม่ พร้อมแนบไฟล์และรายละเอียด</li>
+        <li>บันทึกร่างงาน (Draft) ก่อนส่งจริง</li>
+        <li>ติดตามสถานะงานที่สั่งไป</li>
+        <li>แสดงความเห็นในงาน (@mention ได้)</li>
+        <li>ดาวน์โหลดไฟล์ผลงานเมื่องานเสร็จ</li>
+      </ul>
+
+      <h2>ขั้นตอนการสร้างงาน</h2>
+
+      <div class="step-box">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <h4>กดปุ่ม "สร้างงานใหม่"</h4>
+          <p>อยู่ที่มุมขวาบนของหน้า Dashboard หรือเมนู "สร้างงาน"</p>
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <h4>กรอกข้อมูลงาน</h4>
+          <p>หัวข้อ, ประเภทงาน, BUD, โครงการ, รายละเอียด, วันที่ต้องการ</p>
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <h4>แนบไฟล์ (ถ้ามี)</h4>
+          <p>ลากไฟล์มาวาง หรือกดเลือกไฟล์ รองรับหลายไฟล์พร้อมกัน</p>
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-number">4</div>
+        <div class="step-content">
+          <h4>เลือกบันทึกร่าง หรือ ส่งงาน</h4>
+          <p><strong>บันทึกร่าง</strong> = เก็บไว้แก้ภายหลัง | <strong>ส่งงาน</strong> = เข้าสู่กระบวนการอนุมัติทันที</p>
+        </div>
+      </div>
+
+      <div class="tip-box">
+        <div class="tip-box-title">💡 เคล็ดลับ</div>
+        <p>ถ้างานมีไฟล์ส่งมอบหลายชิ้น ให้สร้างเป็น <strong>งานหลัก (Parent)</strong> แล้วเพิ่มงานย่อย (Child) แยกตามชิ้นงาน</p>
+      </div>
+
+      <h2>การติดตามงาน</h2>
+      <p>หลังส่งงานแล้ว คุณสามารถติดตามสถานะได้จากหน้า Dashboard หรือรายละเอียดงาน</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>สถานะที่เห็น</th>
+              <th>ความหมาย</th>
+              <th>ควรทำอะไร</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="badge badge-warning">รออนุมัติ</span></td>
+              <td>งานอยู่ในคิวผู้อนุมัติ</td>
+              <td>รอหรือแสดงความเห็นเพิ่มเติม</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">อนุมัติแล้ว</span></td>
+              <td>ผ่านการอนุมัติ รอมอบหมาย</td>
+              <td>รอผู้รับงานรับงาน</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-info">กำลังทำ</span></td>
+              <td>ผู้รับงานกำลังดำเนินการ</td>
+              <td>ติดตามความคืบหน้า</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-success">เสร็จสิ้น</span></td>
+              <td>งานเสร็จแล้ว</td>
+              <td>ดาวน์โหลดไฟล์ผลงาน</td>
+            </tr>
+            <tr>
+              <td><span class="badge badge-error">ปฏิเสธ</span></td>
+              <td>งานถูกปฏิเสธ</td>
+              <td>ตรวจสอบเหตุผล แล้วสร้างใหม่</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Checklist ก่อนส่งงาน</h2>
+      <ul class="checklist">
+        <li>หัวข้องานเข้าใจง่าย ไม่กำกวม</li>
+        <li>เลือกประเภทงานถูกต้อง (มีผลต่อ SLA)</li>
+        <li>ระบุ BUD และโครงการ</li>
+        <li>รายละเอียดครบถ้วน มีขนาด/สเปกที่ต้องการ</li>
+        <li>แนบไฟล์ต้นฉบับ/ตัวอย่าง (ถ้ามี)</li>
+        <li>วันที่ต้องการสมเหตุสมผลกับ SLA</li>
+      </ul>
+
+      <div class="page-nav">
+        <a href="sla-working-day.html">
+          <span class="page-nav-label">← ก่อนหน้า</span>
+          <span class="page-nav-title">SLA และวันทำการ</span>
+        </a>
+        <a href="approver.html">
+          <span class="page-nav-label">ถัดไป →</span>
+          <span class="page-nav-title">ผู้อนุมัติ</span>
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <button class="scroll-top" id="scrollTop" aria-label="กลับด้านบน">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"></polyline></svg>
+  </button>
+  <script src="js/nav.js"></script>
+</body>
+</html>

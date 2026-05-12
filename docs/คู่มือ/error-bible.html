@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Error Code & วิธีแก้ — คู่มือ DJ System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <button class="sidebar-toggle" id="sidebarToggle" aria-label="เปิดเมนู">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+  </button>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">DJ</div>
+      <div class="sidebar-title">คู่มือการใช้งาน<span>DJ System</span></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">เริ่มต้นใช้งาน</div>
+        <a href="index.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          ภาพรวมระบบ
+        </a>
+        <a href="status-bible.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+          สถานะงานทั้งหมด
+        </a>
+        <a href="sla-working-day.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          SLA และวันทำการ
+        </a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">ตามบทบาท</div>
+        <a href="requester.html" class="sidebar-link">📝 ผู้สั่งงาน</a>
+        <a href="approver.html" class="sidebar-link">✅ ผู้อนุมัติ</a>
+        <a href="assignee.html" class="sidebar-link">🎨 ผู้รับงาน</a>
+        <a href="admin.html" class="sidebar-link">⚙️ ผู้ดูแลระบบ</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">ขั้นสูง</div>
+        <a href="rejection-bible.html" class="sidebar-link">🚫 การปฏิเสธงาน</a>
+        <a href="error-bible.html" class="sidebar-link active">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          Error Code & วิธีแก้
+        </a>
+        <a href="faq.html" class="sidebar-link">❓ คำถามที่พบบ่อย</a>
+        <a href="troubleshooting.html" class="sidebar-link">🔧 แก้ไขปัญหา</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">© 2026 DJ System<br>เวอร์ชัน 2.0</div>
+  </aside>
+
+  <main class="main-content">
+    <div class="content-header">
+      <div class="breadcrumb">
+        <a href="index.html">คู่มือ</a>
+        <span class="breadcrumb-separator">/</span>
+        <span>Error Code & วิธีแก้</span>
+      </div>
+      <h1 class="page-title">⚠️ Error Code & วิธีแก้ไข</h1>
+    </div>
+
+    <div class="content-body">
+      <p>รวมข้อผิดพลาดที่พบบ่อยในระบบ พร้อมสาเหตุและวิธีแก้ไขเฉพาะเจาะจง</p>
+
+      <h2>ข้อผิดพลาดจากการกระทำงาน</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Error Code</th>
+              <th>ข้อความ</th>
+              <th>สาเหตุ</th>
+              <th>วิธีแก้</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>409</code></td>
+              <td>ไม่สามารถดำเนินการได้</td>
+              <td>สถานะงานเปลี่ยนไปแล้ว หรือมีคนอื่นทำก่อน</td>
+              <td>รีเฟรชหน้า แล้วลองใหม่</td>
+            </tr>
+            <tr>
+              <td><code>403</code></td>
+              <td>ไม่มีสิทธิ์ดำเนินการ</td>
+              <td>บทบาทของคุณไม่มีสิทธิ์ทำรายการนี้</td>
+              <td>ตรวจสอบบทบาท หรือติดต่อแอดมิน</td>
+            </tr>
+            <tr>
+              <td><code>400</code></td>
+              <td>ข้อมูลไม่ถูกต้อง</td>
+              <td>กรอกข้อมูลไม่ครบ หรือรูปแบบไม่ถูกต้อง</td>
+              <td>ตรวจสอบฟอร์มให้ครบถ้วน</td>
+            </tr>
+            <tr>
+              <td><code>404</code></td>
+              <td>ไม่พบงาน</td>
+              <td>งานถูกลบ หรือไม่มีสิทธิ์เข้าถึง</td>
+              <td>ตรวจสอบ DJ-ID หรือติดต่อแอดมิน</td>
+            </tr>
+            <tr>
+              <td><code>500</code></td>
+              <td>เกิดข้อผิดพลาดภายในระบบ</td>
+              <td>ปัญหาที่เซิร์ฟเวอร์</td>
+              <td>รอสักครู่แล้วลองใหม่ หรือแจ้งแอดมิน</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>ข้อผิดพลาดเฉพาะทาง</h2>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">❌ "ไม่สามารถปฏิเสธงานได้"</div></div>
+        <div class="card-body">
+          <p><strong>สาเหตุ:</strong> สถานะงานไม่อยู่ในช่วงที่อนุญาตให้ปฏิเสธได้</p>
+          <p><strong>วิธีแก้:</strong></p>
+          <ul class="checklist">
+            <li>ตรวจสอบสถานะปัจจุบันของงาน</li>
+            <li>ผู้รับงานสามารถปฏิเสธได้เฉพาะ <code>assigned</code> และ <code>in_progress</code></li>
+            <li>ผู้อนุมัติสามารถปฏิเสธได้เฉพาะ <code>pending_approval</code></li>
+            <li>หากสถานะเป็น <code>completed</code> หรือ <code>rejected</code> จะไม่สามารถปฏิเสธได้</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">❌ "ไม่สามารถอนุมัติงานได้"</div></div>
+        <div class="card-body">
+          <p><strong>สาเหตุ:</strong> คุณไม่ใช่ผู้อนุมัติในเส้นทางการอนุมัติของงานนี้</p>
+          <p><strong>วิธีแก้:</strong></p>
+          <ul class="checklist">
+            <li>ตรวจสอบว่าคุณอยู่ในเส้นทางการอนุมัติของประเภทงานนี้</li>
+            <li>ติดต่อแอดมินให้เพิ่มคุณเข้าเส้นทางการอนุมัติ</li>
+            <li>หากเป็นงานเก่า อาจถูกมอบหมายให้ผู้อนุมัติคนอื่น</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">❌ "ไฟล์ใหญ่เกินไป"</div></div>
+        <div class="card-body">
+          <p><strong>สาเหตุ:</strong> ไฟล์ที่อัปโหลดมีขนาดเกิน 10 MB</p>
+          <p><strong>วิธีแก้:</strong></p>
+          <ul class="checklist">
+            <li>บีบอัดไฟล์ก่อนอัปโหลด (ZIP, ลดความละเอียดรูป)</li>
+            <li>แบ่งไฟล์เป็นหลายชิ้น</li>
+            <li>ใช้ลิงก์ภายนอกแทน (Google Drive, Dropbox)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-title">❌ "เซสชันหมดอายุ"</div></div>
+        <div class="card-body">
+          <p><strong>สาเหตุ:</strong> Token หมดอายุ หรือไม่ได้ใช้งานนานเกินไป</p>
+          <p><strong>วิธีแก้:</strong></p>
+          <ul class="checklist">
+            <li>รีเฟรชหน้าเว็บ (F5)</li>
+            <li>ออกจากระบบแล้วเข้าใหม่</li>
+            <li>หากยังไม่ได้ ล้างแคชเบราว์เซอร์ (Ctrl+Shift+R)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="page-nav">
+        <a href="rejection-bible.html">
+          <span class="page-nav-label">← ก่อนหน้า</span>
+          <span class="page-nav-title">การปฏิเสธงาน</span>
+        </a>
+        <a href="faq.html">
+          <span class="page-nav-label">ถัดไป →</span>
+          <span class="page-nav-title">คำถามที่พบบ่อย</span>
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <button class="scroll-top" id="scrollTop" aria-label="กลับด้านบน">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"></polyline></svg>
+  </button>
+  <script src="js/nav.js"></script>
+</body>
+</html>

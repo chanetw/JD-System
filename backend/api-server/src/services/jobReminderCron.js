@@ -386,16 +386,16 @@ class JobReminderCron {
             job.tenantId
           );
 
-          // ถ้า >= 1 วันทำการ → auto-close
+          // ถ้า >= 1 วันทำการ → auto-approve คำขอปฏิเสธของ assignee
           if (workingDaysElapsed >= 1) {
             console.log(
-              `[JobReminder] Auto-closing job ${job.djId} ` +
+              `[JobReminder] Auto-approving assignee rejection for job ${job.djId} ` +
               `(${workingDaysElapsed} working days elapsed since rejection)`
             );
 
-            // Update status to rejected
+            // Approve assignee rejection request automatically and close as rejected
             const autoClosedAt = new Date();
-            const description = `ระบบปิดงานอัตโนมัติ เพราะ approver ไม่ตัดสินใจ ภายในวันทำการที่กำหนด (${workingDaysElapsed} วันทำการ)`;
+            const description = `ระบบยืนยันคำขอปฏิเสธงานอัตโนมัติ เพราะ approver ไม่ตัดสินใจภายในวันทำการที่กำหนด (${workingDaysElapsed} วันทำการ)`;
             const detail = {
               rejectionTimestamp: rejectionActivity.createdAt.toISOString(),
               workingDaysElapsed,
@@ -448,8 +448,8 @@ class JobReminderCron {
                   tenantId: job.tenantId,
                   userId: job.requesterId,
                   type: 'rejection_auto_closed',
-                  title: `❌ งาน ${job.djId} ปฏิเสธอัตโนมัติ`,
-                  message: `งาน "${job.subject}" ถูกปฏิเสธอัตโนมัติ ` +
+                  title: `⚠️ งาน ${job.djId} ยืนยันการปฏิเสธอัตโนมัติ`,
+                  message: `งาน "${job.subject}" ถูกยืนยันคำขอปฏิเสธอัตโนมัติ ` +
                     `เพราะผู้อนุมัติไม่ตัดสินใจภายในกำหนดเวลา`,
                   link: `/jobs/${job.id}`
                 })
@@ -471,7 +471,7 @@ class JobReminderCron {
 
       if (autoClosedCount > 0) {
         console.log(
-          `[JobReminder] Auto-closed ${autoClosedCount} rejection timeouts`
+          `[JobReminder] Auto-approved ${autoClosedCount} assignee rejection timeouts`
         );
       }
     } catch (error) {

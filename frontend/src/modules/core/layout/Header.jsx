@@ -205,15 +205,85 @@ export default function Header({ sidebarCollapsed = false, onMobileMenuClick }) 
                                                 </div>
                                             );
                                         }
+                                        
+                                        // ตรวจสอบสิทธิ์ก่อนไปที่งาน
+                                        const handleNotificationClick = async () => {
+                                            try {
+                                                // ดึง job ID จาก link (e.g., /jobs/123)
+                                                const jobId = noti.link.split('/').pop();
+                                                if (!jobId) {
+                                                    markAsRead(noti.id);
+                                                    setShowNoti(false);
+                                                    return;
+                                                }
+                                                
+                                                // เรียก API ตรวจสอบสิทธิ์
+                                                const response = await fetch(`/api/jobs/${jobId}/access-check`, {
+                                                    method: 'GET',
+                                                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` }
+                                                });
+                                                
+                                                if (response.ok) {
+                                                    const data = await response.json();
+                                                    if (data.hasAccess) {
+                                                        // มีสิทธิ์ → ไปที่งาน
+                                                        markAsRead(noti.id);
+                                                        setShowNoti(false);
+                                                        window.location.href = noti.link;
+                                                    } else {
+                                                        // ไม่มีสิทธิ์
+                                                        markAsRead(noti.id);
+                                                        setShowNoti(false);
+                                                        Swal.fire({
+                                                            icon: 'warning',
+                                                            title: 'ไม่มีสิทธิ์เข้าถึงงานนี้',
+                                                            html: `
+                                                                <div class="text-left text-sm space-y-2">
+                                                                    <p class="text-gray-700">
+                                                                        <strong>เหตุผล:</strong> ${data.reason || 'คุณไม่ได้รับการกำหนดให้เข้าถึงงานนี้'}
+                                                                    </p>
+                                                                    ${data.suggestedAction ? `
+                                                                        <div class="mt-3 p-2 bg-blue-50 rounded border border-blue-100">
+                                                                            <p class="text-blue-900"><strong>สิ่งที่คุณสามารถทำ:</strong></p>
+                                                                            <ul class="list-disc list-inside text-blue-800 mt-1">
+                                                                                ${data.suggestedAction.split(';').map(action => `<li>${action.trim()}</li>`).join('')}
+                                                                            </ul>
+                                                                        </div>
+                                                                    ` : ''}
+                                                                </div>
+                                                            `,
+                                                            confirmButtonColor: '#3b82f6'
+                                                        });
+                                                    }
+                                                } else {
+                                                    markAsRead(noti.id);
+                                                    setShowNoti(false);
+                                                    Swal.fire({
+                                                        icon: 'error',
+                                                        title: 'ตรวจสอบสิทธิ์ไม่สำเร็จ',
+                                                        text: 'ไม่สามารถตรวจสอบสิทธิ์เข้าถึงงานได้ กรุณาลองใหม่ในภายหลัง'
+                                                    });
+                                                }
+                                            } catch (error) {
+                                                console.error('Notification click error:', error);
+                                                markAsRead(noti.id);
+                                                setShowNoti(false);
+                                                Swal.fire({
+                                                    icon: 'error',
+                                                    title: 'เกิดข้อผิดพลาด',
+                                                    text: error.message || 'ไม่สามารถเปิดงานได้'
+                                                });
+                                            }
+                                        };
+                                        
                                         return (
-                                        <Link
-                                            key={noti.id}
-                                            to={noti.link}
-                                            onClick={() => { markAsRead(noti.id); setShowNoti(false); }}
-                                            className={sharedClass}
-                                        >
-                                            {inner}
-                                        </Link>
+                                            <div
+                                                key={noti.id}
+                                                onClick={handleNotificationClick}
+                                                className={`cursor-pointer ${sharedClass}`}
+                                            >
+                                                {inner}
+                                            </div>
                                         );
                                     })
                                 )}

@@ -606,26 +606,57 @@ const collectAffectedJobs = async ({ prisma, rootJobId, tenantId, includeDescend
   return affectedJobs;
 };
 
-const recalculateDueDateForPriorityChange = async ({ db, tenantId, job, oldPriority, newPriority }) => {
+const recalculateDueDateForPriorityChange = async ({ db, tenantId, job, oldPriority, newPriority, parentBasis = null }) => {
   let newDueDate = job.dueDate;
   let slaRecalcResult = null;
 
-  if (oldPriority === 'urgent' && newPriority === 'normal') {
+  if (oldPriority !== newPriority) {
     const acceptanceDate = job.acceptanceDate || job.createdAt;
-    const slaDays = job.slaDays || job.jobType?.slaWorkingDays || 3;
+    const now = new Date();
+    const oldDueDate = job.dueDate ? new Date(job.dueDate) : null;
+    const originalBasis = acceptanceDate ? new Date(acceptanceDate) : null;
+    
+    // ถ้า parentBasis ถูกส่งมา (scope=chain), ใช้ parent's basis แทนการตรวจสอบของตัวเอง
+    let shouldUseEditedAt;
+    let recalculationBasis;
+    
+    if (parentBasis) {
+      // ใช้ parent's basis โดยตรง (parent ตัดสินใจแล้วว่าใช้ edited_at)
+      recalculationBasis = parentBasis;
+      shouldUseEditedAt = true; // บ่งชี้ว่ามาจาก parent's edited_at
+    } else {
+      // Logic เดิม: ตรวจสอบตัวเองว่า overdue หรือไม่
+      shouldUseEditedAt = !originalBasis || Number.isNaN(originalBasis.getTime()) || originalBasis < now;
+      recalculationBasis = shouldUseEditedAt ? now : originalBasis;
+    }
+    const baseSlaDays = Number(job.slaDays || job.jobType?.slaWorkingDays || 3);
+    const slaDays = newPriority === 'normal'
+      ? baseSlaDays + 1
+      : baseSlaDays;
 
-    if (acceptanceDate && slaDays) {
+    if (recalculationBasis && slaDays) {
       const calculatedDueDate = await jobAcceptanceService.addWorkingDaysWithTenantHolidays({
         db,
         tenantId,
-        startDate: new Date(acceptanceDate),
+        startDate: new Date(recalculationBasis),
         workingDays: slaDays,
       });
 
       if (calculatedDueDate) {
         newDueDate = calculatedDueDate;
+        let basisSourceType = 'acceptance_date';
+        if (parentBasis) {
+          basisSourceType = 'parent_basis'; // บ่งชี้ว่าใช้ parent's basis
+        } else if (shouldUseEditedAt) {
+          basisSourceType = 'edited_at';
+        }
+        
         slaRecalcResult = {
-          basis: acceptanceDate,
+          basis: recalculationBasis,
+          basisSource: basisSourceType,
+          oldPriority,
+          newPriority,
+          baseSlaDays,
           slaDays,
           oldDueDate: job.dueDate?.toISOString(),
           newDueDate: calculatedDueDate.toISOString(),
@@ -635,6 +666,60 @@ const recalculateDueDateForPriorityChange = async ({ db, tenantId, job, oldPrior
   }
 
   return { newDueDate, slaRecalcResult };
+};
+
+const toStartOfDay = (value) => {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const toDateKey = (value) => {
+  const date = new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+const loadHolidayDateSet = async ({ prisma, tenantId, dateValues }) => {
+  const dates = (dateValues || []).filter(Boolean).map(toStartOfDay);
+  if (!tenantId || dates.length === 0) {
+    return new Set();
+  }
+
+  const rangeStart = new Date(Math.min(...dates.map((date) => date.getTime())));
+  rangeStart.setHours(0, 0, 0, 0);
+
+  const rangeEnd = new Date(Math.max(...dates.map((date) => date.getTime())));
+  rangeEnd.setHours(23, 59, 59, 999);
+
+  const holidays = await prisma.holiday.findMany({
+    where: {
+      tenantId,
+      date: {
+        gte: rangeStart,
+        lte: rangeEnd,
+      },
+    },
+    select: { date: true },
+  });
+
+  return new Set(holidays.map(({ date }) => toDateKey(date)));
+};
+
+const validateManualDueDate = async ({ prisma, tenantId, dueDate }) => {
+  const normalizedDueDate = new Date(dueDate);
+  const dueDateValidation = workingHoursHelper.validateAndAdjustDueDate(normalizedDueDate);
+  const holidaySet = await loadHolidayDateSet({
+    prisma,
+    tenantId,
+    dateValues: [normalizedDueDate],
+  });
+  const isHoliday = holidaySet.has(toDateKey(normalizedDueDate));
+
+  return {
+    normalizedDueDate,
+    dueDateValidation,
+    isHoliday,
+  };
 };
 
 /**
@@ -1031,7 +1116,7 @@ router.get('/', async (req, res) => {
       } else if (status === 'completed') {
         where.status = { in: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] };
       } else if (status === 'rejected') {
-        where.status = { in: ['rejected', 'rejected_by_assignee'] };
+        where.status = { in: ['rejected', 'rejected_by_assignee', 'assignee_rejected'] };
       } else if (status === 'waiting') {
         where.status = { in: ['correction', 'pending_approval'] };
       } else if (status === 'done') {
@@ -5893,7 +5978,14 @@ router.post('/:id/edit-priority', async (req, res) => {
     const jobId = parseInt(req.params.id);
     const userId = req.user.userId;
     const tenantId = req.user.tenantId;
-    const { priority: rawPriority, reason, scope = 'single' } = req.body;
+    const {
+      priority: rawPriority,
+      reason,
+      scope = 'single',
+      dueDateMode = 'suggested',
+      manualDueDate,
+      previewOnly = false,
+    } = req.body;
 
     // Authorization: Admin only
     if (!hasAdminPrivileges(req.user)) {
@@ -5922,8 +6014,32 @@ router.post('/:id/edit-priority', async (req, res) => {
       });
     }
 
+    if (!['suggested', 'manual'].includes(dueDateMode)) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_DUE_DATE_MODE',
+        message: 'dueDateMode ต้องเป็น suggested หรือ manual เท่านั้น'
+      });
+    }
+
+    if (dueDateMode === 'manual' && !manualDueDate) {
+      return res.status(400).json({
+        success: false,
+        error: 'MANUAL_DUE_DATE_REQUIRED',
+        message: 'กรุณาระบุวันที่กำหนดส่งใหม่เมื่อเลือกกำหนดวันเอง'
+      });
+    }
+
+    if (typeof previewOnly !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_PREVIEW_ONLY',
+        message: 'previewOnly ต้องเป็น boolean เท่านั้น'
+      });
+    }
+
     // Validate reason
-    if (!reason || reason.trim().length === 0) {
+    if (!previewOnly && (!reason || reason.trim().length === 0)) {
       return res.status(400).json({
         success: false,
         error: 'REASON_REQUIRED',
@@ -5964,22 +6080,121 @@ router.post('/:id/edit-priority', async (req, res) => {
       });
     }
     const updatePlans = [];
-    for (const affectedJob of affectedJobs) {
+    
+    // ถ้า scope=chain, คำนวณ basis สำหรับ parent ก่อน เพื่อให้ลูกใช้ร่วม
+    let parentBasisForChildren = null;
+    if (scope === 'chain' && affectedJobs.length > 0) {
+      const parentJob = affectedJobs[0];
+      const parentOldPriority = normalizePriority(parentJob.priority);
+      const now = new Date();
+      const parentAcceptanceDate = parentJob.acceptanceDate || parentJob.createdAt;
+      const parentOriginalBasis = parentAcceptanceDate ? new Date(parentAcceptanceDate) : null;
+      const parentOldDueDate = parentJob.dueDate ? new Date(parentJob.dueDate) : null;
+      
+      // ตรวจสอบว่า parent overdue หรือไม่
+      const parentShouldUseEditedAt = !parentOriginalBasis || Number.isNaN(parentOriginalBasis.getTime()) || parentOriginalBasis < now;
+      parentBasisForChildren = parentShouldUseEditedAt ? now : parentOriginalBasis;
+    }
+    
+    for (let index = 0; index < affectedJobs.length; index++) {
+      const affectedJob = affectedJobs[index];
       const oldPriority = normalizePriority(affectedJob.priority);
+      
+      // ถ้า scope=chain และไม่ใช่ parent (index > 0), ส่ง parentBasisForChildren
+      const parentBasisParam = (scope === 'chain' && index > 0) ? parentBasisForChildren : null;
+      
       const { newDueDate, slaRecalcResult } = await recalculateDueDateForPriorityChange({
         db: prisma,
         tenantId,
         job: affectedJob,
         oldPriority,
         newPriority,
+        parentBasis: parentBasisParam,
       });
+
+      let suggestedDueDate = newDueDate;
+      let finalDueDate = newDueDate;
+      let manualOverride = null;
+
+      if (dueDateMode === 'manual') {
+        const { normalizedDueDate, dueDateValidation, isHoliday } = await validateManualDueDate({
+          prisma,
+          tenantId,
+          dueDate: manualDueDate,
+        });
+
+        if (Number.isNaN(normalizedDueDate.getTime())) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_DUE_DATE',
+            message: 'รูปแบบวันที่กำหนดส่งใหม่ไม่ถูกต้อง'
+          });
+        }
+
+        const adjustedManualDueDate = dueDateValidation.adjustedDate;
+
+        if (adjustedManualDueDate <= new Date()) {
+          return res.status(400).json({
+            success: false,
+            error: 'DUE_DATE_IN_PAST',
+            message: 'วันที่กำหนดส่งใหม่ต้องมากกว่าวันเวลาปัจจุบัน'
+          });
+        }
+
+        if (isHoliday) {
+          return res.status(400).json({
+            success: false,
+            error: 'DUE_DATE_HOLIDAY',
+            message: 'วันที่เลือกตรงกับวันหยุด กรุณาเลือกวันทำการ'
+          });
+        }
+
+        finalDueDate = adjustedManualDueDate;
+        manualOverride = {
+          inputDueDate: normalizedDueDate.toISOString(),
+          finalDueDate: finalDueDate.toISOString(),
+          adjusted: dueDateValidation.needsAdjustment,
+          adjustmentReasons: dueDateValidation.reasons,
+        };
+      }
 
       updatePlans.push({
         job: affectedJob,
         oldPriority,
         oldDueDate: affectedJob.dueDate,
-        newDueDate,
+        suggestedDueDate,
+        newDueDate: finalDueDate,
         slaRecalcResult,
+        manualOverride,
+      });
+    }
+
+    if (previewOnly) {
+      const rootPlan = updatePlans[0];
+      return res.json({
+        success: true,
+        data: {
+          previewOnly: true,
+          scope,
+          dueDateMode,
+          oldPriority: rootPlan.oldPriority,
+          newPriority,
+          oldDueDate: rootPlan.oldDueDate?.toISOString(),
+          suggestedDueDate: rootPlan.suggestedDueDate?.toISOString(),
+          newDueDate: rootPlan.newDueDate?.toISOString(),
+          dueDateChanged: rootPlan.oldDueDate?.getTime() !== rootPlan.newDueDate?.getTime(),
+          slaRecalc: rootPlan.slaRecalcResult,
+          manualOverride: rootPlan.manualOverride,
+          affectedJobs: updatePlans.map((plan) => ({
+            id: plan.job.id,
+            djId: plan.job.djId,
+            oldDueDate: plan.oldDueDate?.toISOString(),
+            suggestedDueDate: plan.suggestedDueDate?.toISOString(),
+            newDueDate: plan.newDueDate?.toISOString(),
+            slaRecalc: plan.slaRecalcResult,
+            manualOverride: plan.manualOverride,
+          })),
+        }
       });
     }
 
@@ -6003,6 +6218,8 @@ router.post('/:id/edit-priority', async (req, res) => {
             reason: reason.trim(),
             scope,
             newPriority,
+            dueDateMode,
+            manualDueDate: manualDueDate || null,
             affectedJobIds: updatePlans.map(plan => plan.job.id),
             affectedDjIds: updatePlans.map(plan => plan.job.djId),
           },
@@ -6033,8 +6250,11 @@ router.post('/:id/edit-priority', async (req, res) => {
               reason: reason.trim(),
               dueDateChanged: plan.oldDueDate?.getTime() !== plan.newDueDate?.getTime(),
               oldDueDate: plan.oldDueDate?.toISOString(),
+              suggestedDueDate: plan.suggestedDueDate?.toISOString(),
               newDueDate: plan.newDueDate?.toISOString(),
               slaRecalc: plan.slaRecalcResult,
+              dueDateMode,
+              manualOverride: plan.manualOverride,
               scope,
             },
           }
@@ -6051,7 +6271,10 @@ router.post('/:id/edit-priority', async (req, res) => {
               oldPriority: plan.oldPriority,
               newPriority,
               oldDueDate: plan.oldDueDate?.toISOString(),
+              suggestedDueDate: plan.suggestedDueDate?.toISOString(),
               newDueDate: plan.newDueDate?.toISOString(),
+              dueDateMode,
+              manualOverride: plan.manualOverride,
               scope,
             },
           }
@@ -6062,6 +6285,58 @@ router.post('/:id/edit-priority', async (req, res) => {
     });
 
     const notificationResults = { inApp: 0, email: 0, emailFailed: 0 };
+    
+    // ส่ง notification ไปยัง requester พร้อมข้อมูลงานลูก
+    const rootJob = updatedPlans[0].job;
+    const rootPlan = updatedPlans[0];
+    const requesterId = rootJob.requesterId;
+    
+    if (requesterId && requesterId !== userId) {
+      try {
+        const affectedJobsDetail = updatedPlans.map(plan => ({
+          djId: plan.job.djId,
+          oldDueDate: plan.oldDueDate?.toISOString(),
+          newDueDate: plan.newDueDate?.toISOString(),
+        }));
+        
+        const dueDateMsg = rootPlan.slaRecalcResult
+          ? ` กำหนดส่งใหม่: ${rootPlan.newDueDate.toLocaleDateString('th-TH')}`
+          : '';
+        
+        const childJobsList = updatedPlans.slice(1).map(p => p.job.djId).join(', ');
+        const childJobsMsg = childJobsList ? `\nงานลูก: ${childJobsList}` : '';
+
+        const notificationResult = await notificationService.sendNotification({
+          tenantId,
+          userIds: [requesterId],
+          type: JOB_NOTIFICATION_EVENTS.PRIORITY_CHANGED,
+          title: `ปรับ Priority งาน ${rootJob.djId}`,
+          message: `งาน ${rootJob.djId} เปลี่ยนจาก ${rootPlan.oldPriority === 'urgent' ? 'ด่วน' : 'ปกติ'} เป็น ${newPriority === 'urgent' ? 'ด่วน' : 'ปกติ'}${dueDateMsg}${childJobsMsg}`,
+          link: `/jobs/${rootJob.id}`,
+          sendEmail: process.env.ENABLE_EMAIL_NOTIFICATIONS === 'true',
+          emailData: {
+            jobId: rootJob.djId,
+            jobSubject: rootJob.subject,
+            oldPriority: rootPlan.oldPriority,
+            newPriority,
+            reason: reason.trim(),
+            suggestedDueDate: rootPlan.suggestedDueDate?.toISOString(),
+            newDueDate: rootPlan.newDueDate?.toISOString(),
+            dueDateMode,
+            affectedJobs: affectedJobsDetail,
+            updatedBy: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || 'Admin',
+          },
+          io: req.app.get('io'),
+        });
+
+        notificationResults.inApp += notificationResult?.results?.database?.sent || 0;
+        notificationResults.email += notificationResult?.results?.email?.sent || 0;
+      } catch (notifError) {
+        console.error('[EditPriority] Notification to requester failed:', notifError.message);
+      }
+    }
+    
+    // ส่ง notification ไปยัง assignees และผู้ที่เกี่ยวข้อง
     for (const plan of updatedPlans) {
       const recipientIds = getNotificationRecipients(JOB_NOTIFICATION_EVENTS.PRIORITY_CHANGED, plan.job)
         .filter(id => id !== userId);
@@ -6086,7 +6361,9 @@ router.post('/:id/edit-priority', async (req, res) => {
               oldPriority: plan.oldPriority,
               newPriority,
               reason: reason.trim(),
+              suggestedDueDate: plan.suggestedDueDate?.toISOString(),
               newDueDate: plan.newDueDate?.toISOString(),
+              dueDateMode,
               updatedBy: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || 'Admin',
             },
             io: req.app.get('io'),
@@ -6105,6 +6382,7 @@ router.post('/:id/edit-priority', async (req, res) => {
     }
 
     const rootPlan = updatedPlans[0];
+    const rootDueDateChanged = rootPlan.oldDueDate?.getTime() !== rootPlan.newDueDate?.getTime();
     const chainResult = scope === 'chain'
       ? {
           totalChildren: Math.max(updatedPlans.length - 1, 0),
@@ -6127,9 +6405,12 @@ router.post('/:id/edit-priority', async (req, res) => {
         oldPriority: rootPlan.oldPriority,
         newPriority,
         oldDueDate: rootPlan.oldDueDate?.toISOString(),
+        suggestedDueDate: rootPlan.suggestedDueDate?.toISOString(),
         newDueDate: rootPlan.newDueDate?.toISOString(),
-        dueDateChanged: !!rootPlan.slaRecalcResult,
+        dueDateChanged: rootDueDateChanged,
         slaRecalc: rootPlan.slaRecalcResult,
+        dueDateMode,
+        manualOverride: rootPlan.manualOverride,
         chain: chainResult,
         notifications: notificationResults,
       }
@@ -6141,6 +6422,107 @@ router.post('/:id/edit-priority', async (req, res) => {
       success: false,
       error: 'EDIT_PRIORITY_FAILED',
       message: 'ไม่สามารถแก้ไข priority ได้: ' + error.message
+    });
+  }
+});
+
+/**
+ * @route GET /api/jobs/:id/access-check
+ * @description ตรวจสอบว่าผู้ใช้มีสิทธิ์เข้าถึงงานนี้หรือไม่
+ * @access private
+ */
+router.get('/:id/access-check', async (req, res) => {
+  const { id } = req.params;
+  const { userId, tenantId } = req.user;
+
+  if (!id || isNaN(parseInt(id))) {
+    return res.status(400).json({
+      success: false,
+      error: 'INVALID_JOB_ID',
+      hasAccess: false,
+      reason: 'ID งานไม่ถูกต้อง',
+    });
+  }
+
+  try {
+    const prisma = getDatabase();
+
+    // ดึงข้อมูลงาน
+    const job = await prisma.job.findUnique({
+      where: { id: parseInt(id) },
+      select: {
+        id: true,
+        tenantId: true,
+        requesterId: true,
+        assigneeId: true,
+        approverIds: true,
+        status: true,
+        djId: true,
+      },
+    });
+
+    // ตรวจสอบว่างานอยู่ tenant เดียวกันหรือไม่
+    if (!job || job.tenantId !== tenantId) {
+      return res.json({
+        success: true,
+        hasAccess: false,
+        reason: 'งานนี้ไม่อยู่ในระบบของคุณ หรือถูกลบแล้ว',
+        suggestedAction: 'ติดต่อ Admin เพื่อขอสิทธิ์เข้าถึง',
+      });
+    }
+
+    // ดึง roles ของผู้ใช้
+    const userRoles = req.user.roles || [];
+    const roleNames = userRoles.map(r => {
+      if (typeof r === 'string') return r.toLowerCase();
+      return (r.name || r.roleName || '').toLowerCase();
+    });
+
+    const isAdmin = roleNames.includes('admin') || roleNames.includes('superadmin');
+
+    // ตรวจสอบสิทธิ์:
+    // 1. Admin → เข้าถึงได้ทุกงาน
+    // 2. Requester → เข้าถึงงานของตนเอง
+    // 3. Assignee → เข้าถึงงานที่ได้รับมอบหมาย
+    // 4. Approver → เข้าถึงงานที่ต้องอนุมัติ
+    const isRequester = job.requesterId === userId;
+    const isAssignee = job.assigneeId === userId;
+    const isApprover = Array.isArray(job.approverIds) && job.approverIds.includes(userId);
+
+    const hasAccess = isAdmin || isRequester || isAssignee || isApprover;
+
+    if (hasAccess) {
+      return res.json({
+        success: true,
+        hasAccess: true,
+      });
+    }
+
+    // ไม่มีสิทธิ์ → บอกเหตุผลและวิธีแก้
+    let reason = 'คุณไม่มีสิทธิ์เข้าถึงงานนี้';
+    let suggestedAction = 'ติดต่อผู้สั่งงาน เพื่อขอให้เพิ่มคุณเป็นผู้ได้รับมอบหมาย';
+
+    if (isRequester) {
+      reason = 'อนุญาติให้เฉพาะผู้สั่งงาน ผู้ได้รับมอบหมาย และผู้อนุมัติเท่านั้น';
+    } else if (job.status === 'draft') {
+      reason = 'งานนี้ยังอยู่ในรูปแบบร่าง หลังจากส่งอนุมัติจึงจะแจ้งให้ผู้อื่นทราบ';
+      suggestedAction = 'รอให้ผู้สั่งงานส่งอนุมัติ';
+    }
+
+    return res.json({
+      success: true,
+      hasAccess: false,
+      reason,
+      suggestedAction,
+    });
+
+  } catch (error) {
+    console.error('[AccessCheck] Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'ACCESS_CHECK_FAILED',
+      hasAccess: false,
+      reason: 'ตรวจสอบสิทธิ์ไม่สำเร็จ กรุณาลองใหม่ในภายหลัง',
     });
   }
 });

@@ -29,14 +29,20 @@ import {
   createJobCompletionEmail,
   createJobAssignmentEmail
 } from '../utils/emailTemplates.js';
+import { HARD_DELETE_ALLOWED_STATUSES } from '../constants/jobConstants.js';
 
-const ASSIGNEE_REJECTABLE_STATUSES = [
-  'assigned',
-  'in_progress',
-  'draft_review',
-  'pending_rebrief',
-  'rebrief_submitted'
+const ASSIGNEE_REJECT_TERMINAL_STATUSES = [
+  'completed',
+  'closed',
+  'rejected',
+  'rejected_by_assignee',
+  'cancelled',
+  'partially_completed'
 ];
+
+const ASSIGNEE_REJECTABLE_STATUSES = HARD_DELETE_ALLOWED_STATUSES.filter(
+  (status) => !ASSIGNEE_REJECT_TERMINAL_STATUSES.includes(status) && status !== 'assignee_rejected'
+);
 
 export class ApprovalService extends BaseService {
   constructor() {

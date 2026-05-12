@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ผู้ดูแลระบบ — คู่มือ DJ System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <button class="sidebar-toggle" id="sidebarToggle" aria-label="เปิดเมนู">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+  </button>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">DJ</div>
+      <div class="sidebar-title">คู่มือการใช้งาน<span>DJ System</span></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">เริ่มต้นใช้งาน</div>
+        <a href="index.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          ภาพรวมระบบ
+        </a>
+        <a href="status-bible.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+          สถานะงานทั้งหมด
+        </a>
+        <a href="sla-working-day.html" class="sidebar-link">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          SLA และวันทำการ
+        </a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">ตามบทบาท</div>
+        <a href="requester.html" class="sidebar-link">📝 ผู้สั่งงาน</a>
+        <a href="approver.html" class="sidebar-link">✅ ผู้อนุมัติ</a>
+        <a href="assignee.html" class="sidebar-link">🎨 ผู้รับงาน</a>
+        <a href="admin.html" class="sidebar-link active">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          ผู้ดูแลระบบ (Admin)
+        </a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">ขั้นสูง</div>
+        <a href="rejection-bible.html" class="sidebar-link">🚫 การปฏิเสธงาน</a>
+        <a href="error-bible.html" class="sidebar-link">⚠️ Error Code</a>
+        <a href="faq.html" class="sidebar-link">❓ คำถามที่พบบ่อย</a>
+        <a href="troubleshooting.html" class="sidebar-link">🔧 แก้ไขปัญหา</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">© 2026 DJ System<br>เวอร์ชัน 2.0</div>
+  </aside>
+
+  <main class="main-content">
+    <div class="content-header">
+      <div class="breadcrumb">
+        <a href="index.html">คู่มือ</a>
+        <span class="breadcrumb-separator">/</span>
+        <span>ผู้ดูแลระบบ</span>
+      </div>
+      <h1 class="page-title">⚙️ คู่มือผู้ดูแลระบบ (Admin)</h1>
+    </div>
+
+    <div class="content-body">
+      <div class="badge badge-role-admin" style="margin-bottom:1rem;">บทบาท: Admin</div>
+
+      <p>ผู้ดูแลระบบมีสิทธิ์สูงสุดในการจัดการข้อมูลพื้นฐานและตั้งค่าระบบ</p>
+
+      <h2>สิ่งที่คุณทำได้</h2>
+      <ul class="checklist">
+        <li>จัดการประเภทงาน (Job Types) + SLA</li>
+        <li>จัดการเส้นทางการอนุมัติ (Approval Flows)</li>
+        <li>จัดการผู้ใช้และบทบาท (User Management)</li>
+        <li>ตั้งค่าวันหยุด (Holidays)</li>
+        <li>จัดการ BUD และโครงการ</li>
+        <li>ดูรายงานและสถิติ (Analytics)</li>
+        <li>ดู Audit Logs</li>
+      </ul>
+
+      <h2>เมนูการจัดการ</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>เมนู</th>
+              <th>ใช้ทำอะไร</th>
+              <th>ความถี่</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>ประเภทงาน</strong></td>
+              <td>สร้าง/แก้ไขประเภทงาน และกำหนด SLA (วันทำการ)</td>
+              <td>เมื่อมีประเภทงานใหม่</td>
+            </tr>
+            <tr>
+              <td><strong>เส้นทางอนุมัติ</strong></td>
+              <td>กำหนดลำดับผู้อนุมัติสำหรับแต่ละประเภทงาน</td>
+              <td>เมื่อมีการเปลี่ยนแปลงโครงสร้าง</td>
+            </tr>
+            <tr>
+              <td><strong>ผู้ใช้งาน</strong></td>
+              <td>เพิ่ม/แก้ไข/ปิดใช้งานบัญชีผู้ใช้</td>
+              <td>เมื่อมีพนักงานใหม่/ลาออก</td>
+            </tr>
+            <tr>
+              <td><strong>วันหยุด</strong></td>
+              <td>ตั้งค่าวันหยุดประจำปี (มีผลต่อการคำนวณ SLA)</td>
+              <td>ปีละครั้ง หรือเมื่อมีวันหยุดพิเศษ</td>
+            </tr>
+            <tr>
+              <td><strong>BUD / โครงการ</strong></td>
+              <td>จัดการหน่วยงานและโครงการที่ใช้สั่งงาน</td>
+              <td>ตามความจำเป็น</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>การตั้งค่า SLA สำหรับประเภทงาน</h2>
+
+      <div class="step-box">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <h4>เข้าเมนู "ประเภทงาน"</h4>
+          <p>เลือกจาก Sidebar → Admin → ประเภทงาน</p>
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <h4>กด "เพิ่มประเภทงาน" หรือแก้ไขที่มีอยู่</h4>
+          <p>กรอกชื่อประเภทงาน และจำนวนวันทำการที่กำหนด (SLA)</p>
+        </div>
+      </div>
+
+      <div class="step-box">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <h4>บันทึก</h4>
+          <p>ระบบจะใช้ SLA นี้คำนวณกำหนดส่งมอบอัตโนมัติ</p>
+        </div>
+      </div>
+
+      <div class="alert alert-warning">
+        <svg class="alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        <div>
+          <strong>สำคัญ:</strong> การเปลี่ยน SLA จะมีผลกับงานใหม่เท่านั้น งานเก่ายังใช้ SLA เดิม
+        </div>
+      </div>
+
+      <h2>การตั้งค่าวันหยุด</h2>
+      <p>วันหยุดที่ตั้งค่าไว้จะถูกข้ามเมื่อระบบคำนวณ SLA อัตโนมัติ</p>
+      <ul class="checklist">
+        <li>เพิ่มวันหยุดประจำปี (ขึ้นปีใหม่, สงกรานต์, แรงงาน, ฯลฯ)</li>
+        <li>เพิ่มวันหยุดพิเศษ (วันหยุดชดเชย, วันพระราชพิธี)</li>
+        <li>สามารถนำเข้าวันหยุดเป็นชุดได้</li>
+      </ul>
+
+      <div class="page-nav">
+        <a href="assignee.html">
+          <span class="page-nav-label">← ก่อนหน้า</span>
+          <span class="page-nav-title">ผู้รับงาน</span>
+        </a>
+        <a href="rejection-bible.html">
+          <span class="page-nav-label">ถัดไป →</span>
+          <span class="page-nav-title">การปฏิเสธงาน</span>
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <button class="scroll-top" id="scrollTop" aria-label="กลับด้านบน">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"></polyline></svg>
+  </button>
+  <script src="js/nav.js"></script>
+</body>
+</html>

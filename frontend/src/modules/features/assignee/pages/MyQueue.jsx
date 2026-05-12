@@ -70,8 +70,8 @@ const TAB_DESCRIPTIONS = {
     rejected: {
         icon: '❌',
         title: 'ปฏิเสธ',
-        desc: 'งานที่ปฏิเสธรับหรือถูกปฏิเสธ',
-        statuses: '(rejected, rejected_by_assignee)',
+        desc: 'งานที่ส่งคำขอปฏิเสธ (รอพิจารณา) และงานที่ปฏิเสธสำเร็จแล้ว',
+        statuses: '(assignee_rejected, rejected, rejected_by_assignee)',
     },
     timeline: {
         icon: '📅',
@@ -1151,6 +1151,12 @@ const formatQueueTimeText = (hoursRemaining, mode = 'remaining') => {
 const getQueueCardStatus = ({ job, activeTab, isUrgent, isDraftReview, isPredecessorPending }) => {
     if (activeTab === 'completed') {
         return { text: 'ส่งมอบแล้ว', className: 'border-green-200 bg-green-50 text-green-700' };
+    }
+    if (activeTab === 'rejected') {
+        if (job.status === 'assignee_rejected') {
+            return { text: 'รอผู้อนุมัติพิจารณา', className: 'border-amber-200 bg-amber-50 text-amber-700' };
+        }
+        return { text: 'ปฏิเสธสำเร็จ', className: 'border-red-200 bg-red-50 text-red-700' };
     }
     if (isDraftReview) {
         return { text: 'รอตรวจ Draft', className: 'border-purple-200 bg-purple-50 text-purple-700' };
