@@ -70,6 +70,7 @@ export default function ApprovalsQueue() {
     const [showRejectModal, setShowRejectModal] = useState(false); // ควบคุมการแสดงหน้าต่างแจ้งปฏิเสธ
     const [showApproveModal, setShowApproveModal] = useState(false); // ควบคุมการแสดงหน้าต่างยืนยันการอนุมัติ
     const [selectedJobId, setSelectedJobId] = useState(null);      // DJ-ID ที่กำลังดำเนินการ
+    const [selectedJobStatus, setSelectedJobStatus] = useState(null); // สถานะของงานที่กำลังดำเนินการ
     const [rejectReason, setRejectReason] = useState('incomplete'); // สาเหตุของการปฏิเสธ
     const [rejectResult, setRejectComment] = useState('');           // ความคิดเห็นเพิ่มเติมเมื่อปฏิเสธ
     const [expandedRows, setExpandedRows] = useState(new Set());     // เก็บ ID ของแถวที่กางอยู่
@@ -89,6 +90,7 @@ export default function ApprovalsQueue() {
     const [isApproving, setIsApproving] = useState(false); // สถานะกำลังอนุมัติงาน
     const roleNames = extractRoleNames(user);
     const isAdminUser = roleNames.includes('admin') || roleNames.includes('superadmin');
+    const isSelectedAssigneeRejection = selectedJobStatus === 'assignee_rejected';
 
     // === การโหลดข้อมูล (Initial Load) ===
     useEffect(() => {
@@ -191,6 +193,13 @@ export default function ApprovalsQueue() {
                     : prev.not_approved,
             };
         });
+    };
+
+    const removeWaitingJob = (jobId) => {
+        setJobsByTab((prev) => ({
+            ...prev,
+            waiting: prev.waiting.filter((job) => job.id !== jobId)
+        }));
     };
 
     const canShowInWaitingTab = (job) => {
@@ -337,8 +346,9 @@ export default function ApprovalsQueue() {
     // === ฟังก์ชันจัดการเหตุการณ์ (Action Handlers) ===
 
     /** เปิดหน้าต่างยืนยันการอนุมัติ */
-    const handleOpenApprove = (jobId) => {
+    const handleOpenApprove = (jobId, jobStatus) => {
         setSelectedJobId(jobId);
+        setSelectedJobStatus(jobStatus || null);
         setShowApproveModal(true);
     };
 
@@ -346,15 +356,25 @@ export default function ApprovalsQueue() {
     const handleConfirmApprove = async () => {
         try {
             setIsApproving(true);
-            const approveComment = 'Approved via Approvals Queue';
-            await api.approveJob(selectedJobId, user?.id || 1, approveComment);
-            applyLocalActionResult(selectedJobId, 'approved', approveComment);
+            const approveComment = isSelectedAssigneeRejection
+                ? 'Confirmed assignee rejection via Approvals Queue'
+                : 'Approved via Approvals Queue';
+
+            if (isSelectedAssigneeRejection) {
+                await api.confirmAssigneeRejection(selectedJobId, approveComment);
+                applyLocalActionResult(selectedJobId, 'rejected', approveComment);
+            } else {
+                await api.approveJob(selectedJobId, user?.id || 1, approveComment);
+                applyLocalActionResult(selectedJobId, 'approved', approveComment);
+            }
+
             setShowApproveModal(false);
             setSelectedJobId(null);
+            setSelectedJobStatus(null);
         } catch (error) {
             const detail = getJobActionErrorDetail(error, {
-                actionLabel: 'อนุมัติงาน',
-                fallbackTitle: 'ไม่สามารถอนุมัติงานได้'
+                actionLabel: isSelectedAssigneeRejection ? 'อนุมัติการปฏิเสธงาน' : 'อนุมัติงาน',
+                fallbackTitle: isSelectedAssigneeRejection ? 'ไม่สามารถอนุมัติการปฏิเสธได้' : 'ไม่สามารถอนุมัติงานได้'
             });
             showAlert('error', detail.title, detail.text);
         } finally {
@@ -363,27 +383,42 @@ export default function ApprovalsQueue() {
     };
 
     /** เปิดหน้าต่างแจ้งปฏิเสธงาน */
-    const handleOpenReject = (jobId) => {
+    const handleOpenReject = (jobId, jobStatus) => {
         setSelectedJobId(jobId);
+        setSelectedJobStatus(jobStatus || null);
+        setRejectComment('');
         setShowRejectModal(true);
     };
 
     /** ดำเนินการปฏิเสธงานผ่าน API โดยระบุสาเหตุ (Reject/Return) */
     const handleConfirmReject = async () => {
         try {
-            const comment = rejectResult.trim()
-                ? `${rejectReason} - ${rejectResult}`
-                : rejectReason;
-            await api.rejectJob(selectedJobId, user?.id || 1, comment);
-            applyLocalActionResult(selectedJobId, 'rejected', comment);
+            if (isSelectedAssigneeRejection) {
+                const reason = rejectResult.trim();
+                if (!reason) {
+                    showAlert('warning', 'กรุณาระบุเหตุผล', 'กรุณาระบุเหตุผลที่ไม่อนุมัติคำขอปฏิเสธ');
+                    return;
+                }
+
+                await api.denyAssigneeRejection(selectedJobId, reason);
+                removeWaitingJob(selectedJobId);
+            } else {
+                const comment = rejectResult.trim()
+                    ? `${rejectReason} - ${rejectResult}`
+                    : rejectReason;
+                await api.rejectJob(selectedJobId, user?.id || 1, comment);
+                applyLocalActionResult(selectedJobId, 'rejected', comment);
+            }
+
             setShowRejectModal(false);
             setRejectReason('incomplete');
             setRejectComment('');
             setSelectedJobId(null);
+            setSelectedJobStatus(null);
         } catch (error) {
             const detail = getJobActionErrorDetail(error, {
-                actionLabel: 'ปฏิเสธงาน',
-                fallbackTitle: 'ไม่สามารถปฏิเสธงานได้'
+                actionLabel: isSelectedAssigneeRejection ? 'ไม่อนุมัติคำขอปฏิเสธ' : 'ปฏิเสธงาน',
+                fallbackTitle: isSelectedAssigneeRejection ? 'ไม่สามารถไม่อนุมัติคำขอปฏิเสธได้' : 'ไม่สามารถปฏิเสธงานได้'
             });
             showAlert('error', detail.title, detail.text);
         }
@@ -505,8 +540,8 @@ export default function ApprovalsQueue() {
                                                 : '-'
                                     }
                                     urgent={job.priority?.toLowerCase() === 'urgent'}
-                                    onApprove={() => handleOpenApprove(job.id)}
-                                    onReject={() => handleOpenReject(job.id)}
+                                    onApprove={() => handleOpenApprove(job.id, job.status)}
+                                    onReject={() => handleOpenReject(job.id, job.status)}
                                     canAction={actionState.canAction}
                                     actionReason={actionState.reason}
                                     children={job.children}
@@ -580,8 +615,8 @@ export default function ApprovalsQueue() {
                                         }
                                         priority={<Badge status={job.priority?.toLowerCase() || 'normal'} />}
                                         urgent={job.priority?.toLowerCase() === 'urgent'}
-                                        onApprove={() => handleOpenApprove(job.id)}
-                                        onReject={() => handleOpenReject(job.id)}
+                                        onApprove={() => handleOpenApprove(job.id, job.status)}
+                                        onReject={() => handleOpenReject(job.id, job.status)}
                                         canAction={actionState.canAction}
                                         actionReason={actionState.reason}
                                         predecessorDjId={job.predecessorDjId}
@@ -638,8 +673,8 @@ export default function ApprovalsQueue() {
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden">
                         <div className="p-6 border-b border-gray-400 flex justify-between items-center">
-                            <h3 className="text-lg font-semibold text-gray-900">ยืนยันการอนุมัติ</h3>
-                            <button onClick={() => setShowApproveModal(false)} className="text-gray-400 hover:text-gray-600">
+                            <h3 className="text-lg font-semibold text-gray-900">{isSelectedAssigneeRejection ? 'ยืนยันอนุมัติการปฏิเสธงาน' : 'ยืนยันการอนุมัติ'}</h3>
+                            <button onClick={() => { setShowApproveModal(false); setSelectedJobStatus(null); }} className="text-gray-400 hover:text-gray-600">
                                 <XMarkIcon className="w-6 h-6" />
                             </button>
                         </div>
@@ -650,23 +685,27 @@ export default function ApprovalsQueue() {
                                     <CheckBadgeIcon className="w-6 h-6 text-green-600" />
                                 </div>
                                 <div>
-                                    <p className="text-sm text-gray-600">คุณต้องการอนุมัติงานนี้หรือไม่?</p>
+                                    <p className="text-sm text-gray-600">
+                                        {isSelectedAssigneeRejection ? 'คุณต้องการยืนยันการปฏิเสธงานนี้หรือไม่?' : 'คุณต้องการอนุมัติงานนี้หรือไม่?'}
+                                    </p>
                                     <p className="text-lg font-semibold text-gray-900">DJ Reference: {selectedJobId}</p>
                                 </div>
                             </div>
 
                             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                                 <p className="text-sm text-green-700">
-                                    <strong>หมายเหตุ:</strong> เมื่ออนุมัติแล้ว งานจะถูกส่งไปยังขั้นตอนถัดไปหรือส่งให้ผู้ดำเนินการ
+                                    <strong>หมายเหตุ:</strong> {isSelectedAssigneeRejection
+                                        ? 'เมื่อยืนยันแล้ว งานจะถูกปฏิเสธและปิดตามคำขอของผู้รับงาน'
+                                        : 'เมื่ออนุมัติแล้ว งานจะถูกส่งไปยังขั้นตอนถัดไปหรือส่งให้ผู้ดำเนินการ'}
                                 </p>
                             </div>
                         </div>
 
                         <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3">
-                            <Button variant="secondary" onClick={() => setShowApproveModal(false)}>ยกเลิก</Button>
+                            <Button variant="secondary" onClick={() => { setShowApproveModal(false); setSelectedJobStatus(null); }}>ยกเลิก</Button>
                             <Button variant="success" onClick={handleConfirmApprove} isLoading={isApproving}>
                                 <CheckIcon className="w-4 h-4 mr-2" />
-                                อนุมัติ
+                                {isSelectedAssigneeRejection ? 'อนุมัติการปฏิเสธ' : 'อนุมัติ'}
                             </Button>
                         </div>
                     </div>
@@ -680,8 +719,10 @@ export default function ApprovalsQueue() {
                 <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl shadow-xl max-w-lg w-full overflow-hidden">
                         <div className="p-6 border-b border-gray-400 flex justify-between items-center">
-                            <h3 className="text-lg font-semibold text-gray-900">ปฏิเสธหรือตีกลับงาน (Reject / Return)</h3>
-                            <button onClick={() => setShowRejectModal(false)} className="text-gray-400 hover:text-gray-600">
+                            <h3 className="text-lg font-semibold text-gray-900">
+                                {isSelectedAssigneeRejection ? 'ไม่อนุมัติคำขอปฏิเสธงาน' : 'ปฏิเสธหรือตีกลับงาน (Reject / Return)'}
+                            </h3>
+                            <button onClick={() => { setShowRejectModal(false); setSelectedJobStatus(null); }} className="text-gray-400 hover:text-gray-600">
                                 <XMarkIcon className="w-6 h-6" />
                             </button>
                         </div>
@@ -689,48 +730,70 @@ export default function ApprovalsQueue() {
                         <div className="p-6 space-y-4">
                             <p className="text-sm text-gray-600">อ้างอิง DJ-ID: <span className="font-medium text-gray-900">{selectedJobId}</span></p>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">ประเภทการดำเนินการ (Action Type)</label>
-                                <div className="flex gap-4">
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" name="rejectType" value="return" defaultChecked className="text-rose-600 focus:ring-rose-500" />
-                                        <span className="text-sm text-gray-700">ตีกลับเพื่อแก้ไข (Return for Revision)</span>
-                                    </label>
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" name="rejectType" value="reject" className="text-rose-600 focus:ring-rose-500" />
-                                        <span className="text-sm text-gray-700">ปฏิเสธงาน (Reject)</span>
-                                    </label>
-                                </div>
-                            </div>
+                            {isSelectedAssigneeRejection ? (
+                                <>
+                                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                                        คำขอนี้จะถูกปฏิเสธ และงานจะกลับไปให้ผู้รับงานดำเนินการต่อ (สถานะ in_progress)
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">เหตุผลที่ไม่อนุมัติคำขอปฏิเสธ <span className="text-red-500">*</span></label>
+                                        <textarea
+                                            rows="4"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+                                            placeholder="ระบุเหตุผลที่ต้องการให้ผู้รับงานดำเนินการต่อ..."
+                                            value={rejectResult}
+                                            onChange={(e) => setRejectComment(e.target.value)}
+                                        ></textarea>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">ประเภทการดำเนินการ (Action Type)</label>
+                                        <div className="flex gap-4">
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input type="radio" name="rejectType" value="return" defaultChecked className="text-rose-600 focus:ring-rose-500" />
+                                                <span className="text-sm text-gray-700">ตีกลับเพื่อแก้ไข (Return for Revision)</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input type="radio" name="rejectType" value="reject" className="text-rose-600 focus:ring-rose-500" />
+                                                <span className="text-sm text-gray-700">ปฏิเสธงาน (Reject)</span>
+                                            </label>
+                                        </div>
+                                    </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">สาเหตุการปฏิเสธ <span className="text-red-500">*</span></label>
-                                <select
-                                    value={rejectReason}
-                                    onChange={(e) => setRejectReason(e.target.value)}
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
-                                >
-                                    <option value="incomplete">Brief ไม่ครบถ้วน</option>
-                                    <option value="unclear">ข้อมูลไม่ชัดเจน</option>
-                                    <option value="other">อื่นๆ</option>
-                                </select>
-                            </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">สาเหตุการปฏิเสธ <span className="text-red-500">*</span></label>
+                                        <select
+                                            value={rejectReason}
+                                            onChange={(e) => setRejectReason(e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+                                        >
+                                            <option value="incomplete">Brief ไม่ครบถ้วน</option>
+                                            <option value="unclear">ข้อมูลไม่ชัดเจน</option>
+                                            <option value="other">อื่นๆ</option>
+                                        </select>
+                                    </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">ความคิดเห็นเพิ่มเติม</label>
-                                <textarea
-                                    rows="4"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
-                                    placeholder="ระบุรายละเอียดเพื่อให้ผู้เปิดงานแก้ไข..."
-                                    value={rejectResult}
-                                    onChange={(e) => setRejectComment(e.target.value)}
-                                ></textarea>
-                            </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">ความคิดเห็นเพิ่มเติม</label>
+                                        <textarea
+                                            rows="4"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
+                                            placeholder="ระบุรายละเอียดเพื่อให้ผู้เปิดงานแก้ไข..."
+                                            value={rejectResult}
+                                            onChange={(e) => setRejectComment(e.target.value)}
+                                        ></textarea>
+                                    </div>
+                                </>
+                            )}
                         </div>
 
                         <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3">
-                            <Button variant="secondary" onClick={() => setShowRejectModal(false)}>ยกเลิก</Button>
-                            <Button variant="danger" onClick={handleConfirmReject}>ยืนยันการดำเนินการ</Button>
+                            <Button variant="secondary" onClick={() => { setShowRejectModal(false); setSelectedJobStatus(null); }}>ยกเลิก</Button>
+                            <Button variant="danger" onClick={handleConfirmReject}>
+                                {isSelectedAssigneeRejection ? 'ยืนยันไม่อนุมัติคำขอ' : 'ยืนยันการดำเนินการ'}
+                            </Button>
                         </div>
                     </div>
                 </div>
@@ -772,6 +835,7 @@ function ApprovalMobileCard({
     canAction = true, actionReason = '', children = []
 }) {
     const hasChildren = children && children.length > 0;
+    const isAssigneeRejectionPending = status === 'assignee_rejected';
 
     return (
         <article className={`p-4 ${urgent ? 'bg-red-50/70' : 'bg-white'}`}>
@@ -828,11 +892,11 @@ function ApprovalMobileCard({
                         <>
                             <Button variant="success" className="text-sm gap-1.5 min-h-[44px]" onClick={onApprove}>
                                 <CheckIcon className="h-4 w-4 flex-shrink-0" />
-                                อนุมัติ
+                                {isAssigneeRejectionPending ? 'อนุมัติการปฏิเสธ' : 'อนุมัติ'}
                             </Button>
                             <Button variant="danger" className="text-sm gap-1.5 min-h-[44px]" onClick={onReject}>
                                 <XMarkIcon className="h-4 w-4 flex-shrink-0" />
-                                ปฏิเสธ
+                                {isAssigneeRejectionPending ? 'ไม่อนุมัติคำขอ' : 'ปฏิเสธ'}
                             </Button>
                         </>
                     ) : activeTab === 'waiting' && actionReason ? (
@@ -910,6 +974,7 @@ function Th({ children, className = "text-left" }) {
  */
 function AccordionRow({ sequence, pkId, id, project, bud, type, subject, requester, submitted, status, sla, urgent, historyData, activeTab, onApprove, onReject, canAction = true, actionReason = '', predecessorDjId, children = [], isExpanded, onToggleExpand }) {
     const hasChildren = children && children.length > 0;
+    const isAssigneeRejectionPending = status === 'assignee_rejected';
 
     // Determine row background based on urgent status
     const bgClass = urgent ? 'bg-red-50/80 hover:bg-red-100/80' : 'hover:bg-gray-50';
@@ -1006,10 +1071,18 @@ function AccordionRow({ sequence, pkId, id, project, bud, type, subject, request
                         </Link>
                         {canAction ? (
                             <>
-                                <button onClick={onApprove} className="p-2 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors" title="อนุมัติ">
+                                <button
+                                    onClick={onApprove}
+                                    className="p-2 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
+                                    title={isAssigneeRejectionPending ? 'อนุมัติการปฏิเสธ' : 'อนุมัติ'}
+                                >
                                     <CheckIcon className="w-4 h-4" />
                                 </button>
-                                <button onClick={onReject} className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors" title="ตีกลับ / ปฏิเสธ">
+                                <button
+                                    onClick={onReject}
+                                    className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                                    title={isAssigneeRejectionPending ? 'ไม่อนุมัติคำขอปฏิเสธ' : 'ตีกลับ / ปฏิเสธ'}
+                                >
                                     <XMarkIcon className="w-4 h-4" />
                                 </button>
                             </>

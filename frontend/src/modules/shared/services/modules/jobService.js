@@ -537,6 +537,17 @@ export const jobService = {
         }
     },
 
+    denyAssigneeRejection: async (jobId, reason) => {
+        try {
+            const response = await httpClient.post(`/jobs/${jobId}/deny-assignee-rejection`, { reason });
+            if (!response.data.success) throw new Error(response.data.message);
+            return response.data;
+        } catch (error) {
+            console.error('[jobService] denyAssigneeRejection error:', error);
+            throw error;
+        }
+    },
+
     reassignJob: async (jobId, newAssigneeId, reason, userId, user = null) => {
         console.log(`[Reassign] Job ${jobId} -> New Assignee ${newAssigneeId} by User ${userId}`);
 

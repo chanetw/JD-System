@@ -1332,6 +1332,7 @@ router.get('/', async (req, res) => {
       if (normalizedApprovalView === 'approved') {
         transformed = transformed.filter((job) => {
           if (job.isParent) return false;
+          if (job.status === 'assignee_rejected') return false;
           if (job.historyData?.category !== 'approved') return false;
           if (requestHasAdminRole) return true;
           return isSameUserId(job.historyData?.actedById, userId);
@@ -1341,6 +1342,7 @@ router.get('/', async (req, res) => {
       if (normalizedApprovalView === 'not_approved') {
         transformed = transformed.filter((job) => {
           if (job.isParent) return false;
+          if (job.status === 'assignee_rejected') return false;
           if (job.historyData?.category !== 'not_approved') return false;
           if (requestHasAdminRole) return true;
           return isSameUserId(job.historyData?.actedById, userId);
