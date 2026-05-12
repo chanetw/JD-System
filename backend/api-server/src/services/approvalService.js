@@ -1901,10 +1901,13 @@ export class ApprovalService extends BaseService {
   async confirmAssigneeRejection({ jobId, approverId, approverUser = null, comment, ccEmails = [] }) {
     try {
       const isAdminOverride = await this.isAdminActor(approverUser, approverId);
+      const actionComment = comment?.trim()
+        ? `Confirmed assignee rejection via web: ${comment.trim()}`
+        : 'Confirmed assignee rejection via web';
       const effectiveComment = this.withAdminOverrideComment({
         isAdmin: isAdminOverride,
-        rawComment: comment,
-        defaultComment: 'Confirmed assignee rejection via web'
+        rawComment: actionComment,
+        defaultComment: actionComment
       });
 
       const job = await this.prisma.job.findUnique({
@@ -1946,8 +1949,7 @@ export class ApprovalService extends BaseService {
           stepNumber: 1,
           status: 'rejected',
           approvedAt: new Date(),
-          comment: effectiveComment,
-          actionType: 'confirm_assignee_rejection'
+          comment: effectiveComment
         }
       });
 
@@ -2054,10 +2056,13 @@ export class ApprovalService extends BaseService {
   async denyAssigneeRejection({ jobId, approverId, approverUser = null, reason }) {
     try {
       const isAdminOverride = await this.isAdminActor(approverUser, approverId);
+      const actionReason = reason?.trim()
+        ? `Denied assignee rejection via web: ${reason.trim()}`
+        : 'Denied assignee rejection via web';
       const effectiveReason = this.withAdminOverrideComment({
         isAdmin: isAdminOverride,
-        rawComment: reason,
-        defaultComment: 'Denied assignee rejection via web'
+        rawComment: actionReason,
+        defaultComment: actionReason
       });
 
       const job = await this.prisma.job.findUnique({
@@ -2139,6 +2144,18 @@ export class ApprovalService extends BaseService {
           message: 'สถานะงานถูกเปลี่ยนระหว่างดำเนินการ กรุณารีเฟรชแล้วลองใหม่อีกครั้ง'
         };
       }
+
+      await this.prisma.approval.create({
+        data: {
+          tenantId: job.tenantId,
+          jobId,
+          approverId,
+          stepNumber: 1,
+          status: 'rejected',
+          approvedAt: denialTimestamp,
+          comment: effectiveReason
+        }
+      });
 
       // Log Activity
       await this.logApprovalActivity({

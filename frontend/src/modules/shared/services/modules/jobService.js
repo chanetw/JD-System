@@ -16,6 +16,125 @@ function _extractRoleParam(user) {
     return roles.map(r => r.toLowerCase()).join(',') || 'requester';
 }
 
+const parseValidDate = (value) => {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const toDisplayText = (value, fallback = null) => {
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        return trimmed || fallback;
+    }
+
+    if (value && typeof value === 'object') {
+        return value.name || value.displayName || value.subject || fallback;
+    }
+
+    return fallback;
+};
+
+const mapAssigneeQueueJob = (job, { filterStatus, now, index }) => {
+    try {
+        const normalizedStatus = String(job?.status || '').trim();
+        const isDone = filterStatus === 'done' || ['completed', 'closed', 'approved'].includes(normalizedStatus);
+        const deadlineRaw = job?.deadline || job?.dueDate || null;
+        const dueDate = parseValidDate(deadlineRaw);
+        const acceptanceDateRaw = job?.acceptanceDate || job?.createdAt || null;
+        const acceptanceDate = parseValidDate(acceptanceDateRaw);
+        const hoursRemaining = dueDate ? (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60) : null;
+
+        const numericSlaWorkingDays = Number(job?.slaWorkingDays);
+        const hasValidSlaWorkingDays = Number.isFinite(numericSlaWorkingDays) && numericSlaWorkingDays > 0;
+
+        let shouldStartBy = null;
+        if (dueDate && hasValidSlaWorkingDays) {
+            const slaHours = numericSlaWorkingDays * 8;
+            const candidateDate = new Date(dueDate.getTime() - slaHours * 60 * 60 * 1000);
+            shouldStartBy = Number.isNaN(candidateDate.getTime()) ? null : candidateDate;
+        }
+
+        let slaProgress = null;
+        if (dueDate && acceptanceDate && !isDone) {
+            const totalMs = dueDate.getTime() - acceptanceDate.getTime();
+            const usedMs = now.getTime() - acceptanceDate.getTime();
+            slaProgress = totalMs > 0 ? Math.min(100, Math.round((usedMs / totalMs) * 100)) : 100;
+        }
+
+        let healthStatus = 'normal';
+        if (isDone) {
+            healthStatus = 'normal';
+        } else if (hoursRemaining === null) {
+            healthStatus = 'normal';
+        } else if (hoursRemaining < 0 || hoursRemaining < 4) {
+            healthStatus = 'critical';
+        } else if (shouldStartBy && now > shouldStartBy) {
+            healthStatus = 'warning';
+        } else if (hoursRemaining <= 48) {
+            healthStatus = 'warning';
+        }
+
+        return {
+            id: job?.id ?? `queue-row-${index}`,
+            djId: job?.djId || null,
+            subject: toDisplayText(job?.subject, '-'),
+            status: normalizedStatus || 'unknown',
+            priority: job?.priority || null,
+            deadline: deadlineRaw,
+            projectCode: job?.projectCode || null,
+            projectName: toDisplayText(job?.project, null),
+            jobTypeName: toDisplayText(job?.jobType, null),
+            requesterName: toDisplayText(job?.requester, null),
+            requesterAvatar: job?.requesterAvatar || null,
+            assignee: toDisplayText(job?.assignee, null),
+            healthStatus,
+            hoursRemaining: hoursRemaining !== null ? Math.round(hoursRemaining * 10) / 10 : null,
+            slaWorkingDays: hasValidSlaWorkingDays ? numericSlaWorkingDays : null,
+            slaProgress,
+            shouldStartBy: shouldStartBy ? shouldStartBy.toISOString() : null,
+            startedAt: job?.startedAt || null,
+            completedAt: job?.completedAt || null,
+            acceptanceDate: acceptanceDateRaw || null,
+            createdAt: job?.createdAt || null,
+            predecessorDjId: job?.predecessorDjId || null,
+            predecessorStatus: job?.predecessorStatus || null
+        };
+    } catch (error) {
+        console.warn('[jobService] getAssigneeJobs normalization fallback:', {
+            jobId: job?.id,
+            djId: job?.djId,
+            message: error.message
+        });
+
+        return {
+            id: job?.id ?? `queue-row-${index}`,
+            djId: job?.djId || null,
+            subject: toDisplayText(job?.subject, '-'),
+            status: String(job?.status || 'unknown'),
+            priority: job?.priority || null,
+            deadline: job?.deadline || job?.dueDate || null,
+            projectCode: job?.projectCode || null,
+            projectName: toDisplayText(job?.project, null),
+            jobTypeName: toDisplayText(job?.jobType, null),
+            requesterName: toDisplayText(job?.requester, null),
+            requesterAvatar: job?.requesterAvatar || null,
+            assignee: toDisplayText(job?.assignee, null),
+            healthStatus: 'normal',
+            hoursRemaining: null,
+            slaWorkingDays: null,
+            slaProgress: null,
+            shouldStartBy: null,
+            startedAt: job?.startedAt || null,
+            completedAt: job?.completedAt || null,
+            acceptanceDate: job?.acceptanceDate || null,
+            createdAt: job?.createdAt || null,
+            predecessorDjId: job?.predecessorDjId || null,
+            predecessorStatus: job?.predecessorStatus || null
+        };
+    }
+};
+
 export const jobService = {
     // --- Jobs CRUD ---
 
@@ -162,76 +281,11 @@ export const jobService = {
             const serverNowRaw = response.data?.meta?.serverNow;
             const serverNow = serverNowRaw ? new Date(serverNowRaw) : null;
             const now = serverNow && !Number.isNaN(serverNow.getTime()) ? serverNow : new Date();
-
-            // คำนวณ Health Status และ SLA metadata สำหรับแต่ละงาน
-            return data.map(job => {
-                const isDone = filterStatus === 'done' || ['completed', 'closed', 'approved'].includes(job.status);
-
-                // Deadline: ใช้ dueDate จาก API, fallback เป็น null (ไม่ใช้ new Date() เพราะจะทำให้ hoursRemaining = 0)
-                const deadlineRaw = job.deadline || job.dueDate || null;
-                const dueDate = deadlineRaw ? new Date(deadlineRaw) : null;
-                const hoursRemaining = dueDate ? (dueDate - now) / (1000 * 60 * 60) : null;
-
-                // คำนวณ "ควรเริ่มงานภายในวันที่" จาก deadline - slaWorkingDays
-                const slaWorkingDays = job.slaWorkingDays || null;
-                let shouldStartBy = null;
-                if (dueDate && slaWorkingDays) {
-                    // Approximate: 1 working day ≈ 8 hours
-                    const slaHours = slaWorkingDays * 8;
-                    shouldStartBy = new Date(dueDate.getTime() - slaHours * 60 * 60 * 1000);
-                }
-
-                // SLA Progress: % เวลาที่ใช้ไปแล้วนับจาก acceptanceDate ถึง deadline
-                const acceptanceDateRaw = job.acceptanceDate || job.createdAt;
-                const acceptanceDate = acceptanceDateRaw ? new Date(acceptanceDateRaw) : null;
-                let slaProgress = null;
-                if (dueDate && acceptanceDate && !isDone) {
-                    const totalMs = dueDate - acceptanceDate;
-                    const usedMs = now - acceptanceDate;
-                    slaProgress = totalMs > 0 ? Math.min(100, Math.round((usedMs / totalMs) * 100)) : 100;
-                }
-
-                let healthStatus = 'normal';
-                if (isDone) {
-                    healthStatus = 'normal';
-                } else if (hoursRemaining === null) {
-                    healthStatus = 'normal'; // ไม่มี deadline ยังไม่ประเมิน
-                } else if (hoursRemaining < 0) {
-                    healthStatus = 'critical'; // เลยกำหนด (Overdue)
-                } else if (hoursRemaining < 4) {
-                    healthStatus = 'critical'; // เหลือเวลาน้อยกว่า 4 ชม.
-                } else if (shouldStartBy && now > shouldStartBy) {
-                    healthStatus = 'warning'; // ควรเริ่มงานแล้วตาม SLA
-                } else if (hoursRemaining <= 48) {
-                    healthStatus = 'warning'; // เหลือเวลา 2 วัน
-                }
-
-                return {
-                    id: job.id,
-                    djId: job.djId,
-                    subject: job.subject,
-                    status: job.status,
-                    priority: job.priority,
-                    deadline: deadlineRaw,
-                    projectCode: job.projectCode,
-                    projectName: job.project,
-                    jobTypeName: job.jobType,
-                    requesterName: job.requester,
-                    requesterAvatar: job.requesterAvatar,
-                    assignee: job.assignee,
-                    healthStatus: healthStatus,
-                    hoursRemaining: hoursRemaining !== null ? Math.round(hoursRemaining * 10) / 10 : null,
-                    slaWorkingDays: slaWorkingDays,
-                    slaProgress: slaProgress,
-                    shouldStartBy: shouldStartBy ? shouldStartBy.toISOString() : null,
-                    startedAt: job.startedAt || null,
-                    completedAt: job.completedAt || null,
-                    acceptanceDate: acceptanceDateRaw || null,
-                    createdAt: job.createdAt || null,
-                    predecessorDjId: job.predecessorDjId || null,
-                    predecessorStatus: job.predecessorStatus || null
-                };
-            });
+            return data.map((job, index) => mapAssigneeQueueJob(job, {
+                filterStatus,
+                now,
+                index
+            }));
 
         } catch (error) {
             console.error('Error fetching assignee jobs:', error);

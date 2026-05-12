@@ -92,26 +92,28 @@ export default function CreateDJ() {
         priority = formData.priority,
         holidayList = holidays
     } = {}) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (priority === 'Urgent') {
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            return tomorrow;
+        }
+
         const effectiveSla = getEffectiveSla(jobTypes, singleJobTypeId);
         if (!effectiveSla) {
             return null;
         }
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
         let nextDate;
 
-        if (priority === 'Urgent') {
-            nextDate = addWorkDays(today, effectiveSla, holidayList);
-        } else {
-            nextDate = addWorkDays(today, effectiveSla, holidayList);
-            nextDate = new Date(nextDate);
-            nextDate.setDate(nextDate.getDate() + 1);
+        nextDate = addWorkDays(today, effectiveSla, holidayList);
+        nextDate = new Date(nextDate);
+        nextDate.setDate(nextDate.getDate() + 1);
 
-            while (isNonWorkingDay(nextDate, holidayList)) {
-                nextDate.setDate(nextDate.getDate() + 1);
-            }
+        while (isNonWorkingDay(nextDate, holidayList)) {
+            nextDate.setDate(nextDate.getDate() + 1);
         }
 
         nextDate.setHours(0, 0, 0, 0);
@@ -148,6 +150,7 @@ export default function CreateDJ() {
     /** รายการประเภทงานที่เลือก (สำหรับ Parent-Child Jobs) */
     const [selectedJobTypes, setSelectedJobTypes] = useState([]);
     const [newJobTypeId, setNewJobTypeId] = useState('');
+    const [isDueDateManuallySelected, setIsDueDateManuallySelected] = useState(false);
 
     // === สถานะปฏิทิน SLA Preview ===
     /** เดือนและปีที่แสดงในปฏิทิน (สำหรับเลื่อนดูเดือนอื่น) */
@@ -319,14 +322,26 @@ export default function CreateDJ() {
 
         if (!recommendedDueDate) {
             setFormData((prev) => (prev.dueDate ? { ...prev, dueDate: '' } : prev));
+            setIsDueDateManuallySelected(false);
             return;
         }
 
         const nextDueDate = formatDateForInput(recommendedDueDate);
-        setFormData((prev) => (prev.dueDate === nextDueDate ? prev : { ...prev, dueDate: nextDueDate }));
+        setFormData((prev) => {
+            if (isDueDateManuallySelected && prev.dueDate) {
+                const currentDueDate = new Date(prev.dueDate);
+                currentDueDate.setHours(0, 0, 0, 0);
+
+                if (!Number.isNaN(currentDueDate.getTime()) && currentDueDate >= recommendedDueDate) {
+                    return prev;
+                }
+            }
+
+            return prev.dueDate === nextDueDate ? prev : { ...prev, dueDate: nextDueDate };
+        });
         setCalendarMonth(recommendedDueDate.getMonth());
         setCalendarYear(recommendedDueDate.getFullYear());
-    }, [formData.jobTypeId, formData.priority, holidays, masterData.jobTypes, jobTypeSelectionSignature]);
+    }, [formData.jobTypeId, formData.priority, holidays, masterData.jobTypes, jobTypeSelectionSignature, isDueDateManuallySelected]);
 
     // === ส่วนจัดการเหตุการณ์ (Event Handlers) ===
 
@@ -1182,7 +1197,8 @@ export default function CreateDJ() {
                                 {/* ส่วนเพิ่ม Job Type ใหม่ */}
                                 <div className="mb-3 flex flex-col gap-2 sm:flex-row">
                                     <ResponsiveSelect
-                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                                        wrapperClassName="w-full flex-1 min-w-0"
+                                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-transparent"
                                         id="newJobTypeSelect"
                                         value={newJobTypeId}
                                         onChange={(e) => setNewJobTypeId(e.target.value)}
@@ -1465,6 +1481,7 @@ export default function CreateDJ() {
                                         selectedDate={formData.dueDate}
                                         onChange={(date) => {
                                             setFormData(prev => ({ ...prev, dueDate: date }));
+                                            setIsDueDateManuallySelected(true);
                                         }}
 
                                         // ข้อมูลวันหยุดและ SLA logic
@@ -1687,10 +1704,12 @@ export default function CreateDJ() {
 
                     {/* SLA Preview (ส่วนที่ 5) */}
                     <Card>
-                        <CardHeader title="SLA Preview" badge="5" />
+                        <CardHeader title={formData.priority === 'Urgent' ? 'Due Date Preview' : 'SLA Preview'} badge="5" />
                         <CardBody>
                             <div className="bg-rose-50 rounded-xl p-6 text-center border border-rose-100 mb-4">
-                                <p className="text-gray-500 text-sm mb-1">Calculated Deadline</p>
+                                <p className="text-gray-500 text-sm mb-1">
+                                    {formData.priority === 'Urgent' ? 'Selected Deadline' : 'Calculated Deadline'}
+                                </p>
                                 <h2 className="text-3xl font-bold text-rose-600 mb-1">
                                     {(() => {
                                         if (formData.dueDate) {
@@ -1701,7 +1720,10 @@ export default function CreateDJ() {
                                     })()}
                                 </h2>
                                 <p className="text-gray-400 text-xs">
-                                    {getEffectiveSla()} Working Days
+                                    {formData.priority === 'Urgent'
+                                        ? 'Urgent job uses the selected date directly'
+                                        : `${getEffectiveSla()} Working Days`
+                                    }
                                 </p>
                             </div>
 
@@ -1717,13 +1739,18 @@ export default function CreateDJ() {
                                 <div className="flex justify-between">
                                     <span className="text-gray-500">SLA Days:</span>
                                     <span className="font-medium text-gray-900">
-                                        {getEffectiveSla()} Working Days
+                                        {formData.priority === 'Urgent'
+                                            ? 'ไม่คำนวณจาก SLA'
+                                            : `${getEffectiveSla()} Working Days`
+                                        }
                                     </span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-gray-500">Holidays Excluded:</span>
                                     <span className="font-bold text-orange-500">
                                         {(() => {
+                                            if (formData.priority === 'Urgent') return '-';
+
                                             // คำนวณ Due Date แบบ Real-time
                                             let calculatedDueDate = null;
                                             let sla = 7;

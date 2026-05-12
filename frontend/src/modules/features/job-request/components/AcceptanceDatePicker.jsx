@@ -28,7 +28,7 @@ const AcceptanceDatePicker = ({
 
     // คำนวณ Start Date และ Min Selectable Due Date
     useEffect(() => {
-        if (!jobType || !jobType.sla) return;
+        if (!jobType) return;
 
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -36,10 +36,13 @@ const AcceptanceDatePicker = ({
         // คำนวณ Min Due Date ตาม Priority
         let minDueDate;
         if (priority === 'Urgent') {
-            // งานด่วน: เลือกได้ตั้งแต่วันนี้ + SLA (ไม่บวก buffer เพิ่ม)
-            minDueDate = addWorkDays(today, jobType.sla, holidays);
+            // งานด่วน: เลือกได้ตั้งแต่พรุ่งนี้ โดยไม่อิง SLA
+            minDueDate = new Date(today);
+            minDueDate.setDate(minDueDate.getDate() + 1);
             minDueDate.setHours(0, 0, 0, 0);
         } else {
+            if (!jobType.sla) return;
+
             // งานปกติ: Due Date ≥ วันนี้ + SLA + 1
             // Example: วันนี้ 17, SLA 2 วัน → Due = 19 → Due Date เลือกได้ตั้งแต่ 20 เป็นต้นไป
             const urgentMinDueDate = addWorkDays(today, jobType.sla, holidays);
@@ -51,8 +54,12 @@ const AcceptanceDatePicker = ({
 
         // ถ้ามีการเลือก Due Date แล้ว คำนวณย้อนกลับหา Start Date
         if (selectedDate) {
-            const startDate = subtractWorkDays(new Date(selectedDate), jobType.sla, holidays);
-            setCalculatedStartDate(startDate);
+            if (priority === 'Urgent') {
+                setCalculatedStartDate(null);
+            } else {
+                const startDate = subtractWorkDays(new Date(selectedDate), jobType.sla, holidays);
+                setCalculatedStartDate(startDate);
+            }
 
             // Auto-jump calendar to selected month
             const selected = new Date(selectedDate);
@@ -177,7 +184,7 @@ const AcceptanceDatePicker = ({
                 </div>
                 <p className="text-xs text-rose-700">
                     {priority === 'Urgent'
-                        ? `งานด่วน: เลือกได้ตั้งแต่พรุ่งนี้ (แทรกคิวได้เลย)`
+                        ? `งานด่วน: เลือกได้ตั้งแต่พรุ่งนี้ โดยไม่คำนวณจาก SLA`
                         : `งานปกติ: เลือกได้ตั้งแต่ (วันนี้+${jobType?.sla || 0}+1 วัน)`
                     }
                 </p>
@@ -309,32 +316,41 @@ const AcceptanceDatePicker = ({
             </div>
 
             {/* Selected Date Info */}
-            {selectedDate && calculatedStartDate && (
-                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 sm:gap-3">
+            {selectedDate && (
+                <div className={`mt-3 grid grid-cols-1 gap-2 sm:gap-3 ${priority === 'Urgent' ? 'sm:grid-cols-1' : 'sm:grid-cols-2 lg:grid-cols-3'}`}>
                     {/* Box 1: วันส่งงาน */}
                     <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
                         <span className="text-rose-600 font-medium text-xs block mb-1">วันส่งงาน</span>
                         <span className="text-rose-900 font-bold text-sm block">{formatDate(new Date(selectedDate))}</span>
                     </div>
 
-                    {/* Box 2: SLA */}
-                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
-                        <span className="text-rose-600 font-medium text-xs block mb-1">SLA</span>
-                        <span className="text-rose-900 font-bold text-sm block">{jobType?.sla || 0} วันทำการ</span>
-                    </div>
+                    {priority !== 'Urgent' && (
+                        <>
+                            {/* Box 2: SLA */}
+                            <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                                <span className="text-rose-600 font-medium text-xs block mb-1">SLA</span>
+                                <span className="text-rose-900 font-bold text-sm block">{jobType?.sla || 0} วันทำการ</span>
+                            </div>
 
-                    {/* Box 3: วันเริ่มงาน */}
-                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
-                        <span className="text-rose-600 font-medium text-xs block mb-1">วันเริ่มงาน</span>
-                        <span className="text-rose-900 font-bold text-sm block">{formatDate(calculatedStartDate)}</span>
-                        <span className="text-xs text-rose-500 block mt-0.5">(อัตโนมัติ)</span>
-                    </div>
+                            {/* Box 3: วันเริ่มงาน */}
+                            {calculatedStartDate && (
+                                <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                                    <span className="text-rose-600 font-medium text-xs block mb-1">วันเริ่มงาน</span>
+                                    <span className="text-rose-900 font-bold text-sm block">{formatDate(calculatedStartDate)}</span>
+                                    <span className="text-xs text-rose-500 block mt-0.5">(อัตโนมัติ)</span>
+                                </div>
+                            )}
+                        </>
+                    )}
                 </div>
             )}
 
             {/* Help Text */}
             <p className="mt-2 text-xs text-gray-500 text-center">
-                เลือกวันที่ต้องการให้ส่งงาน (Due Date) - ระบบจะคำนวณวันเริ่มงานให้อัตโนมัติ
+                {priority === 'Urgent'
+                    ? 'เลือกวันที่ต้องการให้ส่งงาน (Due Date) สำหรับงานด่วน'
+                    : 'เลือกวันที่ต้องการให้ส่งงาน (Due Date) - ระบบจะคำนวณวันเริ่มงานให้อัตโนมัติ'
+                }
             </p>
         </div>
     );

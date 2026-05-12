@@ -19,7 +19,7 @@ import { formatDateToThai } from '@shared/utils/dateUtils';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import { hasRole } from '@shared/utils/permission.utils';
-import { DJ_LIST_FILTER_OPTIONS, matchesStatusFilter } from '@shared/constants/jobStatus';
+import { DJ_LIST_FILTER_OPTIONS, PRIORITY_OPTIONS, matchesStatusFilter, normalizePriority } from '@shared/constants/jobStatus';
 import { resolveSlaBadgePresentation } from '@shared/utils/slaStatusResolver';
 import { matchesSuperSearch } from '@shared/utils/superSearch';
 
@@ -117,7 +117,10 @@ export default function DJList() {
             // Always use getJobsByRole to pass correct role parameter to backend
             // getJobs() without role defaults to 'requester' on backend, which is incorrect for admin
             const [jobsResponse, masterDataResult] = await Promise.all([
-                api.getJobsByRole(user, { includeCompleted: shouldIncludeCompletedInQuery ? 'true' : 'false' }),
+                api.getJobsByRole(user, {
+                    includeCompleted: shouldIncludeCompletedInQuery ? 'true' : 'false',
+                    includeRequesterJobs: 'true'
+                }),
                 api.getMasterData()
             ]);
 
@@ -177,7 +180,7 @@ export default function DJList() {
             result = result.filter(j => j.assignee === filters.assignee);
         }
         if (filters.priority) {
-            result = result.filter(j => j.priority === filters.priority);
+            result = result.filter(j => normalizePriority(j.priority) === filters.priority);
         }
 
         if (filters.status) {
@@ -509,7 +512,8 @@ export default function DJList() {
                         label="ความสำคัญ (Priority)"
                         value={filters.priority}
                         onChange={(val) => handleFilterChange('priority', val)}
-                        options={['Normal', 'Urgent', 'High']}
+                        options={PRIORITY_OPTIONS.map(o => o.value)}
+                        optionLabels={{ normal: 'Normal', urgent: 'Urgent' }}
                     />
                 </div>
 

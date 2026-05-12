@@ -11,7 +11,7 @@ after(async () => {
 function createServiceWithMocks(jobRecord) {
   const service = new ApprovalService();
   const calls = {
-    jobUpdate: null,
+    jobUpdateMany: null,
     approvalCreate: null,
     activityLog: null,
   };
@@ -19,16 +19,19 @@ function createServiceWithMocks(jobRecord) {
   service.prisma = {
     job: {
       findUnique: async () => jobRecord,
-      update: async (args) => {
-        calls.jobUpdate = args;
-        return { id: args.where.id, ...args.data };
+      updateMany: async (args) => {
+        calls.jobUpdateMany = args;
+        return { count: 1 };
       },
     },
     approval: {
       create: async (args) => {
         calls.approvalCreate = args;
-        return { id: 999, ...args.data };
+        return { id: 1234, ...args.data };
       },
+    },
+    activityLog: {
+      findFirst: async () => null,
     },
     user: {
       findUnique: async () => ({
@@ -47,79 +50,67 @@ function createServiceWithMocks(jobRecord) {
   return { service, calls };
 }
 
-test('confirmAssigneeRejection creates rejected approval record with current approver and timestamp', async () => {
+test('denyAssigneeRejection creates approval history and moves job back to in_progress', async () => {
   const { service, calls } = createServiceWithMocks({
-    id: 71,
-    djId: 'DJ-TEST-0071',
+    id: 91,
+    djId: 'DJ-TEST-0091',
     status: 'assignee_rejected',
     tenantId: 1,
     requesterId: 11,
-    rejectedBy: 24,
-    rejectionComment: 'Need rebrief',
+    assigneeId: 15,
+    rejectedBy: 15,
+    rejectionComment: 'Need more brief context',
     subject: 'Test subject',
-    requester: null,
+    dueDate: null,
+    assignee: null,
   });
 
-  const result = await service.confirmAssigneeRejection({
-    jobId: 71,
-    approverId: 88,
+  const result = await service.denyAssigneeRejection({
+    jobId: 91,
+    approverId: 77,
     approverUser: { roles: ['Approver'] },
-    comment: 'Approved rejection from queue',
-    ccEmails: [],
+    reason: 'ต้องดำเนินงานต่อ',
   });
 
   assert.equal(result.success, true);
-  assert.equal(result.data.status, 'rejected');
+  assert.equal(result.data.status, 'in_progress');
 
-  assert.equal(calls.jobUpdate.where.id, 71);
-  assert.equal(calls.jobUpdate.data.status, 'rejected');
+  assert.equal(calls.jobUpdateMany.where.id, 91);
+  assert.equal(calls.jobUpdateMany.where.status, 'assignee_rejected');
+  assert.equal(calls.jobUpdateMany.data.status, 'in_progress');
+  assert.equal(calls.jobUpdateMany.data.rejectedBy, null);
 
-  assert.equal(calls.approvalCreate.data.jobId, 71);
-  assert.equal(calls.approvalCreate.data.approverId, 88);
+  assert.equal(calls.approvalCreate.data.jobId, 91);
+  assert.equal(calls.approvalCreate.data.approverId, 77);
   assert.equal(calls.approvalCreate.data.status, 'rejected');
-  assert.equal(calls.approvalCreate.data.comment, 'Confirmed assignee rejection via web: Approved rejection from queue');
   assert.equal('actionType' in calls.approvalCreate.data, false);
+  assert.equal(calls.approvalCreate.data.comment, 'Denied assignee rejection via web: ต้องดำเนินงานต่อ');
   assert.ok(calls.approvalCreate.data.approvedAt instanceof Date);
 });
 
-test('confirmAssigneeRejection returns INVALID_STATUS and does not write approval history for non-assignee_rejected jobs', async () => {
+test('denyAssigneeRejection returns INVALID_STATUS and does not write approval history for non-assignee_rejected jobs', async () => {
   const { service, calls } = createServiceWithMocks({
-    id: 81,
-    djId: 'DJ-TEST-0081',
+    id: 92,
+    djId: 'DJ-TEST-0092',
     status: 'pending_approval',
     tenantId: 1,
     requesterId: 11,
+    assigneeId: 15,
     rejectedBy: null,
     rejectionComment: null,
     subject: 'Test subject',
-    requester: null,
+    dueDate: null,
+    assignee: null,
   });
 
-  const result = await service.confirmAssigneeRejection({
-    jobId: 81,
-    approverId: 88,
+  const result = await service.denyAssigneeRejection({
+    jobId: 92,
+    approverId: 77,
     approverUser: { roles: ['Approver'] },
-    comment: 'Should fail',
-    ccEmails: [],
+    reason: 'Should fail',
   });
 
   assert.equal(result.success, false);
   assert.equal(result.error, 'INVALID_STATUS');
-  assert.equal(calls.approvalCreate, null);
-});
-
-test('confirmAssigneeRejection returns NOT_FOUND when job does not exist', async () => {
-  const { service, calls } = createServiceWithMocks(null);
-
-  const result = await service.confirmAssigneeRejection({
-    jobId: 999999,
-    approverId: 88,
-    approverUser: { roles: ['Approver'] },
-    comment: 'Not found',
-    ccEmails: [],
-  });
-
-  assert.equal(result.success, false);
-  assert.equal(result.error, 'NOT_FOUND');
   assert.equal(calls.approvalCreate, null);
 });

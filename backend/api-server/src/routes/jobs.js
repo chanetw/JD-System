@@ -45,6 +45,17 @@ import {
   createEmailTemplate
 } from '../utils/emailTemplates.js';
 import { buildFrontendUrl } from '../utils/frontendUrl.js';
+import {
+  APPROVAL_HISTORY_CATEGORIES,
+  ASSIGNEE_COMPLETED_STATUSES,
+  ASSIGNEE_IN_PROGRESS_STATUSES,
+  ASSIGNEE_REJECTED_STATUSES,
+  ASSIGNEE_TODO_STATUSES,
+  ASSIGNEE_WAITING_STATUSES,
+  getApprovalHistoryPresentation,
+  isApprovalActionableStatus,
+  isApprovalWaitingStatus
+} from '../utils/jobQueueConfig.js';
 import { getStorageService } from '../services/storageService.js';
 import { handoffCompletionFilesToNextJobs } from '../services/handoffService.js';
 
@@ -53,18 +64,6 @@ const jobService = new JobService();
 const notificationService = new NotificationService();
 const magicLinkService = new MagicLinkService();
 const APP_TIMEZONE = process.env.APP_TIMEZONE || 'Asia/Bangkok';
-const ASSIGNEE_ACTIVE_QUEUE_STATUSES = [
-  'approved',
-  'assigned',
-  'in_progress',
-  'correction',
-  'rework',
-  'returned',
-  'pending_dependency',
-  'draft_review',
-  'pending_rebrief',
-  'rebrief_submitted'
-];
 
 const router = express.Router();
 
@@ -74,8 +73,18 @@ router.use(setRLSContextMiddleware);
 
 const normalizeRoleValue = (role) => {
   if (!role) return '';
-  if (typeof role === 'string') return role.toLowerCase();
-  return String(role.roleName || role.name || role.role || '').toLowerCase();
+  const rawRole = typeof role === 'string'
+    ? role
+    : String(role.roleName || role.name || role.role || '');
+  const normalized = rawRole.trim().replace(/[\s-]+/g, '_').toLowerCase();
+
+  if (['admin', 'superadmin', 'system_admin', 'administrator'].includes(normalized)) return 'admin';
+  if (['requester', 'orgadmin', 'org_admin', 'marketing'].includes(normalized)) return 'requester';
+  if (['approver', 'teamlead', 'team_lead'].includes(normalized)) return 'approver';
+  if (['assignee', 'member', 'user'].includes(normalized)) return 'assignee';
+  if (['viewer'].includes(normalized)) return 'viewer';
+
+  return normalized;
 };
 
 const hasAdminPrivileges = (user) => {
@@ -87,12 +96,107 @@ const hasAdminPrivileges = (user) => {
     user.role
   ].filter(Boolean);
 
-  return roles.some(role => ['admin', 'superadmin', 'system_admin'].includes(normalizeRoleValue(role)));
+  return roles.some(role => normalizeRoleValue(role) === 'admin');
 };
 
 const isSameUserId = (left, right) => {
   if (left == null || right == null) return false;
   return String(left) === String(right);
+};
+
+const buildAssigneeQueueStatusCondition = (status) => {
+  if (!status) return null;
+
+  switch (status) {
+    case 'todo':
+      return { in: ASSIGNEE_TODO_STATUSES };
+    case 'in_progress':
+      return { in: ASSIGNEE_IN_PROGRESS_STATUSES };
+    case 'completed':
+    case 'done':
+      return { in: ASSIGNEE_COMPLETED_STATUSES };
+    case 'rejected':
+      return { in: ASSIGNEE_REJECTED_STATUSES };
+    case 'waiting':
+      return { in: ASSIGNEE_WAITING_STATUSES };
+    case 'all':
+      return null;
+    default:
+      return status;
+  }
+};
+
+const normalizeScopeRoleName = (value) => String(value || '').trim().replace(/\s+/g, '_').toLowerCase();
+
+const buildRoleScopeCondition = async (prisma, { tenantId, userId, role }) => {
+  const normalizedRole = normalizeScopeRoleName(role);
+  if (!tenantId || !userId || !normalizedRole) return null;
+
+  const scopes = await prisma.userScopeAssignment.findMany({
+    where: {
+      tenantId,
+      userId,
+      isActive: true,
+      roleType: { equals: normalizedRole, mode: 'insensitive' }
+    },
+    select: {
+      scopeLevel: true,
+      scopeId: true
+    }
+  });
+
+  if (scopes.length === 0) return null;
+
+  const projectIds = [];
+  const budIds = [];
+  const departmentIds = [];
+  let hasTenantScope = false;
+
+  scopes.forEach((scope) => {
+    const level = String(scope.scopeLevel || '').toLowerCase();
+    if (level === 'tenant') {
+      hasTenantScope = true;
+      return;
+    }
+
+    const scopeId = Number(scope.scopeId);
+    if (!Number.isInteger(scopeId)) return;
+
+    if (level === 'project') projectIds.push(scopeId);
+    if (level === 'bud') budIds.push(scopeId);
+    if (level === 'department') departmentIds.push(scopeId);
+  });
+
+  if (hasTenantScope) return {};
+
+  const conditions = [];
+  if (projectIds.length > 0) {
+    conditions.push({ projectId: { in: [...new Set(projectIds)] } });
+  }
+  if (budIds.length > 0) {
+    conditions.push({ project: { is: { budId: { in: [...new Set(budIds)] } } } });
+  }
+  if (departmentIds.length > 0) {
+    conditions.push({ project: { is: { departmentId: { in: [...new Set(departmentIds)] } } } });
+  }
+
+  if (conditions.length === 0) return null;
+  if (conditions.length === 1) return conditions[0];
+  return { OR: conditions };
+};
+
+const combineWithScopeCondition = (baseCondition, scopeCondition) => {
+  if (!scopeCondition) return baseCondition;
+  if (!baseCondition || Object.keys(baseCondition).length === 0 || Object.keys(scopeCondition).length === 0) {
+    return {};
+  }
+
+  return {
+    OR: [
+      baseCondition,
+      scopeCondition
+    ]
+  };
 };
 
 const toIsoStringOrNull = (value) => {
@@ -733,11 +837,13 @@ const validateManualDueDate = async ({ prisma, tenantId, dueDate }) => {
  */
 router.get('/', async (req, res) => {
   try {
-    const { role = 'requester', status, page = 1, limit = 50, assignee, includeCompleted, approvalView } = req.query;
+    const { role = 'requester', status, page = 1, limit = 50, assignee, includeCompleted, approvalView, includeRequesterJobs } = req.query;
     const prisma = getDatabase();
     const userId = req.user.userId;
     const tenantId = req.user.tenantId;
     const shouldIncludeCompleted = String(includeCompleted ?? 'true').toLowerCase() !== 'false';
+    const normalizedApprovalView = String(approvalView || '').trim().toLowerCase();
+    const shouldIncludeRequesterJobs = String(includeRequesterJobs || '').trim().toLowerCase() === 'true' && !normalizedApprovalView;
 
 
     let where = { tenantId };
@@ -745,10 +851,14 @@ router.get('/', async (req, res) => {
     const currentApproverJobIds = new Set();
 
     // Multi-role support: role can be comma-separated (e.g. "requester,approver")
-    const roles = role.split(',').map(r => r.trim().toLowerCase()).filter(Boolean);
+    const baseRoles = role.split(',').map(normalizeRoleValue).filter(Boolean);
+    const roles = shouldIncludeRequesterJobs && !baseRoles.includes('requester')
+      ? [...baseRoles, 'requester']
+      : baseRoles;
     const hasApproverRole = roles.includes('approver');
 
-    const requestHasAdminRole = roles.includes('admin') || roles.includes('superadmin');
+    const requestHasAdminRole = roles.includes('admin');
+    const isAssigneeQueueOnlyRequest = roles.length === 1 && roles[0] === 'assignee' && !normalizedApprovalView;
     const approvalHistoryWhere = {
       approverId: userId,
       status: { in: ['approved', 'rejected', 'returned'] },
@@ -763,12 +873,12 @@ router.get('/', async (req, res) => {
         case 'requester':
           // ✅ Requester sees ALL jobs they created (parent, child, and single jobs)
           // This provides full transparency
-          return {
+          return combineWithScopeCondition({
             requesterId: userId
-          };
+          }, await buildRoleScopeCondition(prisma, { tenantId, userId, role: singleRole }));
         case 'assignee':
           // ✅ NEW: Assignee sees only child jobs assigned to them or single jobs (not parent)
-          return {
+          return combineWithScopeCondition({
             assigneeId: userId,
             OR: [
               { isParent: false, parentJobId: { not: null } }, // child jobs assigned to them
@@ -777,7 +887,7 @@ router.get('/', async (req, res) => {
                 parentJobId: null                        // not a child (single jobs)
               }
             ]
-          };
+          }, await buildRoleScopeCondition(prisma, { tenantId, userId, role: singleRole }));
         case 'approver': {
           console.time('[Approver Query] Total');
           console.time('[Approver Query] 1. Fetch allJobs');
@@ -1013,12 +1123,12 @@ router.get('/', async (req, res) => {
           console.timeEnd('[Approver Query] Total');
           console.log(`[Approver Query] Final job count: ${validJobIds.length}`);
 
-          return {
+          return combineWithScopeCondition({
             id: { in: validJobIds }
-          };
+          }, await buildRoleScopeCondition(prisma, { tenantId, userId, role: singleRole }));
         }
         case 'manager':
-          return {
+          return combineWithScopeCondition({
             OR: [
               { status: 'pending_approval' },
               { status: { startsWith: 'pending_level_' } }
@@ -1030,7 +1140,7 @@ router.get('/', async (req, res) => {
                 { parentJob: { status: { notIn: ['pending_approval'] } } }
               ]
             }]
-          };
+          }, await buildRoleScopeCondition(prisma, { tenantId, userId, role: singleRole }));
         case 'superadmin':
         case 'admin': {
           // ✅ Admin/Superadmin = Superuser mode: see all jobs and can approve all pending jobs
@@ -1075,6 +1185,145 @@ router.get('/', async (req, res) => {
       }
     };
 
+    if (isAssigneeQueueOnlyRequest) {
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+      const take = parseInt(limit);
+      const assigneeWhere = {
+        tenantId,
+        assigneeId: userId,
+        isParent: false
+      };
+
+      const assigneeStatusCondition = buildAssigneeQueueStatusCondition(status);
+      if (assigneeStatusCondition) {
+        assigneeWhere.status = assigneeStatusCondition;
+      }
+
+      if (!status && !shouldIncludeCompleted) {
+        assigneeWhere.status = {
+          notIn: [...ASSIGNEE_COMPLETED_STATUSES, ...ASSIGNEE_REJECTED_STATUSES, 'cancelled']
+        };
+      }
+
+      if (assignee) {
+        assigneeWhere.assignee = {
+          is: {
+            OR: [
+              { displayName: { contains: assignee, mode: 'insensitive' } },
+              { firstName: { contains: assignee, mode: 'insensitive' } },
+              { lastName: { contains: assignee, mode: 'insensitive' } }
+            ]
+          }
+        };
+      }
+
+      const [jobs, total] = await Promise.all([
+        prisma.job.findMany({
+          where: assigneeWhere,
+          select: {
+            id: true,
+            djId: true,
+            subject: true,
+            status: true,
+            priority: true,
+            dueDate: true,
+            startedAt: true,
+            completedAt: true,
+            createdAt: true,
+            acceptanceDate: true,
+            slaDays: true,
+            projectId: true,
+            jobTypeId: true,
+            requesterId: true,
+            assigneeId: true,
+            activityLogs: {
+              select: { createdAt: true },
+              orderBy: { createdAt: 'desc' },
+              take: 1
+            },
+            project: {
+              select: { id: true, name: true, code: true }
+            },
+            jobType: {
+              select: { id: true, name: true, icon: true, colorTheme: true, slaWorkingDays: true }
+            },
+            requester: {
+              select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, email: true }
+            },
+            assignee: {
+              select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, isActive: true, email: true }
+            },
+            isParent: true,
+            parentJobId: true,
+            predecessorId: true,
+            predecessor: {
+              select: { id: true, djId: true, subject: true, status: true }
+            }
+          },
+          orderBy: { dueDate: 'asc' },
+          skip,
+          take
+        }),
+        prisma.job.count({ where: assigneeWhere })
+      ]);
+
+      const transformedAssigneeJobs = jobs.map((j) => ({
+        id: j.id,
+        djId: j.djId,
+        subject: j.subject,
+        status: j.status,
+        priority: j.priority,
+        jobType: j.jobType?.name,
+        jobTypeId: j.jobTypeId,
+        jobTypeIcon: j.jobType?.icon,
+        jobTypeColor: j.jobType?.colorTheme,
+        slaWorkingDays: j.jobType?.slaWorkingDays,
+        project: j.project?.name,
+        projectId: j.projectId,
+        projectCode: j.project?.code,
+        deadline: j.dueDate,
+        createdAt: j.createdAt,
+        acceptanceDate: j.acceptanceDate,
+        startedAt: j.startedAt,
+        slaDays: j.slaDays,
+        updatedAt: j.completedAt || j.activityLogs?.[0]?.createdAt || j.createdAt,
+        requesterId: j.requesterId,
+        requester: `${j.requester?.firstName || ''} ${j.requester?.lastName || ''}`.trim() || j.requester?.displayName || j.requester?.email || null,
+        requesterAvatar: j.requester?.avatarUrl,
+        assigneeId: j.assigneeId,
+        assignee: `${j.assignee?.firstName || ''} ${j.assignee?.lastName || ''}`.trim() || j.assignee?.displayName || j.assignee?.email || null,
+        assigneeIsActive: j.assignee?.isActive ?? true,
+        assigneeAvatar: j.assignee?.avatarUrl,
+        isParent: j.isParent || false,
+        parentJobId: j.parentJobId || null,
+        completedAt: j.completedAt,
+        predecessorId: j.predecessorId || null,
+        predecessorDjId: j.predecessor?.djId || null,
+        predecessorSubject: j.predecessor?.subject || null,
+        predecessorStatus: j.predecessor?.status || null,
+        lastActivityAt: j.activityLogs?.[0]?.createdAt || j.createdAt,
+        historyData: null,
+        isApprovalWaiting: false,
+        isApprovalActionable: false,
+        isCurrentApprover: false
+      }));
+
+      return res.json({
+        success: true,
+        data: transformedAssigneeJobs,
+        meta: {
+          serverNow: new Date().toISOString(),
+          serverTimezone: APP_TIMEZONE
+        },
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          totalPages: Math.ceil(total / parseInt(limit))
+        }
+      });
+    }
+
     if (roles.length === 1) {
       // Single role: backward compatible (same logic as before)
       const condition = await buildRoleCondition(roles[0]);
@@ -1099,8 +1348,8 @@ router.get('/', async (req, res) => {
         if (condition !== null && Object.keys(condition).length > 0) {
           orConditions.push(condition);
         }
-        // admin/superadmin = see all → skip OR, just use tenant filter
-        if (r === 'admin' || r === 'superadmin') {
+        // admin/superadmin/system_admin aliases are normalized to admin = see all
+        if (r === 'admin') {
           orConditions.length = 0; // clear, admin sees everything
           break;
         }
@@ -1113,29 +1362,20 @@ router.get('/', async (req, res) => {
 
     // Status filtering
     if (status) {
-      if (status === 'todo') {
-        where.status = { in: ['assigned'] };
-      } else if (status === 'in_progress') {
-        where.status = { in: ASSIGNEE_ACTIVE_QUEUE_STATUSES };
-      } else if (status === 'completed') {
-        where.status = { in: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] };
-      } else if (status === 'rejected') {
-        where.status = { in: ['rejected', 'rejected_by_assignee', 'assignee_rejected'] };
-      } else if (status === 'waiting') {
-        where.status = { in: ['correction', 'pending_approval'] };
-      } else if (status === 'done') {
-        where.status = { in: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] };
-      } else if (status === 'all') {
-        // No status filter - return all jobs
-      } else {
-        where.status = status;
+      const assigneeStatusCondition = buildAssigneeQueueStatusCondition(status);
+      if (assigneeStatusCondition) {
+        where.status = assigneeStatusCondition;
       }
     }
 
     // Default behavior for dashboard queue: hide completed/closed when includeCompleted=false
     // Keep explicit status filter precedence (e.g. status=completed should still work).
     if (!status && !shouldIncludeCompleted) {
-      const completedExclusion = { status: { notIn: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] } };
+      const completedExclusion = {
+        status: {
+          notIn: [...ASSIGNEE_COMPLETED_STATUSES, ...ASSIGNEE_REJECTED_STATUSES, 'cancelled']
+        }
+      };
       if (where.status) {
         where.AND = [...(where.AND || []), completedExclusion];
       } else {
@@ -1197,7 +1437,6 @@ router.get('/', async (req, res) => {
             select: {
               approverId: true,
               status: true,
-              actionType: true,
               approvedAt: true,
               createdAt: true,
               comment: true,
@@ -1242,31 +1481,27 @@ router.get('/', async (req, res) => {
             || selectedApproval.approver?.displayName
             || selectedApproval.approver?.email
             || null;
-
-          // กรณีพิเศษ: ถ้าเป็นการ confirm-assignee-rejection (actionType)
-          let category = 'not_approved';
-          if (selectedApproval.status === 'approved') {
-            category = 'approved';
-          } else if (
-            selectedApproval.status === 'rejected' &&
-            (
-              selectedApproval.actionType === 'confirm_assignee_rejection'
-              || String(selectedApproval.comment || '').toLowerCase().includes('confirmed assignee rejection')
-            )
-          ) {
-            category = 'approved';
-          }
+          const historyPresentation = getApprovalHistoryPresentation({
+            status: selectedApproval.status,
+            comment: selectedApproval.comment
+          });
 
           historyData = {
             actionDate: selectedApproval.approvedAt || selectedApproval.createdAt,
             comment: selectedApproval.comment,
             action: selectedApproval.status,
-            category,
+            actionType: historyPresentation?.actionType || null,
+            actionLabel: historyPresentation?.actionLabel || null,
+            category: historyPresentation?.category || null,
             actedBy: actorName,
-            actedById: selectedApproval.approverId
+            actedById: selectedApproval.approverId,
+            isAdminOverride: historyPresentation?.isAdminOverride || false
           };
         }
       }
+
+      const approvalWaiting = isApprovalWaitingStatus(j.status);
+      const approvalActionable = isApprovalActionableStatus(j.status);
 
       return {
         id: j.id,
@@ -1306,31 +1541,19 @@ router.get('/', async (req, res) => {
         predecessorStatus: j.predecessor?.status || null,
         lastActivityAt: j.activityLogs?.[0]?.createdAt || j.createdAt,
         historyData: historyData, // ส่งข้อมูลประวัติแนบไปด้วย
+        isApprovalWaiting: approvalWaiting,
+        isApprovalActionable: approvalActionable,
         // ✅ Flag: user is the approver for the CURRENT level of this job (for Approvals Queue)
         // false = user is a future-level approver (can see in DJ List but cannot approve yet)
         isCurrentApprover: currentApproverJobIds.has(j.id)
       }
     });
 
-    const normalizedApprovalView = String(approvalView || '').trim().toLowerCase();
     if (normalizedApprovalView) {
-      const isPendingStatusForQueue = (jobStatus) => (
-        jobStatus === 'pending_approval'
-        || jobStatus === 'assignee_rejected'
-        || jobStatus === 'pending_dependency'
-        || String(jobStatus || '').startsWith('pending_level_')
-      );
-
-      const isActionableStatusForQueue = (jobStatus) => (
-        jobStatus === 'pending_approval'
-        || jobStatus === 'assignee_rejected'
-        || String(jobStatus || '').startsWith('pending_level_')
-      );
-
       if (normalizedApprovalView === 'waiting') {
         transformed = transformed.filter((job) => {
           if (job.isParent) return false;
-          if (!isPendingStatusForQueue(job.status)) return false;
+          if (!job.isApprovalWaiting) return false;
 
           if (requestHasAdminRole) {
             return true;
@@ -1340,7 +1563,7 @@ router.get('/', async (req, res) => {
             return false;
           }
 
-          if (!isActionableStatusForQueue(job.status)) {
+          if (!job.isApprovalActionable) {
             return false;
           }
 
@@ -1352,7 +1575,7 @@ router.get('/', async (req, res) => {
         transformed = transformed.filter((job) => {
           if (job.isParent) return false;
           if (job.status === 'assignee_rejected') return false;
-          if (job.historyData?.category !== 'approved') return false;
+          if (job.historyData?.category !== APPROVAL_HISTORY_CATEGORIES.APPROVED) return false;
           return isSameUserId(job.historyData?.actedById, userId);
         });
       }
@@ -1361,7 +1584,7 @@ router.get('/', async (req, res) => {
         transformed = transformed.filter((job) => {
           if (job.isParent) return false;
           if (job.status === 'assignee_rejected') return false;
-          if (job.historyData?.category !== 'not_approved') return false;
+          if (job.historyData?.category !== APPROVAL_HISTORY_CATEGORIES.NOT_APPROVED) return false;
           return isSameUserId(job.historyData?.actedById, userId);
         });
       }
@@ -1405,11 +1628,11 @@ router.get('/counts', async (req, res) => {
     const tenantId = req.user.tenantId;
 
     const statusGroups = {
-      in_progress: ASSIGNEE_ACTIVE_QUEUE_STATUSES,
-      completed: ['completed', 'closed'],
-      rejected: ['rejected', 'rejected_by_assignee', 'assignee_rejected'],
-      todo: ['assigned'],
-      waiting: ['correction', 'pending_approval']
+      in_progress: ASSIGNEE_IN_PROGRESS_STATUSES,
+      completed: ASSIGNEE_COMPLETED_STATUSES,
+      rejected: ASSIGNEE_REJECTED_STATUSES,
+      todo: ASSIGNEE_TODO_STATUSES,
+      waiting: ASSIGNEE_WAITING_STATUSES
     };
 
     // ดึง counts ทั้งหมดใน 1 query
@@ -1452,12 +1675,9 @@ router.get('/counts', async (req, res) => {
 });
 
 const DASHBOARD_TERMINAL_STATUSES = [
-  'completed',
-  'closed',
+  ...ASSIGNEE_COMPLETED_STATUSES,
   'cancelled',
-  'rejected',
-  'rejected_by_assignee',
-  'assignee_rejected'
+  ...ASSIGNEE_REJECTED_STATUSES
 ];
 
 const DASHBOARD_DUE_EXCLUDED_STATUSES = [
@@ -1491,15 +1711,15 @@ const buildDashboardStatusCondition = (status) => {
     case 'todo':
       return { status: { in: ['assigned'] } };
     case 'in_progress':
-      return { status: { in: ASSIGNEE_ACTIVE_QUEUE_STATUSES } };
+      return { status: { in: ASSIGNEE_IN_PROGRESS_STATUSES } };
     case 'completed':
-      return { status: { in: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] } };
+      return { status: { in: [...ASSIGNEE_COMPLETED_STATUSES, ...ASSIGNEE_REJECTED_STATUSES, 'cancelled'] } };
     case 'rejected':
-      return { status: { in: ['rejected', 'rejected_by_assignee', 'assignee_rejected'] } };
+      return { status: { in: ASSIGNEE_REJECTED_STATUSES } };
     case 'waiting':
-      return { status: { in: ['correction', 'pending_approval'] } };
+      return { status: { in: ASSIGNEE_WAITING_STATUSES } };
     case 'done':
-      return { status: { in: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'] } };
+      return { status: { in: [...ASSIGNEE_COMPLETED_STATUSES, ...ASSIGNEE_REJECTED_STATUSES, 'cancelled'] } };
     case 'all':
       return null;
     default:
@@ -1612,7 +1832,7 @@ const buildDashboardWhere = ({
  * ใช้กับ dashboard-stats และ dashboard-jobs
  */
 function buildDashboardRoleFilter(roles, userId) {
-  const roleList = (roles || 'requester').split(',').map(r => r.trim().toLowerCase()).filter(Boolean);
+  const roleList = (roles || 'requester').split(',').map(normalizeRoleValue).filter(Boolean);
   const conditions = [];
 
   for (const role of roleList) {
@@ -1633,7 +1853,6 @@ function buildDashboardRoleFilter(roles, userId) {
         });
         break;
       case 'admin':
-      case 'superadmin':
         return null; // null = no filter (see all)
       default:
         conditions.push({ requesterId: userId });
@@ -2187,6 +2406,7 @@ router.post('/', async (req, res) => {
     // - Skip = true → status = 'approved' (พร้อมมอบหมายงาน)
     // - Skip = false → status = 'pending_approval' (รอการอนุมัติ)
     let initialStatus = isSkip ? 'approved' : 'pending_approval';
+    const isUrgentJob = priority.toLowerCase() === 'urgent';
 
     // ============================================
     // Step 4: Generate DJ ID
@@ -2214,60 +2434,68 @@ router.post('/', async (req, res) => {
     let calculatedDueDate = new Date(dueDate);
     let acceptanceMethod = 'auto';
     let dueDateAdjustmentReasons = [];
+    let dueDateValidation = null;
 
     // ============================================
     // Step 4.6: Validate and Adjust Working Hours
     // ตรวจสอบและปรับ dueDate ให้อยู่ในเวลาทำการ
     // ============================================
-    const dueDateValidation = workingHoursHelper.validateAndAdjustDueDate(dueDate);
-
-    if (dueDateValidation.needsAdjustment) {
-      dueDateAdjustmentReasons = dueDateValidation.reasons;
-      console.log(`[Jobs] Due Date adjusted: ${workingHoursHelper.formatAdjustmentMessage(
-        dueDateValidation.originalDate,
-        dueDateValidation.adjustedDate,
-        dueDateValidation.reasons
-      )}`);
-    }
-
-    // ถ้ามีการระบุ Acceptance Date มา
-    if (acceptanceDate) {
+    if (isUrgentJob) {
+      // งานด่วนใช้ dueDate ที่ requester เลือกเป็น deadline จริง ไม่คำนวณ/ปรับด้วย SLA
+      calculatedDueDate = new Date(dueDate);
+      acceptanceDate = null;
       acceptanceMethod = 'manual';
-
-      // ปรับ acceptanceDate ให้อยู่ในเวลาทำการก่อน
-      const acceptanceDateValidation = workingHoursHelper.validateAndAdjustDueDate(acceptanceDate);
-      if (acceptanceDateValidation.needsAdjustment) {
-        acceptanceDate = acceptanceDateValidation.adjustedDate;
-        console.log(`[Jobs] Acceptance Date adjusted to working hours: ${acceptanceDate}`);
-      }
-
-      // คำนวณ Due Date ใหม่จาก Acceptance Date + SLA
-      if (jobType.slaWorkingDays) {
-        calculatedDueDate = await calculateDueDateWithTenantHolidays(
-          acceptanceDate,
-          jobType.slaWorkingDays,
-          tenantId,
-          prisma
-        );
-
-        console.log(`[Jobs] Calculated Due Date from Acceptance Date: ${calculatedDueDate}`);
-      }
     } else {
-      // ถ้าไม่ระบุ Acceptance Date ให้ถือว่า dueDate ที่ requester เลือกคือ deadline จริง
-      // แล้วคำนวณวันเริ่ม/วันรับงานย้อนกลับจาก SLA
-      calculatedDueDate = dueDateValidation.adjustedDate;
-      acceptanceMethod = 'auto';
+      dueDateValidation = workingHoursHelper.validateAndAdjustDueDate(dueDate);
 
-      if (jobType.slaWorkingDays) {
-        acceptanceDate = await subtractWorkingDaysWithTenantHolidays(
-          calculatedDueDate,
-          jobType.slaWorkingDays,
-          tenantId,
-          prisma
-        );
-        console.log(`[Jobs] Calculated Acceptance Date from target Due Date: ${acceptanceDate}`);
+      if (dueDateValidation.needsAdjustment) {
+        dueDateAdjustmentReasons = dueDateValidation.reasons;
+        console.log(`[Jobs] Due Date adjusted: ${workingHoursHelper.formatAdjustmentMessage(
+          dueDateValidation.originalDate,
+          dueDateValidation.adjustedDate,
+          dueDateValidation.reasons
+        )}`);
+      }
+
+      // ถ้ามีการระบุ Acceptance Date มา
+      if (acceptanceDate) {
+        acceptanceMethod = 'manual';
+
+        // ปรับ acceptanceDate ให้อยู่ในเวลาทำการก่อน
+        const acceptanceDateValidation = workingHoursHelper.validateAndAdjustDueDate(acceptanceDate);
+        if (acceptanceDateValidation.needsAdjustment) {
+          acceptanceDate = acceptanceDateValidation.adjustedDate;
+          console.log(`[Jobs] Acceptance Date adjusted to working hours: ${acceptanceDate}`);
+        }
+
+        // คำนวณ Due Date ใหม่จาก Acceptance Date + SLA
+        if (jobType.slaWorkingDays) {
+          calculatedDueDate = await calculateDueDateWithTenantHolidays(
+            acceptanceDate,
+            jobType.slaWorkingDays,
+            tenantId,
+            prisma
+          );
+
+          console.log(`[Jobs] Calculated Due Date from Acceptance Date: ${calculatedDueDate}`);
+        }
       } else {
-        acceptanceDate = dueDateValidation.adjustedDate;
+        // ถ้าไม่ระบุ Acceptance Date ให้ถือว่า dueDate ที่ requester เลือกคือ deadline จริง
+        // แล้วคำนวณวันเริ่ม/วันรับงานย้อนกลับจาก SLA
+        calculatedDueDate = dueDateValidation.adjustedDate;
+        acceptanceMethod = 'auto';
+
+        if (jobType.slaWorkingDays) {
+          acceptanceDate = await subtractWorkingDaysWithTenantHolidays(
+            calculatedDueDate,
+            jobType.slaWorkingDays,
+            tenantId,
+            prisma
+          );
+          console.log(`[Jobs] Calculated Acceptance Date from target Due Date: ${acceptanceDate}`);
+        } else {
+          acceptanceDate = dueDateValidation.adjustedDate;
+        }
       }
     }
 
@@ -3218,8 +3446,10 @@ router.post('/parent-child', async (req, res) => {
         }
       });
 
+      const isUrgentJob = priority.toLowerCase() === 'urgent';
+
       // 2. Urgent Priority Override
-      if (priority.toLowerCase() === 'urgent') {
+      if (isUrgentJob) {
         allChildrenSkip = false; // Force Parent to Pending
         console.log('[Parent-Child] Urgent job → Force Approval Flow');
       }
@@ -3241,7 +3471,7 @@ router.post('/parent-child', async (req, res) => {
       let parentDueDate = deadline ? new Date(deadline) : null;
       let parentDueDateAdjustmentReasons = [];
 
-      if (parentDueDate) {
+      if (parentDueDate && !isUrgentJob) {
         const parentDueDateValidation = workingHoursHelper.validateAndAdjustDueDate(parentDueDate);
 
         if (parentDueDateValidation.needsAdjustment) {
@@ -3321,7 +3551,7 @@ router.post('/parent-child', async (req, res) => {
       // 2.4: Create Child Jobs
       // ----------------------------------------
       const childJobs = [];
-      let maxDueDate = deadline ? new Date(deadline) : null;
+      let maxDueDate = parentDueDate;
 
       for (let i = 0; i < jobTypes.length; i++) {
         const childConfig = jobTypes[i];
@@ -3354,14 +3584,17 @@ router.post('/parent-child', async (req, res) => {
           }
         }
 
-        // Calculate due date based on SLA & Start Date
+        // Calculate due date based on SLA & Start Date.
+        // Urgent parent-child jobs use the requester-selected deadline for every child.
         const slaWorkingDays = childJobType.slaWorkingDays || 7;
-        const childDueDate = await calculateDueDateWithTenantHolidays(
-          startDate,
-          slaWorkingDays,
-          tenantId,
-          tx
-        );
+        const childDueDate = isUrgentJob
+          ? (parentDueDate ? new Date(parentDueDate) : null)
+          : await calculateDueDateWithTenantHolidays(
+            startDate,
+            slaWorkingDays,
+            tenantId,
+            tx
+          );
 
         // Generate child DJ-ID (เพิ่ม suffix -01, -02, ...)
         const childDjId = generateChildDjId(i);
@@ -3391,7 +3624,7 @@ router.post('/parent-child', async (req, res) => {
 
         if (!isDraft) {
           const flowNeedsApproval = childNeedsApprovalMap.get(parseInt(childConfig.jobTypeId));
-          const isUrgent = priority.toLowerCase() === 'urgent';
+          const isUrgent = isUrgentJob;
 
           const needsApproval = flowNeedsApproval || isUrgent;
 

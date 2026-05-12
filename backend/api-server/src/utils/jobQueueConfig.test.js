@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import {
+  APPROVAL_HISTORY_CATEGORIES,
+  getApprovalHistoryPresentation,
+  hasAdminOverridePrefix,
+  isApprovalActionableStatus,
+  isApprovalWaitingStatus
+} from './jobQueueConfig.js';
+
+test('approval waiting/actionable status helpers classify queue statuses correctly', () => {
+  assert.equal(isApprovalWaitingStatus('pending_approval'), true);
+  assert.equal(isApprovalWaitingStatus('pending_level_2'), true);
+  assert.equal(isApprovalWaitingStatus('pending_dependency'), true);
+  assert.equal(isApprovalActionableStatus('pending_approval'), true);
+  assert.equal(isApprovalActionableStatus('pending_level_2'), true);
+  assert.equal(isApprovalActionableStatus('pending_dependency'), false);
+});
+
+test('approval history presentation treats confirm assignee rejection as approved history', () => {
+  const presentation = getApprovalHistoryPresentation({
+    status: 'rejected',
+    actionType: null,
+    comment: '[Admin Override] Confirmed assignee rejection via web: confirmed'
+  });
+
+  assert.equal(presentation.actionType, 'confirm_assignee_rejection');
+  assert.equal(presentation.category, APPROVAL_HISTORY_CATEGORIES.APPROVED);
+  assert.equal(presentation.actionLabel, 'อนุมัติการปฏิเสธของผู้รับงาน');
+  assert.equal(presentation.isAdminOverride, true);
+});
+
+test('approval history presentation treats deny assignee rejection as not approved history', () => {
+  const presentation = getApprovalHistoryPresentation({
+    status: 'rejected',
+    actionType: null,
+    comment: 'Denied assignee rejection via web: ต้องดำเนินงานต่อ'
+  });
+
+  assert.equal(presentation.actionType, 'deny_assignee_rejection');
+  assert.equal(presentation.category, APPROVAL_HISTORY_CATEGORIES.NOT_APPROVED);
+  assert.equal(presentation.actionLabel, 'ไม่อนุมัติคำขอปฏิเสธของผู้รับงาน');
+  assert.equal(presentation.isAdminOverride, false);
+  assert.equal(hasAdminOverridePrefix('ต้องดำเนินงานต่อ'), false);
+});

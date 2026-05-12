@@ -114,6 +114,7 @@ export default function MyQueue() {
     // State
     const [jobs, setJobs] = useState([]);
     const [loading, setLoading] = useState(false);
+    const [jobsLoadError, setJobsLoadError] = useState('');
     const [stats, setStats] = useState({ total: 0, critical: 0 });
     const [tabCounts, setTabCounts] = useState({ in_progress: 0, completed: 0, rejected: 0, timeline: 0 });
 
@@ -230,6 +231,7 @@ export default function MyQueue() {
     const fetchJobs = async () => {
         setLoading(true);
         try {
+            setJobsLoadError('');
             // Timeline tab ดึงงานที่กำลังทำ (เหมือน in_progress tab)
             const filterStatus = activeTab === 'timeline' ? 'in_progress' : activeTab;
             const data = await api.getAssigneeJobs(user.id, filterStatus);
@@ -241,6 +243,7 @@ export default function MyQueue() {
         } catch (error) {
             console.error('[MyQueue] ❌ Failed to fetch My Queue:', error);
             setJobs([]);
+            setJobsLoadError('โหลดรายการงานไม่สมบูรณ์ กรุณารีเฟรช');
         } finally {
             setLoading(false);
         }
@@ -603,6 +606,17 @@ export default function MyQueue() {
 
     const projectFilteredJobs = jobs.filter(job => filterProject === 'all' || job.projectName === filterProject);
     const normalizedSearch = localSearch.trim().toLowerCase();
+    const activeTabCount = activeTab === 'timeline'
+        ? (tabCounts.in_progress || 0)
+        : (tabCounts[activeTab] || 0);
+    const shouldShowLoadIssueEmptyState = !loading
+        && filteredJobsWillBeEmptyGuard({
+            jobs,
+            activeTabCount,
+            normalizedSearch,
+            filterProject,
+            jobsLoadError
+        });
 
     const filteredJobs = projectFilteredJobs
         .filter(job => {
@@ -754,8 +768,14 @@ export default function MyQueue() {
                     ) : filteredJobs.length === 0 ? (
                         <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-400">
                             <ClipboardDocumentListIcon className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                            <h3 className="text-lg font-medium text-gray-900">ไม่มีงานในหมวดนี้</h3>
-                            <p className="text-gray-500">ลองปรับเปลี่ยนตัวกรองหรือคำค้นหา</p>
+                            <h3 className="text-lg font-medium text-gray-900">
+                                {shouldShowLoadIssueEmptyState ? 'โหลดรายการงานไม่สมบูรณ์' : 'ไม่มีงานในหมวดนี้'}
+                            </h3>
+                            <p className="text-gray-500">
+                                {shouldShowLoadIssueEmptyState
+                                    ? (jobsLoadError || 'กรุณารีเฟรชเพื่อลองดึงรายการงานอีกครั้ง')
+                                    : 'ลองปรับเปลี่ยนตัวกรองหรือคำค้นหา'}
+                            </p>
                         </div>
                     ) : (
                         <>
@@ -1214,6 +1234,18 @@ const getQueueCardStatus = ({ job, activeTab, isUrgent, isDraftReview, isPredece
     }
     return { text: 'กำลังดำเนินการ', className: 'border-blue-200 bg-blue-50 text-blue-700' };
 };
+
+function filteredJobsWillBeEmptyGuard({ jobs, activeTabCount, normalizedSearch, filterProject, jobsLoadError }) {
+    if (jobsLoadError) {
+        return true;
+    }
+
+    if (normalizedSearch || filterProject !== 'all') {
+        return false;
+    }
+
+    return Array.isArray(jobs) && jobs.length === 0 && activeTabCount > 0;
+}
 
 function QueueInfoBox({ label, value, children }) {
     return (

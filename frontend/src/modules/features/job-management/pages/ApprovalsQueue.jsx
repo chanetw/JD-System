@@ -37,6 +37,8 @@ import {
 
 const APPROVAL_PENDING_STATUSES = ['pending_approval', 'pending_dependency', 'assignee_rejected'];
 const APPROVAL_ACTIONABLE_BASE_STATUSES = ['pending_approval', 'assignee_rejected'];
+const HISTORY_CATEGORY_APPROVED = 'approved';
+const HISTORY_CATEGORY_NOT_APPROVED = 'not_approved';
 
 const isPendingApprovalStatus = (status) => {
     if (!status) return false;
@@ -46,6 +48,59 @@ const isPendingApprovalStatus = (status) => {
 const isActionableApprovalStatus = (status) => {
     if (!status) return false;
     return APPROVAL_ACTIONABLE_BASE_STATUSES.includes(status) || status.startsWith('pending_level_');
+};
+
+const isApprovalWaitingJob = (job) => {
+    if (!job) return false;
+    if (typeof job.isApprovalWaiting === 'boolean') return job.isApprovalWaiting;
+    return isPendingApprovalStatus(job.status);
+};
+
+const isApprovalActionableJob = (job) => {
+    if (!job) return false;
+    if (typeof job.isApprovalActionable === 'boolean') return job.isApprovalActionable;
+    return isActionableApprovalStatus(job.status);
+};
+
+const formatActionDate = (value, withTime = false) => {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+
+    return date.toLocaleDateString('th-TH', withTime
+        ? { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+        : undefined);
+};
+
+const getHistoryActionLabel = (historyData) => {
+    if (historyData?.actionLabel) return historyData.actionLabel;
+    if (historyData?.actionType === 'confirm_assignee_rejection') return 'อนุมัติการปฏิเสธของผู้รับงาน';
+    if (historyData?.actionType === 'deny_assignee_rejection') return 'ไม่อนุมัติคำขอปฏิเสธของผู้รับงาน';
+    if (historyData?.action === 'approved') return 'อนุมัติงาน';
+    if (historyData?.action === 'returned') return 'ตีกลับแก้ไข';
+    if (historyData?.action === 'rejected') return 'ปฏิเสธงาน';
+    return '-';
+};
+
+const getHistoryActionToneClass = (historyData) => {
+    if (!historyData?.category) return 'text-gray-500';
+    return historyData.category === HISTORY_CATEGORY_APPROVED ? 'text-green-600' : 'text-red-500';
+};
+
+const getWaitingLevelLabel = (status) => {
+    if (status?.startsWith('pending_level_')) {
+        return `Level ${status.split('_')[2]}`;
+    }
+
+    if (status === 'pending_approval') {
+        return 'Level 1';
+    }
+
+    if (status === 'assignee_rejected') {
+        return 'คำขอปฏิเสธงาน';
+    }
+
+    return '-';
 };
 
 const extractRoleNames = (user) => {
@@ -145,14 +200,21 @@ export default function ApprovalsQueue() {
                 api.getApprovalHistoryList(user, 'not_approved'),
             ]);
 
-            const sortByCreatedDesc = (rows) => (Array.isArray(rows) ? rows : []).sort(
-                (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
-            );
+            const sortRows = (rows, useHistoryDate = false) => (Array.isArray(rows) ? rows : []).sort((a, b) => {
+                const left = useHistoryDate
+                    ? (a?.historyData?.actionDate || a?.updatedAt || a?.createdAt || 0)
+                    : (a?.createdAt || 0);
+                const right = useHistoryDate
+                    ? (b?.historyData?.actionDate || b?.updatedAt || b?.createdAt || 0)
+                    : (b?.createdAt || 0);
+
+                return new Date(right) - new Date(left);
+            });
 
             setJobsByTab({
-                waiting: sortByCreatedDesc(waitingList),
-                approved: sortByCreatedDesc(approvedHistoryList),
-                not_approved: sortByCreatedDesc(rejectedHistoryList),
+                waiting: sortRows(waitingList),
+                approved: sortRows(approvedHistoryList, true),
+                not_approved: sortRows(rejectedHistoryList, true),
             });
         } catch (error) {
             console.error("[ApprovalsQueue] Error loading jobs:", error);
@@ -161,7 +223,14 @@ export default function ApprovalsQueue() {
         }
     };
 
-    const applyLocalActionResult = (jobId, action, comment) => {
+    const applyLocalActionResult = (jobId, {
+        action,
+        actionType = null,
+        actionLabel = null,
+        category,
+        comment,
+        nextStatus
+    }) => {
         const nowIso = new Date().toISOString();
         const actorName = `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.displayName || user?.email || null;
 
@@ -169,49 +238,47 @@ export default function ApprovalsQueue() {
             const waitingJob = prev.waiting.find((job) => job.id === jobId);
             if (!waitingJob) return prev;
 
-            const nextStatus = action === 'approved' ? 'approved' : 'rejected';
+            const isAdminOverride = isAdminUser && waitingJob.isCurrentApprover === false && isApprovalActionableJob(waitingJob);
             const transitionedJob = {
                 ...waitingJob,
-                status: nextStatus,
+                status: nextStatus || waitingJob.status,
+                isApprovalWaiting: false,
+                isApprovalActionable: false,
                 isCurrentApprover: false,
                 historyData: {
                     actionDate: nowIso,
                     comment,
                     action,
-                    category: action === 'approved' ? 'approved' : 'not_approved',
+                    actionType,
+                    actionLabel: actionLabel || getHistoryActionLabel({ action, actionType }),
+                    category,
                     actedBy: actorName,
                     actedById: user?.id || null,
+                    isAdminOverride,
                 },
             };
 
             return {
                 waiting: prev.waiting.filter((job) => job.id !== jobId),
-                approved: action === 'approved'
+                approved: category === HISTORY_CATEGORY_APPROVED
                     ? [transitionedJob, ...prev.approved.filter((job) => job.id !== jobId)]
                     : prev.approved,
-                not_approved: action === 'rejected'
+                not_approved: category === HISTORY_CATEGORY_NOT_APPROVED
                     ? [transitionedJob, ...prev.not_approved.filter((job) => job.id !== jobId)]
                     : prev.not_approved,
             };
         });
     };
 
-    const removeWaitingJob = (jobId) => {
-        setJobsByTab((prev) => ({
-            ...prev,
-            waiting: prev.waiting.filter((job) => job.id !== jobId)
-        }));
-    };
-
     const canShowInWaitingTab = (job) => {
         if (!job || job.isParent) return false;
-        if (!isPendingApprovalStatus(job.status)) return false;
+        if (!isApprovalWaitingJob(job)) return false;
 
         if (isAdminUser) {
             return true;
         }
 
-        if (!isActionableApprovalStatus(job.status)) return false;
+        if (!isApprovalActionableJob(job)) return false;
         return job.isCurrentApprover !== false;
     };
 
@@ -228,7 +295,7 @@ export default function ApprovalsQueue() {
             return { canAction: false, reason: 'รออนุมัติงานหลักก่อน' };
         }
 
-        if (!isActionableApprovalStatus(job.status)) {
+        if (!isApprovalActionableJob(job)) {
             if (job.status === 'pending_dependency') {
                 return { canAction: false, reason: 'งานกำลังรอ dependency' };
             }
@@ -236,9 +303,13 @@ export default function ApprovalsQueue() {
         }
 
         if (job.isCurrentApprover === false) {
+            if (isAdminUser) {
+                return { canAction: true, reason: 'Admin Override' };
+            }
+
             return {
                 canAction: false,
-                reason: isAdminUser ? 'ยังไม่ถึงเงื่อนไขอนุมัติ ณ ตอนนี้' : 'ยังไม่ถึงลำดับอนุมัติของคุณ'
+                reason: 'ยังไม่ถึงลำดับอนุมัติของคุณ'
             };
         }
 
@@ -332,6 +403,7 @@ export default function ApprovalsQueue() {
     const groupedJobs = activeTab === 'waiting'
         ? paginatedJobs
         : paginatedJobs.map(job => ({ ...job, children: [] }));
+    const tableColSpan = (activeTab === 'approved' || activeTab === 'not_approved') ? 9 : 8;
 
     // Reset page when tab changes
     useEffect(() => {
@@ -362,11 +434,25 @@ export default function ApprovalsQueue() {
                 : 'Approved via Approvals Queue';
 
             if (isSelectedAssigneeRejection) {
-                await api.confirmAssigneeRejection(selectedJobId, approveComment);
-                applyLocalActionResult(selectedJobId, 'rejected', approveComment);
+                const result = await api.confirmAssigneeRejection(selectedJobId, approveComment);
+                applyLocalActionResult(selectedJobId, {
+                    action: 'rejected',
+                    actionType: 'confirm_assignee_rejection',
+                    actionLabel: 'อนุมัติการปฏิเสธของผู้รับงาน',
+                    category: HISTORY_CATEGORY_APPROVED,
+                    comment: approveComment,
+                    nextStatus: result?.data?.status || 'rejected'
+                });
             } else {
-                await api.approveJob(selectedJobId, user?.id || 1, approveComment);
-                applyLocalActionResult(selectedJobId, 'approved', approveComment);
+                const result = await api.approveJob(selectedJobId, user?.id || 1, approveComment);
+                applyLocalActionResult(selectedJobId, {
+                    action: 'approved',
+                    actionType: 'approved',
+                    actionLabel: 'อนุมัติงาน',
+                    category: HISTORY_CATEGORY_APPROVED,
+                    comment: approveComment,
+                    nextStatus: result?.nextStatus || 'approved'
+                });
             }
 
             setShowApproveModal(false);
@@ -401,14 +487,28 @@ export default function ApprovalsQueue() {
                     return;
                 }
 
-                await api.denyAssigneeRejection(selectedJobId, reason);
-                removeWaitingJob(selectedJobId);
+                const result = await api.denyAssigneeRejection(selectedJobId, reason);
+                applyLocalActionResult(selectedJobId, {
+                    action: 'rejected',
+                    actionType: 'deny_assignee_rejection',
+                    actionLabel: 'ไม่อนุมัติคำขอปฏิเสธของผู้รับงาน',
+                    category: HISTORY_CATEGORY_NOT_APPROVED,
+                    comment: reason,
+                    nextStatus: result?.data?.status || 'in_progress'
+                });
             } else {
                 const comment = rejectResult.trim()
                     ? `${rejectReason} - ${rejectResult}`
                     : rejectReason;
-                await api.rejectJob(selectedJobId, user?.id || 1, comment);
-                applyLocalActionResult(selectedJobId, 'rejected', comment);
+                const result = await api.rejectJob(selectedJobId, user?.id || 1, comment);
+                applyLocalActionResult(selectedJobId, {
+                    action: 'rejected',
+                    actionType: 'rejected',
+                    actionLabel: 'ปฏิเสธงาน',
+                    category: HISTORY_CATEGORY_NOT_APPROVED,
+                    comment,
+                    nextStatus: result?.data?.status || 'rejected'
+                });
             }
 
             setShowRejectModal(false);
@@ -529,22 +629,17 @@ export default function ApprovalsQueue() {
                                     type={job.jobType}
                                     subject={job.subject}
                                     requester={job.requester}
-                                    submitted={new Date(job.createdAt).toLocaleDateString('th-TH')}
+                                    submitted={formatActionDate(job.createdAt)}
                                     historyData={job.historyData}
                                     activeTab={activeTab}
                                     status={job.status}
-                                    level={
-                                        job.status?.startsWith('pending_level_')
-                                            ? `Level ${job.status.split('_')[2]}`
-                                            : job.status === 'pending_approval'
-                                                ? 'Level 1'
-                                                : '-'
-                                    }
+                                    level={getWaitingLevelLabel(job.status)}
                                     urgent={job.priority?.toLowerCase() === 'urgent'}
                                     onApprove={() => handleOpenApprove(job.id, job.status)}
                                     onReject={() => handleOpenReject(job.id, job.status)}
                                     canAction={actionState.canAction}
                                     actionReason={actionState.reason}
+                                    showAdminOverride={isAdminUser && isApprovalActionableJob(job) && job.isCurrentApprover === false}
                                     children={job.children}
                                 />
                                     );
@@ -576,11 +671,11 @@ export default function ApprovalsQueue() {
                         <tbody className="divide-y divide-gray-400">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan="8" className="text-center py-8 text-gray-500">กำลังโหลดรายการงาน...</td>
+                                    <td colSpan={tableColSpan} className="text-center py-8 text-gray-500">กำลังโหลดรายการงาน...</td>
                                 </tr>
                             ) : paginatedJobs.length === 0 ? (
                                 <tr>
-                                    <td colSpan="8" className="text-center py-8 text-gray-500">
+                                    <td colSpan={tableColSpan} className="text-center py-8 text-gray-500">
                                         ไม่พบรายการงานในหัวข้อนี้
                                     </td>
                                 </tr>
@@ -599,20 +694,16 @@ export default function ApprovalsQueue() {
                                         type={job.jobType}
                                         subject={job.subject}
                                         requester={job.requester}
-                                        submitted={new Date(job.createdAt).toLocaleDateString('th-TH')}
+                                        submitted={formatActionDate(job.createdAt)}
                                         historyData={job.historyData}
                                         activeTab={activeTab}
                                         status={job.status}
                                         sla={
-                                            job.status?.startsWith('pending_level_')
+                                            getWaitingLevelLabel(job.status) !== '-'
                                                 ? <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
-                                                    Level {job.status.split('_')[2]}
+                                                    {getWaitingLevelLabel(job.status)}
                                                 </span>
-                                                : job.status === 'pending_approval'
-                                                    ? <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
-                                                        Level 1
-                                                    </span>
-                                                    : <span className="text-gray-500">-</span>
+                                                : <span className="text-gray-500">-</span>
                                         }
                                         priority={<Badge status={job.priority?.toLowerCase() || 'normal'} />}
                                         urgent={job.priority?.toLowerCase() === 'urgent'}
@@ -620,6 +711,7 @@ export default function ApprovalsQueue() {
                                         onReject={() => handleOpenReject(job.id, job.status)}
                                         canAction={actionState.canAction}
                                         actionReason={actionState.reason}
+                                        showAdminOverride={isAdminUser && isApprovalActionableJob(job) && job.isCurrentApprover === false}
                                         predecessorDjId={job.predecessorDjId}
                                         predecessorSubject={job.predecessorSubject}
                                         predecessorStatus={job.predecessorStatus}
@@ -834,10 +926,11 @@ function TabButton({ active, onClick, count, label, icon }) {
 function ApprovalMobileCard({
     sequence, pkId, id, project, bud, type, subject, requester, submitted,
     status, level, urgent, historyData, activeTab, onApprove, onReject,
-    canAction = true, actionReason = '', children = []
+    canAction = true, actionReason = '', showAdminOverride = false, children = []
 }) {
     const hasChildren = children && children.length > 0;
     const isAssigneeRejectionPending = status === 'assignee_rejected';
+    const historyToneClass = getHistoryActionToneClass(historyData);
 
     return (
         <article className={`p-4 ${urgent ? 'bg-red-50/70' : 'bg-white'}`}>
@@ -877,12 +970,35 @@ function ApprovalMobileCard({
                 <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
                     {level}
                 </span>
+                {activeTab === 'waiting' && showAdminOverride && (
+                    <span className="rounded-md border border-purple-200 bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700">
+                        Admin Override
+                    </span>
+                )}
                 {activeTab !== 'waiting' && (
+                    <div className="flex max-w-full flex-col items-end text-right">
+                        <span className={`text-xs font-medium ${historyToneClass}`}>
+                            {getHistoryActionLabel(historyData)}
+                        </span>
+                        <span className="max-w-full truncate text-xs text-gray-500">
+                            {historyData?.actedBy || '-'}
+                        </span>
+                    </div>
+                )}
+            </div>
+
+            {activeTab !== 'waiting' && (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {historyData?.isAdminOverride && (
+                        <span className="rounded-md border border-purple-200 bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700">
+                            Admin Override
+                        </span>
+                    )}
                     <span className="max-w-full truncate text-xs text-gray-500">
                         {historyData?.comment || '-'}
                     </span>
-                )}
-            </div>
+                </div>
+            )}
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
                 <Link to={`/jobs/${pkId}`} className="inline-flex min-h-[44px] items-center justify-center rounded-lg border border-gray-200 px-3 text-sm text-gray-700 hover:bg-gray-50">
@@ -974,9 +1090,10 @@ function Th({ children, className = "text-left" }) {
  * @param {boolean} props.isExpanded - สถานะการกาง/ยุบ
  * @param {Function} props.onToggleExpand - ฟังก์ชันสลับสถานะ
  */
-function AccordionRow({ sequence, pkId, id, project, bud, type, subject, requester, submitted, status, sla, urgent, historyData, activeTab, onApprove, onReject, canAction = true, actionReason = '', predecessorDjId, children = [], isExpanded, onToggleExpand }) {
+function AccordionRow({ sequence, pkId, id, project, bud, type, subject, requester, submitted, status, sla, urgent, historyData, activeTab, onApprove, onReject, canAction = true, actionReason = '', showAdminOverride = false, predecessorDjId, children = [], isExpanded, onToggleExpand }) {
     const hasChildren = children && children.length > 0;
     const isAssigneeRejectionPending = status === 'assignee_rejected';
+    const historyToneClass = getHistoryActionToneClass(historyData);
 
     // Determine row background based on urgent status
     const bgClass = urgent ? 'bg-red-50/80 hover:bg-red-100/80' : 'hover:bg-gray-50';
@@ -1039,22 +1156,37 @@ function AccordionRow({ sequence, pkId, id, project, bud, type, subject, request
                                 {sla}
                             </div>
                         )}
+                        {activeTab === 'waiting' && showAdminOverride && (
+                            <span className="inline-flex items-center gap-1 rounded-md border border-purple-200 bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700">
+                                Admin Override
+                            </span>
+                        )}
                     </div>
                 </td>
                 {(activeTab === 'approved' || activeTab === 'not_approved') ? (
                     <>
                         <td className="px-4 py-4">
                             <div className="text-sm text-gray-900">
-                                {historyData?.actionDate ? new Date(historyData.actionDate).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                                {formatActionDate(historyData?.actionDate, true)}
                             </div>
-                            <div className={`text-xs mt-1 font-medium ${historyData?.action === 'approved' ? 'text-green-600' : 'text-red-500'}`}>
-                                {historyData?.action === 'approved' ? '✓ อนุมัติ' : historyData?.action === 'rejected' ? '✗ ปฏิเสธ' : historyData?.action === 'returned' ? '↩ ตีกลับ' : '-'}
+                            <div className={`text-xs mt-1 font-medium ${historyToneClass}`}>
+                                {getHistoryActionLabel(historyData)}
                             </div>
                         </td>
                         <td className="px-4 py-4">
                             <div className="text-sm text-gray-600 max-w-[150px] truncate" title={historyData?.comment || '-'}>
                                 {historyData?.comment || '-'}
                             </div>
+                            <div className="mt-1 text-xs text-gray-500">
+                                โดย {historyData?.actedBy || '-'}
+                            </div>
+                            {historyData?.isAdminOverride && (
+                                <div className="mt-2">
+                                    <span className="inline-flex items-center gap-1 rounded-md border border-purple-200 bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700">
+                                        Admin Override
+                                    </span>
+                                </div>
+                            )}
                         </td>
                     </>
                 ) : (
