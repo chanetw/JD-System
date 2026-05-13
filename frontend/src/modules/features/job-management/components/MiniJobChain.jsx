@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { WORK_STATUS_LABEL } from '@shared/constants/jobStatus';
 
 const isDone = (status) => status === 'completed' || status === 'closed';
 
@@ -10,9 +11,42 @@ const DOT_COLOR = {
     assigned:           'bg-violet-400 border-violet-500',
     approved:           'bg-lime-400 border-lime-500',
     pending_dependency: 'bg-amber-400 border-amber-500',
+    assignee_rejected:  'bg-orange-400 border-orange-500',
     rejected:           'bg-rose-400 border-rose-500',
     rejected_by_assignee: 'bg-rose-400 border-rose-500',
     cancelled:          'bg-slate-300 border-slate-400',
+    partially_completed: 'bg-amber-300 border-amber-400',
+};
+
+const TERMINAL_STATUS_SET = new Set([
+    'completed',
+    'closed',
+    'rejected',
+    'rejected_by_assignee',
+    'cancelled',
+    'partially_completed'
+]);
+
+const getStatusLabel = (status) => {
+    if (!status) return '-';
+    return WORK_STATUS_LABEL[status] || status.replace(/_/g, ' ');
+};
+
+const getStatusPillClassName = (status) => {
+    if (status === 'completed' || status === 'closed') {
+        return 'bg-emerald-50 text-emerald-600 border-emerald-200';
+    }
+    if (status === 'rejected' || status === 'rejected_by_assignee') {
+        return 'bg-rose-50 text-rose-600 border-rose-200';
+    }
+    if (status === 'cancelled') {
+        return 'bg-slate-50 text-slate-500 border-slate-200';
+    }
+    if (status === 'assignee_rejected' || status === 'partially_completed') {
+        return 'bg-amber-50 text-amber-700 border-amber-200';
+    }
+
+    return 'bg-blue-50 text-blue-700 border-blue-200';
 };
 
 const MiniJobChain = ({ job }) => {
@@ -38,31 +72,38 @@ const MiniJobChain = ({ job }) => {
                     const isCurrent = position === currentIndex;
                     const isPast = position < currentIndex;
                     const isLast = index === chain.jobs.length - 1;
+                    const hasFinalStatus = TERMINAL_STATUS_SET.has(chainJob.status);
                     const dotColor = DOT_COLOR[chainJob.status] || 'bg-slate-300 border-slate-400';
+                    const statusLabel = getStatusLabel(chainJob.status);
+                    const statusPillClassName = getStatusPillClassName(chainJob.status);
 
                     return (
-                        <div key={chainJob.id} className={`flex gap-3 ${position > currentIndex ? 'opacity-40' : ''}`}>
+                        <div key={chainJob.id} className={`flex gap-3 ${position > currentIndex && !hasFinalStatus ? 'opacity-40' : ''}`}>
                             {/* Dot + vertical connector */}
                             <div className="flex flex-col items-center flex-shrink-0">
                                 {isCurrent ? (
                                     <div className="w-6 h-6 rounded-full bg-rose-500 border-2 border-rose-300 ring-2 ring-rose-100 flex items-center justify-center shadow-sm">
                                         <span className="text-white text-[9px] font-bold">▶</span>
                                     </div>
-                                ) : isPast ? (
+                                ) : (isPast || hasFinalStatus) ? (
                                     <button
                                         onClick={() => navigate(`/jobs/${chainJob.id}`)}
                                         title={`ไปงาน ${chainJob.djId}`}
                                         className={`w-5 h-5 rounded-full border-2 ${dotColor} cursor-pointer hover:opacity-75 transition-opacity flex items-center justify-center`}
                                     >
-                                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                                        </svg>
+                                        {isDone(chainJob.status) ? (
+                                            <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                                            </svg>
+                                        ) : (
+                                            <span className="text-[10px] font-bold text-white">!</span>
+                                        )}
                                     </button>
                                 ) : (
                                     <div className="w-5 h-5 rounded-full bg-slate-200 border-2 border-slate-300" />
                                 )}
                                 {!isLast && (
-                                    <div className={`w-0.5 h-6 mt-0.5 ${isPast ? 'bg-emerald-200' : 'bg-slate-200'}`} />
+                                    <div className={`w-0.5 h-6 mt-0.5 ${(isPast || hasFinalStatus) ? 'bg-emerald-200' : 'bg-slate-200'}`} />
                                 )}
                             </div>
 
@@ -77,21 +118,21 @@ const MiniJobChain = ({ job }) => {
                                         {chainJob.jobType && (
                                             <p className="text-[10px] text-gray-500 mt-0.5 truncate">{chainJob.jobType}</p>
                                         )}
-                                        <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded-full">
-                                            {chainJob.status?.replace(/_/g, ' ')}
+                                        <span className={`text-[9px] border px-1.5 py-0.5 rounded-full ${statusPillClassName}`}>
+                                            {statusLabel}
                                         </span>
                                     </>
-                                ) : isPast ? (
+                                ) : (isPast || hasFinalStatus) ? (
                                     <button
                                         onClick={() => navigate(`/jobs/${chainJob.id}`)}
                                         className="text-left w-full hover:opacity-75 cursor-pointer transition-opacity"
                                     >
-                                        <p className="text-xs font-semibold text-emerald-700 leading-tight">{chainJob.djId}</p>
+                                        <p className={`text-xs font-semibold leading-tight ${isDone(chainJob.status) ? 'text-emerald-700' : 'text-rose-700'}`}>{chainJob.djId}</p>
                                         {chainJob.jobType && (
                                             <p className="text-[10px] text-gray-500 mt-0.5 truncate">{chainJob.jobType}</p>
                                         )}
-                                        <span className="text-[9px] bg-emerald-50 text-emerald-600 border border-emerald-200 px-1.5 py-0.5 rounded-full">
-                                            Completed
+                                        <span className={`text-[9px] border px-1.5 py-0.5 rounded-full ${statusPillClassName}`}>
+                                            {statusLabel}
                                         </span>
                                     </button>
                                 ) : (
