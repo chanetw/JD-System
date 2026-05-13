@@ -6,6 +6,7 @@
  */
 
 import React from 'react';
+import { Link } from 'react-router-dom';
 import {
   ArrowRightIcon,
   CheckCircleIcon,
@@ -105,33 +106,47 @@ const JobChainStatus = ({ job }) => {
           {chain.jobs.map((chainJob, index) => {
             const position = index + 1;
             const tone = getCardTone(position);
+            const cardClassName = `min-w-[240px] flex-shrink-0 rounded-2xl border p-4 transition-colors ${tone.card}`;
+            const cardContent = (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className={`text-sm font-semibold ${tone.eyebrow}`}>
+                      {chainJob.djId}
+                      {chainJob.isCurrent ? ' < งานของคุณ >' : ''}
+                    </div>
+                    <p className="mt-1 text-lg font-semibold leading-tight text-slate-900">
+                      {chainJob.jobType || chainJob.subject || 'ไม่ระบุชื่องาน'}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {chainJob.assignee || 'ยังไม่ระบุผู้รับผิดชอบ'}
+                    </p>
+                  </div>
+                  <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${tone.accent}`}>
+                    {getCardLabel(position)}
+                  </span>
+                </div>
+
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  {getStatusBadge(chainJob.status)}
+                  <span className="text-xs font-medium text-slate-500">Step {position}</span>
+                </div>
+              </>
+            );
 
             return (
               <React.Fragment key={chainJob.id}>
-                <div className={`min-w-[240px] flex-shrink-0 rounded-2xl border p-4 transition-colors ${tone.card}`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className={`text-sm font-semibold ${tone.eyebrow}`}>
-                        {chainJob.djId}
-                        {chainJob.isCurrent ? ' < งานของคุณ >' : ''}
-                      </div>
-                      <p className="mt-1 text-lg font-semibold leading-tight text-slate-900">
-                        {chainJob.jobType || chainJob.subject || 'ไม่ระบุชื่องาน'}
-                      </p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        {chainJob.assignee || 'ยังไม่ระบุผู้รับผิดชอบ'}
-                      </p>
-                    </div>
-                    <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${tone.accent}`}>
-                      {getCardLabel(position)}
-                    </span>
-                  </div>
-
-                  <div className="mt-4 flex items-center justify-between gap-3">
-                    {getStatusBadge(chainJob.status)}
-                    <span className="text-xs font-medium text-slate-500">Step {position}</span>
-                  </div>
-                </div>
+                {chainJob.isCurrent ? (
+                  <div className={cardClassName}>{cardContent}</div>
+                ) : (
+                  <Link
+                    to={`/jobs/${chainJob.id}`}
+                    className={`${cardClassName} hover:shadow-md hover:brightness-[0.98] focus:outline-none focus:ring-2 focus:ring-rose-400 focus:ring-offset-2`}
+                    title={`ไปงาน ${chainJob.djId}`}
+                  >
+                    {cardContent}
+                  </Link>
+                )}
 
                 {index < chain.jobs.length - 1 && (
                   <ArrowRightIcon

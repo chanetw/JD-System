@@ -58,6 +58,10 @@ import {
 } from '../utils/jobQueueConfig.js';
 import { getStorageService } from '../services/storageService.js';
 import { handoffCompletionFilesToNextJobs } from '../services/handoffService.js';
+import {
+  resolveJobAccess,
+  userHasAnyRole
+} from '../helpers/jobAccessHelper.js';
 
 const approvalService = new ApprovalService();
 const jobService = new JobService();
@@ -3010,28 +3014,13 @@ router.get('/:id', async (req, res) => {
       });
     }
 
-    // ตรวจสอบสิทธิ์การเข้าถึง (Permission Check)
-    // รองรับทั้ง V1 (user.roles array) และ V2 (user.roleName string) auth formats
-    // และรองรับ case ทั้ง 'admin' และ 'Admin' จาก token ทั้ง V1 และ V2
-    const normalizedRoles = [];
-    if (Array.isArray(req.user.roles)) {
-      normalizedRoles.push(...req.user.roles.map(r => r?.toLowerCase() || ''));
-    }
-    if (req.user.roleName) {
-      normalizedRoles.push(req.user.roleName.toLowerCase());
-    }
+    const access = await resolveJobAccess(prisma, { jobId, user: req.user });
 
-    const hasAccess = job.requesterId === req.user.userId ||
-      job.assigneeId === req.user.userId ||
-      normalizedRoles.includes('admin') ||
-      normalizedRoles.includes('manager') ||
-      normalizedRoles.includes('approver');  // ✅ Allow approvers to view jobs
-
-    if (!hasAccess) {
+    if (!access.hasAccess) {
       return res.status(403).json({
         success: false,
-        error: 'INSUFFICIENT_PERMISSIONS',
-        message: 'คุณไม่มีสิทธิ์ดูงานนี้'
+        error: access.error || 'INSUFFICIENT_PERMISSIONS',
+        message: access.reason || 'คุณไม่มีสิทธิ์ดูงานนี้'
       });
     }
 
@@ -3050,6 +3039,8 @@ router.get('/:id', async (req, res) => {
     const transformed = {
       id: job.id,
       djId: job.djId,
+      accessMode: access.accessMode,
+      permissions: access.permissions,
       subject: job.subject,
       status: job.status,
       priority: job.priority,
@@ -4202,6 +4193,10 @@ router.post('/:id/reassign', async (req, res) => {
     const userId = req.user.userId;
     const tenantId = req.user.tenantId;
 
+    if (!newAssigneeId) {
+      return res.status(400).json({ success: false, message: 'กรุณาระบุผู้รับงานใหม่' });
+    }
+
     const prisma = getDatabase();
 
     // 1. ตรวจสอบว่ามีงานหรือไม่ และตรวจสิทธิ์
@@ -4222,8 +4217,13 @@ router.post('/:id/reassign', async (req, res) => {
       return res.status(400).json({ success: false, message: 'งานแม่ไม่สามารถมอบหมายงานได้' });
     }
 
-    // Permission policy: allow reassignment for all authenticated roles within the same tenant.
-    // We only keep business guards (job exists, non-parent, target assignee valid/active).
+    const canReassign = userHasAnyRole(req.user, ['admin', 'manager']) || isSameUserId(job.assigneeId, userId);
+    if (!canReassign) {
+      return res.status(403).json({
+        success: false,
+        message: 'ไม่มีสิทธิ์ย้ายงาน: เฉพาะ Admin, Manager หรือผู้รับผิดชอบปัจจุบันเท่านั้น'
+      });
+    }
 
     // 2. ตรวจสอบ Assignee ใหม่
     const newAssignee = await prisma.user.findUnique({
@@ -4263,7 +4263,16 @@ router.post('/:id/reassign', async (req, res) => {
         jobId: Number(id),
         userId: userId,
         action: 'reassigned',
-        message: `ย้ายผู้รับผิดชอบงานไปที่ ${newAssignee.firstName} ${newAssignee.lastName}. เหตุผล: ${reason || '-'}`
+        message: `ย้ายผู้รับผิดชอบงานไปที่ ${newAssignee.firstName} ${newAssignee.lastName}. เหตุผล: ${reason || '-'}`,
+        detail: {
+          oldAssigneeId: job.assigneeId || null,
+          oldAssigneeName: job.assignee
+            ? `${job.assignee.firstName || ''} ${job.assignee.lastName || ''}`.trim()
+            : null,
+          newAssigneeId: Number(newAssigneeId),
+          newAssigneeName: `${newAssignee.firstName || ''} ${newAssignee.lastName || ''}`.trim(),
+          reason: reason || null
+        }
       }
     });
 
@@ -4380,8 +4389,7 @@ router.post('/:id/assign', async (req, res) => {
     }
 
     // 2. Permission: Admin หรือ Manager เท่านั้น
-    const { hasRole } = await import('../helpers/roleHelper.js');
-    const isAdminOrManager = hasRole(req.user.roles, 'admin') || hasRole(req.user.roles, 'manager');
+    const isAdminOrManager = userHasAnyRole(req.user, ['admin', 'manager']);
     if (!isAdminOrManager) {
       return res.status(403).json({ success: false, message: 'ไม่มีสิทธิ์มอบหมายงาน: เฉพาะ Admin และ Manager เท่านั้น' });
     }
@@ -6693,7 +6701,6 @@ router.post('/:id/edit-priority', async (req, res) => {
  */
 router.get('/:id/access-check', async (req, res) => {
   const { id } = req.params;
-  const { userId, tenantId } = req.user;
 
   if (!id || isNaN(parseInt(id))) {
     return res.status(400).json({
@@ -6706,74 +6713,25 @@ router.get('/:id/access-check', async (req, res) => {
 
   try {
     const prisma = getDatabase();
+    const access = await resolveJobAccess(prisma, { jobId: id, user: req.user });
 
-    // ดึงข้อมูลงาน
-    const job = await prisma.job.findUnique({
-      where: { id: parseInt(id) },
-      select: {
-        id: true,
-        tenantId: true,
-        requesterId: true,
-        assigneeId: true,
-        approverIds: true,
-        status: true,
-        djId: true,
-      },
-    });
-
-    // ตรวจสอบว่างานอยู่ tenant เดียวกันหรือไม่
-    if (!job || job.tenantId !== tenantId) {
-      return res.json({
-        success: true,
-        hasAccess: false,
-        reason: 'งานนี้ไม่อยู่ในระบบของคุณ หรือถูกลบแล้ว',
-        suggestedAction: 'ติดต่อ Admin เพื่อขอสิทธิ์เข้าถึง',
-      });
-    }
-
-    // ดึง roles ของผู้ใช้
-    const userRoles = req.user.roles || [];
-    const roleNames = userRoles.map(r => {
-      if (typeof r === 'string') return r.toLowerCase();
-      return (r.name || r.roleName || '').toLowerCase();
-    });
-
-    const isAdmin = roleNames.includes('admin') || roleNames.includes('superadmin');
-
-    // ตรวจสอบสิทธิ์:
-    // 1. Admin → เข้าถึงได้ทุกงาน
-    // 2. Requester → เข้าถึงงานของตนเอง
-    // 3. Assignee → เข้าถึงงานที่ได้รับมอบหมาย
-    // 4. Approver → เข้าถึงงานที่ต้องอนุมัติ
-    const isRequester = job.requesterId === userId;
-    const isAssignee = job.assigneeId === userId;
-    const isApprover = Array.isArray(job.approverIds) && job.approverIds.includes(userId);
-
-    const hasAccess = isAdmin || isRequester || isAssignee || isApprover;
-
-    if (hasAccess) {
+    if (access.hasAccess) {
       return res.json({
         success: true,
         hasAccess: true,
+        accessMode: access.accessMode,
+        permissions: access.permissions,
+        reason: access.reason || null
       });
-    }
-
-    // ไม่มีสิทธิ์ → บอกเหตุผลและวิธีแก้
-    let reason = 'คุณไม่มีสิทธิ์เข้าถึงงานนี้';
-    let suggestedAction = 'ติดต่อผู้สั่งงาน เพื่อขอให้เพิ่มคุณเป็นผู้ได้รับมอบหมาย';
-
-    if (isRequester) {
-      reason = 'อนุญาติให้เฉพาะผู้สั่งงาน ผู้ได้รับมอบหมาย และผู้อนุมัติเท่านั้น';
-    } else if (job.status === 'draft') {
-      reason = 'งานนี้ยังอยู่ในรูปแบบร่าง หลังจากส่งอนุมัติจึงจะแจ้งให้ผู้อื่นทราบ';
-      suggestedAction = 'รอให้ผู้สั่งงานส่งอนุมัติ';
     }
 
     return res.json({
       success: true,
       hasAccess: false,
-      reason,
-      suggestedAction,
+      accessMode: null,
+      error: access.error || 'INSUFFICIENT_PERMISSIONS',
+      reason: access.reason || 'คุณไม่มีสิทธิ์เข้าถึงงานนี้',
+      suggestedAction: access.suggestedAction,
     });
 
   } catch (error) {

@@ -48,7 +48,9 @@ const ACTION_LABELS = {
   rejected: 'ปฏิเสธงาน',
   returned: 'ตีกลับแก้ไข',
   confirm_assignee_rejection: 'อนุมัติการปฏิเสธของผู้รับงาน',
-  deny_assignee_rejection: 'ไม่อนุมัติคำขอปฏิเสธของผู้รับงาน'
+  deny_assignee_rejection: 'ไม่อนุมัติคำขอปฏิเสธของผู้รับงาน',
+  cascade_confirm_assignee_rejection: 'อนุมัติการปฏิเสธของผู้รับงานพ่วง',
+  cascade_reject_downstream: 'ปฏิเสธงานพ่วงตามงานก่อนหน้า'
 };
 
 export const isApprovalWaitingStatus = (status) => {
@@ -71,6 +73,14 @@ export const hasAdminOverridePrefix = (comment) => (
 
 export const getApprovalActionTypeFromComment = (comment) => {
   const normalizedComment = String(comment || '').trim().toLowerCase();
+
+  if (normalizedComment.includes('cascade_confirm_assignee_rejection')) {
+    return 'cascade_confirm_assignee_rejection';
+  }
+
+  if (normalizedComment.includes('cascade_reject_downstream')) {
+    return 'cascade_reject_downstream';
+  }
 
   if (
     normalizedComment.includes('confirm_assignee_rejection')
@@ -101,9 +111,9 @@ export const getApprovalHistoryPresentation = ({ status, actionType, comment }) 
 
   let category = null;
 
-  if (normalizedActionType === 'confirm_assignee_rejection') {
+  if (['confirm_assignee_rejection', 'cascade_confirm_assignee_rejection'].includes(normalizedActionType)) {
     category = APPROVAL_HISTORY_CATEGORIES.APPROVED;
-  } else if (normalizedActionType === 'deny_assignee_rejection') {
+  } else if (['deny_assignee_rejection', 'cascade_reject_downstream'].includes(normalizedActionType)) {
     category = APPROVAL_HISTORY_CATEGORIES.NOT_APPROVED;
   } else if (normalizedStatus === 'approved') {
     category = APPROVAL_HISTORY_CATEGORIES.APPROVED;

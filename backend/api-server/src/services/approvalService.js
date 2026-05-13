@@ -44,6 +44,24 @@ const ASSIGNEE_REJECTABLE_STATUSES = HARD_DELETE_ALLOWED_STATUSES.filter(
   (status) => !ASSIGNEE_REJECT_TERMINAL_STATUSES.includes(status) && status !== 'assignee_rejected'
 );
 
+const SEQUENTIAL_REJECTION_STOP_STATUSES = [
+  'completed',
+  'closed',
+  'rejected',
+  'rejected_by_assignee',
+  'cancelled',
+  'partially_completed'
+];
+
+const PARENT_ALL_REJECTED_STATUSES = [
+  'rejected',
+  'rejected_by_assignee',
+  'cancelled'
+];
+
+const CASCADE_CONFIRM_ASSIGNEE_REJECTION_MARKER = 'cascade_confirm_assignee_rejection';
+const CASCADE_REJECT_DOWNSTREAM_MARKER = 'cascade_reject_downstream';
+
 const normalizeRoleValue = (role) => {
   if (!role) return '';
   if (typeof role === 'string') return role.toLowerCase();
@@ -60,6 +78,17 @@ const hasAdminPrivileges = (user) => {
   ].filter(Boolean);
 
   return roles.some((role) => ['admin', 'superadmin', 'system_admin'].includes(normalizeRoleValue(role)));
+};
+
+const getApprovalStepNumberFromStatus = (status) => {
+  const normalized = String(status || '').trim().toLowerCase();
+  const pendingLevelMatch = normalized.match(/^pending_level_(\d+)$/);
+  if (pendingLevelMatch) {
+    const level = parseInt(pendingLevelMatch[1], 10);
+    return Number.isInteger(level) && level > 0 ? level : 1;
+  }
+
+  return 1;
 };
 
 export class ApprovalService extends BaseService {
@@ -105,6 +134,186 @@ export class ApprovalService extends BaseService {
     if (baseComment.startsWith('[Admin Override]')) return baseComment;
 
     return `[Admin Override] ${baseComment}`;
+  }
+
+  async createApprovalHistoryIfMissing({
+    jobId,
+    tenantId,
+    approverId,
+    stepNumber = 1,
+    status,
+    comment,
+    marker,
+    approvedAt = new Date(),
+    ipAddress = null,
+    userAgent = 'web_action'
+  }) {
+    if (!jobId || !tenantId || !approverId || !marker) return null;
+
+    const existing = await this.prisma.approval.findFirst({
+      where: {
+        jobId,
+        approverId,
+        comment: { contains: marker, mode: 'insensitive' }
+      },
+      select: { id: true }
+    });
+
+    if (existing) return existing;
+
+    return this.prisma.approval.create({
+      data: {
+        tenantId,
+        jobId,
+        approverId,
+        stepNumber,
+        status,
+        approvedAt,
+        comment,
+        ipAddress,
+        userAgent
+      }
+    });
+  }
+
+  async cascadeRejectSequentialSuccessors({ rootJob, actorUserId, reason, isAdminOverride = false }) {
+    const queue = [{ id: rootJob.id, djId: rootJob.djId }];
+    const visited = new Set([rootJob.id]);
+    const affected = [];
+    const parentJobIds = new Set();
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      const successors = await this.prisma.job.findMany({
+        where: { predecessorId: current.id },
+        select: {
+          id: true,
+          djId: true,
+          subject: true,
+          status: true,
+          tenantId: true,
+          assigneeId: true,
+          parentJobId: true
+        }
+      });
+
+      for (const successor of successors) {
+        if (visited.has(successor.id)) continue;
+        visited.add(successor.id);
+
+        if (successor.parentJobId) {
+          parentJobIds.add(successor.parentJobId);
+        }
+
+        if (SEQUENTIAL_REJECTION_STOP_STATUSES.includes(successor.status)) {
+          continue;
+        }
+
+        const cascadeComment = `งานก่อนหน้า (${current.djId}) ถูกยืนยันปฏิเสธในสายงานต่อเนื่อง`;
+        const historyComment = this.withAdminOverrideComment({
+          isAdmin: isAdminOverride,
+          rawComment: `${CASCADE_CONFIRM_ASSIGNEE_REJECTION_MARKER}: ${cascadeComment}${reason ? ` - ${reason}` : ''}`,
+          defaultComment: `${CASCADE_CONFIRM_ASSIGNEE_REJECTION_MARKER}: ${cascadeComment}`
+        });
+
+        await this.prisma.job.update({
+          where: { id: successor.id },
+          data: {
+            status: 'rejected',
+            rejectionSource: 'cascade_predecessor',
+            rejectionComment: cascadeComment
+          }
+        });
+
+        await this.createApprovalHistoryIfMissing({
+          jobId: successor.id,
+          tenantId: successor.tenantId,
+          approverId: actorUserId,
+          stepNumber: getApprovalStepNumberFromStatus(successor.status),
+          status: 'rejected',
+          comment: historyComment,
+          marker: CASCADE_CONFIRM_ASSIGNEE_REJECTION_MARKER
+        });
+
+        affected.push({
+          jobId: successor.id,
+          djId: successor.djId,
+          assigneeId: successor.assigneeId || null,
+          parentJobId: successor.parentJobId || null
+        });
+
+        await this.logApprovalActivity({
+          jobId: successor.id,
+          approverId: actorUserId,
+          activityType: 'job_rejected_cascade_predecessor',
+          description: `ปฏิเสธอัตโนมัติเนื่องจากงานก่อนหน้า ${current.djId} ถูกยืนยันปฏิเสธ`,
+          metadata: {
+            predecessorJobId: current.id,
+            predecessorDjId: current.djId,
+            rootJobId: rootJob.id,
+            rootDjId: rootJob.djId,
+            reason: reason || null
+          }
+        });
+
+        if (this.notificationService && successor.assigneeId) {
+          await this.notificationService.createNotification({
+            tenantId: successor.tenantId,
+            userId: successor.assigneeId,
+            type: 'cascade_rejected',
+            title: `งาน ${successor.djId} ถูกปฏิเสธอัตโนมัติ`,
+            message: cascadeComment,
+            link: `/jobs/${successor.id}`
+          }).catch(err => console.warn('[ConfirmRejectionCascade] Notification failed:', err.message));
+        }
+
+        queue.push({ id: successor.id, djId: successor.djId });
+      }
+    }
+
+    return {
+      rejectedCount: affected.length,
+      affectedJobIds: affected.map(item => item.jobId),
+      affectedDjIds: affected.map(item => item.djId),
+      parentJobIds: [...parentJobIds]
+    };
+  }
+
+  async finalizeRejectedParentJobs({ parentJobIds }) {
+    const rejectedParentIds = [];
+    const uniqueParentIds = [...new Set(
+      (parentJobIds || [])
+        .map((parentJobId) => Number(parentJobId))
+        .filter((parentJobId) => Number.isInteger(parentJobId) && parentJobId > 0)
+    )];
+
+    for (const parentJobId of uniqueParentIds) {
+      const childJobs = await this.prisma.job.findMany({
+        where: { parentJobId },
+        select: { id: true, status: true }
+      });
+
+      if (childJobs.length === 0) {
+        continue;
+      }
+
+      const allRejected = childJobs.every((childJob) => (
+        PARENT_ALL_REJECTED_STATUSES.includes(childJob.status)
+      ));
+
+      if (!allRejected) {
+        continue;
+      }
+
+      await this.prisma.job.update({
+        where: { id: parentJobId },
+        data: { status: 'rejected' }
+      });
+
+      rejectedParentIds.push(parentJobId);
+    }
+
+    return rejectedParentIds;
   }
 
   async triggerUrgentRescheduleIfNeeded(job, prisma = this.prisma) {
@@ -1387,6 +1596,27 @@ export class ApprovalService extends BaseService {
         effectiveComment
       );
 
+      if (cascadeResult.rejected > 0) {
+        const cascadeHistoryComment = this.withAdminOverrideComment({
+          isAdmin: isAdminOverride,
+          rawComment: `${CASCADE_REJECT_DOWNSTREAM_MARKER}: งานพ่วงถูกปฏิเสธตามงาน ${job.djId}${comment ? ` - ${comment}` : ''}`,
+          defaultComment: `${CASCADE_REJECT_DOWNSTREAM_MARKER}: งานพ่วงถูกปฏิเสธตามงาน ${job.djId}`
+        });
+
+        for (const affected of cascadeResult.affected) {
+          await this.createApprovalHistoryIfMissing({
+            jobId: affected.jobId,
+            tenantId: job.tenantId,
+            approverId,
+            stepNumber: getApprovalStepNumberFromStatus(affected.previousStatus),
+            status: 'rejected',
+            comment: cascadeHistoryComment,
+            marker: CASCADE_REJECT_DOWNSTREAM_MARKER,
+            ipAddress: ipAddress || null
+          });
+        }
+      }
+
       // Send notifications to affected assignees
       if (cascadeResult.rejected > 0) {
         for (const affected of cascadeResult.affected) {
@@ -1914,7 +2144,7 @@ export class ApprovalService extends BaseService {
         where: { id: jobId },
         select: {
           id: true, djId: true, status: true, tenantId: true,
-          requesterId: true, rejectedBy: true, rejectionComment: true, subject: true,
+          requesterId: true, rejectedBy: true, rejectionComment: true, subject: true, parentJobId: true,
           requester: {
             select: { id: true, email: true, firstName: true, lastName: true }
           }
@@ -1965,6 +2195,17 @@ export class ApprovalService extends BaseService {
           previousStatus: job.status,
           ccEmails: ccEmails
         }
+      });
+
+      const cascadeResult = await this.cascadeRejectSequentialSuccessors({
+        rootJob: job,
+        actorUserId: approverId,
+        reason: job.rejectionComment || effectiveComment,
+        isAdminOverride
+      });
+
+      const rejectedParentIds = await this.finalizeRejectedParentJobs({
+        parentJobIds: [job.parentJobId, ...cascadeResult.parentJobIds]
       });
 
       // แจ้งเตือน Requester (ผู้สร้าง DJ) ว่างานถูกปฏิเสธ
@@ -2029,7 +2270,15 @@ export class ApprovalService extends BaseService {
 
       return {
         success: true,
-        data: { status: 'rejected' }
+        data: {
+          status: 'rejected',
+          cascadeResult: {
+            rejectedCount: cascadeResult.rejectedCount,
+            affectedJobIds: cascadeResult.affectedJobIds,
+            affectedDjIds: cascadeResult.affectedDjIds,
+            rejectedParentIds
+          }
+        }
       };
     } catch (error) {
       if (error.message === 'Job not found') {

@@ -26,7 +26,7 @@ const getRequesterName = (job) => {
     return job.requesterName || job.requester?.displayName || job.requester?.name || [job.requester?.firstName, job.requester?.lastName].filter(Boolean).join(' ').trim() || '-';
 };
 
-const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
+const JobSidebar = ({ job, currentUser, theme, readOnly = false, onReassign }) => {
     if (!job) return null;
 
     const parentJob = isParentJob(job);
@@ -43,7 +43,7 @@ const JobSidebar = ({ job, currentUser, theme, onReassign }) => {
     const lockedStatuses = ['draft_review', 'completed', 'pending_rebrief', 'rejected', 'closed'];
     const isStatusLocked = lockedStatuses.includes(job.status);
     
-    const canReassign = !parentJob && (isAdmin || isManager || isAssignee) && !isStatusLocked;
+    const canReassign = !readOnly && !parentJob && (isAdmin || isManager || isAssignee) && !isStatusLocked;
 
     return (
         <div className="space-y-6">

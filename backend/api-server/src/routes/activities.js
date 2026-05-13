@@ -10,6 +10,7 @@
 import express from 'express';
 import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import { getDatabase } from '../config/database.js';
+import { resolveJobAccess } from '../helpers/jobAccessHelper.js';
 
 const router = express.Router();
 
@@ -183,27 +184,6 @@ router.use(authenticateToken);
 router.use(setRLSContextMiddleware);
 
 /**
- * Check if user has access to view job activities
- * @param {Object} job - Job object with requesterId and assigneeId
- * @param {Object} user - User object from request
- * @returns {boolean}
- */
-const hasJobAccess = (job, user) => {
-    // Determine user roles from various possible properties
-    const roles = Array.isArray(user.roles)
-        ? user.roles.map(r => r.toLowerCase())
-        : (user.roleName ? [user.roleName.toLowerCase()] : []);
-
-    return (
-        job.requesterId === user.userId ||
-        job.assigneeId === user.userId ||
-        roles.includes('admin') ||
-        roles.includes('manager') ||
-        roles.includes('approver')
-    );
-};
-
-/**
  * GET /api/jobs/:jobId/activities
  * Get all activities for a job
  */
@@ -254,11 +234,12 @@ router.get('/jobs/:jobId/activities', async (req, res) => {
         }
 
         // Check access permission
-        if (!hasJobAccess(job, req.user)) {
+        const access = await resolveJobAccess(prisma, { jobId, user: req.user });
+        if (!access.hasAccess) {
             return res.status(403).json({
                 success: false,
                 error: 'INSUFFICIENT_PERMISSIONS',
-                message: 'คุณไม่มีสิทธิ์ดูประวัติกิจกรรมของงานนี้'
+                message: access.reason || 'คุณไม่มีสิทธิ์ดูประวัติกิจกรรมของงานนี้'
             });
         }
 
@@ -518,11 +499,12 @@ router.get('/jobs/:jobId/activities/unmapped', async (req, res) => {
             });
         }
 
-        if (!hasJobAccess(job, req.user)) {
+        const access = await resolveJobAccess(prisma, { jobId, user: req.user });
+        if (!access.hasAccess) {
             return res.status(403).json({
                 success: false,
                 error: 'INSUFFICIENT_PERMISSIONS',
-                message: 'คุณไม่มีสิทธิ์ดูประวัติกิจกรรมของงานนี้'
+                message: access.reason || 'คุณไม่มีสิทธิ์ดูประวัติกิจกรรมของงานนี้'
             });
         }
 

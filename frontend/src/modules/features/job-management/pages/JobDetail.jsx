@@ -225,7 +225,7 @@ export default function JobDetail() {
             if (err.code === 'JOB_NOT_FOUND') {
                 setError('JOB_DELETED');
             } else if (err.code === 'INSUFFICIENT_PERMISSIONS') {
-                navigate('/jobs');
+                setError(err.message || 'คุณไม่มีสิทธิ์เข้าถึงงานนี้');
             } else {
                 setError('เกิดข้อผิดพลาดในการโหลดข้อมูล');
             }
@@ -1232,9 +1232,10 @@ export default function JobDetail() {
     // Role Detection & Theme
     const jobRole = getJobRole(user, job);
     const theme = JOB_ROLE_THEMES[jobRole] || JOB_ROLE_THEMES.viewer;
-    const canEditDeliveredQuantities = hasAnyRole(user, ['Admin']);
     const isParentJob = job.isParent === true || job.isParent === 1;
     const isChildJob = Boolean(job.parentJob || job.parentJobId || job.predecessorId);
+    const isReadOnlyAccess = job.accessMode === 'readonly' || job.permissions?.canAct === false;
+    const canEditDeliveredQuantities = hasAnyRole(user, ['Admin']) && !isReadOnlyAccess;
 
     const relationTerms = {
         parent: 'งานหลัก',
@@ -1311,28 +1312,34 @@ export default function JobDetail() {
                         {activeTab === 'overview' && (
                             <>
                                 {/* Action Block - Approval/Start/Complete only */}
-                                <JobActionPanel
-                                    job={job}
-                                    currentUser={user}
-                                    users={users}
-                                    theme={theme}
-                                    jobRole={jobRole}
-                                    onApprove={handleApprove}
-                                    onOpenRejectModal={() => setShowRejectModal(true)}
-                                    onOpenCompleteModal={handleOpenCompleteModal}
-                                    onManualAssign={handleManualAssign}
-                                    onConfirmClose={handleConfirmClose}
-                                    onRequestRevision={onRequestRevision}
-                                    onOpenAssigneeRejectModal={() => setShowAssigneeRejectModal(true)}
-                                    onConfirmAssigneeRejection={openConfirmRejectionModal}
-                                    onDenyRejection={() => setShowDenyRejectionModal(true)}
-                                    onOpenDraftModal={() => setShowDraftModal(true)}
-                                    onOpenRebriefModal={() => setShowRebriefModal(true)}
-                                    onAcceptRebrief={handleAcceptRebrief}
-                                    onOpenSubmitRebriefModal={() => setShowSubmitRebriefModal(true)}
-                                    onHardDeleteJob={handleHardDeleteJob}
-                                    onEditJobPriority={handleEditJobPriority}
-                                />
+                                {isReadOnlyAccess ? (
+                                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                                        คุณเปิดงานนี้ในโหมดอ่านอย่างเดียว เนื่องจากงานถูกย้ายไปยังผู้รับผิดชอบคนใหม่แล้ว
+                                    </div>
+                                ) : (
+                                    <JobActionPanel
+                                        job={job}
+                                        currentUser={user}
+                                        users={users}
+                                        theme={theme}
+                                        jobRole={jobRole}
+                                        onApprove={handleApprove}
+                                        onOpenRejectModal={() => setShowRejectModal(true)}
+                                        onOpenCompleteModal={handleOpenCompleteModal}
+                                        onManualAssign={handleManualAssign}
+                                        onConfirmClose={handleConfirmClose}
+                                        onRequestRevision={onRequestRevision}
+                                        onOpenAssigneeRejectModal={() => setShowAssigneeRejectModal(true)}
+                                        onConfirmAssigneeRejection={openConfirmRejectionModal}
+                                        onDenyRejection={() => setShowDenyRejectionModal(true)}
+                                        onOpenDraftModal={() => setShowDraftModal(true)}
+                                        onOpenRebriefModal={() => setShowRebriefModal(true)}
+                                        onAcceptRebrief={handleAcceptRebrief}
+                                        onOpenSubmitRebriefModal={() => setShowSubmitRebriefModal(true)}
+                                        onHardDeleteJob={handleHardDeleteJob}
+                                        onEditJobPriority={handleEditJobPriority}
+                                    />
+                                )}
 
                                   {/* Rejection Alert สำหรับ flow ปฏิเสธงานแบบเดิม */}
                                 {job.status === 'assignee_rejected' && (() => {
@@ -1405,7 +1412,7 @@ export default function JobDetail() {
                                     </div>
                                     <div className="flex-1 overflow-y-auto bg-gray-50/50">
                                         <div className="p-0">
-                                            <JobComments jobId={job.id} currentUser={user} isEmbedded={true} />
+                                            <JobComments jobId={job.id} currentUser={user} isEmbedded={true} readOnly={isReadOnlyAccess} />
                                         </div>
                                     </div>
                                 </div>
@@ -1422,6 +1429,7 @@ export default function JobDetail() {
                         job={job}
                         currentUser={user}
                         theme={theme}
+                        readOnly={isReadOnlyAccess}
                         onReassign={() => setShowReassignModal(true)}
                     />
                 </div>

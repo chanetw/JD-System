@@ -79,6 +79,7 @@ export default function ResponsiveSelect({
     ...triggerProps
 }) {
     const triggerRef = useRef(null);
+    const menuRef = useRef(null);
     const searchRef = useRef(null);
     const optionRefs = useRef([]);
     const isMobile = useIsMobile();
@@ -143,21 +144,31 @@ export default function ResponsiveSelect({
         updatePosition();
         const handlePointerDown = (event) => {
             if (triggerRef.current?.contains(event.target)) return;
-            const menu = document.getElementById('responsive-select-menu');
-            if (menu?.contains(event.target)) return;
+            if (menuRef.current?.contains(event.target)) return;
             close();
         };
-        const handleLayoutChange = () => {
+        const handleResize = () => {
             if (isMobile) return;
             close();
         };
+        const handleScroll = (event) => {
+            if (isMobile) return;
+            const target = event.target;
+
+            if (target instanceof Node) {
+                if (menuRef.current?.contains(target)) return;
+                if (triggerRef.current?.contains(target)) return;
+            }
+
+            close();
+        };
         document.addEventListener('mousedown', handlePointerDown);
-        window.addEventListener('resize', handleLayoutChange);
-        window.addEventListener('scroll', handleLayoutChange, true);
+        window.addEventListener('resize', handleResize);
+        window.addEventListener('scroll', handleScroll, true);
         return () => {
             document.removeEventListener('mousedown', handlePointerDown);
-            window.removeEventListener('resize', handleLayoutChange);
-            window.removeEventListener('scroll', handleLayoutChange, true);
+            window.removeEventListener('resize', handleResize);
+            window.removeEventListener('scroll', handleScroll, true);
         };
     }, [open, isMobile]);
 
@@ -227,7 +238,7 @@ export default function ResponsiveSelect({
 
     const menuContent = (
         <div
-            id="responsive-select-menu"
+            ref={menuRef}
             role="listbox"
             aria-label={buttonAriaLabel || label || placeholder}
             tabIndex={-1}

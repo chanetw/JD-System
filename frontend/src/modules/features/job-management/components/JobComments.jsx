@@ -6,7 +6,7 @@ import Button from '@shared/components/Button';
 import { formatDistanceToNow } from 'date-fns';
 import { th } from 'date-fns/locale';
 
-const JobComments = ({ jobId, currentUser, isEmbedded = false }) => {
+const JobComments = ({ jobId, currentUser, isEmbedded = false, readOnly = false }) => {
     const [comments, setComments] = useState([]);
     const [newComment, setNewComment] = useState('');
     const [isLoading, setIsLoading] = useState(true);
@@ -138,7 +138,7 @@ const JobComments = ({ jobId, currentUser, isEmbedded = false }) => {
                                 </p>
                                 <p className="mt-1 text-sm text-gray-700">{comment.message}</p>
                             </div>
-                            {(comment.userId === currentUser?.id || currentUser?.roles?.some(r => (typeof r === 'string' ? r : r?.name)?.toLowerCase() === 'admin') || currentUser?.roleName?.toLowerCase() === 'admin') && (
+                            {!readOnly && (comment.userId === currentUser?.id || currentUser?.roles?.some(r => (typeof r === 'string' ? r : r?.name)?.toLowerCase() === 'admin') || currentUser?.roleName?.toLowerCase() === 'admin') && (
                                 <button
                                     onClick={() => handleDeleteComment(comment.id)}
                                     className="text-gray-400 hover:text-red-500"
@@ -153,42 +153,44 @@ const JobComments = ({ jobId, currentUser, isEmbedded = false }) => {
                 <div ref={messagesEndRef} />
             </div>
 
-            <div className={`border-t border-gray-200 ${isEmbedded ? 'p-4' : 'p-6'} bg-white`}>
-                <form onSubmit={handleAddComment} className="flex space-x-3">
-                    {/* Avatar ส่วนผู้ใช้ปัจจุบัน: แสดงรูปหรือ Icon ถ้าไม่มีรูป */}
-                    {currentUser?.avatarUrl ? (
-                        <img
-                            className="h-8 w-8 rounded-full object-cover"
-                            src={currentUser.avatarUrl}
-                            alt=""
-                        />
-                    ) : (
-                        <span className="h-8 w-8 rounded-full bg-rose-100 flex items-center justify-center text-xs font-semibold text-rose-600">
-                            {([currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ') || currentUser?.displayName || '?').charAt(0).toUpperCase()}
-                        </span>
-                    )}
-                    <div className="flex-1 min-w-0">
-                        <label htmlFor="comment" className="sr-only">Comment</label>
-                        <textarea
-                            id="comment"
-                            rows={2}
-                            className="shadow-sm block w-full focus:ring-rose-500 focus:border-rose-500 sm:text-sm border border-gray-300 rounded-md"
-                            placeholder="แสดงความคิดเห็น..."
-                            value={newComment}
-                            onChange={(e) => setNewComment(e.target.value)}
-                        />
-                    </div>
-                    <div className="flex-shrink-0">
-                        <Button
-                            type="submit"
-                            variant="primary"
-                            disabled={isSubmitting || !newComment.trim()}
-                        >
-                            <PaperAirplaneIcon className="h-5 w-5 -rotate-90" />
-                        </Button>
-                    </div>
-                </form>
-            </div>
+            {!readOnly && (
+                <div className={`border-t border-gray-200 ${isEmbedded ? 'p-4' : 'p-6'} bg-white`}>
+                    <form onSubmit={handleAddComment} className="flex space-x-3">
+                        {/* Avatar ส่วนผู้ใช้ปัจจุบัน: แสดงรูปหรือ Icon ถ้าไม่มีรูป */}
+                        {currentUser?.avatarUrl ? (
+                            <img
+                                className="h-8 w-8 rounded-full object-cover"
+                                src={currentUser.avatarUrl}
+                                alt=""
+                            />
+                        ) : (
+                            <span className="h-8 w-8 rounded-full bg-rose-100 flex items-center justify-center text-xs font-semibold text-rose-600">
+                                {([currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ') || currentUser?.displayName || '?').charAt(0).toUpperCase()}
+                            </span>
+                        )}
+                        <div className="flex-1 min-w-0">
+                            <label htmlFor="comment" className="sr-only">Comment</label>
+                            <textarea
+                                id="comment"
+                                rows={2}
+                                className="shadow-sm block w-full focus:ring-rose-500 focus:border-rose-500 sm:text-sm border border-gray-300 rounded-md"
+                                placeholder="แสดงความคิดเห็น..."
+                                value={newComment}
+                                onChange={(e) => setNewComment(e.target.value)}
+                            />
+                        </div>
+                        <div className="flex-shrink-0">
+                            <Button
+                                type="submit"
+                                variant="primary"
+                                disabled={isSubmitting || !newComment.trim()}
+                            >
+                                <PaperAirplaneIcon className="h-5 w-5 -rotate-90" />
+                            </Button>
+                        </div>
+                    </form>
+                </div>
+            )}
         </div>
     );
 };

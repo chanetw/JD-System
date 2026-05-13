@@ -458,6 +458,7 @@ export default function ApprovalsQueue() {
             setShowApproveModal(false);
             setSelectedJobId(null);
             setSelectedJobStatus(null);
+            await loadData();
         } catch (error) {
             const detail = getJobActionErrorDetail(error, {
                 actionLabel: isSelectedAssigneeRejection ? 'อนุมัติการปฏิเสธงาน' : 'อนุมัติงาน',
@@ -516,6 +517,7 @@ export default function ApprovalsQueue() {
             setRejectComment('');
             setSelectedJobId(null);
             setSelectedJobStatus(null);
+            await loadData();
         } catch (error) {
             const detail = getJobActionErrorDetail(error, {
                 actionLabel: isSelectedAssigneeRejection ? 'ไม่อนุมัติคำขอปฏิเสธ' : 'ปฏิเสธงาน',

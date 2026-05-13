@@ -12,6 +12,8 @@ function createServiceWithMocks(jobRecord) {
   const service = new ApprovalService();
   const calls = {
     jobUpdateMany: null,
+    jobUpdate: null,
+    jobFindManyCalled: false,
     approvalCreate: null,
     activityLog: null,
   };
@@ -19,6 +21,14 @@ function createServiceWithMocks(jobRecord) {
   service.prisma = {
     job: {
       findUnique: async () => jobRecord,
+      findMany: async () => {
+        calls.jobFindManyCalled = true;
+        return [];
+      },
+      update: async (args) => {
+        calls.jobUpdate = args;
+        return { id: args.where.id, ...args.data };
+      },
       updateMany: async (args) => {
         calls.jobUpdateMany = args;
         return { count: 1 };
@@ -113,4 +123,35 @@ test('denyAssigneeRejection returns INVALID_STATUS and does not write approval h
   assert.equal(result.success, false);
   assert.equal(result.error, 'INVALID_STATUS');
   assert.equal(calls.approvalCreate, null);
+});
+
+test('denyAssigneeRejection on a 4-job chain moves only the current job back to in_progress and does not cascade to successors', async () => {
+  const { service, calls } = createServiceWithMocks({
+    id: 101,
+    djId: 'DJ-TEST-0101',
+    status: 'assignee_rejected',
+    tenantId: 1,
+    requesterId: 11,
+    assigneeId: 15,
+    rejectedBy: 15,
+    rejectionComment: 'Need more brief context',
+    subject: 'Job A',
+    dueDate: null,
+    assignee: null,
+    parentJobId: 700,
+    predecessorId: null
+  });
+
+  const result = await service.denyAssigneeRejection({
+    jobId: 101,
+    approverId: 77,
+    approverUser: { roles: ['Approver'] },
+    reason: 'ต้องดำเนินงานต่อ',
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.data.status, 'in_progress');
+  assert.equal(calls.jobUpdateMany.where.id, 101);
+  assert.equal(calls.jobUpdate, null);
+  assert.equal(calls.jobFindManyCalled, false);
 });

@@ -13,7 +13,7 @@ import express from 'express';
 import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import { getDatabase } from '../config/database.js';
 import { NotificationService } from '../services/notificationService.js';
-import { hasRole } from '../helpers/roleHelper.js';
+import { hasAdminPrivileges, resolveJobAccess } from '../helpers/jobAccessHelper.js';
 
 const router = express.Router();
 const notificationService = new NotificationService();
@@ -21,47 +21,6 @@ const notificationService = new NotificationService();
 // All routes require authentication and RLS context
 router.use(authenticateToken);
 router.use(setRLSContextMiddleware);
-
-/**
- * Check if user has access to view/comment on a job
- * รองรับทั้ง V1 (user.roles array) และ V2 (user.roleName string) auth formats
- * @param {Object} job - Job object with requesterId and assigneeId
- * @param {Object} user - User object from request
- * @returns {boolean}
- */
-const hasJobAccess = (job, user) => {
-  // รวม Role จากทั้ง roles[] และ roleName ให้เป็น array เดียว
-  const normalizedRoles = [];
-  if (Array.isArray(user.roles)) {
-    normalizedRoles.push(...user.roles.map(r => (typeof r === 'string' ? r : r?.name)?.toLowerCase() || ''));
-  }
-  if (user.roleName) {
-    normalizedRoles.push(user.roleName.toLowerCase());
-  }
-  return (
-    job.requesterId === user.userId ||
-    job.assigneeId === user.userId ||
-    normalizedRoles.includes('admin') ||
-    normalizedRoles.includes('manager') ||
-    normalizedRoles.includes('approver')  // ✅ Allow approvers to view and comment
-  );
-};
-
-/**
- * Check if user is admin (รองรับ V1 และ V2 auth formats)
- * @param {Object} user - User object from request
- * @returns {boolean}
- */
-const isAdmin = (user) => {
-  const normalizedRoles = [];
-  if (Array.isArray(user.roles)) {
-    normalizedRoles.push(...user.roles.map(r => (typeof r === 'string' ? r : r?.name)?.toLowerCase() || ''));
-  }
-  if (user.roleName) {
-    normalizedRoles.push(user.roleName.toLowerCase());
-  }
-  return normalizedRoles.includes('admin');
-};
 
 /**
  * Parse @mentions from comment text
@@ -113,12 +72,12 @@ router.get('/jobs/:jobId/comments', async (req, res) => {
       });
     }
 
-    // Check access permission
-    if (!hasJobAccess(job, req.user)) {
+    const access = await resolveJobAccess(prisma, { jobId, user: req.user });
+    if (!access.hasAccess) {
       return res.status(403).json({
         success: false,
         error: 'INSUFFICIENT_PERMISSIONS',
-        message: 'คุณไม่มีสิทธิ์ดู comments ของงานนี้'
+        message: access.reason || 'คุณไม่มีสิทธิ์ดู comments ของงานนี้'
       });
     }
 
@@ -226,12 +185,12 @@ router.post('/jobs/:jobId/comments', async (req, res) => {
       });
     }
 
-    // Check access permission
-    if (!hasJobAccess(job, req.user)) {
+    const access = await resolveJobAccess(prisma, { jobId, user: req.user });
+    if (!access.hasAccess || access.accessMode !== 'full') {
       return res.status(403).json({
         success: false,
         error: 'INSUFFICIENT_PERMISSIONS',
-        message: 'คุณไม่มีสิทธิ์ comment ในงานนี้'
+        message: access.reason || 'คุณไม่มีสิทธิ์ comment ในงานนี้'
       });
     }
 
@@ -408,8 +367,17 @@ router.put('/jobs/:jobId/comments/:commentId', async (req, res) => {
       });
     }
 
+    const access = await resolveJobAccess(prisma, { jobId, user: req.user });
+    if (!access.hasAccess || access.accessMode !== 'full') {
+      return res.status(403).json({
+        success: false,
+        error: 'INSUFFICIENT_PERMISSIONS',
+        message: access.reason || 'คุณไม่มีสิทธิ์แก้ไข comment นี้'
+      });
+    }
+
     // Only comment author or admin can edit
-    if (existingComment.userId !== userId && !isAdmin(req.user)) {
+    if (existingComment.userId !== userId && !hasAdminPrivileges(req.user)) {
       return res.status(403).json({
         success: false,
         error: 'INSUFFICIENT_PERMISSIONS',
@@ -498,8 +466,17 @@ router.delete('/jobs/:jobId/comments/:commentId', async (req, res) => {
       });
     }
 
+    const access = await resolveJobAccess(prisma, { jobId, user: req.user });
+    if (!access.hasAccess || access.accessMode !== 'full') {
+      return res.status(403).json({
+        success: false,
+        error: 'INSUFFICIENT_PERMISSIONS',
+        message: access.reason || 'คุณไม่มีสิทธิ์ลบ comment นี้'
+      });
+    }
+
     // Only comment author or admin can delete
-    if (existingComment.userId !== userId && !isAdmin(req.user)) {
+    if (existingComment.userId !== userId && !hasAdminPrivileges(req.user)) {
       return res.status(403).json({
         success: false,
         error: 'INSUFFICIENT_PERMISSIONS',

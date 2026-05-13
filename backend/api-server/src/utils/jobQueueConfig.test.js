@@ -44,3 +44,28 @@ test('approval history presentation treats deny assignee rejection as not approv
   assert.equal(presentation.isAdminOverride, false);
   assert.equal(hasAdminOverridePrefix('ต้องดำเนินงานต่อ'), false);
 });
+
+test('approval history presentation classifies cascade assignee rejection as approved history', () => {
+  const presentation = getApprovalHistoryPresentation({
+    status: 'rejected',
+    actionType: null,
+    comment: '[Admin Override] cascade_confirm_assignee_rejection: งานพ่วงถูกปฏิเสธ'
+  });
+
+  assert.equal(presentation.actionType, 'cascade_confirm_assignee_rejection');
+  assert.equal(presentation.category, APPROVAL_HISTORY_CATEGORIES.APPROVED);
+  assert.equal(presentation.actionLabel, 'อนุมัติการปฏิเสธของผู้รับงานพ่วง');
+  assert.equal(presentation.isAdminOverride, true);
+});
+
+test('approval history presentation classifies direct cascade rejection as not approved history', () => {
+  const presentation = getApprovalHistoryPresentation({
+    status: 'rejected',
+    actionType: null,
+    comment: 'cascade_reject_downstream: งานพ่วงถูกปฏิเสธตามงาน DJ-1'
+  });
+
+  assert.equal(presentation.actionType, 'cascade_reject_downstream');
+  assert.equal(presentation.category, APPROVAL_HISTORY_CATEGORIES.NOT_APPROVED);
+  assert.equal(presentation.actionLabel, 'ปฏิเสธงานพ่วงตามงานก่อนหน้า');
+});
