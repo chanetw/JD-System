@@ -122,6 +122,29 @@ function createServiceWithState(jobRecords) {
   return { service, calls, jobs };
 }
 
+test('isAdminActor fallback reads admin role from userRoles without legacy user fields', async () => {
+  const service = new ApprovalService();
+  let selectedFields = null;
+
+  service.prisma = {
+    user: {
+      findUnique: async (args) => {
+        selectedFields = args.select;
+        return {
+          userRoles: [{ roleName: 'Admin' }]
+        };
+      }
+    }
+  };
+
+  const result = await service.isAdminActor(null, 4);
+
+  assert.equal(result, true);
+  assert.equal(Object.prototype.hasOwnProperty.call(selectedFields, 'role'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(selectedFields, 'roleName'), false);
+  assert.deepEqual(Object.keys(selectedFields), ['userRoles']);
+});
+
 test('confirmAssigneeRejection cascades rejection across a 4-job sequential chain and rejects parent when all children are rejected', async () => {
   const { service, calls, jobs } = createServiceWithState([
     buildJob({ id: 500, djId: 'PARENT-500', status: 'in_progress', subject: 'Parent job' }),
@@ -274,7 +297,7 @@ test('confirmAssigneeRejection stops cascading when it reaches a completed job a
   );
 });
 
-test('rejectJobViaWeb creates not-approved approval history for cascaded downstream jobs', async () => {
+test('rejectJobViaWeb creates approval history for cascaded downstream jobs', async () => {
   const { service, calls, jobs } = createServiceWithState([
     buildJob({
       id: 101,

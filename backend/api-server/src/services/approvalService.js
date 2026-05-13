@@ -105,8 +105,6 @@ export class ApprovalService extends BaseService {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
-        role: true,
-        roleName: true,
         userRoles: {
           where: { isActive: true },
           select: { roleName: true }
@@ -117,8 +115,6 @@ export class ApprovalService extends BaseService {
     if (!user) return false;
 
     const fallbackUser = {
-      role: user.role,
-      roleName: user.roleName,
       roles: (user.userRoles || []).map((item) => item.roleName).filter(Boolean)
     };
 

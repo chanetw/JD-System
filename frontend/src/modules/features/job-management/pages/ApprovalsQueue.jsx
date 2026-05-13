@@ -103,6 +103,54 @@ const getWaitingLevelLabel = (status) => {
     return '-';
 };
 
+const getJobSortTime = (job, useHistoryDate = false) => {
+    const rawValue = useHistoryDate
+        ? (job?.historyData?.actionDate || job?.updatedAt || job?.createdAt || 0)
+        : (job?.createdAt || 0);
+    const timestamp = new Date(rawValue).getTime();
+    return Number.isFinite(timestamp) ? timestamp : 0;
+};
+
+const orderJobsByChain = (jobs) => {
+    if (!Array.isArray(jobs) || jobs.length <= 1) return jobs || [];
+
+    const remaining = new Map(jobs.map((job) => [String(job.id), job]));
+    const childrenByPredecessor = new Map();
+
+    jobs.forEach((job) => {
+        if (!job?.predecessorId) return;
+        const predecessorKey = String(job.predecessorId);
+        if (!remaining.has(predecessorKey)) return;
+
+        if (!childrenByPredecessor.has(predecessorKey)) {
+            childrenByPredecessor.set(predecessorKey, []);
+        }
+        childrenByPredecessor.get(predecessorKey).push(job);
+    });
+
+    const ordered = [];
+    const appendChain = (job) => {
+        const key = String(job.id);
+        if (!remaining.has(key)) return;
+
+        ordered.push(job);
+        remaining.delete(key);
+
+        const children = childrenByPredecessor.get(key) || [];
+        children.forEach(appendChain);
+    };
+
+    jobs.forEach((job) => {
+        const hasVisiblePredecessor = job?.predecessorId && remaining.has(String(job.predecessorId));
+        if (!hasVisiblePredecessor) {
+            appendChain(job);
+        }
+    });
+
+    remaining.forEach(appendChain);
+    return ordered;
+};
+
 const extractRoleNames = (user) => {
     if (!user) return [];
 
@@ -200,16 +248,9 @@ export default function ApprovalsQueue() {
                 api.getApprovalHistoryList(user, 'not_approved'),
             ]);
 
-            const sortRows = (rows, useHistoryDate = false) => (Array.isArray(rows) ? rows : []).sort((a, b) => {
-                const left = useHistoryDate
-                    ? (a?.historyData?.actionDate || a?.updatedAt || a?.createdAt || 0)
-                    : (a?.createdAt || 0);
-                const right = useHistoryDate
-                    ? (b?.historyData?.actionDate || b?.updatedAt || b?.createdAt || 0)
-                    : (b?.createdAt || 0);
-
-                return new Date(right) - new Date(left);
-            });
+            const sortRows = (rows, useHistoryDate = false) => orderJobsByChain(
+                (Array.isArray(rows) ? [...rows] : []).sort((a, b) => getJobSortTime(b, useHistoryDate) - getJobSortTime(a, useHistoryDate))
+            );
 
             setJobsByTab({
                 waiting: sortRows(waitingList),
@@ -379,17 +420,19 @@ export default function ApprovalsQueue() {
         if (!aIsOverdue && bIsOverdue) return 1;
 
         // 3. เรียงตามวันที่สร้าง (เก่าสุดขึ้นก่อน = First In, First Out)
-        return new Date(a.createdAt) - new Date(b.createdAt);
+        return getJobSortTime(a) - getJobSortTime(b);
     });
+
+    const chainOrderedFilteredJobs = orderJobsByChain(sortedFilteredJobs);
 
     // Waiting tab แสดงผลแบบ grouped (top-level) จึงต้องใช้ชุดข้อมูลเดียวกันกับที่ render
     const groupedFilteredWaiting = activeTab === 'waiting'
-        ? groupJobsByPredecessor(sortedFilteredJobs)
+        ? groupJobsByPredecessor(chainOrderedFilteredJobs)
         : [];
 
     const displayJobs = activeTab === 'waiting'
         ? groupedFilteredWaiting
-        : sortedFilteredJobs;
+        : chainOrderedFilteredJobs;
 
     // Pagination Logic
     const totalPages = Math.ceil(displayJobs.length / itemsPerPage);
