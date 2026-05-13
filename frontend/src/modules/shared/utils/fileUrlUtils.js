@@ -1,3 +1,5 @@
+import httpClient from '@shared/services/httpClient';
+
 export const normalizeExternalUrl = (value) => {
     if (!value) return null;
     const normalizedValue = String(value).trim();
@@ -87,10 +89,37 @@ const openInNewTab = (targetUrl) => {
     return true;
 };
 
+const getBlobUrl = async (path, file) => {
+    const response = await httpClient.get(path, { responseType: 'blob' });
+    const responseType = response.data?.type || getFileMimeType(file) || 'application/octet-stream';
+    const blob = response.data instanceof Blob && response.data.type
+        ? response.data
+        : new Blob([response.data], { type: responseType });
+
+    return URL.createObjectURL(blob);
+};
+
 export const openFilePreview = async (file) => {
     const access = resolveFileAccess(file);
     if (!access.previewPath) return false;
-    return openInNewTab(String(access.previewPath));
+
+    if (access.isExternalLink) {
+        return openInNewTab(String(access.previewPath));
+    }
+
+    const previewWindow = window.open('about:blank', '_blank');
+    if (!previewWindow) return false;
+
+    try {
+        previewWindow.opener = null;
+        const blobUrl = await getBlobUrl(String(access.previewPath), file);
+        previewWindow.location.href = blobUrl;
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+        return true;
+    } catch (error) {
+        previewWindow.close();
+        throw error;
+    }
 };
 
 export const downloadFile = async (file) => {
@@ -101,13 +130,13 @@ export const downloadFile = async (file) => {
         return openInNewTab(String(access.downloadPath));
     }
 
+    const blobUrl = await getBlobUrl(String(access.downloadPath), file);
     const link = document.createElement('a');
-    link.href = String(access.downloadPath);
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
+    link.href = blobUrl;
     link.download = access.fileName;
     document.body.appendChild(link);
     link.click();
     link.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
     return true;
 };

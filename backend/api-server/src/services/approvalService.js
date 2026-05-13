@@ -137,6 +137,140 @@ const normalizeCompletionAttachments = (attachments) => {
   }, []);
 };
 
+const buildInvalidDeliverableFileError = (message, data = {}) => {
+  const error = new Error(message);
+  error.code = 'INVALID_DELIVERABLE_FILE';
+  error.data = data;
+  return error;
+};
+
+const prepareCompletionDeliverableSync = async ({ tx, job, attachmentList }) => {
+  const fileAttachments = attachmentList.filter((attachment) => attachment.fileId);
+  const skippedLinks = attachmentList.filter((attachment) => !attachment.fileId && attachment.url).length;
+
+  if (fileAttachments.length === 0) {
+    return {
+      fileAttachments,
+      mediaFilesById: new Map(),
+      skippedLinks,
+      version: null
+    };
+  }
+
+  const fileIds = [...new Set(fileAttachments.map((attachment) => attachment.fileId))];
+  const mediaFiles = await tx.mediaFile.findMany({
+    where: {
+      id: { in: fileIds },
+      tenantId: job.tenantId,
+      jobId: job.id
+    },
+    select: {
+      id: true,
+      fileName: true,
+      filePath: true,
+      fileSize: true,
+      fileType: true,
+      uploadedBy: true
+    }
+  });
+
+  const mediaFilesById = new Map(mediaFiles.map((file) => [file.id, file]));
+  const missingFileIds = fileIds.filter((fileId) => !mediaFilesById.has(fileId));
+
+  if (missingFileIds.length > 0) {
+    throw buildInvalidDeliverableFileError(
+      'ไฟล์ส่งมอบไม่ถูกต้อง หรือไม่ได้ผูกกับงานนี้',
+      { missingFileIds }
+    );
+  }
+
+  const versionAggregate = await tx.jobDeliverable.aggregate({
+    where: {
+      tenantId: job.tenantId,
+      jobId: job.id
+    },
+    _max: {
+      version: true
+    }
+  });
+
+  return {
+    fileAttachments,
+    mediaFilesById,
+    skippedLinks,
+    version: (versionAggregate._max.version || 0) + 1
+  };
+};
+
+const applyCompletionDeliverableSync = async ({ tx, job, plan, completedAt }) => {
+  let created = 0;
+  let skippedExisting = 0;
+
+  await tx.jobDeliverable.updateMany({
+    where: {
+      tenantId: job.tenantId,
+      jobId: job.id,
+      isFinal: true
+    },
+    data: {
+      isFinal: false
+    }
+  });
+
+  if (plan.fileAttachments.length === 0) {
+    return {
+      created,
+      skippedExisting,
+      skippedLinks: plan.skippedLinks,
+      version: null
+    };
+  }
+
+  for (const attachment of plan.fileAttachments) {
+    const mediaFile = plan.mediaFilesById.get(attachment.fileId);
+
+    const existing = await tx.jobDeliverable.findFirst({
+      where: {
+        tenantId: job.tenantId,
+        jobId: job.id,
+        fileName: mediaFile.fileName,
+        filePath: mediaFile.filePath,
+        version: plan.version,
+        isFinal: true
+      },
+      select: { id: true }
+    });
+
+    if (existing) {
+      skippedExisting += 1;
+      continue;
+    }
+
+    await tx.jobDeliverable.create({
+      data: {
+        tenantId: job.tenantId,
+        jobId: job.id,
+        version: plan.version,
+        fileName: mediaFile.fileName,
+        filePath: mediaFile.filePath,
+        fileSize: mediaFile.fileSize,
+        fileType: mediaFile.fileType,
+        uploadedBy: mediaFile.uploadedBy,
+        isFinal: true,
+        createdAt: completedAt
+      }
+    });
+    created += 1;
+  }
+
+  return {
+    created,
+    skippedExisting,
+    skippedLinks: plan.skippedLinks,
+    version: plan.version
+  };
+};
+
 export class ApprovalService extends BaseService {
   constructor() {
     super();
@@ -1802,7 +1936,13 @@ export class ApprovalService extends BaseService {
 
       const deliveredItemMap = new Map(normalizedDeliveredItems.map(item => [item.itemId, item.deliveredQty]));
 
-      const updatedJob = await this.prisma.$transaction(async (tx) => {
+      const completionResult = await this.prisma.$transaction(async (tx) => {
+        const deliverablePlan = await prepareCompletionDeliverableSync({
+          tx,
+          job,
+          attachmentList
+        });
+
         if (normalizedDeliveredItems.length > 0) {
           await Promise.all(
             normalizedDeliveredItems.map((item) => tx.designJobItem.update({
@@ -1865,6 +2005,13 @@ export class ApprovalService extends BaseService {
           await Promise.all(mediaFilePromises);
         }
 
+        const deliverableSync = await applyCompletionDeliverableSync({
+          tx,
+          job,
+          plan: deliverablePlan,
+          completedAt
+        });
+
         if (note) {
           await tx.jobComment.create({
             data: {
@@ -1876,10 +2023,14 @@ export class ApprovalService extends BaseService {
           });
         }
 
-        return tx.job.findUnique({
+        const updatedJob = await tx.job.findUnique({
           where: { id: jobId }
         });
+
+        return { updatedJob, deliverableSync };
       });
+
+      const { updatedJob, deliverableSync } = completionResult;
 
       await this.logApprovalActivity({
         jobId,
@@ -1941,7 +2092,7 @@ export class ApprovalService extends BaseService {
         }
       }
 
-      return { success: true, data: updatedJob };
+      return { success: true, data: updatedJob, deliverableSync };
     } catch (error) {
       if (error?.code === 'ALREADY_PROCESSED') {
         return {
@@ -1949,6 +2100,14 @@ export class ApprovalService extends BaseService {
           error: 'ALREADY_PROCESSED',
           message: `สถานะงานเปลี่ยนไปแล้ว${error.currentStatus ? ` (สถานะปัจจุบัน: ${error.currentStatus})` : ''}`,
           data: { currentStatus: error.currentStatus || null }
+        };
+      }
+      if (error?.code === 'INVALID_DELIVERABLE_FILE') {
+        return {
+          success: false,
+          error: 'INVALID_DELIVERABLE_FILE',
+          message: error.message,
+          data: error.data || {}
         };
       }
       return this.handleError(error, 'COMPLETE_JOB', 'Job');

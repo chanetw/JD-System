@@ -2965,6 +2965,24 @@ router.get('/:id', async (req, res) => {
           select: { id: true, filePath: true, fileName: true, fileSize: true, createdAt: true },
           take: 50  // ⚡ Performance: Limit to 50 attachments
         },
+        deliverables: {
+          select: {
+            id: true,
+            version: true,
+            fileName: true,
+            filePath: true,
+            fileSize: true,
+            fileType: true,
+            uploadedBy: true,
+            isFinal: true,
+            createdAt: true
+          },
+          orderBy: [
+            { version: 'desc' },
+            { createdAt: 'desc' }
+          ],
+          take: 100
+        },
         // Include comments for discussion thread
         comments: {
           select: {
@@ -3178,6 +3196,17 @@ router.get('/:id', async (req, res) => {
         };
       }),
       attachments: job.attachments || [],
+      deliverables: (job.deliverables || []).map((deliverable) => ({
+        id: deliverable.id,
+        version: deliverable.version,
+        fileName: deliverable.fileName,
+        filePath: deliverable.filePath,
+        fileSize: deliverable.fileSize != null ? Number(deliverable.fileSize) : null,
+        fileType: deliverable.fileType,
+        uploadedBy: deliverable.uploadedBy,
+        isFinal: deliverable.isFinal,
+        createdAt: deliverable.createdAt
+      })),
 
       // Draft Review Details
       draftFiles: normalizeDraftEntries(job.draftFiles),
@@ -4657,7 +4686,8 @@ router.post('/:id/complete', async (req, res) => {
         INVALID_STATUS: 409,
         FORBIDDEN: 403,
         NOT_FOUND: 404,
-        ALREADY_PROCESSED: 409
+        ALREADY_PROCESSED: 409,
+        INVALID_DELIVERABLE_FILE: 400
       };
       return res.status(statusByError[errorCode] || 400).json(result);
     }
