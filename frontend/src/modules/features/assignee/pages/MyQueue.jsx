@@ -9,6 +9,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '@shared/services/apiService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
+import { useSuperSearchStore } from '@core/stores/superSearchStore';
+import { matchesSuperSearch } from '@shared/utils/superSearch';
 import { fileUploadService } from '@shared/services/modules/fileUploadService';
 import { Card } from '@shared/components/Card';
 import Badge from '@shared/components/Badge';
@@ -119,6 +121,8 @@ export default function MyQueue() {
     const [tabCounts, setTabCounts] = useState({ in_progress: 0, completed: 0, rejected: 0, timeline: 0 });
 
     // Filter & Sort State
+    const superSearchQuery = useSuperSearchStore(state => state.query);
+    const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
     const [localSearch, setLocalSearch] = useState('');
     const [sortBy, setSortBy] = useState('deadline'); // 'deadline', 'priority', 'newest'
     const [filterProject, setFilterProject] = useState('all');
@@ -643,10 +647,21 @@ export default function MyQueue() {
 
     const filteredJobs = projectFilteredJobs
         .filter(job => {
-            if (!normalizedSearch) return true;
-            const djId = String(job.djId || '').toLowerCase();
-            const subject = String(job.subject || '').toLowerCase();
-            return djId.includes(normalizedSearch) || subject.includes(normalizedSearch);
+            if (normalizedSearch) {
+                const djId = String(job.djId || '').toLowerCase();
+                const subject = String(job.subject || '').toLowerCase();
+                if (!djId.includes(normalizedSearch) && !subject.includes(normalizedSearch)) return false;
+            }
+            if (superSearchQuery.trim()) {
+                if (!matchesSuperSearch(job, superSearchQuery, [
+                    item => item.djId,
+                    item => item.subject,
+                    item => item.projectName,
+                    item => item.jobTypeName,
+                    item => item.status,
+                ])) return false;
+            }
+            return true;
         })
         .sort((a, b) => {
             const weightDiff = getSortWeight(b) - getSortWeight(a);
@@ -668,6 +683,15 @@ export default function MyQueue() {
         });
 
     const canSubmitComplete = Boolean(finalLink.trim()) || completeUploadedFiles.length > 0;
+
+    // Update header search badge when filteredJobs or jobs change
+    useEffect(() => {
+        if (superSearchQuery.trim() || localSearch.trim()) {
+            setSuperSearchMeta({ resultCount: filteredJobs.length, totalCount: jobs.length });
+        } else {
+            setSuperSearchMeta({ resultCount: null, totalCount: null });
+        }
+    }, [filteredJobs.length, jobs.length, superSearchQuery, localSearch, setSuperSearchMeta]);
 
     return (
         <div className="space-y-4 sm:space-y-5 lg:space-y-6">
