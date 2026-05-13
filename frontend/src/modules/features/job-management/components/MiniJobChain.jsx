@@ -4,6 +4,12 @@ import { WORK_STATUS_LABEL } from '@shared/constants/jobStatus';
 
 const isDone = (status) => status === 'completed' || status === 'closed';
 
+const REJECTED_STATUS_SET = new Set([
+    'rejected',
+    'rejected_by_assignee',
+    'assignee_rejected'
+]);
+
 const DOT_COLOR = {
     completed:          'bg-emerald-400 border-emerald-500',
     closed:             'bg-emerald-400 border-emerald-500',
@@ -49,6 +55,19 @@ const getStatusPillClassName = (status) => {
     return 'bg-blue-50 text-blue-700 border-blue-200';
 };
 
+const getMiniChainDisplayStatus = ({ chainJobs, index, currentIndex }) => {
+    const currentJobStatus = chainJobs?.[Math.max((currentIndex || 1) - 1, 0)]?.status;
+    const isImmediatePredecessor = index === Math.max((currentIndex || 1) - 2, -1);
+    const rawStatus = chainJobs?.[index]?.status;
+
+    // When current chained job is rejected, show the immediate predecessor as rejected in mini chain.
+    if (isImmediatePredecessor && REJECTED_STATUS_SET.has(currentJobStatus) && isDone(rawStatus)) {
+        return 'rejected';
+    }
+
+    return rawStatus;
+};
+
 const MiniJobChain = ({ job }) => {
     const navigate = useNavigate();
     const chain = job?.chain;
@@ -72,10 +91,11 @@ const MiniJobChain = ({ job }) => {
                     const isCurrent = position === currentIndex;
                     const isPast = position < currentIndex;
                     const isLast = index === chain.jobs.length - 1;
-                    const hasFinalStatus = TERMINAL_STATUS_SET.has(chainJob.status);
-                    const dotColor = DOT_COLOR[chainJob.status] || 'bg-slate-300 border-slate-400';
-                    const statusLabel = getStatusLabel(chainJob.status);
-                    const statusPillClassName = getStatusPillClassName(chainJob.status);
+                    const displayStatus = getMiniChainDisplayStatus({ chainJobs: chain.jobs, index, currentIndex });
+                    const hasFinalStatus = TERMINAL_STATUS_SET.has(displayStatus);
+                    const dotColor = DOT_COLOR[displayStatus] || 'bg-slate-300 border-slate-400';
+                    const statusLabel = getStatusLabel(displayStatus);
+                    const statusPillClassName = getStatusPillClassName(displayStatus);
 
                     return (
                         <div key={chainJob.id} className={`flex gap-3 ${position > currentIndex && !hasFinalStatus ? 'opacity-40' : ''}`}>
@@ -91,7 +111,7 @@ const MiniJobChain = ({ job }) => {
                                         title={`ไปงาน ${chainJob.djId}`}
                                         className={`w-5 h-5 rounded-full border-2 ${dotColor} cursor-pointer hover:opacity-75 transition-opacity flex items-center justify-center`}
                                     >
-                                        {isDone(chainJob.status) ? (
+                                        {isDone(displayStatus) ? (
                                             <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor">
                                                 <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
                                             </svg>
@@ -102,8 +122,22 @@ const MiniJobChain = ({ job }) => {
                                 ) : (
                                     <div className="w-5 h-5 rounded-full bg-slate-200 border-2 border-slate-300" />
                                 )}
+                                {/* Connector: turn red if this job is a rejected predecessor */}
                                 {!isLast && (
-                                    <div className={`w-0.5 h-6 mt-0.5 ${(isPast || hasFinalStatus) ? 'bg-emerald-200' : 'bg-slate-200'}`} />
+                                    <div
+                                        className={
+                                            (() => {
+                                                // If this job is a rejected predecessor, connector below is red
+                                                if (REJECTED_STATUS_SET.has(displayStatus)) {
+                                                    return 'w-0.5 h-6 mt-0.5 bg-rose-300';
+                                                }
+                                                // Otherwise, use existing logic
+                                                return (isPast || hasFinalStatus)
+                                                    ? 'w-0.5 h-6 mt-0.5 bg-emerald-200'
+                                                    : 'w-0.5 h-6 mt-0.5 bg-slate-200';
+                                            })()
+                                        }
+                                    />
                                 )}
                             </div>
 
@@ -127,7 +161,7 @@ const MiniJobChain = ({ job }) => {
                                         onClick={() => navigate(`/jobs/${chainJob.id}`)}
                                         className="text-left w-full hover:opacity-75 cursor-pointer transition-opacity"
                                     >
-                                        <p className={`text-xs font-semibold leading-tight ${isDone(chainJob.status) ? 'text-emerald-700' : 'text-rose-700'}`}>{chainJob.djId}</p>
+                                        <p className={`text-xs font-semibold leading-tight ${isDone(displayStatus) ? 'text-emerald-700' : 'text-rose-700'}`}>{chainJob.djId}</p>
                                         {chainJob.jobType && (
                                             <p className="text-[10px] text-gray-500 mt-0.5 truncate">{chainJob.jobType}</p>
                                         )}
