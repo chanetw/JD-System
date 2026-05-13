@@ -2,13 +2,13 @@ import React from 'react';
 import { CheckCircleIcon, DocumentTextIcon, LinkIcon } from '@heroicons/react/24/outline';
 import { formatDateToThai } from '@shared/utils/dateUtils';
 import FileActions from '@shared/components/FileActions';
-import { getExternalFileUrl, getFileName } from '@shared/utils/fileUrlUtils';
+import { getFileName, normalizeFileContract } from '@shared/utils/fileUrlUtils';
 
 export default function JobDeliveryCard({ job }) {
     // Show only if job is completed or closed, and has final files or completion info
     if (!['completed', 'closed'].includes(job.status)) return null;
 
-    // finalFiles is expected to be an array of objects: { name, url }
+    // finalFiles can come from multiple payload shapes.
     let finalFiles = [];
     if (Array.isArray(job.finalFiles)) {
         finalFiles = job.finalFiles;
@@ -21,6 +21,11 @@ export default function JobDeliveryCard({ job }) {
         }
     }
 
+    const normalizedFinalFiles = finalFiles.map((file, index) => ({
+        ...normalizeFileContract(file),
+        _index: index
+    }));
+
     // Find completion comment (usually starts with [ส่งงาน] or [Job Completed])
     const completionComment = job.comments?.find(c =>
         c.comment?.includes('[ส่งงาน]') || c.comment?.includes('[Job Completed]') || c.message?.includes('[Job Completed]')
@@ -32,7 +37,14 @@ export default function JobDeliveryCard({ job }) {
     const completedAt = job.completedAt ? formatDateToThai(new Date(job.completedAt)) : '-';
 
     // If no files and no note, maybe just a simple badge, but usually we have note at least
-    if (finalFiles.length === 0 && !completionComment) return null;
+    if (normalizedFinalFiles.length === 0 && !completionComment) return null;
+
+    const classifyFileType = (file) => {
+        if (file.fileType === 'link') return 'link';
+        if (file.fileId) return 'file';
+        if (file.externalUrl) return 'link';
+        return 'unknown';
+    };
 
     return (
         <div className="bg-white rounded-xl border border-emerald-400 shadow-sm mb-6">
@@ -61,25 +73,42 @@ export default function JobDeliveryCard({ job }) {
                 )}
 
                 {/* Final Files / Links Section */}
-                {finalFiles.length > 0 && (
+                {normalizedFinalFiles.length > 0 && (
                     <div>
-                        <span className="block text-sm font-semibold text-gray-500 mb-2">ลิงก์ผลงาน:</span>
+                        <span className="block text-sm font-semibold text-gray-500 mb-2">ไฟล์/ลิงก์ผลงาน:</span>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {finalFiles.map((file, index) => (
-                                <div
-                                    key={index}
-                                    className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 hover:border-emerald-300 hover:shadow-sm transition-all group"
-                                >
-                                    <div className="p-2 bg-emerald-50 text-emerald-600 rounded-md group-hover:bg-emerald-500 group-hover:text-white transition-colors">
-                                        <LinkIcon className="w-4 h-4" />
+                            {normalizedFinalFiles.map((file) => {
+                                const fileType = classifyFileType(file);
+                                const fileName = getFileName(file, `ผลงาน #${file._index + 1}`);
+
+                                return (
+                                    <div
+                                        key={`${file.fileId || file.url || file.filePath || 'unknown'}-${file._index}`}
+                                        className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 hover:border-emerald-300 hover:shadow-sm transition-all group"
+                                    >
+                                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-md group-hover:bg-emerald-500 group-hover:text-white transition-colors">
+                                            <LinkIcon className="w-4 h-4" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-gray-900 truncate">{fileName}</p>
+                                            {fileType === 'file' && (
+                                                <p className="text-xs text-gray-500 truncate">อัปโหลดไฟล์ในระบบ (ID: {file.fileId})</p>
+                                            )}
+                                            {fileType === 'link' && (
+                                                <p className="text-xs text-gray-500 truncate">{file.url || file.externalUrl || file.filePath || '-'}</p>
+                                            )}
+                                            {fileType === 'unknown' && (
+                                                <p className="text-xs text-amber-700 truncate">
+                                                    รูปแบบไฟล์ไม่สมบูรณ์: ไม่พบ fileId หรือ URL ที่ใช้งานได้
+                                                </p>
+                                            )}
+                                        </div>
+                                        {fileType !== 'unknown' ? (
+                                            <FileActions file={file} compact className="shrink-0" />
+                                        ) : null}
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium text-gray-900 truncate">{getFileName(file, 'ลิงก์ผลงาน')}</p>
-                                        <p className="text-xs text-gray-500 truncate">{getExternalFileUrl(file) || file.filePath || '-'}</p>
-                                    </div>
-                                    <FileActions file={file} compact className="shrink-0" />
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 )}

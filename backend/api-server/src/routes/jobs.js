@@ -4591,6 +4591,12 @@ router.post('/:id/complete', async (req, res) => {
     const jobId = parseInt(req.params.id);
     const userId = req.user.userId;
     const { note, attachments, deliveredItems } = req.body;
+    const responseWarnings = [];
+    let handoffSummary = {
+      handed: 0,
+      nextJobs: [],
+      skipped: 0
+    };
 
     // Use ApprovalService (or rename it to JobWorkflowService later)
     const result = await approvalService.completeJob({
@@ -4614,41 +4620,76 @@ router.post('/:id/complete', async (req, res) => {
     }
 
     if (result.success) {
-      // 🔥 Trigger Job Chain (Sequential Jobs)
+      const prisma = getDatabase();
+
+      // 🔥 Step 1: Activate/Update next jobs in chain
       try {
         await jobService.onJobCompleted(jobId, userId);
-
-        // ✅ NEW: Notify next job in chain (Part D)
-        const prisma = getDatabase();
-        const notification = await chainService.notifyNextJob(jobId, prisma);
-
-        if (notification.notified) {
-          console.log(
-            `[Jobs] Chain Notification: ${notification.message}`,
-            { nextJobId: notification.nextJob.id }
-          );
-        }
       } catch (chainError) {
         console.error('[Jobs] Sequential Job Trigger Failed:', chainError);
-        // Don't fail the request, just log error
+        responseWarnings.push('CHAIN_ACTIVATION_FAILED');
       }
 
-      // 📎 Handoff: ส่งต่อไฟล์ส่งมอบไปงานถัดไปในลำดับ chain
+      // 📎 Step 2: Handoff finalFiles -> next jobs briefFiles
       try {
-        const prismaForHandoff = getDatabase();
-        const handoffResult = await handoffCompletionFilesToNextJobs(jobId, userId, prismaForHandoff);
-        if (handoffResult.handed > 0) {
+        const handoffResult = await handoffCompletionFilesToNextJobs(jobId, userId, prisma);
+        handoffSummary = {
+          handed: handoffResult.handed || 0,
+          nextJobs: Array.isArray(handoffResult.nextJobs) ? handoffResult.nextJobs : [],
+          skipped: handoffResult.skipped || 0
+        };
+
+        if (handoffSummary.handed > 0) {
           console.log(
-            `[Jobs] File Handoff: ${handoffResult.handed} file(s) → ${handoffResult.nextJobs.join(', ')}`
+            `[Jobs] File Handoff: ${handoffSummary.handed} file(s) → ${handoffSummary.nextJobs.join(', ')}`
           );
         }
       } catch (handoffError) {
         console.error('[Jobs] File Handoff Failed (non-blocking):', handoffError);
+        responseWarnings.push('HANDOFF_FAILED');
+        handoffSummary = {
+          handed: 0,
+          nextJobs: [],
+          skipped: 0,
+          error: 'HANDOFF_FAILED'
+        };
+      }
+
+      // ✅ Step 3: Notify next-job assignees after handoff
+      try {
+        const nextJobs = await prisma.job.findMany({
+          where: {
+            predecessorId: jobId,
+            tenantId: req.user.tenantId,
+            status: { notIn: ['completed', 'closed', 'rejected', 'cancelled'] }
+          },
+          select: {
+            id: true,
+            djId: true,
+            subject: true,
+            assigneeId: true
+          }
+        });
+
+        await Promise.all(
+          nextJobs
+            .filter((nextJob) => nextJob.assigneeId && !isSameUserId(nextJob.assigneeId, userId))
+            .map((nextJob) => notificationService.createNotification({
+              tenantId: req.user.tenantId,
+              userId: nextJob.assigneeId,
+              type: 'job_ready',
+              title: `🚀 งานพร้อมเริ่ม: ${nextJob.djId}`,
+              message: `งานก่อนหน้าเสร็จแล้ว คุณสามารถเริ่มงาน "${nextJob.subject}" ได้ทันที`,
+              link: `/jobs/${nextJob.id}`
+            }))
+        );
+      } catch (notifyError) {
+        console.error('[Jobs] Next-job notification failed (non-blocking):', notifyError);
+        responseWarnings.push('NEXT_JOB_NOTIFY_FAILED');
       }
 
       // ✅ NEW: Check Parent Job Closure (Partial Rejection Support)
       try {
-        const prisma = getDatabase();
         const tenantId = req.user.tenantId;
 
         // Get the completed job to check if it's a child job
@@ -4695,11 +4736,23 @@ router.post('/:id/complete', async (req, res) => {
         }
       } catch (closureError) {
         console.error('[Jobs] Parent job closure check failed (non-blocking):', closureError);
-        // Don't fail the request
+        responseWarnings.push('PARENT_CLOSURE_CHECK_FAILED');
       }
     }
 
-    res.json(result);
+    const responsePayload = {
+      ...result,
+      data: {
+        ...(result.data || {}),
+        handoffResult: handoffSummary
+      }
+    };
+
+    if (responseWarnings.length > 0) {
+      responsePayload.warnings = responseWarnings;
+    }
+
+    res.json(responsePayload);
   } catch (error) {
     console.error('[Jobs] Complete job error:', error);
     res.status(500).json({

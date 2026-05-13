@@ -27,16 +27,23 @@ function mapFinalFileToBriefFile(file, completedJob) {
       name: file.name || file.fileName || `ไฟล์จาก ${completedJob.djId}`,
       filePath: file.filePath || null,
       publicUrl: file.publicUrl || null,
-      type: 'file'
+      url: file.url || null,
+      fileType: 'file',
+      mimeType: file.mimeType || file.mime_type || null
     };
   }
 
-  if (file.url) {
+  if (file.url || file.publicUrl || file.filePath) {
+    const resolvedUrl = file.url || file.publicUrl || file.filePath;
     return {
       ...base,
       name: file.name || `ลิงก์จาก ${completedJob.djId}`,
-      url: file.url,
-      type: 'link'
+      fileId: null,
+      filePath: file.filePath || resolvedUrl,
+      publicUrl: file.publicUrl || resolvedUrl,
+      url: resolvedUrl,
+      fileType: 'link',
+      mimeType: file.mimeType || file.mime_type || 'text/uri-list'
     };
   }
 
@@ -64,7 +71,7 @@ function isDuplicate(incoming, existing) {
  * @param {number} completedJobId - Job ที่เพิ่ง complete
  * @param {number} actorUserId - User ที่กด complete
  * @param {Object} prisma - Prisma client instance
- * @returns {Promise<{ handed: number, skipped: number, nextJobs: string[] }>}
+ * @returns {Promise<{ handed: number, skipped: number, nextJobs: string[], nextJobIds: number[] }>}
  */
 export async function handoffCompletionFilesToNextJobs(completedJobId, actorUserId, prisma) {
   // 1. ดึงงานที่เพิ่ง complete
@@ -80,7 +87,7 @@ export async function handoffCompletionFilesToNextJobs(completedJobId, actorUser
 
   if (!completedJob) {
     console.warn(`[Handoff] Job ${completedJobId} not found – skipping handoff`);
-    return { handed: 0, skipped: 0, nextJobs: [] };
+    return { handed: 0, skipped: 0, nextJobs: [], nextJobIds: [] };
   }
 
   // 2. แปลง finalFiles เป็น array
@@ -98,7 +105,7 @@ export async function handoffCompletionFilesToNextJobs(completedJobId, actorUser
 
   if (finalFiles.length === 0) {
     console.log(`[Handoff] ${completedJob.djId} has no final files – skipping handoff`);
-    return { handed: 0, skipped: 0, nextJobs: [] };
+    return { handed: 0, skipped: 0, nextJobs: [], nextJobIds: [] };
   }
 
   // 3. หางานถัดไปทั้งหมดที่ predecessorId = completedJobId
@@ -117,7 +124,7 @@ export async function handoffCompletionFilesToNextJobs(completedJobId, actorUser
 
   if (nextJobs.length === 0) {
     console.log(`[Handoff] No next jobs found for ${completedJob.djId}`);
-    return { handed: 0, skipped: 0, nextJobs: [] };
+    return { handed: 0, skipped: 0, nextJobs: [], nextJobIds: [] };
   }
 
   // 4. แปลงไฟล์ส่งมอบให้เป็น briefFiles format
@@ -125,6 +132,7 @@ export async function handoffCompletionFilesToNextJobs(completedJobId, actorUser
 
   let totalHanded = 0;
   const handedDjIds = [];
+  const handedJobIds = [];
 
   for (const nextJob of nextJobs) {
     // parse briefFiles เดิม
@@ -170,7 +178,7 @@ export async function handoffCompletionFilesToNextJobs(completedJobId, actorUser
             sourceJobId: completedJob.id,
             sourceDjId: completedJob.djId,
             fileCount: newFiles.length,
-            files: newFiles.map(f => ({ name: f.name, type: f.type }))
+            files: newFiles.map(f => ({ name: f.name, type: f.fileType }))
           }
         }
       });
@@ -180,12 +188,14 @@ export async function handoffCompletionFilesToNextJobs(completedJobId, actorUser
 
     totalHanded += newFiles.length;
     handedDjIds.push(nextJob.djId);
+    handedJobIds.push(nextJob.id);
     console.log(`[Handoff] ✅ Handed ${newFiles.length} file(s) from ${completedJob.djId} → ${nextJob.djId}`);
   }
 
   return {
     handed: totalHanded,
     skipped: nextJobs.length - handedDjIds.length,
-    nextJobs: handedDjIds
+    nextJobs: handedDjIds,
+    nextJobIds: handedJobIds
   };
 }

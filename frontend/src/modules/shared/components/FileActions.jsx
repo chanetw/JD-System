@@ -19,11 +19,17 @@ export default function FileActions({
 
     const handleAction = async (event, action, runner) => {
         if (stopPropagation) event.stopPropagation();
-        onAction?.(file, action === 'preview' ? 'view' : action);
         try {
             await runner(file);
         } catch (error) {
             console.error(`[FileActions] ${action} failed:`, error);
+            return;
+        }
+
+        try {
+            onAction?.(file, action === 'preview' ? 'view' : action);
+        } catch (sideEffectError) {
+            console.warn(`[FileActions] ${action} onAction side effect failed:`, sideEffectError);
         }
     };
 

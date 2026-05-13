@@ -496,21 +496,38 @@ export default function JobDetail() {
                     fileId: f.id,
                     name: f.file_name || f.fileName,
                     filePath: f.file_path || f.filePath,
-                    publicUrl: f.publicUrl
+                    publicUrl: f.publicUrl,
+                    fileType: 'file',
+                    mimeType: f.mime_type || f.mimeType || null,
+                    url: null
                 });
             });
 
-            await api.completeJob(job.id, {
+            const completeResponse = await api.completeJob(job.id, {
                 note: completeNote,
                 attachments,
                 deliveredItems: buildDeliveredItemsPayload(completeDeliveredItems)
             });
-            await Swal.fire({
-                icon: 'success',
-                title: 'ส่งมอบงานสำเร็จ!',
-                text: 'ระบบได้แจ้งเตือนไปยังผู้สั่งงานเรียบร้อยแล้ว',
-                confirmButtonColor: '#e11d48'
-            });
+
+            const handoffResult = completeResponse?.data?.handoffResult || null;
+            const warnings = Array.isArray(completeResponse?.warnings) ? completeResponse.warnings : [];
+            const hasHandoffWarning = Boolean(handoffResult?.error) || warnings.includes('HANDOFF_FAILED');
+
+            if (hasHandoffWarning) {
+                await Swal.fire({
+                    icon: 'warning',
+                    title: 'ส่งมอบงานสำเร็จ แต่มีคำเตือน',
+                    text: 'ระบบส่งต่องานสำเร็จแล้ว แต่การพ่วงไฟล์ไปงานถัดไปอาจไม่ครบ กรุณาตรวจสอบ Job ถัดไปอีกครั้ง',
+                    confirmButtonColor: '#e11d48'
+                });
+            } else {
+                await Swal.fire({
+                    icon: 'success',
+                    title: 'ส่งมอบงานสำเร็จ!',
+                    text: 'ระบบได้แจ้งเตือนไปยังผู้สั่งงานเรียบร้อยแล้ว',
+                    confirmButtonColor: '#e11d48'
+                });
+            }
             setShowCompleteModal(false);
             setCompleteUploadedFiles([]);
             navigate('/assignee/my-queue?tab=completed');

@@ -426,16 +426,28 @@ export default function MyQueue() {
                     fileId: f.id,
                     name: f.file_name || f.fileName,
                     filePath: f.file_path || f.filePath,
-                    publicUrl: f.publicUrl
+                    publicUrl: f.publicUrl,
+                    fileType: 'file',
+                    mimeType: f.mime_type || f.mimeType || null,
+                    url: null
                 });
             });
 
-            await api.completeJob(selectedJob.id, {
+            const completeResponse = await api.completeJob(selectedJob.id, {
                 note: completeNote,
                 attachments,
                 deliveredItems: buildDeliveredItemsPayload(completeDeliveredItems)
             });
-            await showAlert('success', 'ส่งมอบงานสำเร็จ!', 'ระบบได้แจ้งเตือนไปยังผู้สั่งงานเรียบร้อยแล้ว');
+
+            const handoffResult = completeResponse?.data?.handoffResult || null;
+            const warnings = Array.isArray(completeResponse?.warnings) ? completeResponse.warnings : [];
+            const hasHandoffWarning = Boolean(handoffResult?.error) || warnings.includes('HANDOFF_FAILED');
+
+            if (hasHandoffWarning) {
+                await showAlert('warning', 'ส่งมอบงานสำเร็จ แต่มีคำเตือน', 'ระบบส่งต่องานสำเร็จแล้ว แต่การพ่วงไฟล์ไปงานถัดไปอาจไม่ครบ กรุณาตรวจสอบ Job ถัดไปอีกครั้ง');
+            } else {
+                await showAlert('success', 'ส่งมอบงานสำเร็จ!', 'ระบบได้แจ้งเตือนไปยังผู้สั่งงานเรียบร้อยแล้ว');
+            }
             setShowCompleteModal(false);
             setFinalLink('');
             setCompleteNote('');

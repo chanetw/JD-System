@@ -91,6 +91,63 @@ const getApprovalStepNumberFromStatus = (status) => {
   return 1;
 };
 
+const normalizeCompletionAttachmentUrl = (value) => {
+  if (!value) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('/')) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+};
+
+const normalizeCompletionAttachments = (attachments) => {
+  if (!Array.isArray(attachments)) return [];
+
+  return attachments.reduce((acc, item, index) => {
+    if (!item || typeof item !== 'object') return acc;
+
+    const parsedFileId = Number(item.fileId ?? item.file_id ?? item.id);
+    const fileId = Number.isInteger(parsedFileId) && parsedFileId > 0 ? parsedFileId : null;
+    const filePath = item.filePath || item.file_path || null;
+    const publicUrl = item.publicUrl || item.public_url || null;
+    const name = String(item.name || item.fileName || item.file_name || `ไฟล์ส่งมอบ ${index + 1}`).trim();
+    const mimeType = item.mimeType || item.mime_type || null;
+
+    if (fileId) {
+      acc.push({
+        fileId,
+        name,
+        filePath,
+        publicUrl,
+        url: null,
+        fileType: 'file',
+        mimeType,
+        sourceJobId: null,
+        sourceDjId: null
+      });
+      return acc;
+    }
+
+    const normalizedUrl = normalizeCompletionAttachmentUrl(item.url || item.filePath || item.file_path || item.publicUrl || item.public_url);
+    if (normalizedUrl) {
+      acc.push({
+        fileId: null,
+        name,
+        filePath: item.filePath || item.file_path || normalizedUrl,
+        publicUrl: item.publicUrl || item.public_url || normalizedUrl,
+        url: normalizedUrl,
+        fileType: 'link',
+        mimeType: mimeType || 'text/uri-list',
+        sourceJobId: null,
+        sourceDjId: null
+      });
+    }
+
+    return acc;
+  }, []);
+};
+
 export class ApprovalService extends BaseService {
   constructor() {
     super();
@@ -1705,7 +1762,7 @@ export class ApprovalService extends BaseService {
     try {
       const VALID_COMPLETE_STATUSES = ['approved', 'assigned', 'in_progress', 'rework', 'correction', 'returned'];
       const normalizedDeliveredItems = normalizeDeliveredItemsInput(deliveredItems);
-      const attachmentList = Array.isArray(attachments) ? attachments : [];
+      const attachmentList = normalizeCompletionAttachments(attachments);
       const completedAt = new Date();
 
       const job = await this.prisma.job.findUnique({
@@ -1808,7 +1865,7 @@ export class ApprovalService extends BaseService {
                   fileName: acc.name || `ลิงก์ส่งงาน - ${job.djId}`,
                   filePath: acc.url,
                   fileType: 'link',
-                  mimeType: 'text/uri-list',
+                  mimeType: acc.mimeType || 'text/uri-list',
                   uploadedBy: userId,
                   fileSize: 0,
                 }
