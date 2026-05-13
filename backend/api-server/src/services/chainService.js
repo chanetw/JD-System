@@ -13,7 +13,7 @@ import { chainConfig } from '../config/chainConfig.js';
 import { format } from 'date-fns';
 import EmailService from './emailService.js';
 import MagicLinkService from './magicLinkService.js';
-import { createEmailTemplate } from '../utils/emailTemplates.js';
+import { createEmailTemplate, MAGIC_LINK_POLICY_TYPES } from '../utils/emailTemplates.js';
 import { buildFrontendUrl } from '../utils/frontendUrl.js';
 
 export const URGENT_RESCHEDULE_ACTIVE_STATUSES = [
@@ -108,7 +108,8 @@ function buildUrgentImpactEmail({
     heading: 'แจ้งปรับกำหนดส่งงาน',
     content,
     buttonText: 'ดูรายละเอียดงาน',
-    buttonUrl: magicLink
+    buttonUrl: magicLink,
+    linkPolicy: MAGIC_LINK_POLICY_TYPES.REUSABLE
   });
 }
 

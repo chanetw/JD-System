@@ -27,7 +27,8 @@ import {
   createJobApprovalEmail,
   createJobRejectionEmail,
   createJobCompletionEmail,
-  createJobAssignmentEmail
+  createJobAssignmentEmail,
+  MAGIC_LINK_POLICY_TYPES
 } from '../utils/emailTemplates.js';
 import { ASSIGNEE_REJECTABLE_ACTION_STATUSES } from '../utils/jobQueueConfig.js';
 
@@ -1398,7 +1399,8 @@ export class ApprovalService extends BaseService {
                       <p>งานได้รับการอนุมัติและมอบหมายให้คุณแล้ว กรุณาดำเนินการ</p>
                     `,
                     buttonText: '🔐 ดูรายละเอียดงาน',
-                    buttonUrl: magicLink
+                    buttonUrl: magicLink,
+                    linkPolicy: MAGIC_LINK_POLICY_TYPES.REUSABLE
                   })
                 ).catch(err => console.warn('[AutoStart] Email failed:', err.message));
               }
@@ -2704,7 +2706,8 @@ export class ApprovalService extends BaseService {
               </div>
             `,
             buttonText: '🔐 ดูรายละเอียดงาน',
-            buttonUrl: assigneeMagicLink
+            buttonUrl: assigneeMagicLink,
+            linkPolicy: MAGIC_LINK_POLICY_TYPES.REUSABLE
           });
           await emailService.sendEmail(
             job.assignee.email,

@@ -19,6 +19,9 @@ Source of truth:
 | ALLOWED_ORIGINS | http://localhost:5173,http://localhost:3000 | Yes | CORS allow list (comma-separated) |
 | DATABASE_URL | postgresql://... | Yes | PostgreSQL connection string |
 | JWT_SECRET | your-secret | Yes | key สำหรับ sign/verify JWT |
+| MAGIC_LINK_VIEW_EXPIRY_HOURS | 720 | Optional | อายุลิงก์ดูงาน/เข้าหน้างานที่ใช้ซ้ำได้ เช่น view/draft/rebrief (720 ชั่วโมง = 30 วัน) |
+| MAGIC_LINK_EXPIRY_HOURS | 168 | Optional | อายุลิงก์ action แบบ one-time เช่น approve/reject/submit (168 ชั่วโมง = 7 วัน) |
+| MAGIC_LINK_ACCESS_TOKEN_EXPIRES_IN | 7d | Optional | อายุ session JWT ที่ออกให้หลังเปิด magic link สำเร็จ |
 
 ## Backend: Realtime / Email / Storage
 
@@ -70,6 +73,11 @@ Source of truth:
 - STORAGE_PROVIDER=local
 - AUTH_MODE=jwt_only
 - ENABLE_RATE_LIMITING=true
+- FRONTEND_URL=https://dj.sena.co.th
+- ALLOWED_ORIGINS=https://dj.sena.co.th
+- MAGIC_LINK_VIEW_EXPIRY_HOURS=720
+- MAGIC_LINK_EXPIRY_HOURS=168
+- MAGIC_LINK_ACCESS_TOKEN_EXPIRES_IN=7d
 
 ## Local Docker Isolation
 

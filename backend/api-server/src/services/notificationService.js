@@ -17,7 +17,8 @@ import {
   createJobRejectionEmail,
   createJobPriorityChangedEmail,
   createJobHardDeletedEmail,
-  createJobChainDeletedEmail
+  createJobChainDeletedEmail,
+  MAGIC_LINK_POLICY_TYPES
 } from '../utils/emailTemplates.js';
 
 export class NotificationService {
@@ -179,7 +180,8 @@ export class NotificationService {
                     heading: title,
                     content: `<p>${message}</p>`,
                     buttonText: emailData?.buttonText || 'เปิดงานในระบบ',
-                    buttonUrl
+                    buttonUrl,
+                    linkPolicy: emailData?.magicLinkPolicy || (emailData?.magicLink ? MAGIC_LINK_POLICY_TYPES.REUSABLE : null)
                   })
                 : `<p>${message}</p>`;
 

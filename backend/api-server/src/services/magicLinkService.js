@@ -15,6 +15,8 @@ import { getDatabase } from '../config/database.js';
 import { getFrontendBaseUrl } from '../utils/frontendUrl.js';
 
 const REUSABLE_MAGIC_LINK_ACTIONS = new Set(['view', 'draft', 'rebrief']);
+export const MAGIC_LINK_ONE_TIME_EXPIRY_HOURS = 24 * 7;
+export const MAGIC_LINK_REUSABLE_EXPIRY_HOURS = 24 * 30;
 
 const parsePositiveHours = (value, fallback) => {
   const parsed = Number(value);
@@ -25,8 +27,8 @@ export class MagicLinkService {
   constructor() {
     this.prisma = getDatabase();
     this.secret = process.env.MAGIC_LINK_SECRET || process.env.JWT_SECRET || 'default-secret-change-in-production';
-    this.expiryHours = parsePositiveHours(process.env.MAGIC_LINK_EXPIRY_HOURS, 24);
-    this.reusableExpiryHours = parsePositiveHours(process.env.MAGIC_LINK_VIEW_EXPIRY_HOURS, 24 * 7);
+    this.expiryHours = parsePositiveHours(process.env.MAGIC_LINK_EXPIRY_HOURS, MAGIC_LINK_ONE_TIME_EXPIRY_HOURS);
+    this.reusableExpiryHours = parsePositiveHours(process.env.MAGIC_LINK_VIEW_EXPIRY_HOURS, MAGIC_LINK_REUSABLE_EXPIRY_HOURS);
   }
 
   isReusableAction(action) {

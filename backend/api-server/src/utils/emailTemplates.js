@@ -3,6 +3,20 @@
  * @description Email HTML Templates with Rose Theme
  */
 
+export const MAGIC_LINK_POLICY_TYPES = Object.freeze({
+  ONE_TIME: 'one_time',
+  REUSABLE: 'reusable'
+});
+
+export const MAGIC_LINK_POLICY_TEXT = Object.freeze({
+  [MAGIC_LINK_POLICY_TYPES.ONE_TIME]: 'ลิงก์นี้ใช้ได้ 1 ครั้ง ภายใน 7 วัน ใช้สำหรับยืนยันตัวตนและป้องกันการดำเนินการซ้ำหรือการส่งต่อลิงก์',
+  [MAGIC_LINK_POLICY_TYPES.REUSABLE]: 'ลิงก์นี้เข้าได้หลายครั้ง ภายใน 30 วัน สำหรับเปิดดูรายละเอียดงานโดยไม่ต้องเข้าสู่ระบบซ้ำ'
+});
+
+export function getMagicLinkPolicyText(policyType) {
+  return MAGIC_LINK_POLICY_TEXT[policyType] || '';
+}
+
 /**
  * สร้าง Email HTML Template ด้วย Rose Theme
  * 
@@ -12,6 +26,8 @@
  * @param {string} params.content - เนื้อหา HTML
  * @param {string} params.buttonText - ข้อความบนปุ่ม (optional)
  * @param {string} params.buttonUrl - URL ของปุ่ม (optional)
+ * @param {string} params.linkPolicy - Magic link policy type (optional)
+ * @param {string} params.linkPolicyText - ข้อความ policy ใต้ปุ่ม (optional)
  * @param {string} params.footerText - ข้อความท้าย email (optional)
  * @returns {string} - HTML email template
  */
@@ -21,8 +37,12 @@ export function createEmailTemplate({
   content, 
   buttonText = null, 
   buttonUrl = null,
+  linkPolicy = null,
+  linkPolicyText = null,
   footerText = 'DJ System - ระบบจัดการงาน'
 }) {
+  const resolvedLinkPolicyText = linkPolicyText || getMagicLinkPolicyText(linkPolicy);
+
   return `
 <!DOCTYPE html>
 <html lang="th">
@@ -107,6 +127,13 @@ export function createEmailTemplate({
       box-shadow: 0 6px 8px rgba(251, 113, 133, 0.4);
       transform: translateY(-1px);
     }
+    .link-policy {
+      margin: -18px 0 24px;
+      color: #6b7280;
+      font-size: 12px;
+      line-height: 1.5;
+      text-align: center;
+    }
     .email-footer {
       background-color: #fef2f2;
       padding: 20px;
@@ -146,6 +173,7 @@ export function createEmailTemplate({
       <div class="button-container">
         <a href="${buttonUrl}" class="button" style="background-color:#e11d48;color:#ffffff;text-decoration:none;">${buttonText}</a>
       </div>
+      ${resolvedLinkPolicyText ? `<p class="link-policy" style="margin:-18px 0 24px;color:#6b7280;font-size:12px;line-height:1.5;text-align:center;">${resolvedLinkPolicyText}</p>` : ''}
       ` : ''}
     </div>
     <div class="email-footer">
@@ -180,7 +208,8 @@ export function createJobApprovalEmail({ djId, subject, priority, magicLink, app
     heading: `📋 งานใหม่รออนุมัติ`,
     content,
     buttonText: '🔐 อนุมัติงานทันที (ไม่ต้อง Login)',
-    buttonUrl: magicLink
+    buttonUrl: magicLink,
+    linkPolicy: MAGIC_LINK_POLICY_TYPES.ONE_TIME
   });
 }
 
@@ -205,7 +234,8 @@ export function createJobAssignmentEmail({ djId, subject, priority, dueDate, mag
     heading: `👤 งานใหม่สำหรับคุณ`,
     content,
     buttonText: '🔐 เริ่มทำงานทันที (ไม่ต้อง Login)',
-    buttonUrl: magicLink
+    buttonUrl: magicLink,
+    linkPolicy: MAGIC_LINK_POLICY_TYPES.REUSABLE
   });
 }
 
@@ -229,7 +259,8 @@ export function createJobRejectionEmail({ djId, subject, reason, magicLink, requ
     heading: `❌ งานถูกปฏิเสธ`,
     content,
     buttonText: '🔐 ดูรายละเอียด (ไม่ต้อง Login)',
-    buttonUrl: magicLink
+    buttonUrl: magicLink,
+    linkPolicy: MAGIC_LINK_POLICY_TYPES.REUSABLE
   });
 }
 
@@ -253,7 +284,8 @@ export function createJobCompletionEmail({ djId, subject, note, magicLink, reque
     heading: `✅ งานส่งมอบเรียบร้อย`,
     content,
     buttonText: '🔐 ตรวจสอบงาน (ไม่ต้อง Login)',
-    buttonUrl: magicLink
+    buttonUrl: magicLink,
+    linkPolicy: MAGIC_LINK_POLICY_TYPES.REUSABLE
   });
 }
 
@@ -279,7 +311,8 @@ export function createDraftSubmissionEmail({ djId, subject, assigneeName, note, 
     heading: `📝 Draft งานส่งมาแล้ว`,
     content,
     buttonText: '🔐 ตรวจสอบ Draft',
-    buttonUrl: magicLink
+    buttonUrl: magicLink,
+    linkPolicy: MAGIC_LINK_POLICY_TYPES.REUSABLE
   });
 }
 
@@ -306,7 +339,8 @@ export function createJobExtensionEmail({ djId, subject, assigneeName, extension
     heading: `⏰ ขอขยายเวลางาน`,
     content,
     buttonText: '🔐 ดูรายละเอียด (ไม่ต้อง Login)',
-    buttonUrl: magicLink
+    buttonUrl: magicLink,
+    linkPolicy: MAGIC_LINK_POLICY_TYPES.REUSABLE
   });
 }
 
@@ -533,6 +567,7 @@ export function createStaleJobReminderEmail({ assigneeName, jobId, jobSubject, s
     content,
     buttonText: '🔐 ดูรายละเอียดงาน',
     buttonUrl: jobUrl,
+    linkPolicy: MAGIC_LINK_POLICY_TYPES.REUSABLE,
   });
 }
 
@@ -566,6 +601,7 @@ export function createSlaDeadlineReminderEmail({ recipientName, jobId, jobSubjec
     content,
     buttonText: '🔐 ดูรายละเอียดงาน',
     buttonUrl: jobUrl,
+    linkPolicy: MAGIC_LINK_POLICY_TYPES.REUSABLE,
   });
 }
 
@@ -626,6 +662,9 @@ export function createRegistrationApprovedEmail({ userEmail, userName, temporary
 }
 
 export default {
+  MAGIC_LINK_POLICY_TYPES,
+  MAGIC_LINK_POLICY_TEXT,
+  getMagicLinkPolicyText,
   createEmailTemplate,
   createJobApprovalEmail,
   createJobAssignmentEmail,
