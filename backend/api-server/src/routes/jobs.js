@@ -203,6 +203,17 @@ const combineWithScopeCondition = (baseCondition, scopeCondition) => {
   };
 };
 
+const appendAndCondition = (where, condition) => {
+  if (!condition || Object.keys(condition).length === 0) return where;
+  const existingAnd = Array.isArray(where.AND)
+    ? where.AND
+    : where.AND
+      ? [where.AND]
+      : [];
+  where.AND = [...existingAnd, condition];
+  return where;
+};
+
 const toIsoStringOrNull = (value) => {
   if (!value) return null;
   if (value instanceof Date) return value.toISOString();
@@ -845,6 +856,8 @@ router.get('/', async (req, res) => {
     const prisma = getDatabase();
     const userId = req.user.userId;
     const tenantId = req.user.tenantId;
+    const parsedPage = Math.max(parseInt(page, 10) || 1, 1);
+    const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
     const shouldIncludeCompleted = String(includeCompleted ?? 'true').toLowerCase() !== 'false';
     const normalizedApprovalView = String(approvalView || '').trim().toLowerCase();
     const shouldIncludeRequesterJobs = String(includeRequesterJobs || '').trim().toLowerCase() === 'true' && !normalizedApprovalView;
@@ -1190,8 +1203,8 @@ router.get('/', async (req, res) => {
     };
 
     if (isAssigneeQueueOnlyRequest) {
-      const skip = (parseInt(page) - 1) * parseInt(limit);
-      const take = parseInt(limit);
+      const skip = (parsedPage - 1) * parsedLimit;
+      const take = parsedLimit;
       const assigneeWhere = {
         tenantId,
         assigneeId: userId,
@@ -1320,10 +1333,10 @@ router.get('/', async (req, res) => {
           serverTimezone: APP_TIMEZONE
         },
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page: parsedPage,
+          limit: parsedLimit,
           total,
-          totalPages: Math.ceil(total / parseInt(limit))
+          totalPages: Math.ceil(total / parsedLimit)
         }
       });
     }
@@ -1340,7 +1353,7 @@ router.get('/', async (req, res) => {
             serverNow: new Date().toISOString(),
             serverTimezone: APP_TIMEZONE
           },
-          pagination: { page: parseInt(page), limit: parseInt(limit), total: 0, totalPages: 0 }
+          pagination: { page: parsedPage, limit: parsedLimit, total: 0, totalPages: 0 }
         });
       }
       Object.assign(where, condition);
@@ -1387,6 +1400,28 @@ router.get('/', async (req, res) => {
       }
     }
 
+    if (normalizedApprovalView === 'waiting') {
+      appendAndCondition(where, {
+        isParent: false,
+        OR: [
+          { status: 'pending_approval' },
+          { status: { startsWith: 'pending_level_' } },
+          { status: 'assignee_rejected' },
+          { status: 'pending_dependency' }
+        ]
+      });
+    }
+
+    if (['approved', 'not_approved'].includes(normalizedApprovalView)) {
+      appendAndCondition(where, {
+        isParent: false,
+        status: { not: 'assignee_rejected' },
+        approvals: {
+          some: approvalHistoryWhere
+        }
+      });
+    }
+
     // Assignee filtering (search by display name)
     if (assignee) {
       where.assignee = {
@@ -1400,8 +1435,11 @@ router.get('/', async (req, res) => {
       };
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
+    const skip = (parsedPage - 1) * parsedLimit;
+    const take = parsedLimit;
+    const useApprovalViewPagination = Boolean(normalizedApprovalView);
+    const dbSkip = useApprovalViewPagination ? 0 : skip;
+    const dbTake = useApprovalViewPagination ? 5000 : take;
 
     const [jobs, total] = await Promise.all([
       prisma.job.findMany({
@@ -1466,8 +1504,8 @@ router.get('/', async (req, res) => {
           }
         },
         orderBy: { dueDate: 'asc' },
-        skip,
-        take
+        skip: dbSkip,
+        take: dbTake
       }),
       prisma.job.count({ where })
     ]);
@@ -1594,6 +1632,11 @@ router.get('/', async (req, res) => {
       }
     }
 
+    const responseTotal = normalizedApprovalView ? transformed.length : total;
+    if (normalizedApprovalView) {
+      transformed = transformed.slice(skip, skip + take);
+    }
+
     res.json({
       success: true,
       data: transformed,
@@ -1602,10 +1645,10 @@ router.get('/', async (req, res) => {
         serverTimezone: APP_TIMEZONE
       },
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        totalPages: Math.ceil(total / parseInt(limit))
+        page: parsedPage,
+        limit: parsedLimit,
+        total: responseTotal,
+        totalPages: Math.ceil(responseTotal / parsedLimit)
       }
     });
 

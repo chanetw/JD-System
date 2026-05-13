@@ -21,11 +21,24 @@ export const ASSIGNEE_COMPLETED_STATUSES = [
 export const ASSIGNEE_REJECTED_STATUSES = [
   'rejected',
   'rejected_by_assignee',
-  'assignee_rejected'
+  'assignee_rejected',
+  'pending_rejection'
 ];
 
 export const ASSIGNEE_TODO_STATUSES = ['assigned'];
 export const ASSIGNEE_WAITING_STATUSES = ['correction', 'pending_approval'];
+
+export const ASSIGNEE_REJECTABLE_ACTION_STATUSES = [
+  'approved',
+  'assigned',
+  'in_progress',
+  'correction',
+  'rework',
+  'returned',
+  'draft_review',
+  'pending_rebrief',
+  'rebrief_submitted'
+];
 
 export const APPROVAL_WAITING_BASE_STATUSES = [
   'pending_approval',

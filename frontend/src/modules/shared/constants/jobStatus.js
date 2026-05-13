@@ -32,6 +32,7 @@ export const WORK_STATUS_LABEL = {
     pending_rebrief: 'รอ Rebrief',
     rebrief_submitted: 'ส่ง Rebrief แล้ว',
     assignee_rejected: 'ถูกปฏิเสธ (รอพิจารณา)',
+    pending_rejection: 'ถูกปฏิเสธ (รอพิจารณา)',
     completed: 'เสร็จสมบูรณ์',
     closed: 'เสร็จสมบูรณ์',
     rejected: 'ถูกปฏิเสธ',
@@ -80,6 +81,7 @@ export const STATUS_COLOR = {
     draft_review: 'bg-purple-100 text-purple-700',
     pending_rebrief: 'bg-yellow-100 text-yellow-700',
     rebrief_submitted: 'bg-indigo-100 text-indigo-700',
+    pending_rejection: 'bg-orange-100 text-orange-700',
     rejected: 'bg-red-100 text-red-700',
     rejected_by_assignee: 'bg-red-100 text-red-700',
     completed: 'bg-green-100 text-green-700',
@@ -181,7 +183,17 @@ export const ACTIVE_JOB_STATUSES = Object.keys(WORK_STATUS_LABEL).filter(
 );
 
 export const ASSIGNEE_REJECTABLE_STATUSES = ACTIVE_JOB_STATUSES.filter(
-    (status) => status !== 'assignee_rejected'
+    (status) => [
+        'approved',
+        'assigned',
+        'in_progress',
+        'rework',
+        'correction',
+        'returned',
+        'draft_review',
+        'pending_rebrief',
+        'rebrief_submitted',
+    ].includes(status)
 );
 
 export const ASSIGNEE_COMPLETE_ACTION_STATUSES = [

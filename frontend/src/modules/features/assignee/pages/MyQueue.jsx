@@ -1352,9 +1352,9 @@ function JobCard({ job, activeTab, onView, onOpenCompleteModal, onOpenDraftModal
     const isPredecessorPending = job.predecessorDjId && job.predecessorStatus &&
         !['completed', 'approved'].includes(job.predecessorStatus);
 
-    // สถานะที่แสดงปุ่มดำเนินการ (เหมือน JobActionPanel)
-    const actionStatuses = ['approved', 'assigned', 'in_progress', 'rework', 'correction', 'returned', 'draft_review'];
-    const canDoActions = actionStatuses.includes(job.status);
+    const canComplete = ASSIGNEE_COMPLETE_ACTION_STATUSES.includes(job.status);
+    const canDraftAndRebrief = ASSIGNEE_DRAFT_REBRIEF_ACTION_STATUSES.includes(job.status);
+    const canDoActions = canComplete || canDraftAndRebrief;
     const primaryStatus = getQueueCardStatus({ job, activeTab, isUrgent, isDraftReview, isPredecessorPending });
 
     return (
@@ -1447,10 +1447,10 @@ function JobCard({ job, activeTab, onView, onOpenCompleteModal, onOpenDraftModal
                     {onOpenCompleteModal && (
                         <button
                             onClick={(e) => onOpenCompleteModal(job, e)}
-                            disabled={isDraftReview}
+                            disabled={!canComplete || isDraftReview}
                             title={isDraftReview ? draftReviewReason : 'ส่งงาน (Complete)'}
                             className={`min-h-[44px] flex-1 flex items-center justify-center gap-2 px-4 py-3 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors ${
-                                isDraftReview
+                                !canComplete || isDraftReview
                                     ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                                     : 'bg-green-500 hover:bg-green-600'
                             }`}
@@ -1460,7 +1460,7 @@ function JobCard({ job, activeTab, onView, onOpenCompleteModal, onOpenDraftModal
                         </button>
                     )}
                     {/* ส่ง Draft + ขอ Rebrief — แสดงเฉพาะสถานะที่ทำได้ */}
-                    {canDoActions && onOpenDraftModal && (
+                    {canDraftAndRebrief && onOpenDraftModal && (
                         <button
                             onClick={(e) => onOpenDraftModal(job, e)}
                             disabled={isDraftReview}
@@ -1475,7 +1475,7 @@ function JobCard({ job, activeTab, onView, onOpenCompleteModal, onOpenDraftModal
                             ส่ง Draft
                         </button>
                     )}
-                    {canDoActions && onOpenRebriefModal && (
+                    {canDraftAndRebrief && onOpenRebriefModal && (
                         <button
                             onClick={(e) => onOpenRebriefModal(job, e)}
                             disabled={isDraftReview}

@@ -29,20 +29,9 @@ import {
   createJobCompletionEmail,
   createJobAssignmentEmail
 } from '../utils/emailTemplates.js';
-import { HARD_DELETE_ALLOWED_STATUSES } from '../constants/jobConstants.js';
+import { ASSIGNEE_REJECTABLE_ACTION_STATUSES } from '../utils/jobQueueConfig.js';
 
-const ASSIGNEE_REJECT_TERMINAL_STATUSES = [
-  'completed',
-  'closed',
-  'rejected',
-  'rejected_by_assignee',
-  'cancelled',
-  'partially_completed'
-];
-
-const ASSIGNEE_REJECTABLE_STATUSES = HARD_DELETE_ALLOWED_STATUSES.filter(
-  (status) => !ASSIGNEE_REJECT_TERMINAL_STATUSES.includes(status) && status !== 'assignee_rejected'
-);
+const ASSIGNEE_REJECTABLE_STATUSES = ASSIGNEE_REJECTABLE_ACTION_STATUSES;
 
 const SEQUENTIAL_REJECTION_STOP_STATUSES = [
   'completed',

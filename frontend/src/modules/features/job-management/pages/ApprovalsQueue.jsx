@@ -332,10 +332,6 @@ export default function ApprovalsQueue() {
             return { canAction: false, reason: 'งานแม่ใช้เพื่อแสดงบริบทเท่านั้น' };
         }
 
-        if (job.predecessorId) {
-            return { canAction: false, reason: 'รออนุมัติงานหลักก่อน' };
-        }
-
         if (!isApprovalActionableJob(job)) {
             if (job.status === 'pending_dependency') {
                 return { canAction: false, reason: 'งานกำลังรอ dependency' };

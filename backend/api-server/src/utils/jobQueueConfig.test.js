@@ -3,6 +3,8 @@ import test from 'node:test';
 
 import {
   APPROVAL_HISTORY_CATEGORIES,
+  ASSIGNEE_REJECTABLE_ACTION_STATUSES,
+  ASSIGNEE_REJECTED_STATUSES,
   getApprovalHistoryPresentation,
   hasAdminOverridePrefix,
   isApprovalActionableStatus,
@@ -16,6 +18,15 @@ test('approval waiting/actionable status helpers classify queue statuses correct
   assert.equal(isApprovalActionableStatus('pending_approval'), true);
   assert.equal(isApprovalActionableStatus('pending_level_2'), true);
   assert.equal(isApprovalActionableStatus('pending_dependency'), false);
+});
+
+test('assignee queue groups include legacy pending rejection without allowing invalid action statuses', () => {
+  assert.equal(ASSIGNEE_REJECTED_STATUSES.includes('pending_rejection'), true);
+  assert.equal(ASSIGNEE_REJECTABLE_ACTION_STATUSES.includes('pending_approval'), false);
+  assert.equal(ASSIGNEE_REJECTABLE_ACTION_STATUSES.includes('pending_dependency'), false);
+  assert.equal(ASSIGNEE_REJECTABLE_ACTION_STATUSES.includes('submitted'), false);
+  assert.equal(ASSIGNEE_REJECTABLE_ACTION_STATUSES.includes('in_progress'), true);
+  assert.equal(ASSIGNEE_REJECTABLE_ACTION_STATUSES.includes('pending_rebrief'), true);
 });
 
 test('approval history presentation treats confirm assignee rejection as approved history', () => {

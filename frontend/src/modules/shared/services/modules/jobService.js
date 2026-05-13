@@ -268,16 +268,34 @@ export const jobService = {
      */
     getAssigneeJobs: async (userId, filterStatus = 'all') => {
         try {
-            const response = await httpClient.get('/jobs', {
-                params: { role: 'assignee', status: filterStatus }
+            const pageLimit = 500;
+            const fetchPage = (page) => httpClient.get('/jobs', {
+                params: { role: 'assignee', status: filterStatus, page, limit: pageLimit }
             });
 
+            const response = await fetchPage(1);
+
             if (!response.data.success) {
-                console.warn('[jobService] getAssigneeJobs failed:', response.data.message);
-                return [];
+                throw new Error(response.data.message || 'โหลดคิวงานไม่สำเร็จ');
             }
 
-            const data = response.data.data || [];
+            const firstPageData = response.data.data || [];
+            const totalPages = Number(response.data?.pagination?.totalPages || 1);
+            let data = firstPageData;
+
+            if (totalPages > 1) {
+                const remainingResponses = await Promise.all(
+                    Array.from({ length: totalPages - 1 }, (_, index) => fetchPage(index + 2))
+                );
+                const remainingData = remainingResponses.flatMap((pageResponse) => {
+                    if (!pageResponse.data?.success) {
+                        throw new Error(pageResponse.data?.message || 'โหลดคิวงานไม่ครบ');
+                    }
+                    return pageResponse.data.data || [];
+                });
+                data = [...firstPageData, ...remainingData];
+            }
+
             const serverNowRaw = response.data?.meta?.serverNow;
             const serverNow = serverNowRaw ? new Date(serverNowRaw) : null;
             const now = serverNow && !Number.isNaN(serverNow.getTime()) ? serverNow : new Date();
@@ -289,8 +307,7 @@ export const jobService = {
 
         } catch (error) {
             console.error('Error fetching assignee jobs:', error);
-            // Fallback to empty array if error
-            return [];
+            throw error;
         }
     },
 
