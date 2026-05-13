@@ -444,7 +444,18 @@ export default function MyQueue() {
             fetchJobs();
             fetchAllTabCounts();
         } catch (err) {
-            showAlert('error', 'ส่งงานไม่สำเร็จ', err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์');
+            const errorCode = err?.response?.data?.error;
+            const errorTextByCode = {
+                INVALID_STATUS: 'สถานะงานนี้ไม่สามารถส่งงานได้แล้ว',
+                FORBIDDEN: 'ไม่มีสิทธิ์ส่งงานนี้',
+                ALREADY_PROCESSED: 'สถานะงานเปลี่ยนไปแล้ว กรุณารีเฟรชหน้า',
+                NOT_FOUND: 'ไม่พบงานที่ต้องการส่ง'
+            };
+            showAlert(
+                'error',
+                'ส่งงานไม่สำเร็จ',
+                errorTextByCode[errorCode] || err?.response?.data?.message || err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์'
+            );
         } finally {
             setIsCompleting(false);
         }

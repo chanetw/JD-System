@@ -4596,34 +4596,24 @@ router.post('/:id/complete', async (req, res) => {
     const result = await approvalService.completeJob({
       jobId,
       userId,
+      actorUser: req.user,
       note,
       attachments,
       deliveredItems
     });
 
-    // 🔔 Notify Requester: งานเสร็จสมบูรณ์
-    if (result.success) {
-      try {
-        const prisma = getDatabase();
-        const completedJobInfo = await prisma.job.findUnique({
-          where: { id: jobId },
-          select: { requesterId: true, djId: true, subject: true, tenantId: true, assignee: { select: { firstName: true, lastName: true } } }
-        });
-        if (completedJobInfo?.requesterId && !isSameUserId(completedJobInfo.requesterId, userId)) {
-          const assigneeName = completedJobInfo.assignee ? `${completedJobInfo.assignee.firstName} ${completedJobInfo.assignee.lastName}`.trim() : 'ผู้รับงาน';
-          await notificationService.createNotification({
-            tenantId: completedJobInfo.tenantId,
-            userId: completedJobInfo.requesterId,
-            type: 'job_completed',
-            title: `งาน ${completedJobInfo.djId} เสร็จสมบูรณ์`,
-            message: `${assigneeName} ทำงาน "${completedJobInfo.subject}" เสร็จแล้ว`,
-            link: `/jobs/${jobId}`
-          });
-        }
-      } catch (notiError) {
-        console.error('[Jobs] Complete notification error (non-blocking):', notiError);
-      }
+    if (!result?.success) {
+      const errorCode = result?.error || 'COMPLETE_JOB_FAILED';
+      const statusByError = {
+        INVALID_STATUS: 409,
+        FORBIDDEN: 403,
+        NOT_FOUND: 404,
+        ALREADY_PROCESSED: 409
+      };
+      return res.status(statusByError[errorCode] || 400).json(result);
+    }
 
+    if (result.success) {
       // 🔥 Trigger Job Chain (Sequential Jobs)
       try {
         await jobService.onJobCompleted(jobId, userId);

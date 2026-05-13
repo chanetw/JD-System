@@ -1701,8 +1701,9 @@ export class ApprovalService extends BaseService {
   /**
    * Complete Job (Called by Assignee)
    */
-  async completeJob({ jobId, userId, note, attachments, deliveredItems }) {
+  async completeJob({ jobId, userId, actorUser = null, note, attachments, deliveredItems }) {
     try {
+      const VALID_COMPLETE_STATUSES = ['approved', 'assigned', 'in_progress', 'rework', 'correction', 'returned'];
       const normalizedDeliveredItems = normalizeDeliveredItemsInput(deliveredItems);
       const attachmentList = Array.isArray(attachments) ? attachments : [];
       const completedAt = new Date();
@@ -1719,7 +1720,32 @@ export class ApprovalService extends BaseService {
           }
         }
       });
-      if (!job) throw new Error('Job not found');
+      if (!job) {
+        return {
+          success: false,
+          error: 'NOT_FOUND',
+          message: 'Job not found'
+        };
+      }
+
+      if (!VALID_COMPLETE_STATUSES.includes(job.status)) {
+        return {
+          success: false,
+          error: 'INVALID_STATUS',
+          message: `ไม่สามารถส่งงานได้ (สถานะปัจจุบัน: ${job.status})`,
+          data: { currentStatus: job.status }
+        };
+      }
+
+      const isAssignee = String(job.assigneeId) === String(userId);
+      const isAdminOverride = await this.isAdminActor(actorUser, userId);
+      if (!isAssignee && !isAdminOverride) {
+        return {
+          success: false,
+          error: 'FORBIDDEN',
+          message: 'ไม่มีสิทธิ์ส่งงานนี้'
+        };
+      }
 
       const validItemIds = new Set(job.jobItems.map(item => item.id));
       normalizedDeliveredItems.forEach((item) => {
@@ -1744,8 +1770,11 @@ export class ApprovalService extends BaseService {
           );
         }
 
-        const completedJob = await tx.job.update({
-          where: { id: jobId },
+        const completeUpdate = await tx.job.updateMany({
+          where: {
+            id: jobId,
+            status: { in: VALID_COMPLETE_STATUSES }
+          },
           data: {
             status: 'completed',
             completedAt,
@@ -1753,6 +1782,17 @@ export class ApprovalService extends BaseService {
             finalFiles: attachmentList
           }
         });
+
+        if (completeUpdate.count === 0) {
+          const latestJob = await tx.job.findUnique({
+            where: { id: jobId },
+            select: { status: true }
+          });
+          const statusChangedError = new Error('Job status changed during complete action');
+          statusChangedError.code = 'ALREADY_PROCESSED';
+          statusChangedError.currentStatus = latestJob?.status || null;
+          throw statusChangedError;
+        }
 
         if (attachmentList.length > 0) {
           const mediaFilePromises = attachmentList.map(async (acc) => {
@@ -1790,7 +1830,9 @@ export class ApprovalService extends BaseService {
           });
         }
 
-        return completedJob;
+        return tx.job.findUnique({
+          where: { id: jobId }
+        });
       });
 
       await this.logApprovalActivity({
@@ -1855,6 +1897,14 @@ export class ApprovalService extends BaseService {
 
       return { success: true, data: updatedJob };
     } catch (error) {
+      if (error?.code === 'ALREADY_PROCESSED') {
+        return {
+          success: false,
+          error: 'ALREADY_PROCESSED',
+          message: `สถานะงานเปลี่ยนไปแล้ว${error.currentStatus ? ` (สถานะปัจจุบัน: ${error.currentStatus})` : ''}`,
+          data: { currentStatus: error.currentStatus || null }
+        };
+      }
       return this.handleError(error, 'COMPLETE_JOB', 'Job');
     }
   }

@@ -3,6 +3,7 @@ import { CheckIcon, XMarkIcon, UserIcon, ExclamationCircleIcon, CheckCircleIcon,
 import { ACTION_BUTTON_STYLES } from '@shared/utils/alertHelper';
 import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 import {
+    ASSIGNEE_COMPLETE_ACTION_STATUSES,
     ASSIGNEE_DRAFT_REBRIEF_ACTION_STATUSES,
     ASSIGNEE_REJECTABLE_STATUSES,
 } from '@shared/constants/jobStatus';
@@ -17,8 +18,6 @@ const JobActionPanel = ({
     onOpenRejectModal,
     onOpenCompleteModal,
     onManualAssign,
-    onConfirmClose,
-    onRequestRevision,
     onOpenAssigneeRejectModal,
     onConfirmAssigneeRejection,
     onDenyRejection, // เพิ่ม callback สำหรับ Deny Rejection
@@ -249,6 +248,7 @@ const JobActionPanel = ({
         const normalStatuses = ASSIGNEE_DRAFT_REBRIEF_ACTION_STATUSES;
         const pendingRebriefStatus = job.status === 'pending_rebrief';
         const rebriefSubmittedStatus = job.status === 'rebrief_submitted';
+        const canComplete = ASSIGNEE_COMPLETE_ACTION_STATUSES.includes(job.status);
         const canRejectByAssignee = ASSIGNEE_REJECTABLE_STATUSES.includes(job.status);
 
         if (!normalStatuses.includes(job.status) && !pendingRebriefStatus && !rebriefSubmittedStatus) return null;
@@ -263,6 +263,7 @@ const JobActionPanel = ({
                         <div className="flex gap-3">
                             <button
                                 onClick={onOpenCompleteModal}
+                                disabled={!canComplete}
                                 className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors shadow-sm ${ACTION_BUTTON_STYLES.complete}`}
                             >
                                 <CheckIcon className="w-5 h-5" />
@@ -472,33 +473,7 @@ const JobActionPanel = ({
 
     // 6. Close/Revision Actions (Requester)
     const renderCloseActions = () => {
-        if (job.isParent === true || job.isParent === 1) return null;
-        if (job.status !== 'pending_close') return null;
-
-        return (
-            <div className="bg-white rounded-xl border border-amber-200 shadow-sm p-6 bg-amber-50 mb-6">
-                <h2 className="font-semibold text-amber-800 mb-2">รอยืนยันการปิดงาน</h2>
-                <p className="text-sm text-amber-700 mb-4">
-                    ผู้รับงานส่งคำขอปิดงานมาแล้ว กรุณาตรวจสอบผลงานและยืนยัน
-                </p>
-                <div className="flex gap-3">
-                    <button
-                        onClick={onConfirmClose}
-                        className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors shadow-sm ${ACTION_BUTTON_STYLES.complete}`}
-                    >
-                        <CheckIcon className="w-5 h-5" />
-                        ยืนยันปิดงาน
-                    </button>
-                    <button
-                        onClick={onRequestRevision}
-                        className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors shadow-sm ${ACTION_BUTTON_STYLES.rebrief}`}
-                    >
-                        <XMarkIcon className="w-5 h-5" />
-                        ขอให้แก้ไข
-                    </button>
-                </div>
-            </div>
-        );
+        return null;
     };
 
     // ==========================================

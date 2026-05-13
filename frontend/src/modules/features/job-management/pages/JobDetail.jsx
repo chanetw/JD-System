@@ -19,7 +19,7 @@ import { adminService } from '@shared/services/modules/adminService';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { getJobActionErrorDetail } from '@shared/utils/alertHelper';
 import { ROLE_V1_DISPLAY, getJobRole, JOB_ROLE_THEMES, hasAnyRole } from '@shared/utils/permission.utils';
-import { normalizePriority } from '@shared/constants/jobStatus';
+import { ASSIGNEE_COMPLETE_ACTION_STATUSES, normalizePriority } from '@shared/constants/jobStatus';
 import { formatDateToThai, formatDateTimeToThai } from '@shared/utils/dateUtils';
 import Badge from '@shared/components/Badge';
 import LoadingSpinner from '@shared/components/LoadingSpinner';
@@ -443,6 +443,15 @@ export default function JobDetail() {
     };
 
     const handleOpenCompleteModal = () => {
+        if (!ASSIGNEE_COMPLETE_ACTION_STATUSES.includes(job?.status)) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'ยังไม่สามารถส่งงานได้',
+                text: 'สถานะงานนี้ไม่สามารถส่งงานได้แล้ว',
+                confirmButtonColor: '#e11d48'
+            });
+            return;
+        }
         setFinalLink('');
         setCompleteNote('');
         setCompleteUploadedFiles([]);
@@ -506,10 +515,17 @@ export default function JobDetail() {
             setCompleteUploadedFiles([]);
             navigate('/assignee/my-queue?tab=completed');
         } catch (err) {
+            const errorCode = err?.response?.data?.error;
+            const errorTextByCode = {
+                INVALID_STATUS: 'สถานะงานนี้ไม่สามารถส่งงานได้แล้ว',
+                FORBIDDEN: 'ไม่มีสิทธิ์ส่งงานนี้',
+                ALREADY_PROCESSED: 'สถานะงานเปลี่ยนไปแล้ว กรุณารีเฟรชหน้า',
+                NOT_FOUND: 'ไม่พบงานที่ต้องการส่ง'
+            };
             Swal.fire({
                 icon: 'error',
                 title: 'ส่งงานไม่สำเร็จ',
-                text: err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์',
+                text: errorTextByCode[errorCode] || err?.response?.data?.message || err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์',
                 confirmButtonColor: '#e11d48'
             });
         } finally {
@@ -666,29 +682,6 @@ export default function JobDetail() {
             loadJob();
         }
         return result;
-    };
-
-    const handleConfirmClose = async () => {
-        if (!confirm('ยืนยันปิดงาน?')) return;
-        try {
-            // Simplified logic call - assume api supports or use generic update
-            // Since apiService logic for close is client-side in old file, 
-            // we should ideally add api.closeJob. But old code used updateJob helper (not in apiService?).
-            // Let's assume api.updateStatus or similar exists or we manually update status?
-            // The old code had `updateJob` function locally defined?
-            // Wait, old code line 420: `const updatedJob = await updateJob(id, ...)`
-            // I need to implement `updateJob` if it's missing or use use generic update if available.
-            // I'll skip implementing fully new API call here and just alert for now or try generic if I had one.
-            // Actually, let's just use `api.completeJob` or similar if appropriate, but close is different.
-            // I'll alert "API Implemenation Pending" if api is missing.
-            alert('API Close Job กำลังพัฒนา (Pending Implementation)');
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
-    const onRequestRevision = async () => {
-        alert('API Request Revision กำลังพัฒนา (Pending Implementation)');
     };
 
     // ============================================
@@ -1327,8 +1320,6 @@ export default function JobDetail() {
                                         onOpenRejectModal={() => setShowRejectModal(true)}
                                         onOpenCompleteModal={handleOpenCompleteModal}
                                         onManualAssign={handleManualAssign}
-                                        onConfirmClose={handleConfirmClose}
-                                        onRequestRevision={onRequestRevision}
                                         onOpenAssigneeRejectModal={() => setShowAssigneeRejectModal(true)}
                                         onConfirmAssigneeRejection={openConfirmRejectionModal}
                                         onDenyRejection={() => setShowDenyRejectionModal(true)}
