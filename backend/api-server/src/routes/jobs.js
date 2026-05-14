@@ -58,6 +58,7 @@ import {
 } from '../utils/jobQueueConfig.js';
 import { getStorageService } from '../services/storageService.js';
 import { handoffCompletionFilesToNextJobs } from '../services/handoffService.js';
+import { ensureCanApproveOrRejectJob } from '../services/permissionService.js';
 import {
   resolveJobAccess,
   userHasAnyRole
@@ -68,6 +69,7 @@ const jobService = new JobService();
 const notificationService = new NotificationService();
 const magicLinkService = new MagicLinkService();
 const APP_TIMEZONE = process.env.APP_TIMEZONE || 'Asia/Bangkok';
+const ENABLE_URGENT_JOB_CREATION = String(process.env.ENABLE_URGENT_JOB_CREATION || 'false').toLowerCase() === 'true';
 
 const router = express.Router();
 
@@ -877,6 +879,18 @@ const sendApprovalActionResponse = (res, result) => {
 const parseJobIdParam = (value) => {
   const jobId = Number(value);
   return Number.isInteger(jobId) ? jobId : null;
+};
+
+const ensureUrgentPriorityAllowed = (priority) => {
+  if (priority !== 'urgent' || ENABLE_URGENT_JOB_CREATION) {
+    return null;
+  }
+
+  return {
+    success: false,
+    error: 'URGENT_PRIORITY_DISABLED',
+    message: 'ปิดการใช้งาน priority แบบ urgent ชั่วคราวตามนโยบายธุรกิจ'
+  };
 };
 
 const ensureCanResolveAssigneeRejection = async ({ prisma, jobId, user }) => {
@@ -2691,13 +2705,9 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Temporary business policy: disable creating urgent jobs from all clients.
-    if (priority === 'urgent') {
-      return res.status(400).json({
-        success: false,
-        error: 'URGENT_PRIORITY_DISABLED',
-        message: 'ปิดการสร้างงานด่วนชั่วคราวตามนโยบายธุรกิจ'
-      });
+    const urgentPolicyError = ensureUrgentPriorityAllowed(priority);
+    if (urgentPolicyError) {
+      return res.status(400).json(urgentPolicyError);
     }
 
     // ตรวจสอบ Required Fields
@@ -3695,13 +3705,9 @@ router.post('/parent-child', async (req, res) => {
       });
     }
 
-    // Temporary business policy: disable creating urgent jobs from all clients.
-    if (priority === 'urgent') {
-      return res.status(400).json({
-        success: false,
-        error: 'URGENT_PRIORITY_DISABLED',
-        message: 'ปิดการสร้างงานด่วนชั่วคราวตามนโยบายธุรกิจ'
-      });
+    const urgentPolicyError = ensureUrgentPriorityAllowed(priority);
+    if (urgentPolicyError) {
+      return res.status(400).json(urgentPolicyError);
     }
 
     // Check if this is a draft save
@@ -5321,6 +5327,18 @@ router.post('/:id/approve', async (req, res) => {
       });
     }
 
+    const prisma = getDatabase();
+    const permission = await ensureCanApproveOrRejectJob({
+      prisma,
+      approvalService,
+      jobId,
+      user: req.user
+    });
+
+    if (!permission.allowed) {
+      return sendApprovalActionResponse(res, permission.result);
+    }
+
     const result = await approvalService.approveJobViaWeb({
       jobId,
       approverId: req.user.userId,
@@ -5354,6 +5372,18 @@ router.post('/:id/reject', async (req, res) => {
         error: 'INVALID_JOB_ID',
         message: 'Invalid job id'
       });
+    }
+
+    const prisma = getDatabase();
+    const permission = await ensureCanApproveOrRejectJob({
+      prisma,
+      approvalService,
+      jobId,
+      user: req.user
+    });
+
+    if (!permission.allowed) {
+      return sendApprovalActionResponse(res, permission.result);
     }
 
     const result = await approvalService.rejectJobViaWeb({
@@ -6725,6 +6755,11 @@ router.post('/:id/edit-priority', async (req, res) => {
         error: 'INVALID_PRIORITY',
         message: `ค่า priority ต้องเป็น ${VALID_PRIORITIES.join(' หรือ ')} เท่านั้น`
       });
+    }
+
+    const urgentPolicyError = ensureUrgentPriorityAllowed(newPriority);
+    if (urgentPolicyError) {
+      return res.status(400).json(urgentPolicyError);
     }
 
     if (!['single', 'chain'].includes(scope)) {
