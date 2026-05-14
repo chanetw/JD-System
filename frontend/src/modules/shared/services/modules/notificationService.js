@@ -68,6 +68,12 @@ export const notificationService = {
                     title: n.title,
                     message: n.message,
                     link: n.link,
+                    actionMode: n.actionMode,
+                    targetUrl: n.targetUrl,
+                    targetJobId: n.targetJobId,
+                    displayTitle: n.displayTitle,
+                    displayMessage: n.displayMessage,
+                    popupIcon: n.popupIcon,
                     isRead: n.isRead,
                     createdAt: n.createdAt
                 }));

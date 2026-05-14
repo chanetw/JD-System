@@ -10,12 +10,17 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { useNotificationStore } from '@core/stores/notificationStore';
 import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import UserProfileMenu from '@shared/components/UserProfileMenu';
+import { isAdmin } from '@shared/utils/permission.utils';
+import {
+    NOTIFICATION_ACTION_MODES,
+    resolveNotificationAction
+} from '@shared/utils/notificationActionResolver';
 
 /**
  * @component Header
@@ -26,6 +31,7 @@ export default function Header({ sidebarCollapsed = false, onMobileMenuClick }) 
     const { user } = useAuthStoreV2();
     const { notifications, unreadCount, fetchNotifications, markAsRead, markAllAsRead, isLoading } = useNotificationStore();
     const location = useLocation();
+    const navigate = useNavigate();
     const searchQuery = useSuperSearchStore(state => state.query);
     const setSearchQuery = useSuperSearchStore(state => state.setQuery);
     const clearSearchQuery = useSuperSearchStore(state => state.clearQuery);
@@ -74,6 +80,112 @@ export default function Header({ sidebarCollapsed = false, onMobileMenuClick }) 
     }, [toast.show]);
 
     const sidebarOffsetClass = sidebarCollapsed ? 'lg:left-[76px]' : 'lg:left-64';
+
+    const showNotificationPopup = async (notification, action, options = {}) => {
+        setShowNoti(false);
+        await Swal.fire({
+            icon: options.icon || action.popupIcon || 'info',
+            title: options.title || action.displayTitle || notification.title || 'การแจ้งเตือน',
+            text: options.text || action.displayMessage || notification.message || 'รายการนี้เป็นข้อความแจ้งให้ทราบเท่านั้น',
+            confirmButtonText: 'รับทราบ',
+            confirmButtonColor: '#e11d48'
+        });
+    };
+
+    const showJobAccessPopup = async (notification, action, data = {}) => {
+        const isReassigned = notification.type === 'job_reassigned';
+        const title = isReassigned ? 'งานนี้ถูกย้ายผู้รับผิดชอบแล้ว' : 'ยังเปิดงานนี้ไม่ได้';
+        const fallbackText = isReassigned
+            ? 'งานนี้ถูกย้ายไปให้ผู้รับผิดชอบคนใหม่แล้ว คุณจึงไม่สามารถดำเนินการงานนี้ต่อได้'
+            : 'คุณยังไม่มีสิทธิ์เปิดรายละเอียดงานนี้ในขณะนี้';
+        const suggestion = data.suggestedAction ? `\n\n${data.suggestedAction}` : '';
+
+        await showNotificationPopup(notification, action, {
+            icon: data.error === 'JOB_NOT_FOUND' ? 'info' : 'warning',
+            title,
+            text: `${data.reason || data.message || fallbackText}${suggestion}`
+        });
+    };
+
+    const handleNotificationClick = async (notification) => {
+        const action = resolveNotificationAction(notification);
+
+        try {
+            if (action.actionMode === NOTIFICATION_ACTION_MODES.MESSAGE_ONLY) {
+                await markAsRead(notification.id);
+                await showNotificationPopup(notification, action);
+                return;
+            }
+
+            if (action.actionMode === NOTIFICATION_ACTION_MODES.ADMIN_ROUTE) {
+                if (!isAdmin(user)) {
+                    await markAsRead(notification.id);
+                    await showNotificationPopup(notification, action, {
+                        icon: 'info',
+                        title: 'แจ้งเตือนสำหรับผู้ดูแลระบบ',
+                        text: 'รายการนี้เป็นข้อความสำหรับผู้ดูแลระบบ หากต้องการดำเนินการเพิ่มเติม กรุณาติดต่อ Admin'
+                    });
+                    return;
+                }
+
+                await markAsRead(notification.id);
+                setShowNoti(false);
+                navigate(action.targetUrl);
+                return;
+            }
+
+            if (action.actionMode !== NOTIFICATION_ACTION_MODES.JOB_VIEW || !action.targetJobId || !action.targetUrl) {
+                await markAsRead(notification.id);
+                await showNotificationPopup(notification, action);
+                return;
+            }
+
+            const response = await fetch(`/api/jobs/${action.targetJobId}/access-check`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` }
+            });
+
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok || data.success === false) {
+                if (response.status >= 500) {
+                    setShowNoti(false);
+                    await Swal.fire({
+                        icon: 'warning',
+                        title: 'ยังไม่สามารถเปิดได้ตอนนี้',
+                        text: data.reason || data.message || 'ระบบยังตรวจสอบสิทธิ์เข้าถึงงานไม่ได้ กรุณาลองใหม่อีกครั้ง',
+                        confirmButtonText: 'รับทราบ',
+                        confirmButtonColor: '#e11d48'
+                    });
+                    return;
+                }
+
+                await markAsRead(notification.id);
+                await showJobAccessPopup(notification, action, data);
+                return;
+            }
+
+            if (data.hasAccess) {
+                await markAsRead(notification.id);
+                setShowNoti(false);
+                navigate(action.targetUrl);
+                return;
+            }
+
+            await markAsRead(notification.id);
+            await showJobAccessPopup(notification, action, data);
+        } catch (error) {
+            console.error('Notification click error:', error);
+            setShowNoti(false);
+            await Swal.fire({
+                icon: 'warning',
+                title: 'ยังไม่สามารถเปิดได้ตอนนี้',
+                text: 'ระบบยังตรวจสอบสิทธิ์เข้าถึงงานไม่ได้ กรุณาลองใหม่อีกครั้ง',
+                confirmButtonText: 'รับทราบ',
+                confirmButtonColor: '#e11d48'
+            });
+        }
+    };
 
     return (
         // ============================================
@@ -190,107 +302,10 @@ export default function Header({ sidebarCollapsed = false, onMobileMenuClick }) 
                                                 </div>
                                             </div>
                                         );
-                                        if (!noti.link) {
-                                            return (
-                                                <div
-                                                    key={noti.id}
-                                                    onClick={() => {
-                                                        markAsRead(noti.id);
-                                                        setShowNoti(false);
-                                                        Swal.fire({ icon: 'info', title: 'งานนี้ถูกลบแล้ว', text: 'งานนี้ถูกลบออกจากระบบแล้ว ไม่สามารถเปิดดูได้', confirmButtonColor: '#e11d48' });
-                                                    }}
-                                                    className={`cursor-pointer ${sharedClass}`}
-                                                >
-                                                    {inner}
-                                                </div>
-                                            );
-                                        }
-                                        
-                                        // ตรวจสอบสิทธิ์เฉพาะลิงก์งานก่อนนำทาง
-                                        const handleNotificationClick = async () => {
-                                            try {
-                                                const jobLinkMatch = String(noti.link || '').match(/^\/jobs\/(\d+)(?:[/?#].*)?$/);
-
-                                                if (!jobLinkMatch) {
-                                                    markAsRead(noti.id);
-                                                    setShowNoti(false);
-                                                    window.location.href = noti.link;
-                                                    return;
-                                                }
-
-                                                const jobId = jobLinkMatch[1];
-                                                const response = await fetch(`/api/jobs/${jobId}/access-check`, {
-                                                    method: 'GET',
-                                                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` }
-                                                });
-
-                                                const data = await response.json().catch(() => ({}));
-
-                                                if (!response.ok) {
-                                                    if (response.status >= 500) {
-                                                        setShowNoti(false);
-                                                        Swal.fire({
-                                                            icon: 'error',
-                                                            title: 'ตรวจสอบสิทธิ์ไม่สำเร็จ',
-                                                            text: data.reason || data.message || 'ไม่สามารถตรวจสอบสิทธิ์เข้าถึงงานได้ กรุณาลองใหม่ในภายหลัง'
-                                                        });
-                                                        return;
-                                                    }
-
-                                                    markAsRead(noti.id);
-                                                    setShowNoti(false);
-                                                    Swal.fire({
-                                                        icon: response.status === 404 ? 'info' : 'warning',
-                                                        title: response.status === 404 ? 'ไม่พบงานนี้' : 'ไม่มีสิทธิ์เข้าถึงงานนี้',
-                                                        text: data.reason || data.message || 'ไม่สามารถเปิดงานนี้ได้'
-                                                    });
-                                                    return;
-                                                }
-
-                                                if (data.hasAccess) {
-                                                    markAsRead(noti.id);
-                                                    setShowNoti(false);
-                                                    window.location.href = noti.link;
-                                                    return;
-                                                }
-
-                                                markAsRead(noti.id);
-                                                setShowNoti(false);
-                                                Swal.fire({
-                                                    icon: data.error === 'JOB_NOT_FOUND' ? 'info' : 'warning',
-                                                    title: data.error === 'JOB_NOT_FOUND' ? 'ไม่พบงานนี้' : 'ไม่มีสิทธิ์เข้าถึงงานนี้',
-                                                    html: `
-                                                        <div class="text-left text-sm space-y-2">
-                                                            <p class="text-gray-700">
-                                                                <strong>เหตุผล:</strong> ${data.reason || 'คุณไม่ได้รับการกำหนดให้เข้าถึงงานนี้'}
-                                                            </p>
-                                                            ${data.suggestedAction ? `
-                                                                <div class="mt-3 p-2 bg-blue-50 rounded border border-blue-100">
-                                                                    <p class="text-blue-900"><strong>สิ่งที่คุณสามารถทำ:</strong></p>
-                                                                    <ul class="list-disc list-inside text-blue-800 mt-1">
-                                                                        ${data.suggestedAction.split(';').map(action => `<li>${action.trim()}</li>`).join('')}
-                                                                    </ul>
-                                                                </div>
-                                                            ` : ''}
-                                                        </div>
-                                                    `,
-                                                    confirmButtonColor: '#3b82f6'
-                                                });
-                                            } catch (error) {
-                                                console.error('Notification click error:', error);
-                                                setShowNoti(false);
-                                                Swal.fire({
-                                                    icon: 'error',
-                                                    title: 'ตรวจสอบสิทธิ์ไม่สำเร็จ',
-                                                    text: error.message || 'ไม่สามารถเปิดงานได้ กรุณาลองใหม่อีกครั้ง'
-                                                });
-                                            }
-                                        };
-                                        
                                         return (
                                             <div
                                                 key={noti.id}
-                                                onClick={handleNotificationClick}
+                                                onClick={() => handleNotificationClick(noti)}
                                                 className={`cursor-pointer ${sharedClass}`}
                                             >
                                                 {inner}

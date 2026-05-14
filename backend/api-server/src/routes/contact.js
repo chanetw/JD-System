@@ -12,6 +12,8 @@ import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import { getDatabase } from '../config/database.js';
 import { NotificationService } from '../services/notificationService.js';
 import EmailService from '../services/emailService.js';
+import { createEmailTemplate } from '../utils/emailTemplates.js';
+import { buildFrontendUrl } from '../utils/frontendUrl.js';
 
 const router = express.Router();
 const notificationService = new NotificationService();
@@ -122,10 +124,12 @@ router.post('/', authenticateToken, setRLSContextMiddleware, async (req, res) =>
         const notificationTitle = `[${categoryLabel}] ${subject.trim()}`;
         const notificationMessage = `จาก ${senderName}: ${message.trim().substring(0, 200)}${message.trim().length > 200 ? '...' : ''}`;
         const notificationLink = `/admin/users?tab=requests&id=${createdRequest.id}`;
+        const adminRequestUrl = buildFrontendUrl(notificationLink, { req });
 
-        const emailHtml = `
-            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-                <h2 style="color: #e11d48;">ข้อความจากผู้ใช้งาน — DJ System</h2>
+        const emailHtml = createEmailTemplate({
+            title: `[DJ System] ข้อความจากผู้ใช้: ${subject.trim()}`,
+            heading: 'ข้อความจากผู้ใช้งาน',
+            content: `
                 <table style="width:100%; border-collapse:collapse; margin-top:16px;">
                     <tr>
                         <td style="padding:8px 12px; background:#f8fafc; border:1px solid #e2e8f0; font-weight:600; width:30%;">ผู้ส่ง</td>
@@ -143,8 +147,10 @@ router.post('/', authenticateToken, setRLSContextMiddleware, async (req, res) =>
                 <p style="color:#64748b; font-size:12px; margin-top:16px;">
                     ส่งผ่าน DJ System Contact Form | ${new Date().toLocaleString('th-TH')}
                 </p>
-            </div>
-        `;
+            `,
+            buttonText: 'เปิดคำขอในระบบ',
+            buttonUrl: adminRequestUrl
+        });
 
         // Send in-app notification + email to all admin users concurrently
         const adminPromises = adminUsers.map(async (admin) => {

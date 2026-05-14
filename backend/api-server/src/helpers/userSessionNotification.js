@@ -67,7 +67,7 @@ export const notifyUserSessionUpdate = async ({
   requiresLogout = false,
   title,
   message,
-  link = '/profile'
+  link = null
 }) => {
   if (!req || !tenantId || !userId || !title || !message) {
     return;

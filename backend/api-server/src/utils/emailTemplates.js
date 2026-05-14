@@ -5,16 +5,39 @@
 
 export const MAGIC_LINK_POLICY_TYPES = Object.freeze({
   ONE_TIME: 'one_time',
-  REUSABLE: 'reusable'
+  REUSABLE: 'reusable',
+  MESSAGE_ONLY: 'message_only'
 });
 
 export const MAGIC_LINK_POLICY_TEXT = Object.freeze({
   [MAGIC_LINK_POLICY_TYPES.ONE_TIME]: 'ลิงก์นี้ใช้ได้ 1 ครั้ง ภายใน 7 วัน ใช้สำหรับยืนยันตัวตนและป้องกันการดำเนินการซ้ำหรือการส่งต่อลิงก์',
-  [MAGIC_LINK_POLICY_TYPES.REUSABLE]: 'ลิงก์นี้เข้าได้หลายครั้ง ภายใน 30 วัน สำหรับเปิดดูรายละเอียดงานโดยไม่ต้องเข้าสู่ระบบซ้ำ'
+  [MAGIC_LINK_POLICY_TYPES.REUSABLE]: 'ลิงก์นี้เข้าได้หลายครั้ง ภายใน 30 วัน สำหรับเปิดดูรายละเอียดงานโดยไม่ต้องเข้าสู่ระบบซ้ำ',
+  [MAGIC_LINK_POLICY_TYPES.MESSAGE_ONLY]: 'อีเมลนี้เป็นการแจ้งให้ทราบ ไม่จำเป็นต้องกดดำเนินการ'
 });
 
 export function getMagicLinkPolicyText(policyType) {
   return MAGIC_LINK_POLICY_TEXT[policyType] || '';
+}
+
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0']);
+
+function getSafeEmailButtonUrl(buttonUrl) {
+  if (!buttonUrl) return null;
+
+  const rawUrl = String(buttonUrl).trim();
+  if (!rawUrl) return null;
+
+  try {
+    const parsed = new URL(rawUrl);
+    if (process.env.NODE_ENV === 'production' && LOCAL_HOSTNAMES.has(parsed.hostname)) {
+      console.warn('[emailTemplates] Suppressed localhost email button URL in production:', rawUrl);
+      return null;
+    }
+    return rawUrl;
+  } catch {
+    console.warn('[emailTemplates] Suppressed invalid email button URL:', rawUrl);
+    return null;
+  }
 }
 
 /**
@@ -41,6 +64,7 @@ export function createEmailTemplate({
   linkPolicyText = null,
   footerText = 'DJ System - ระบบจัดการงาน'
 }) {
+  const safeButtonUrl = getSafeEmailButtonUrl(buttonUrl);
   const resolvedLinkPolicyText = linkPolicyText || getMagicLinkPolicyText(linkPolicy);
 
   return `
@@ -169,11 +193,13 @@ export function createEmailTemplate({
     </div>
     <div class="email-body" style="padding:30px 25px;color:#374151;line-height:1.6;">
       ${content}
-      ${buttonText && buttonUrl ? `
+      ${buttonText && safeButtonUrl ? `
       <div class="button-container">
-        <a href="${buttonUrl}" class="button" style="background-color:#e11d48;color:#ffffff;text-decoration:none;">${buttonText}</a>
+        <a href="${safeButtonUrl}" class="button" style="background-color:#e11d48;color:#ffffff;text-decoration:none;">${buttonText}</a>
       </div>
       ${resolvedLinkPolicyText ? `<p class="link-policy" style="margin:-18px 0 24px;color:#6b7280;font-size:12px;line-height:1.5;text-align:center;">${resolvedLinkPolicyText}</p>` : ''}
+      ` : linkPolicy === MAGIC_LINK_POLICY_TYPES.MESSAGE_ONLY && resolvedLinkPolicyText ? `
+      <p class="link-policy" style="margin:18px 0 0;color:#6b7280;font-size:12px;line-height:1.5;text-align:center;">${resolvedLinkPolicyText}</p>
       ` : ''}
     </div>
     <div class="email-footer">
@@ -445,7 +471,7 @@ export function createJobStatusChangedEmail({ jobId, newStatus, jobSubject, upda
 /**
  * สร้าง Email สำหรับแจ้งเตือน Priority เปลี่ยน
  */
-export function createJobPriorityChangedEmail({ djId, subject, oldPriority, newPriority, newDueDate, reason, updatedBy }) {
+export function createJobPriorityChangedEmail({ djId, subject, oldPriority, newPriority, newDueDate, reason, updatedBy, magicLink }) {
   const priorityLabel = (p) => p === 'urgent' ? 'ด่วน' : 'ปกติ';
   const dueDateText = newDueDate ? new Date(newDueDate).toLocaleDateString('th-TH') : null;
 
@@ -467,6 +493,9 @@ export function createJobPriorityChangedEmail({ djId, subject, oldPriority, newP
     title: `ปรับ Priority งาน ${djId}`,
     heading: '🔔 ปรับ Priority งาน',
     content,
+    buttonText: magicLink ? '🔐 ดูรายละเอียดงาน' : null,
+    buttonUrl: magicLink || null,
+    linkPolicy: magicLink ? MAGIC_LINK_POLICY_TYPES.REUSABLE : null,
   });
 }
 
@@ -495,6 +524,7 @@ export function createJobHardDeletedEmail({ djId, subject, reason, deletedBy, af
     title: `งานถูกลบถาวร: ${djId}`,
     heading: '🗑️ งานถูกลบถาวร',
     content,
+    linkPolicy: MAGIC_LINK_POLICY_TYPES.MESSAGE_ONLY,
   });
 }
 
@@ -521,6 +551,7 @@ export function createJobChainDeletedEmail({ affectedDjIds, reason, deletedBy, d
     title: `งานถูกลบถาวร (ชุด)`,
     heading: '🗑️ งานชุดถูกลบถาวร',
     content,
+    linkPolicy: MAGIC_LINK_POLICY_TYPES.MESSAGE_ONLY,
   });
 }
 

@@ -10,6 +10,7 @@
 
 import { getDatabase } from '../config/database.js';
 import EmailService from './emailService.js';
+import MagicLinkService from './magicLinkService.js';
 import {
   createEmailTemplate,
   createJobApprovalEmail,
@@ -20,11 +21,13 @@ import {
   createJobChainDeletedEmail,
   MAGIC_LINK_POLICY_TYPES
 } from '../utils/emailTemplates.js';
+import { isMessageOnlyNotificationType } from '../utils/notificationActionPolicy.js';
 
 export class NotificationService {
   constructor() {
     this.prisma = getDatabase();
     this.emailService = new EmailService();
+    this.magicLinkService = new MagicLinkService();
   }
 
   /**
@@ -169,10 +172,31 @@ export class NotificationService {
 
             if (user && user.email) {
               let emailResult;
-              const buttonUrl = emailData?.magicLink
-                || emailData?.viewUrl
-                || emailData?.editUrl
-                || (/^https?:\/\//i.test(link || '') ? link : null);
+              const messageOnly = isMessageOnlyNotificationType(type);
+              let buttonUrl = messageOnly
+                ? null
+                : (emailData?.magicLink
+                  || emailData?.viewUrl
+                  || emailData?.editUrl
+                  || (/^https?:\/\//i.test(link || '') ? link : null));
+              let generatedViewMagicLink = false;
+
+              if (!buttonUrl && !messageOnly) {
+                const jobLinkMatch = String(link || '').match(/^\/jobs\/(\d+)(?:[/?#].*)?$/);
+                if (jobLinkMatch) {
+                  try {
+                    buttonUrl = await this.magicLinkService.createJobActionLink({
+                      userId,
+                      jobId: Number(jobLinkMatch[1]),
+                      action: 'view',
+                      djId: emailData?.jobId || emailData?.djId
+                    });
+                    generatedViewMagicLink = true;
+                  } catch (magicErr) {
+                    console.warn('[NotificationService] Could not create view magic link:', magicErr.message);
+                  }
+                }
+              }
 
               const genericEmailHtml = buttonUrl
                 ? createEmailTemplate({
@@ -181,8 +205,15 @@ export class NotificationService {
                     content: `<p>${message}</p>`,
                     buttonText: emailData?.buttonText || 'เปิดงานในระบบ',
                     buttonUrl,
-                    linkPolicy: emailData?.magicLinkPolicy || (emailData?.magicLink ? MAGIC_LINK_POLICY_TYPES.REUSABLE : null)
+                    linkPolicy: emailData?.magicLinkPolicy || (emailData?.magicLink || generatedViewMagicLink ? MAGIC_LINK_POLICY_TYPES.REUSABLE : null)
                   })
+                : messageOnly
+                  ? createEmailTemplate({
+                      title,
+                      heading: title,
+                      content: `<p>${message}</p>`,
+                      linkPolicy: MAGIC_LINK_POLICY_TYPES.MESSAGE_ONLY
+                    })
                 : `<p>${message}</p>`;
 
               // เลือก method ตามประเภท
@@ -254,7 +285,8 @@ export class NotificationService {
                       newPriority: emailData.newPriority,
                       newDueDate: emailData.newDueDate,
                       reason: emailData.reason,
-                      updatedBy: emailData.updatedBy || `${user.firstName} ${user.lastName}`.trim()
+                      updatedBy: emailData.updatedBy || `${user.firstName} ${user.lastName}`.trim(),
+                      magicLink: buttonUrl
                     })
                   );
                   break;

@@ -11,6 +11,7 @@
 import express from 'express';
 import { authenticateToken, setRLSContextMiddleware } from './auth.js';
 import { getDatabase } from '../config/database.js';
+import { resolveNotificationAction } from '../utils/notificationActionPolicy.js';
 
 const router = express.Router();
 
@@ -58,9 +59,14 @@ router.get('/', async (req, res) => {
             })
         ]);
 
+        const enrichedNotifications = notifications.map((notification) => ({
+            ...notification,
+            ...resolveNotificationAction(notification)
+        }));
+
         res.json({
             success: true,
-            data: notifications,
+            data: enrichedNotifications,
             unreadCount,
             pagination: {
                 page: parseInt(page),
