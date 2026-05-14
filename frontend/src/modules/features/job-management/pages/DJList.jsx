@@ -59,7 +59,7 @@ export default function DJList() {
 
     // === สถานะการจัดการหน้า (Pagination States) ===
     const [currentPage, setCurrentPage] = useState(1); // หน้าปัจจุบันที่แสดงผล
-    const itemsPerPage = 10;                         // จำนวนรายการต่อหนึ่งหน้า
+    const [itemsPerPage, setItemsPerPage] = useState(10);                         // จำนวนรายการต่อหนึ่งหน้า
 
     // === สถานะ Accordion ===
     const [expandedRows, setExpandedRows] = useState(new Set()); // เก็บ ID ของแถวที่กางอยู่
@@ -614,52 +614,50 @@ export default function DJList() {
                     )}
                 </div>
 
-                {/* Pagination */}
+                {/* Pagination Bar */}
                 {!isLoading && filteredJobs.length > 0 && (
-                    <div className="px-6 py-4 border-t border-gray-400 flex items-center justify-between">
-                        <p className="text-sm text-gray-500">
-                            แสดง {startIndex + 1}-{Math.min(endIndex, filteredJobs.length)} จาก {filteredJobs.length} รายการ
-                        </p>
-                        <div className="flex gap-1">
-                            <Button
-                                variant="secondary"
-                                className="px-3"
-                                onClick={() => goToPage(currentPage - 1)}
-                                disabled={currentPage === 1}
-                            >
-                                &laquo;
-                            </Button>
-                            {[...Array(totalPages)].map((_, i) => {
-                                const page = i + 1;
-                                // Show first, last, current, and adjacent pages
-                                if (
-                                    page === 1 ||
-                                    page === totalPages ||
-                                    (page >= currentPage - 1 && page <= currentPage + 1)
-                                ) {
-                                    return (
-                                        <Button
-                                            key={page}
-                                            variant={page === currentPage ? 'primary' : 'secondary'}
-                                            className="px-3"
-                                            onClick={() => goToPage(page)}
-                                        >
-                                            {page}
-                                        </Button>
-                                    );
-                                } else if (page === currentPage - 2 || page === currentPage + 2) {
-                                    return <span key={page} className="px-2 text-gray-400">...</span>;
-                                }
-                                return null;
-                            })}
-                            <Button
-                                variant="secondary"
-                                className="px-3"
-                                onClick={() => goToPage(currentPage + 1)}
-                                disabled={currentPage === totalPages}
-                            >
-                                &raquo;
-                            </Button>
+                    <div className="border-t border-gray-200 px-4 py-3">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <div className="text-sm text-gray-500">
+                                แสดง {Math.min((currentPage - 1) * itemsPerPage + 1, filteredJobs.length)}-{Math.min(currentPage * itemsPerPage, filteredJobs.length)} จาก {filteredJobs.length} รายการ
+                            </div>
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                                <label className="flex items-center gap-2 text-sm text-gray-600">
+                                    <span>จำนวนต่อหน้า</span>
+                                    <ResponsiveSelect
+                                        value={itemsPerPage}
+                                        onChange={e => {
+                                            setItemsPerPage(Number(e.target.value));
+                                            setCurrentPage(1); // Reset to page 1 when changing page size
+                                        }}
+                                        className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-rose-300 cursor-pointer"
+                                        options={[
+                                            { value: 20, label: '20 / หน้า' },
+                                            { value: 50, label: '50 / หน้า' },
+                                            { value: 100, label: '100 / หน้า' }
+                                        ]}
+                                    />
+                                </label>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => { if (currentPage > 1) goToPage(currentPage - 1); }}
+                                        disabled={currentPage <= 1}
+                                        className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${currentPage <= 1 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-gray-300 text-gray-600 hover:bg-gray-50 cursor-pointer'}`}
+                                    >
+                                        ← ก่อนหน้า
+                                    </button>
+                                    <span className="text-sm text-gray-600 font-medium">
+                                        หน้า {currentPage} / {totalPages}
+                                    </span>
+                                    <button
+                                        onClick={() => { if (currentPage < totalPages) goToPage(currentPage + 1); }}
+                                        disabled={currentPage >= totalPages}
+                                        className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${currentPage >= totalPages ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-gray-300 text-gray-600 hover:bg-gray-50 cursor-pointer'}`}
+                                    >
+                                        ถัดไป →
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}

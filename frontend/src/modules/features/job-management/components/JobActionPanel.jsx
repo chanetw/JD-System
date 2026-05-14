@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckIcon, XMarkIcon, UserIcon, ExclamationCircleIcon, CheckCircleIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline';
+import { CheckIcon, XMarkIcon, UserIcon, ExclamationCircleIcon, CheckCircleIcon, TrashIcon, PencilIcon, ClockIcon } from '@heroicons/react/24/outline';
 import { ACTION_BUTTON_STYLES } from '@shared/utils/alertHelper';
 import ResponsiveSelect from '@shared/components/ResponsiveSelect';
 import {
@@ -27,6 +27,7 @@ const JobActionPanel = ({
     onOpenSubmitRebriefModal, // Requester ส่งข้อมูลเพิ่ม
     onHardDeleteJob, // Admin: ลบงานถาวร
     onEditJobPriority, // Admin: แก้ไข priority
+    onAdminExtendDeadline, // Admin: ขยายกำหนดส่ง
 }) => {
     const [selectedAssignee, setSelectedAssignee] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -483,11 +484,18 @@ const JobActionPanel = ({
         if (!isAdmin) return null;
 
         return (
-            <div className="mt-4 pt-4 border-t border-gray-200">
-                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+            <div className={`bg-white rounded-xl border ${theme?.borderClass || 'border-gray-400'} shadow-sm p-6 mb-6`}>
+                <h2 className="font-semibold text-gray-900 mb-4">
                     Admin Actions
-                </h3>
+                </h2>
                 <div className="flex flex-wrap gap-2">
+                    <button
+                        onClick={onAdminExtendDeadline}
+                        className="flex-1 py-2.5 px-3 rounded-lg font-medium text-sm flex items-center justify-center gap-2 bg-[#1d4ed8] text-white hover:bg-[#1e40af] transition-colors shadow-sm"
+                    >
+                        <ClockIcon className="w-4 h-4" />
+                        ขยายกำหนดส่ง (Admin)
+                    </button>
                     <button
                         onClick={onEditJobPriority}
                         className="flex-1 py-2.5 px-3 rounded-lg font-medium text-sm flex items-center justify-center gap-2 bg-[#0f4c81] text-white hover:bg-[#0a3a63] transition-colors shadow-sm"
