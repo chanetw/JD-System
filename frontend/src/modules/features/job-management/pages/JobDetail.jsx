@@ -117,10 +117,22 @@ export default function JobDetail() {
     // Alert State
     const [alertState, setAlertState] = useState({ isOpen: false, title: '', message: '', type: 'success' });
     
-    // Loading States
-    const [isCompleting, setIsCompleting] = useState(false);
+    // Loading States — General Action State Tracking (prevents double-submission)
+    const [actionStates, setActionStates] = useState({
+        approving: false,
+        rejecting: false,
+        rejectingByAssignee: false,
+        completing: false,
+        confirmingRejection: false,
+        denyingRejection: false,
+        extending: false
+    });
     const [isSavingDeliveredQuantities, setIsSavingDeliveredQuantities] = useState(false);
-    const [isRejectingByAssignee, setIsRejectingByAssignee] = useState(false);
+
+    // Helper to update action state safely
+    const setActionState = (action, value) => {
+        setActionStates(prev => ({ ...prev, [action]: value }));
+    };
 
     // ============================================
     // Data Loading
@@ -304,6 +316,8 @@ export default function JobDetail() {
     };
 
     const handleApprove = async () => {
+        if (actionStates.approving) return;
+        setActionState('approving', true);
         try {
             await api.approveJob(job.id, user?.id || 1, 'Approved via Web');
             await Swal.fire({
@@ -324,6 +338,8 @@ export default function JobDetail() {
                 text: detail.text,
                 confirmButtonColor: '#e11d48'
             });
+        } finally {
+            setActionState('approving', false);
         }
     };
 
@@ -331,6 +347,8 @@ export default function JobDetail() {
         if (!rejectReason.trim()) {
             return Swal.fire({ icon: 'warning', title: 'กรุณาระบุเหตุผล', confirmButtonColor: '#e11d48' });
         }
+        if (actionStates.rejecting) return;
+        setActionState('rejecting', true);
         try {
             await api.rejectJob(job.id, user?.id || 1, rejectReason);
             await Swal.fire({
@@ -348,6 +366,8 @@ export default function JobDetail() {
                 fallbackTitle: 'ไม่สามารถปฏิเสธงานได้'
             });
             Swal.fire({ icon: 'error', title: detail.title, text: detail.text, confirmButtonColor: '#e11d48' });
+        } finally {
+            setActionState('rejecting', false);
         }
     };
 
@@ -398,7 +418,7 @@ export default function JobDetail() {
     const handleCompleteDragOver = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (!isCompleting && !completeUploadingFile) {
+        if (!actionStates.completing && !completeUploadingFile) {
             setCompleteDragActive(true);
         }
     };
@@ -413,7 +433,7 @@ export default function JobDetail() {
         e.preventDefault();
         e.stopPropagation();
 
-        if (isCompleting || completeUploadingFile) return;
+        if (actionStates.completing || completeUploadingFile) return;
 
         setCompleteDragActive(false);
         const droppedFiles = Array.from(e.dataTransfer?.files || []);
@@ -484,9 +504,8 @@ export default function JobDetail() {
                 confirmButtonColor: '#e11d48'
             });
         }
-        if (isCompleting) return;
-
-        setIsCompleting(true);
+        if (actionStates.completing) return;
+        setActionState('completing', true);
         try {
             const attachments = [];
             if (finalLink.trim()) {
@@ -547,7 +566,7 @@ export default function JobDetail() {
                 confirmButtonColor: '#e11d48'
             });
         } finally {
-            setIsCompleting(false);
+            setActionState('completing', false);
         }
     };
 
@@ -591,10 +610,8 @@ export default function JobDetail() {
         if (!assigneeRejectReason.trim()) {
             return Swal.fire({ icon: 'warning', title: 'กรุณาระบุเหตุผลในการปฏิเสธ', confirmButtonColor: '#e11d48' });
         }
-        // Prevent double-submission during request
-        if (isRejectingByAssignee) return;
-        
-        setIsRejectingByAssignee(true);
+        if (actionStates.rejectingByAssignee) return;
+        setActionState('rejectingByAssignee', true);
         try {
             await api.rejectJobByAssignee(job.id, assigneeRejectReason);
             await Swal.fire({
@@ -613,7 +630,7 @@ export default function JobDetail() {
             });
             Swal.fire({ icon: 'error', title: detail.title, text: detail.text, confirmButtonColor: '#e11d48' });
         } finally {
-            setIsRejectingByAssignee(false);
+            setActionState('rejectingByAssignee', false);
         }
     };
 
@@ -1420,6 +1437,8 @@ export default function JobDetail() {
                 confirmButtonColor: '#d92d20',
                 customClass: { popup: 'rounded-xl shadow-2xl' },
             });
+        } finally {
+            setActionState('extending', false);
         }
     };
 
@@ -1696,7 +1715,7 @@ export default function JobDetail() {
                         {/* Header */}
                         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 sticky top-0 bg-white z-10">
                             <h3 className="text-lg font-bold text-emerald-700">ส่งงาน (Complete)</h3>
-                            <button onClick={handleCloseCompleteModal} disabled={isCompleting} className="text-gray-400 hover:text-gray-600 disabled:opacity-50">
+                            <button onClick={handleCloseCompleteModal} disabled={actionStates.completing} className="text-gray-400 hover:text-gray-600 disabled:opacity-50">
                                 <XMarkIcon className="w-6 h-6" />
                             </button>
                         </div>
@@ -1736,12 +1755,12 @@ export default function JobDetail() {
                                     ไฟล์ส่งมอบ <span className="font-normal text-gray-400">(ไม่บังคับ, รวมไม่เกิน 10MB)</span>
                                 </label>
                                 <div
-                                    onClick={() => !isCompleting && !completeUploadingFile && completeFileInputRef.current?.click()}
+                                    onClick={() => !actionStates.completing && !completeUploadingFile && completeFileInputRef.current?.click()}
                                     onDragOver={handleCompleteDragOver}
                                     onDragLeave={handleCompleteDragLeave}
                                     onDrop={handleCompleteDrop}
                                     className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
-                                        isCompleting || completeUploadingFile
+                                        actionStates.completing || completeUploadingFile
                                             ? 'opacity-50 cursor-not-allowed border-gray-200 bg-gray-50'
                                             : completeDragActive
                                                 ? 'cursor-pointer border-emerald-500 bg-emerald-50'
@@ -1754,7 +1773,7 @@ export default function JobDetail() {
                                         multiple
                                         className="hidden"
                                         onChange={handleCompleteFileChange}
-                                        disabled={isCompleting || completeUploadingFile}
+                                        disabled={actionStates.completing || completeUploadingFile}
                                     />
                                     {completeUploadingFile ? (
                                         <p className="text-sm text-gray-500">⏳ กำลังอัปโหลด...</p>
@@ -1770,7 +1789,7 @@ export default function JobDetail() {
                                                 <span className="flex-1 truncate text-gray-700">{f.file_name || f.fileName}</span>
                                                 <button
                                                     onClick={() => handleCompleteRemoveFile(f.id)}
-                                                    disabled={isCompleting}
+                                                    disabled={actionStates.completing}
                                                     className="text-gray-400 hover:text-red-500 flex-shrink-0 disabled:opacity-50"
                                                 >
                                                     <XMarkIcon className="w-4 h-4" />
@@ -1808,14 +1827,14 @@ export default function JobDetail() {
 
                         {/* Footer */}
                         <div className="flex gap-2 px-6 py-4 border-t border-gray-200 sticky bottom-0 bg-white">
-                            <Button variant="secondary" onClick={handleCloseCompleteModal} disabled={isCompleting} className="flex-1">ยกเลิก</Button>
+                            <Button variant="secondary" onClick={handleCloseCompleteModal} disabled={actionStates.completing} className="flex-1">ยกเลิก</Button>
                             <Button
                                 variant="success"
                                 onClick={handleCompleteJob}
-                                disabled={isCompleting || completeUploadingFile || (!finalLink.trim() && completeUploadedFiles.length === 0)}
+                                disabled={actionStates.completing || completeUploadingFile || (!finalLink.trim() && completeUploadedFiles.length === 0)}
                                 className="flex-1 !bg-emerald-500 !hover:bg-emerald-600 !disabled:bg-emerald-300"
                             >
-                                {isCompleting ? (
+                                {actionStates.completing ? (
                                     <>
                                         <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
