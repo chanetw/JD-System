@@ -1220,6 +1220,202 @@ export default function JobDetail() {
         }
     };
 
+    const handleAdminExtendDeadline = async () => {
+        const todayInputValue = new Date().toISOString().slice(0, 10);
+        const suggestedInputValue = job?.dueDate
+            ? new Date(job.dueDate).toISOString().slice(0, 10)
+            : todayInputValue;
+
+        const modal = await Swal.fire({
+            title: 'ขยายกำหนดส่ง (Admin)',
+            width: 'auto',
+            padding: '1.5em',
+            grow: 'row',
+            scrollbarPadding: false,
+            customClass: {
+                popup: 'rounded-xl shadow-2xl !w-[92vw] sm:!w-auto sm:!max-w-[480px]',
+                title: 'text-lg font-semibold text-gray-800 pb-2',
+                htmlContainer: 'overflow-visible',
+                confirmButton: 'px-5 py-2 text-sm font-medium rounded-lg',
+                cancelButton: 'px-5 py-2 text-sm font-medium rounded-lg',
+            },
+            html: `
+                <div class="text-left text-sm space-y-4">
+                    <div class="rounded-xl border border-blue-100 bg-blue-50/80 p-3 space-y-1.5">
+                        <p class="text-xs font-medium text-blue-700">งาน</p>
+                        <p class="text-sm font-semibold text-blue-950">${job.djId || '-'}</p>
+                        <p class="text-xs text-blue-800">กำหนดส่งเดิม: ${job?.dueDate ? formatDateTimeToThai(new Date(job.dueDate)) : '-'}</p>
+                        <p class="text-xs text-blue-800">ฟังก์ชันนี้จะปรับเฉพาะกำหนดส่ง โดยไม่เปลี่ยนสถานะงานและ Priority</p>
+                    </div>
+
+                    ${job.isParent ? `
+                    <div class="space-y-1.5">
+                        <label class="block text-sm font-medium text-gray-700">ขอบเขตการแก้ไข</label>
+                        <div class="grid grid-cols-1 gap-2">
+                            <label class="flex items-start gap-3 rounded-lg border border-gray-200 px-3 py-2.5 cursor-pointer hover:border-blue-200">
+                                <input type="radio" name="swal-extend-scope" value="single" checked class="mt-1 text-blue-600" />
+                                <span>
+                                    <span class="block text-sm font-medium text-gray-800">แก้เฉพาะงานนี้</span>
+                                    <span class="block text-xs text-gray-500">Single</span>
+                                </span>
+                            </label>
+                            <label class="flex items-start gap-3 rounded-lg border border-gray-200 px-3 py-2.5 cursor-pointer hover:border-blue-200">
+                                <input type="radio" name="swal-extend-scope" value="chain" class="mt-1 text-blue-600" />
+                                <span>
+                                    <span class="block text-sm font-medium text-gray-800">แก้ทั้ง Chain (Parent + ลูก)</span>
+                                    <span class="block text-xs text-gray-500">Chain</span>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    <div class="space-y-1.5">
+                        <label for="swal-extend-date" class="block text-sm font-medium text-gray-700">เลือกวันกำหนดส่งใหม่</label>
+                        <input id="swal-extend-date" type="date" min="${todayInputValue}" value="${suggestedInputValue}"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm
+                            focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 outline-none transition-all bg-white
+                            text-gray-800" />
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <label for="swal-extend-reason" class="block text-sm font-medium text-gray-700">เหตุผลการขยายกำหนดส่ง</label>
+                        <textarea id="swal-extend-reason" rows="3" placeholder="เช่น กราฟฟิคป่วย ทีมต้องขยับเวลาส่ง"
+                            class="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm resize-none
+                            focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 outline-none transition-all bg-white
+                            text-gray-800 placeholder-gray-400"></textarea>
+                    </div>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonColor: '#0f4c81',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: 'ตรวจสอบก่อนบันทึก',
+            cancelButtonText: 'ยกเลิก',
+            preConfirm: () => {
+                const scope = document.querySelector('input[name="swal-extend-scope"]:checked')?.value || 'single';
+                const manualDueDate = document.getElementById('swal-extend-date')?.value || '';
+                const reason = document.getElementById('swal-extend-reason')?.value?.trim() || '';
+
+                if (!manualDueDate) {
+                    Swal.showValidationMessage('กรุณาเลือกวันที่กำหนดส่งใหม่');
+                    return false;
+                }
+
+                if (!reason) {
+                    Swal.showValidationMessage('กรุณาระบุเหตุผลการขยายกำหนดส่ง');
+                    return false;
+                }
+
+                return { scope, manualDueDate, reason };
+            },
+        });
+
+        if (!modal.isConfirmed) return;
+
+        try {
+            Swal.fire({
+                title: 'กำลังตรวจสอบข้อมูล...',
+                text: 'ระบบกำลังตรวจสอบวันทำการและข้อจำกัดของ SLA',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                showConfirmButton: false,
+                didOpen: () => Swal.showLoading(),
+            });
+
+            const previewResponse = await jobService.adminExtendDeadline(
+                job.id,
+                modal.value.reason,
+                modal.value.manualDueDate,
+                {
+                    scope: modal.value.scope,
+                    previewOnly: true,
+                }
+            );
+
+            if (!previewResponse?.success) {
+                throw new Error(previewResponse?.message || 'ไม่สามารถตรวจสอบข้อมูลได้');
+            }
+
+            Swal.close();
+
+            const previewData = previewResponse.data || {};
+            const oldDueDateText = previewData.oldDueDate ? formatDateTimeToThai(new Date(previewData.oldDueDate)) : '-';
+            const newDueDateText = previewData.newDueDate ? formatDateTimeToThai(new Date(previewData.newDueDate)) : '-';
+            const affectedCount = Array.isArray(previewData.affectedJobs) ? previewData.affectedJobs.length : 1;
+
+            const confirmResult = await Swal.fire({
+                title: 'ยืนยันการขยายกำหนดส่ง',
+                html: `
+                    <div class="text-left text-sm space-y-2">
+                        <p><strong>${job.djId || '-'}</strong></p>
+                        <p>กำหนดส่งเดิม: <strong>${oldDueDateText}</strong></p>
+                        <p>กำหนดส่งใหม่: <strong>${newDueDateText}</strong></p>
+                        <p>จำนวนงานที่ได้รับผลกระทบ: <strong>${affectedCount}</strong> งาน</p>
+                        <p>เหตุผล: ${modal.value.reason}</p>
+                    </div>
+                `,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#0f4c81',
+                cancelButtonColor: '#6b7280',
+                confirmButtonText: 'บันทึกการขยายกำหนดส่ง',
+                cancelButtonText: 'ยกเลิก',
+                customClass: { popup: 'rounded-xl shadow-2xl' },
+            });
+
+            if (!confirmResult.isConfirmed) return;
+
+            Swal.fire({
+                title: 'กำลังบันทึก...',
+                text: 'ระบบกำลังบันทึกการเปลี่ยนแปลง',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                showConfirmButton: false,
+                didOpen: () => Swal.showLoading(),
+            });
+
+            const response = await jobService.adminExtendDeadline(
+                job.id,
+                modal.value.reason,
+                modal.value.manualDueDate,
+                {
+                    scope: modal.value.scope,
+                    previewOnly: false,
+                }
+            );
+
+            if (!response?.success) {
+                throw new Error(response?.message || 'ไม่สามารถขยายกำหนดส่งได้');
+            }
+
+            const savedData = response.data || {};
+            const finalDueDateText = savedData.newDueDate
+                ? formatDateTimeToThai(new Date(savedData.newDueDate))
+                : newDueDateText;
+
+            Swal.close();
+            await Swal.fire({
+                icon: 'success',
+                title: 'ขยายกำหนดส่งสำเร็จ',
+                html: `กำหนดส่งใหม่: <strong>${finalDueDateText}</strong>`,
+                confirmButtonColor: '#0f4c81',
+                customClass: { popup: 'rounded-xl shadow-2xl' },
+            });
+
+            loadJob();
+        } catch (err) {
+            Swal.close();
+            Swal.fire({
+                icon: 'error',
+                title: 'ขยายกำหนดส่งไม่สำเร็จ',
+                text: err.response?.data?.message || err.message,
+                confirmButtonColor: '#d92d20',
+                customClass: { popup: 'rounded-xl shadow-2xl' },
+            });
+        }
+    };
+
 
     // ============================================
     // Render
@@ -1346,6 +1542,7 @@ export default function JobDetail() {
                                         onOpenSubmitRebriefModal={() => setShowSubmitRebriefModal(true)}
                                         onHardDeleteJob={handleHardDeleteJob}
                                         onEditJobPriority={handleEditJobPriority}
+                                        onAdminExtendDeadline={handleAdminExtendDeadline}
                                     />
                                 )}
 

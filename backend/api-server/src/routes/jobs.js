@@ -7134,6 +7134,308 @@ router.post('/:id/edit-priority', async (req, res) => {
 });
 
 /**
+ * POST /api/jobs/:id/admin-extend-deadline
+ * Admin ขยายกำหนดส่ง โดยไม่เปลี่ยนสถานะหรือ priority ของงาน
+ *
+ * @body {string} manualDueDate - วันที่กำหนดส่งใหม่ (required)
+ * @body {string} reason - เหตุผลการขยายกำหนดส่ง (required, unless previewOnly)
+ * @body {string} scope - 'single' | 'chain' (default: 'single')
+ * @body {boolean} previewOnly - true = validate + preview only
+ */
+router.post('/:id/admin-extend-deadline', async (req, res) => {
+  try {
+    const prisma = getDatabase();
+    const jobId = parseInt(req.params.id, 10);
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
+    const {
+      manualDueDate,
+      reason,
+      scope = 'single',
+      previewOnly = false,
+    } = req.body;
+
+    if (!hasAdminPrivileges(req.user)) {
+      return res.status(403).json({
+        success: false,
+        error: 'FORBIDDEN',
+        message: 'เฉพาะ Admin เท่านั้นที่สามารถขยายกำหนดส่งได้'
+      });
+    }
+
+    if (!['single', 'chain'].includes(scope)) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_SCOPE',
+        message: 'scope ต้องเป็น single หรือ chain เท่านั้น'
+      });
+    }
+
+    if (typeof previewOnly !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_PREVIEW_ONLY',
+        message: 'previewOnly ต้องเป็น boolean เท่านั้น'
+      });
+    }
+
+    if (!manualDueDate) {
+      return res.status(400).json({
+        success: false,
+        error: 'MANUAL_DUE_DATE_REQUIRED',
+        message: 'กรุณาระบุวันที่กำหนดส่งใหม่'
+      });
+    }
+
+    if (!previewOnly && (!reason || reason.trim().length === 0)) {
+      return res.status(400).json({
+        success: false,
+        error: 'REASON_REQUIRED',
+        message: 'กรุณาระบุเหตุผลการขยายกำหนดส่ง'
+      });
+    }
+
+    const affectedJobs = await collectAffectedJobs({
+      prisma,
+      rootJobId: jobId,
+      tenantId,
+      includeDescendants: scope === 'chain',
+    });
+    const rootJob = affectedJobs[0];
+
+    if (!rootJob) {
+      return res.status(404).json({
+        success: false,
+        error: 'JOB_NOT_FOUND',
+        message: 'ไม่พบงานที่ระบุ'
+      });
+    }
+
+    if (scope === 'chain' && affectedJobs.length - 1 > MAX_CHAIN_DELETE_LIMIT) {
+      return res.status(400).json({
+        success: false,
+        error: 'CHAIN_TOO_LARGE',
+        message: `งานที่ได้รับผลกระทบเกินขีดจำกัด (${affectedJobs.length - 1} > ${MAX_CHAIN_DELETE_LIMIT}) กรุณาติดต่อ Admin`
+      });
+    }
+
+    const { normalizedDueDate, dueDateValidation, isHoliday } = await validateManualDueDate({
+      prisma,
+      tenantId,
+      dueDate: manualDueDate,
+    });
+
+    if (Number.isNaN(normalizedDueDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_DUE_DATE',
+        message: 'รูปแบบวันที่กำหนดส่งใหม่ไม่ถูกต้อง'
+      });
+    }
+
+    const adjustedDueDate = dueDateValidation.adjustedDate;
+    if (adjustedDueDate <= new Date()) {
+      return res.status(400).json({
+        success: false,
+        error: 'DUE_DATE_IN_PAST',
+        message: 'วันที่กำหนดส่งใหม่ต้องมากกว่าวันเวลาปัจจุบัน'
+      });
+    }
+
+    if (isHoliday) {
+      return res.status(400).json({
+        success: false,
+        error: 'DUE_DATE_HOLIDAY',
+        message: 'วันที่เลือกตรงกับวันหยุด กรุณาเลือกวันทำการ'
+      });
+    }
+
+    const updatePlans = affectedJobs.map((job) => {
+      const oldDueDate = job.dueDate ? new Date(job.dueDate) : null;
+      const dueDateChanged = !oldDueDate || oldDueDate.getTime() !== adjustedDueDate.getTime();
+      return {
+        job,
+        oldDueDate,
+        newDueDate: adjustedDueDate,
+        dueDateChanged,
+      };
+    });
+
+    const changedPlans = updatePlans.filter((plan) => plan.dueDateChanged);
+    if (changedPlans.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'DUE_DATE_UNCHANGED',
+        message: 'กำหนดส่งใหม่ไม่เปลี่ยนแปลงจากข้อมูลเดิม'
+      });
+    }
+
+    if (previewOnly) {
+      const rootPlan = updatePlans[0];
+      return res.json({
+        success: true,
+        data: {
+          previewOnly: true,
+          scope,
+          oldDueDate: rootPlan.oldDueDate?.toISOString() || null,
+          newDueDate: rootPlan.newDueDate.toISOString(),
+          dueDateChanged: rootPlan.dueDateChanged,
+          dueDateValidation,
+          affectedJobs: updatePlans.map((plan) => ({
+            id: plan.job.id,
+            djId: plan.job.djId,
+            oldDueDate: plan.oldDueDate?.toISOString() || null,
+            newDueDate: plan.newDueDate.toISOString(),
+            dueDateChanged: plan.dueDateChanged,
+          })),
+        }
+      });
+    }
+
+    const updatedPlans = await prisma.$transaction(async (tx) => {
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          userId,
+          action: scope === 'chain' ? 'job_chain_deadline_extended_admin' : 'job_deadline_extended_admin',
+          entityType: 'job',
+          entityId: rootJob.id,
+          oldValues: {
+            affectedJobs: updatePlans.map((plan) => ({
+              id: plan.job.id,
+              djId: plan.job.djId,
+              dueDate: plan.oldDueDate?.toISOString() || null,
+            })),
+          },
+          newValues: {
+            reason: reason.trim(),
+            scope,
+            manualDueDate,
+            adjustedDueDate: adjustedDueDate.toISOString(),
+            dueDateValidation,
+            affectedJobIds: updatePlans.map((plan) => plan.job.id),
+            affectedDjIds: updatePlans.map((plan) => plan.job.djId),
+          },
+          userIp: req.ip,
+          userAgent: req.get('user-agent') || null,
+        }
+      });
+
+      for (const plan of updatePlans) {
+        if (!plan.dueDateChanged) continue;
+
+        const dueDateChangeText = `กำหนดส่ง: ${plan.oldDueDate ? plan.oldDueDate.toLocaleDateString('th-TH') : '-'} -> ${plan.newDueDate.toLocaleDateString('th-TH')}`;
+
+        await tx.job.update({
+          where: { id: plan.job.id },
+          data: {
+            dueDate: plan.newDueDate,
+            originalDueDate: plan.job.originalDueDate || plan.oldDueDate,
+          }
+        });
+
+        await tx.activityLog.create({
+          data: {
+            jobId: plan.job.id,
+            userId,
+            action: 'job_deadline_extended_admin',
+            message: `Admin ขยายกำหนดส่ง (${dueDateChangeText})`,
+            detail: {
+              reason: reason.trim(),
+              scope,
+              oldDueDate: plan.oldDueDate?.toISOString() || null,
+              newDueDate: plan.newDueDate.toISOString(),
+              dueDateValidation,
+            },
+          }
+        });
+
+        await tx.jobActivity.create({
+          data: {
+            jobId: plan.job.id,
+            tenantId,
+            userId,
+            activityType: 'job_deadline_extended_admin',
+            description: `Admin ขยายกำหนดส่ง (${dueDateChangeText}) เหตุผล: ${reason.trim()}`,
+            metadata: {
+              scope,
+              oldDueDate: plan.oldDueDate?.toISOString() || null,
+              newDueDate: plan.newDueDate.toISOString(),
+              reason: reason.trim(),
+              dueDateValidation,
+            },
+          }
+        });
+      }
+
+      return updatePlans;
+    });
+
+    const notificationResults = { inApp: 0, email: 0, emailFailed: 0 };
+    for (const plan of updatedPlans) {
+      if (!plan.dueDateChanged) continue;
+      const recipientIds = getNotificationRecipients(JOB_NOTIFICATION_EVENTS.STATUS_CHANGED, plan.job)
+        .filter((id) => id !== userId);
+
+      for (const recipientId of recipientIds) {
+        try {
+          const notificationResult = await notificationService.sendNotification({
+            tenantId,
+            userIds: [recipientId],
+            type: JOB_NOTIFICATION_EVENTS.STATUS_CHANGED,
+            title: `ขยายกำหนดส่งงาน ${plan.job.djId}`,
+            message: `Admin ขยายกำหนดส่งงาน ${plan.job.djId} เป็น ${plan.newDueDate.toLocaleDateString('th-TH')}`,
+            link: `/jobs/${plan.job.id}`,
+            sendEmail: false,
+            io: req.app.get('io'),
+          });
+
+          notificationResults.inApp += notificationResult?.results?.database?.sent || 0;
+        } catch (notifError) {
+          console.error('[AdminExtendDeadline] Notification failed for user', recipientId, notifError.message);
+        }
+      }
+    }
+
+    const rootPlan = updatedPlans[0];
+    const chainResult = scope === 'chain'
+      ? {
+          totalChildren: Math.max(updatedPlans.length - 1, 0),
+          updates: updatedPlans.slice(1).map((plan) => ({
+            id: plan.job.id,
+            djId: plan.job.djId,
+            dueDateChanged: plan.dueDateChanged,
+          })),
+        }
+      : null;
+
+    console.log(`[AdminExtendDeadline] Job ${rootJob.djId} due date adjusted to ${rootPlan.newDueDate.toISOString()}. Affected: ${updatedPlans.length}. By user ${userId}`);
+
+    res.json({
+      success: true,
+      data: {
+        id: rootJob.id,
+        djId: rootJob.djId,
+        scope,
+        oldDueDate: rootPlan.oldDueDate?.toISOString() || null,
+        newDueDate: rootPlan.newDueDate.toISOString(),
+        dueDateChanged: rootPlan.dueDateChanged,
+        dueDateValidation,
+        chain: chainResult,
+        notifications: notificationResults,
+      }
+    });
+  } catch (error) {
+    console.error('[AdminExtendDeadline] Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'ADMIN_EXTEND_DEADLINE_FAILED',
+      message: 'ไม่สามารถขยายกำหนดส่งได้: ' + error.message
+    });
+  }
+});
+
+/**
  * @route GET /api/jobs/:id/access-check
  * @description ตรวจสอบว่าผู้ใช้มีสิทธิ์เข้าถึงงานนี้หรือไม่
  * @access private

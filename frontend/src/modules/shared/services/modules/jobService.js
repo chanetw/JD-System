@@ -181,6 +181,28 @@ export const jobService = {
         }
     },
 
+    adminExtendDeadline: async (jobId, reason, manualDueDate, options = {}) => {
+        try {
+            const {
+                scope = 'single',
+                previewOnly = false,
+            } = options;
+
+            const payload = {
+                reason,
+                manualDueDate,
+                scope,
+                previewOnly,
+            };
+
+            const response = await httpClient.post(`/jobs/${jobId}/admin-extend-deadline`, payload);
+            return response.data;
+        } catch (error) {
+            console.error('[jobService] adminExtendDeadline error:', error);
+            throw error;
+        }
+    },
+
     getJobsByRole: async (user, options = {}) => {
         try {
             // Multi-role support: collect ALL user roles and send as comma-separated
