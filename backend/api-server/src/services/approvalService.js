@@ -1676,6 +1676,24 @@ export class ApprovalService extends BaseService {
       };
 
     } catch (error) {
+      if (error?.code === 'ALREADY_PROCESSED') {
+        return {
+          success: false,
+          error: 'ALREADY_PROCESSED',
+          message: `สถานะงานเปลี่ยนไปแล้ว${error.currentStatus ? ` (สถานะปัจจุบัน: ${error.currentStatus})` : ''}`,
+          data: { currentStatus: error.currentStatus || null }
+        };
+      }
+
+      if (error?.code === 'INVALID_STATUS') {
+        return {
+          success: false,
+          error: 'INVALID_STATUS',
+          message: `ไม่สามารถปฏิเสธงานในสถานะปัจจุบันได้${error.currentStatus ? ` (สถานะปัจจุบัน: ${error.currentStatus})` : ''}`,
+          data: { currentStatus: error.currentStatus || null }
+        };
+      }
+
       if (error.message === 'Job not found') {
         return {
           success: false,
@@ -1868,6 +1886,24 @@ export class ApprovalService extends BaseService {
 
       return { success: true, data: { status: 'rejected' } };
     } catch (error) {
+      if (error?.code === 'ALREADY_PROCESSED') {
+        return {
+          success: false,
+          error: 'ALREADY_PROCESSED',
+          message: `สถานะงานเปลี่ยนไปแล้ว${error.currentStatus ? ` (สถานะปัจจุบัน: ${error.currentStatus})` : ''}`,
+          data: { currentStatus: error.currentStatus || null }
+        };
+      }
+
+      if (error?.code === 'INVALID_STATUS') {
+        return {
+          success: false,
+          error: 'INVALID_STATUS',
+          message: `งานไม่อยู่ในสถานะรอยืนยันการปฏิเสธ${error.currentStatus ? ` (สถานะปัจจุบัน: ${error.currentStatus})` : ''}`,
+          data: { currentStatus: error.currentStatus || null }
+        };
+      }
+
       if (error.message === 'Job not found') {
         return {
           success: false,
@@ -2242,6 +2278,23 @@ export class ApprovalService extends BaseService {
         };
       }
 
+      const rejectionProcessedStatuses = new Set([
+        'assignee_rejected',
+        'rejected',
+        'completed',
+        'closed',
+        'cancelled'
+      ]);
+
+      if (rejectionProcessedStatuses.has(job.status)) {
+        return {
+          success: false,
+          error: 'ALREADY_PROCESSED',
+          message: `งานนี้ถูกดำเนินการไปแล้ว (สถานะปัจจุบัน: ${job.status})`,
+          data: { currentStatus: job.status }
+        };
+      }
+
       // อนุญาตให้ปฏิเสธได้ต่อเนื่องแม้งานค้างในช่วง Draft/Rebrief
       if (!ASSIGNEE_REJECTABLE_STATUSES.includes(job.status)) {
         return {
@@ -2366,6 +2419,24 @@ export class ApprovalService extends BaseService {
         }
       };
     } catch (error) {
+      if (error?.code === 'ALREADY_PROCESSED') {
+        return {
+          success: false,
+          error: 'ALREADY_PROCESSED',
+          message: `สถานะงานเปลี่ยนไปแล้ว${error.currentStatus ? ` (สถานะปัจจุบัน: ${error.currentStatus})` : ''}`,
+          data: { currentStatus: error.currentStatus || null }
+        };
+      }
+
+      if (error?.code === 'INVALID_STATUS') {
+        return {
+          success: false,
+          error: 'INVALID_STATUS',
+          message: `ไม่สามารถปฏิเสธงานในสถานะปัจจุบันได้${error.currentStatus ? ` (สถานะปัจจุบัน: ${error.currentStatus})` : ''}`,
+          data: { currentStatus: error.currentStatus || null }
+        };
+      }
+
       if (error.message === 'Job not found') {
         return {
           success: false,
@@ -2534,6 +2605,24 @@ export class ApprovalService extends BaseService {
         }
       };
     } catch (error) {
+      if (error?.code === 'ALREADY_PROCESSED') {
+        return {
+          success: false,
+          error: 'ALREADY_PROCESSED',
+          message: `สถานะงานเปลี่ยนไปแล้ว${error.currentStatus ? ` (สถานะปัจจุบัน: ${error.currentStatus})` : ''}`,
+          data: { currentStatus: error.currentStatus || null }
+        };
+      }
+
+      if (error?.code === 'INVALID_STATUS') {
+        return {
+          success: false,
+          error: 'INVALID_STATUS',
+          message: `ไม่สามารถปฏิเสธงานในสถานะปัจจุบันได้${error.currentStatus ? ` (สถานะปัจจุบัน: ${error.currentStatus})` : ''}`,
+          data: { currentStatus: error.currentStatus || null }
+        };
+      }
+
       if (error.message === 'Job not found') {
         return {
           success: false,

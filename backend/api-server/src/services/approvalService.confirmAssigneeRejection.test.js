@@ -32,6 +32,7 @@ function createServiceWithState(jobRecords) {
   const jobs = new Map(jobRecords.map((job) => [job.id, { ...job }]));
   const calls = {
     jobUpdates: [],
+    jobUpdateMany: [],
     approvalCreates: [],
     activityLogs: [],
     notifications: [],
@@ -84,6 +85,31 @@ function createServiceWithState(jobRecords) {
         calls.jobUpdates.push(args);
         return { ...next };
       },
+      updateMany: async (args) => {
+        const current = jobs.get(args.where.id);
+        if (!current) return { count: 0 };
+
+        if (args.where.assigneeId !== undefined && current.assigneeId !== args.where.assigneeId) {
+          return { count: 0 };
+        }
+
+        const statusCondition = args.where.status;
+        let statusMatches = true;
+        if (typeof statusCondition === 'string') {
+          statusMatches = current.status === statusCondition;
+        } else if (statusCondition?.in) {
+          statusMatches = statusCondition.in.includes(current.status);
+        }
+
+        if (!statusMatches) {
+          return { count: 0 };
+        }
+
+        const next = { ...current, ...args.data };
+        jobs.set(args.where.id, next);
+        calls.jobUpdateMany.push(args);
+        return { count: 1 };
+      },
     },
     approval: {
       findFirst: async ({ where }) => {
@@ -107,6 +133,7 @@ function createServiceWithState(jobRecords) {
         userRoles: [{ roleName: 'Approver' }]
       }),
     },
+    $transaction: async (callback) => callback(service.prisma),
   };
 
   service.notificationService = {
@@ -353,6 +380,45 @@ test('rejectJobViaWeb creates approval history for cascaded downstream jobs', as
   );
 });
 
+test('rejectJobViaWeb second submit returns ALREADY_PROCESSED and does not duplicate approval/activity', async () => {
+  const { service, calls } = createServiceWithState([
+    buildJob({
+      id: 131,
+      djId: 'DJ-TEST-0131',
+      status: 'pending_approval',
+      subject: 'Reject by approver race test',
+      requesterId: 91,
+      assigneeId: null
+    })
+  ]);
+
+  const firstResult = await service.rejectJobViaWeb({
+    jobId: 131,
+    approverId: 88,
+    approverUser: { roles: ['Approver'] },
+    comment: 'Reject once',
+    ipAddress: '127.0.0.1'
+  });
+
+  const approvalCreatesAfterFirst = calls.approvalCreates.length;
+  const activityLogsAfterFirst = calls.activityLogs.length;
+
+  const secondResult = await service.rejectJobViaWeb({
+    jobId: 131,
+    approverId: 88,
+    approverUser: { roles: ['Approver'] },
+    comment: 'Reject twice',
+    ipAddress: '127.0.0.1'
+  });
+
+  assert.equal(firstResult.success, true);
+  assert.equal(secondResult.success, false);
+  assert.equal(secondResult.error, 'ALREADY_PROCESSED');
+  assert.equal(secondResult.data?.currentStatus, 'rejected');
+  assert.equal(calls.approvalCreates.length, approvalCreatesAfterFirst);
+  assert.equal(calls.activityLogs.length, activityLogsAfterFirst);
+});
+
 test('createApprovalHistoryIfMissing does not duplicate cascade marker history', async () => {
   const { service, calls } = createServiceWithState([
     buildJob({ id: 201, djId: 'DJ-TEST-0201', status: 'rejected' })
@@ -421,4 +487,76 @@ test('confirmAssigneeRejection returns NOT_FOUND when job does not exist', async
   assert.equal(result.success, false);
   assert.equal(result.error, 'NOT_FOUND');
   assert.equal(calls.approvalCreates.length, 0);
+});
+
+test('confirmAssigneeRejection second submit returns ALREADY_PROCESSED and does not duplicate approval/activity', async () => {
+  const { service, calls } = createServiceWithState([
+    buildJob({
+      id: 111,
+      djId: 'DJ-TEST-0111',
+      status: 'assignee_rejected',
+      rejectedBy: 24,
+      rejectionComment: 'Need rebrief',
+      subject: 'Job A'
+    })
+  ]);
+
+  const firstResult = await service.confirmAssigneeRejection({
+    jobId: 111,
+    approverId: 88,
+    approverUser: { roles: ['Approver'] },
+    comment: 'Confirm once',
+    ccEmails: [],
+  });
+
+  const approvalCreatesAfterFirst = calls.approvalCreates.length;
+  const activityLogsAfterFirst = calls.activityLogs.length;
+
+  const secondResult = await service.confirmAssigneeRejection({
+    jobId: 111,
+    approverId: 88,
+    approverUser: { roles: ['Approver'] },
+    comment: 'Confirm twice',
+    ccEmails: [],
+  });
+
+  assert.equal(firstResult.success, true);
+  assert.equal(secondResult.success, false);
+  assert.equal(secondResult.error, 'ALREADY_PROCESSED');
+  assert.equal(secondResult.data?.currentStatus, 'rejected');
+  assert.equal(calls.approvalCreates.length, approvalCreatesAfterFirst);
+  assert.equal(calls.activityLogs.length, activityLogsAfterFirst);
+});
+
+test('rejectJobByAssignee second submit returns ALREADY_PROCESSED and does not duplicate activity', async () => {
+  const { service, calls } = createServiceWithState([
+    buildJob({
+      id: 121,
+      djId: 'DJ-TEST-0121',
+      status: 'in_progress',
+      assigneeId: 44,
+      requesterId: 77,
+      subject: 'Job Assignee Rejection'
+    })
+  ]);
+
+  const firstResult = await service.rejectJobByAssignee({
+    jobId: 121,
+    assigneeId: 44,
+    comment: 'Cannot proceed'
+  });
+
+  const activityLogsAfterFirst = calls.activityLogs.length;
+
+  const secondResult = await service.rejectJobByAssignee({
+    jobId: 121,
+    assigneeId: 44,
+    comment: 'Duplicate click'
+  });
+
+  assert.equal(firstResult.success, true);
+  assert.equal(secondResult.success, false);
+  assert.equal(secondResult.error, 'ALREADY_PROCESSED');
+  assert.equal(secondResult.data?.currentStatus, 'assignee_rejected');
+  assert.equal(calls.activityLogs.length, activityLogsAfterFirst);
 });
