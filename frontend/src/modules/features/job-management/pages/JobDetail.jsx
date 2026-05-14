@@ -125,7 +125,10 @@ export default function JobDetail() {
         completing: false,
         confirmingRejection: false,
         denyingRejection: false,
-        extending: false
+        extending: false,
+        requestingRebrief: false,
+        submittingRebrief: false,
+        acceptingRebrief: false
     });
     const [isSavingDeliveredQuantities, setIsSavingDeliveredQuantities] = useState(false);
 
@@ -747,6 +750,8 @@ export default function JobDetail() {
                 confirmButtonColor: '#e11d48'
             });
         }
+        if (actionStates.requestingRebrief) return;
+        setActionState('requestingRebrief', true);
         try {
             await httpClient.post(`/jobs/${job.id}/rebrief`, {
                 reason: rebriefReason.trim()
@@ -767,6 +772,8 @@ export default function JobDetail() {
                 text: err.response?.data?.message || err.message,
                 confirmButtonColor: '#e11d48'
             });
+        } finally {
+            setActionState('requestingRebrief', false);
         }
     };
 
@@ -778,6 +785,8 @@ export default function JobDetail() {
                 confirmButtonColor: '#e11d48'
             });
         }
+        if (actionStates.submittingRebrief) return;
+        setActionState('submittingRebrief', true);
         try {
             await httpClient.post(`/jobs/${job.id}/submit-rebrief`, {
                 rebriefResponse: rebriefResponse.trim(),
@@ -802,10 +811,15 @@ export default function JobDetail() {
                 text: err.response?.data?.message || err.message,
                 confirmButtonColor: '#e11d48'
             });
+        } finally {
+            setActionState('submittingRebrief', false);
         }
     };
 
     const handleAcceptRebrief = async () => {
+        if (actionStates.acceptingRebrief) return;
+        setActionState('acceptingRebrief', true);
+
         const result = await Swal.fire({
             icon: 'question',
             title: 'ยืนยันรับงาน?',
@@ -816,7 +830,10 @@ export default function JobDetail() {
             confirmButtonColor: '#22c55e'
         });
 
-        if (!result.isConfirmed) return;
+        if (!result.isConfirmed) {
+            setActionState('acceptingRebrief', false);
+            return;
+        }
 
         try {
             const response = await httpClient.post(`/jobs/${job.id}/accept-rebrief`);
@@ -834,6 +851,8 @@ export default function JobDetail() {
                 text: err.response?.data?.message || err.message,
                 confirmButtonColor: '#e11d48'
             });
+        } finally {
+            setActionState('acceptingRebrief', false);
         }
     };
 
@@ -1584,6 +1603,9 @@ export default function JobDetail() {
                                         isRejectingByAssignee={actionStates.rejectingByAssignee}
                                         isConfirmingRejection={actionStates.confirmingRejection}
                                         isDenyingRejection={actionStates.denyingRejection}
+                                        isRequestingRebrief={actionStates.requestingRebrief}
+                                        isSubmittingRebrief={actionStates.submittingRebrief}
+                                        isAcceptingRebrief={actionStates.acceptingRebrief}
                                     />
                                 )}
 
@@ -2120,9 +2142,11 @@ export default function JobDetail() {
                             <h3 className="text-lg font-bold text-amber-700">ขอข้อมูลเพิ่มเติม (Rebrief)</h3>
                             <button
                                 onClick={() => {
+                                    if (actionStates.requestingRebrief) return;
                                     setShowRebriefModal(false);
                                     setRebriefReason('');
                                 }}
+                                disabled={actionStates.requestingRebrief}
                                 className="text-slate-400 hover:text-slate-600"
                                 aria-label="ปิดหน้าต่าง Rebrief"
                             >
@@ -2141,6 +2165,7 @@ export default function JobDetail() {
                                 rows={5}
                                 value={rebriefReason}
                                 onChange={e => setRebriefReason(e.target.value)}
+                                disabled={actionStates.requestingRebrief}
                                 placeholder="เช่น ข้อมูล brief ไม่ชัดเจน, ต้องการ reference เพิ่มเติม..."
                             />
                             <div className="text-xs text-slate-500 mb-4">
@@ -2148,10 +2173,11 @@ export default function JobDetail() {
                             </div>
                             <div className="flex gap-2 justify-end">
                                 <Button variant="secondary" onClick={() => {
+                                    if (actionStates.requestingRebrief) return;
                                     setShowRebriefModal(false);
                                     setRebriefReason('');
-                                }}>ยกเลิก</Button>
-                                <Button variant="primary" className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300" onClick={handleRebrief}>ส่งคำขอ</Button>
+                                }} disabled={actionStates.requestingRebrief}>ยกเลิก</Button>
+                                <Button variant="primary" className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300" onClick={handleRebrief} disabled={actionStates.requestingRebrief} isLoading={actionStates.requestingRebrief}>ส่งคำขอ</Button>
                             </div>
                         </div>
                     </div>
@@ -2166,11 +2192,13 @@ export default function JobDetail() {
                             <h3 className="text-lg font-bold text-amber-700">ส่งข้อมูลเพิ่มเติม</h3>
                             <button
                                 onClick={() => {
+                                    if (actionStates.submittingRebrief) return;
                                     setShowSubmitRebriefModal(false);
                                     setRebriefResponse('');
                                     setRebriefDescription('');
                                     setRebriefBriefLink('');
                                 }}
+                                disabled={actionStates.submittingRebrief}
                                 className="text-slate-400 hover:text-slate-600"
                                 aria-label="ปิดหน้าต่างส่งข้อมูลเพิ่มเติม"
                             >
@@ -2196,6 +2224,7 @@ export default function JobDetail() {
                                 rows={4}
                                 value={rebriefResponse}
                                 onChange={e => setRebriefResponse(e.target.value)}
+                                disabled={actionStates.submittingRebrief}
                                 placeholder="อธิบายข้อมูลเพิ่มเติมที่ Assignee ต้องการ..."
                             />
 
@@ -2207,6 +2236,7 @@ export default function JobDetail() {
                                 rows={3}
                                 value={rebriefDescription}
                                 onChange={e => setRebriefDescription(e.target.value)}
+                                disabled={actionStates.submittingRebrief}
                                 placeholder="แก้ไขหรือเพิ่มรายละเอียดงาน..."
                             />
 
@@ -2218,17 +2248,19 @@ export default function JobDetail() {
                                 className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm leading-6 mb-4 focus:ring-2 focus:ring-amber-200 focus:border-amber-400 focus:outline-none"
                                 value={rebriefBriefLink}
                                 onChange={e => setRebriefBriefLink(e.target.value)}
+                                disabled={actionStates.submittingRebrief}
                                 placeholder="https://..."
                             />
 
                             <div className="flex gap-2 justify-end">
                                 <Button variant="secondary" onClick={() => {
+                                    if (actionStates.submittingRebrief) return;
                                     setShowSubmitRebriefModal(false);
                                     setRebriefResponse('');
                                     setRebriefDescription('');
                                     setRebriefBriefLink('');
-                                }}>ยกเลิก</Button>
-                                <Button variant="primary" className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300" onClick={handleSubmitRebrief}>ส่งข้อมูล</Button>
+                                }} disabled={actionStates.submittingRebrief}>ยกเลิก</Button>
+                                <Button variant="primary" className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300" onClick={handleSubmitRebrief} disabled={actionStates.submittingRebrief} isLoading={actionStates.submittingRebrief}>ส่งข้อมูล</Button>
                             </div>
                         </div>
                     </div>

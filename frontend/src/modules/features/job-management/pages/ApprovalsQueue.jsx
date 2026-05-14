@@ -844,7 +844,7 @@ export default function ApprovalsQueue() {
                         </div>
 
                         <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3">
-                            <Button variant="secondary" onClick={() => { setShowApproveModal(false); setSelectedJobStatus(null); }}>ยกเลิก</Button>
+                            <Button variant="secondary" onClick={() => { setShowApproveModal(false); setSelectedJobStatus(null); }} disabled={isApproving}>ยกเลิก</Button>
                             <Button variant="success" onClick={handleConfirmApprove} isLoading={isApproving}>
                                 <CheckIcon className="w-4 h-4 mr-2" />
                                 {isSelectedAssigneeRejection ? 'อนุมัติการปฏิเสธ' : 'อนุมัติ'}

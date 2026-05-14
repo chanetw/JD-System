@@ -33,6 +33,9 @@ const JobActionPanel = ({
     isRejectingByAssignee = false, // Prevent double-submission during reject
     isConfirmingRejection = false,
     isDenyingRejection = false,
+    isRequestingRebrief = false,
+    isSubmittingRebrief = false,
+    isAcceptingRebrief = false,
 }) => {
     const [selectedAssignee, setSelectedAssignee] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -301,6 +304,7 @@ const JobActionPanel = ({
                             {onOpenRebriefModal && (
                                 <button
                                     onClick={onOpenRebriefModal}
+                                    disabled={isRequestingRebrief || isSubmittingRebrief || isAcceptingRebrief}
                                     className={`flex-1 py-2 px-4 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors text-sm ${ACTION_BUTTON_STYLES.rebrief}`}
                                 >
                                     🔄 ขอ Rebrief
@@ -343,13 +347,15 @@ const JobActionPanel = ({
                         <div className="grid grid-cols-3 gap-2">
                             <button
                                 onClick={onAcceptRebrief}
+                                disabled={isRequestingRebrief || isSubmittingRebrief || isAcceptingRebrief}
                                 className={`py-3 px-3 rounded-lg font-medium flex items-center justify-center gap-1 transition-colors text-sm ${ACTION_BUTTON_STYLES.complete}`}
                             >
                                 <CheckIcon className="w-4 h-4" />
-                                รับงาน
+                                {isAcceptingRebrief ? 'กำลังรับงาน...' : 'รับงาน'}
                             </button>
                             <button
                                 onClick={onOpenRebriefModal}
+                                disabled={isRequestingRebrief || isSubmittingRebrief || isAcceptingRebrief}
                                 className={`py-3 px-3 rounded-lg font-medium flex items-center justify-center gap-1 transition-colors text-sm ${ACTION_BUTTON_STYLES.rebrief}`}
                             >
                                 🔄 Rebrief อีก
