@@ -419,6 +419,54 @@ test('rejectJobViaWeb second submit returns ALREADY_PROCESSED and does not dupli
   assert.equal(calls.activityLogs.length, activityLogsAfterFirst);
 });
 
+test('approveJobViaWeb returns INVALID_STATUS when job is not in pending approval statuses', async () => {
+  const { service, calls } = createServiceWithState([
+    buildJob({
+      id: 141,
+      djId: 'DJ-TEST-0141',
+      status: 'draft',
+      subject: 'Approve invalid status test'
+    })
+  ]);
+
+  const result = await service.approveJobViaWeb({
+    jobId: 141,
+    approverId: 88,
+    approverUser: { roles: ['Approver'] },
+    comment: 'Approve attempt',
+    ipAddress: '127.0.0.1'
+  });
+
+  assert.equal(result.success, false);
+  assert.equal(result.error, 'INVALID_STATUS');
+  assert.equal(calls.approvalCreates.length, 0);
+  assert.equal(calls.activityLogs.length, 0);
+});
+
+test('rejectJobViaWeb returns INVALID_STATUS when job is not in pending approval statuses', async () => {
+  const { service, calls } = createServiceWithState([
+    buildJob({
+      id: 151,
+      djId: 'DJ-TEST-0151',
+      status: 'draft',
+      subject: 'Reject invalid status test'
+    })
+  ]);
+
+  const result = await service.rejectJobViaWeb({
+    jobId: 151,
+    approverId: 88,
+    approverUser: { roles: ['Approver'] },
+    comment: 'Reject attempt',
+    ipAddress: '127.0.0.1'
+  });
+
+  assert.equal(result.success, false);
+  assert.equal(result.error, 'INVALID_STATUS');
+  assert.equal(calls.approvalCreates.length, 0);
+  assert.equal(calls.activityLogs.length, 0);
+});
+
 test('createApprovalHistoryIfMissing does not duplicate cascade marker history', async () => {
   const { service, calls } = createServiceWithState([
     buildJob({ id: 201, djId: 'DJ-TEST-0201', status: 'rejected' })

@@ -52,6 +52,26 @@ const PARENT_ALL_REJECTED_STATUSES = [
 const CASCADE_CONFIRM_ASSIGNEE_REJECTION_MARKER = 'cascade_confirm_assignee_rejection';
 const CASCADE_REJECT_DOWNSTREAM_MARKER = 'cascade_reject_downstream';
 
+const APPROVAL_ACTION_PROCESSED_STATUSES = new Set([
+  'approved',
+  'assigned',
+  'pending_dependency',
+  'in_progress',
+  'rejected',
+  'rejected_by_assignee',
+  'assignee_rejected',
+  'completed',
+  'closed',
+  'cancelled'
+]);
+
+const resolveApprovalConflictCode = (latestStatus, processedStatuses = APPROVAL_ACTION_PROCESSED_STATUSES) => {
+  const normalizedStatus = String(latestStatus || '').trim().toLowerCase();
+  return processedStatuses.has(normalizedStatus)
+    ? 'ALREADY_PROCESSED'
+    : 'INVALID_STATUS';
+};
+
 const normalizeRoleValue = (role) => {
   if (!role) return '';
   if (typeof role === 'string') return role.toLowerCase();
@@ -1192,9 +1212,10 @@ export class ApprovalService extends BaseService {
       // 🔒 Concurrency Check: ตรวจสอบว่างานยังอยู่ในสถานะรออนุมัติหรือไม่
       const validPendingStatuses = ['pending_approval', 'pending_level_1', 'pending_level_2', 'pending_level_3'];
       if (!validPendingStatuses.includes(job.status)) {
+        const errorCode = resolveApprovalConflictCode(job.status);
         return {
           success: false,
-          error: 'ALREADY_PROCESSED',
+          error: errorCode,
           message: `งานนี้ถูกดำเนินการไปแล้ว (สถานะปัจจุบัน: ${job.status})`,
           data: { currentStatus: job.status }
         };
@@ -1269,9 +1290,7 @@ export class ApprovalService extends BaseService {
           });
 
           const conflictError = new Error('Job status changed during web approval');
-          conflictError.code = validPendingStatuses.includes(latestJob?.status)
-            ? 'ALREADY_PROCESSED'
-            : 'INVALID_STATUS';
+          conflictError.code = resolveApprovalConflictCode(latestJob?.status);
           conflictError.currentStatus = latestJob?.status || null;
           throw conflictError;
         }
@@ -1710,7 +1729,7 @@ export class ApprovalService extends BaseService {
         return {
           success: false,
           error: 'INVALID_STATUS',
-          message: `ไม่สามารถปฏิเสธงานในสถานะปัจจุบันได้${error.currentStatus ? ` (สถานะปัจจุบัน: ${error.currentStatus})` : ''}`,
+          message: `ไม่สามารถอนุมัติงานในสถานะปัจจุบันได้${error.currentStatus ? ` (สถานะปัจจุบัน: ${error.currentStatus})` : ''}`,
           data: { currentStatus: error.currentStatus || null }
         };
       }
@@ -1749,9 +1768,10 @@ export class ApprovalService extends BaseService {
       // 🔒 Concurrency Check: ตรวจสอบว่างานยังอยู่ในสถานะรออนุมัติหรือไม่
       const validPendingStatuses = ['pending_approval', 'pending_level_1', 'pending_level_2', 'pending_level_3'];
       if (!validPendingStatuses.includes(job.status)) {
+        const errorCode = resolveApprovalConflictCode(job.status);
         return {
           success: false,
-          error: 'ALREADY_PROCESSED',
+          error: errorCode,
           message: `งานนี้ถูกดำเนินการไปแล้ว (สถานะปัจจุบัน: ${job.status})`,
           data: { currentStatus: job.status }
         };
@@ -1799,9 +1819,7 @@ export class ApprovalService extends BaseService {
           });
 
           const conflictError = new Error('Job status changed during web rejection');
-          conflictError.code = validPendingStatuses.includes(latestJob?.status)
-            ? 'ALREADY_PROCESSED'
-            : 'INVALID_STATUS';
+          conflictError.code = resolveApprovalConflictCode(latestJob?.status);
           conflictError.currentStatus = latestJob?.status || null;
           throw conflictError;
         }
@@ -1940,7 +1958,7 @@ export class ApprovalService extends BaseService {
         return {
           success: false,
           error: 'INVALID_STATUS',
-          message: `งานไม่อยู่ในสถานะรอยืนยันการปฏิเสธ${error.currentStatus ? ` (สถานะปัจจุบัน: ${error.currentStatus})` : ''}`,
+          message: `ไม่สามารถปฏิเสธงานในสถานะปัจจุบันได้${error.currentStatus ? ` (สถานะปัจจุบัน: ${error.currentStatus})` : ''}`,
           data: { currentStatus: error.currentStatus || null }
         };
       }
