@@ -55,3 +55,17 @@ test('returns overdue when in progress and due date already passed', () => {
     assert.equal(result.isCompletedLate, false);
     assert.equal(result.dayDiff, -3);
 });
+
+test('does not mark rejected jobs as overdue even when due date already passed', () => {
+    const result = resolveSlaBadgePresentation({
+        status: 'rejected',
+        deadline: '2026-04-14T10:00:00.000Z',
+        completedAt: null,
+        now: new Date('2026-04-17T00:00:00.000Z')
+    });
+
+    assert.equal(result.key, 'rejected');
+    assert.equal(result.isActiveOverdue, false);
+    assert.equal(result.isCompletedLate, false);
+    assert.equal(result.dayDiff, null);
+});

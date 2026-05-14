@@ -176,7 +176,14 @@ class JobReminderCron {
       const tomorrowEnd = new Date(tomorrowStart);
       tomorrowEnd.setHours(23, 59, 59, 999);
 
-      const EXCLUDED_STATUSES = ['completed', 'closed', 'cancelled'];
+      const EXCLUDED_STATUSES = [
+        'completed',
+        'closed',
+        'cancelled',
+        'rejected',
+        'rejected_by_assignee',
+        'partially_completed'
+      ];
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
       const upcomingJobs = await prisma.job.findMany({

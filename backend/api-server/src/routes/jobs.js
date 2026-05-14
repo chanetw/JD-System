@@ -214,6 +214,397 @@ const appendAndCondition = (where, condition) => {
   return where;
 };
 
+const MY_RELATED_STATUS_GROUP_MAP = {
+  rework: ['correction', 'rework', 'returned'],
+  draft_review: ['draft_review', 'pending_rebrief', 'rebrief_submitted'],
+  completed: ['completed', 'closed', 'rejected', 'rejected_by_assignee', 'cancelled'],
+  rejected: ['rejected', 'rejected_by_assignee']
+};
+
+const normalizeListQueryValue = (value) => String(value || '').trim();
+
+const buildUserNameContainsCondition = (value) => ({
+  OR: [
+    { displayName: { contains: value, mode: 'insensitive' } },
+    { firstName: { contains: value, mode: 'insensitive' } },
+    { lastName: { contains: value, mode: 'insensitive' } },
+    { email: { contains: value, mode: 'insensitive' } }
+  ]
+});
+
+const buildMyRelatedStatusFilter = (status) => {
+  const normalizedStatus = normalizeListQueryValue(status).toLowerCase();
+  if (!normalizedStatus) return null;
+
+  if (normalizedStatus === 'pending_approval') {
+    return {
+      OR: [
+        { status: 'pending_approval' },
+        { status: { startsWith: 'pending_level_' } }
+      ]
+    };
+  }
+
+  const groupedStatuses = MY_RELATED_STATUS_GROUP_MAP[normalizedStatus];
+  if (groupedStatuses) {
+    return { status: { in: groupedStatuses } };
+  }
+
+  return { status: normalizedStatus };
+};
+
+const buildMyRelatedSearchFilter = (query) => {
+  const normalizedQuery = normalizeListQueryValue(query).toLowerCase();
+  if (!normalizedQuery) return null;
+
+  const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return null;
+
+  return {
+    AND: tokens.map((token) => ({
+      OR: [
+        { djId: { contains: token, mode: 'insensitive' } },
+        { subject: { contains: token, mode: 'insensitive' } },
+        { status: { contains: token, mode: 'insensitive' } },
+        { project: { is: { name: { contains: token, mode: 'insensitive' } } } },
+        { jobType: { is: { name: { contains: token, mode: 'insensitive' } } } },
+        { requester: { is: buildUserNameContainsCondition(token) } },
+        { assignee: { is: buildUserNameContainsCondition(token) } }
+      ]
+    }))
+  };
+};
+
+const buildJobListSelect = (approvalHistoryWhere) => ({
+  id: true,
+  djId: true,
+  subject: true,
+  status: true,
+  priority: true,
+  dueDate: true,
+  startedAt: true,
+  completedAt: true,
+  createdAt: true,
+  acceptanceDate: true,
+  slaDays: true,
+  projectId: true,
+  jobTypeId: true,
+  requesterId: true,
+  assigneeId: true,
+  activityLogs: {
+    select: { createdAt: true },
+    orderBy: { createdAt: 'desc' },
+    take: 1
+  },
+  project: {
+    select: { id: true, name: true, code: true }
+  },
+  jobType: {
+    select: { id: true, name: true, icon: true, colorTheme: true, slaWorkingDays: true }
+  },
+  requester: {
+    select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, email: true }
+  },
+  assignee: {
+    select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, isActive: true, email: true }
+  },
+  approvals: {
+    where: approvalHistoryWhere,
+    select: {
+      approverId: true,
+      status: true,
+      approvedAt: true,
+      createdAt: true,
+      comment: true,
+      approver: {
+        select: {
+          firstName: true,
+          lastName: true,
+          displayName: true,
+          email: true
+        }
+      }
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 1
+  },
+  isParent: true,
+  parentJobId: true,
+  predecessorId: true,
+  predecessor: {
+    select: { id: true, djId: true, subject: true, status: true }
+  }
+});
+
+const transformJobListResults = ({ jobs, userId, currentApproverJobIds = new Set() }) => jobs.map((job) => {
+  let historyData = null;
+
+  if (userId) {
+    const selectedApproval = job.approvals?.find(
+      (approval) => isSameUserId(approval.approverId, userId) && ['approved', 'rejected', 'returned'].includes(approval.status)
+    );
+
+    if (selectedApproval) {
+      const actorName = `${selectedApproval.approver?.firstName || ''} ${selectedApproval.approver?.lastName || ''}`.trim()
+        || selectedApproval.approver?.displayName
+        || selectedApproval.approver?.email
+        || null;
+      const historyPresentation = getApprovalHistoryPresentation({
+        status: selectedApproval.status,
+        comment: selectedApproval.comment
+      });
+
+      historyData = {
+        actionDate: selectedApproval.approvedAt || selectedApproval.createdAt,
+        comment: selectedApproval.comment,
+        action: selectedApproval.status,
+        actionType: historyPresentation?.actionType || null,
+        actionLabel: historyPresentation?.actionLabel || null,
+        category: historyPresentation?.category || null,
+        actedBy: actorName,
+        actedById: selectedApproval.approverId,
+        isAdminOverride: historyPresentation?.isAdminOverride || false
+      };
+    }
+  }
+
+  const approvalWaiting = isApprovalWaitingStatus(job.status);
+  const approvalActionable = isApprovalActionableStatus(job.status);
+
+  return {
+    id: job.id,
+    djId: job.djId,
+    subject: job.subject,
+    status: job.status,
+    priority: job.priority,
+    jobType: job.jobType?.name,
+    jobTypeId: job.jobTypeId,
+    jobTypeIcon: job.jobType?.icon,
+    jobTypeColor: job.jobType?.colorTheme,
+    slaWorkingDays: job.jobType?.slaWorkingDays,
+    project: job.project?.name,
+    projectId: job.projectId,
+    projectCode: job.project?.code,
+    deadline: job.dueDate,
+    createdAt: job.createdAt,
+    acceptanceDate: job.acceptanceDate,
+    startedAt: job.startedAt,
+    slaDays: job.slaDays,
+    updatedAt: job.completedAt || job.activityLogs?.[0]?.createdAt || job.createdAt,
+    requesterId: job.requesterId,
+    requester: `${job.requester?.firstName || ''} ${job.requester?.lastName || ''}`.trim() || job.requester?.displayName || job.requester?.email || null,
+    requesterAvatar: job.requester?.avatarUrl,
+    assigneeId: job.assigneeId,
+    assignee: (job.assignee ? `${job.assignee?.firstName || ''} ${job.assignee?.lastName || ''}`.trim() : '') || job.assignee?.displayName || job.assignee?.email || null,
+    assigneeIsActive: job.assignee?.isActive ?? true,
+    assigneeAvatar: job.assignee?.avatarUrl,
+    isParent: job.isParent || false,
+    parentJobId: job.parentJobId || null,
+    completedAt: job.completedAt,
+    predecessorId: job.predecessorId || null,
+    predecessorDjId: job.predecessor?.djId || null,
+    predecessorSubject: job.predecessor?.subject || null,
+    predecessorStatus: job.predecessor?.status || null,
+    lastActivityAt: job.activityLogs?.[0]?.createdAt || job.createdAt,
+    historyData,
+    isApprovalWaiting: approvalWaiting,
+    isApprovalActionable: approvalActionable,
+    isCurrentApprover: currentApproverJobIds.has(job.id)
+  };
+});
+
+const sortMyRelatedJobs = (jobs, sortBy) => {
+  const normalizedSortBy = normalizeListQueryValue(sortBy);
+  const terminalStatuses = new Set(['completed', 'closed', 'cancelled', 'rejected', 'rejected_by_assignee']);
+
+  return [...jobs].sort((left, right) => {
+    const leftIsActiveUrgent = normalizePriority(left.priority) === 'urgent' && !terminalStatuses.has(String(left.status || '').toLowerCase());
+    const rightIsActiveUrgent = normalizePriority(right.priority) === 'urgent' && !terminalStatuses.has(String(right.status || '').toLowerCase());
+
+    if (leftIsActiveUrgent && !rightIsActiveUrgent) return -1;
+    if (!leftIsActiveUrgent && rightIsActiveUrgent) return 1;
+
+    if (normalizedSortBy === 'deadline') {
+      const leftDeadline = left.deadline ? new Date(left.deadline).getTime() : Number.POSITIVE_INFINITY;
+      const rightDeadline = right.deadline ? new Date(right.deadline).getTime() : Number.POSITIVE_INFINITY;
+      if (leftDeadline !== rightDeadline) {
+        return leftDeadline - rightDeadline;
+      }
+    }
+
+    const leftCreatedAt = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+    const rightCreatedAt = right.createdAt ? new Date(right.createdAt).getTime() : 0;
+    return rightCreatedAt - leftCreatedAt;
+  });
+};
+
+const getMyRelatedCurrentApproverJobIds = async ({ prisma, tenantId, userId }) => {
+  const pendingJobs = await prisma.job.findMany({
+    where: {
+      tenantId,
+      isParent: false,
+      OR: [
+        { status: 'pending_approval' },
+        { status: { startsWith: 'pending_level_' } }
+      ]
+    },
+    select: {
+      id: true,
+      status: true,
+      projectId: true,
+      jobTypeId: true,
+      priority: true
+    }
+  });
+
+  if (pendingJobs.length === 0) {
+    return new Set();
+  }
+
+  const uniqueFlowEntries = [];
+  const flowEntryMap = new Map();
+
+  pendingJobs.forEach((job) => {
+    const flowKey = `${job.projectId}_${job.jobTypeId || 'null'}_${normalizePriority(job.priority)}`;
+    if (!flowEntryMap.has(flowKey)) {
+      const entry = {
+        key: flowKey,
+        projectId: job.projectId,
+        jobTypeId: job.jobTypeId || null,
+        priority: normalizePriority(job.priority)
+      };
+      flowEntryMap.set(flowKey, entry);
+      uniqueFlowEntries.push(entry);
+    }
+  });
+
+  const flowResults = await Promise.all(
+    uniqueFlowEntries.map((entry) => approvalService.getApprovalFlow(entry.projectId, entry.jobTypeId, entry.priority))
+  );
+
+  const approverLookup = new Map();
+  flowResults.forEach((flow, index) => {
+    const currentLevelMap = new Map();
+    const flowKey = uniqueFlowEntries[index].key;
+
+    if (flow?.approverSteps && Array.isArray(flow.approverSteps)) {
+      flow.approverSteps.forEach((step) => {
+        const stepNumber = step.stepNumber || step.level;
+        if (!stepNumber || !Array.isArray(step.approvers)) return;
+
+        currentLevelMap.set(stepNumber, new Set(
+          step.approvers
+            .map((approver) => approver?.id || approver?.userId)
+            .filter(Boolean)
+            .map(String)
+        ));
+      });
+    }
+
+    approverLookup.set(flowKey, currentLevelMap);
+  });
+
+  const userIdStr = String(userId);
+  const currentApproverJobIds = new Set();
+
+  pendingJobs.forEach((job) => {
+    let currentLevel = 0;
+    if (job.status === 'pending_approval') currentLevel = 1;
+    else if (job.status.startsWith('pending_level_')) {
+      currentLevel = parseInt(job.status.split('_')[2], 10) || 0;
+    }
+
+    if (currentLevel <= 0) return;
+
+    const flowKey = `${job.projectId}_${job.jobTypeId || 'null'}_${normalizePriority(job.priority)}`;
+    const levelApprovers = approverLookup.get(flowKey)?.get(currentLevel);
+    if (levelApprovers?.has(userIdStr)) {
+      currentApproverJobIds.add(job.id);
+    }
+  });
+
+  return currentApproverJobIds;
+};
+
+const buildMyRelatedWhere = ({
+  tenantId,
+  userId,
+  currentApproverJobIds,
+  status,
+  includeCompleted,
+  assignee,
+  project,
+  jobType,
+  priority,
+  query
+}) => {
+  const where = { tenantId };
+  const relatedConditions = [
+    { requesterId: userId },
+    { assigneeId: userId }
+  ];
+
+  if (currentApproverJobIds.size > 0) {
+    relatedConditions.push({ id: { in: [...currentApproverJobIds] } });
+  }
+
+  appendAndCondition(where, { OR: relatedConditions });
+
+  const statusFilter = buildMyRelatedStatusFilter(status);
+  if (statusFilter) {
+    appendAndCondition(where, statusFilter);
+  } else if (!includeCompleted) {
+    appendAndCondition(where, {
+      status: {
+        notIn: [...ASSIGNEE_COMPLETED_STATUSES, ...ASSIGNEE_REJECTED_STATUSES, 'cancelled']
+      }
+    });
+  }
+
+  const normalizedAssignee = normalizeListQueryValue(assignee);
+  if (normalizedAssignee) {
+    appendAndCondition(where, {
+      assignee: {
+        is: buildUserNameContainsCondition(normalizedAssignee)
+      }
+    });
+  }
+
+  const normalizedProject = normalizeListQueryValue(project);
+  if (normalizedProject) {
+    appendAndCondition(where, {
+      project: {
+        is: {
+          name: { equals: normalizedProject, mode: 'insensitive' }
+        }
+      }
+    });
+  }
+
+  const normalizedJobType = normalizeListQueryValue(jobType);
+  if (normalizedJobType) {
+    appendAndCondition(where, {
+      jobType: {
+        is: {
+          name: { equals: normalizedJobType, mode: 'insensitive' }
+        }
+      }
+    });
+  }
+
+  const normalizedPriority = normalizeListQueryValue(priority).toLowerCase();
+  if (VALID_PRIORITIES.includes(normalizedPriority)) {
+    appendAndCondition(where, { priority: normalizedPriority });
+  }
+
+  const searchFilter = buildMyRelatedSearchFilter(query);
+  if (searchFilter) {
+    appendAndCondition(where, searchFilter);
+  }
+
+  return where;
+};
+
 const toIsoStringOrNull = (value) => {
   if (!value) return null;
   if (value instanceof Date) return value.toISOString();
@@ -852,7 +1243,22 @@ const validateManualDueDate = async ({ prisma, tenantId, dueDate }) => {
  */
 router.get('/', async (req, res) => {
   try {
-    const { role = 'requester', status, page = 1, limit = 50, assignee, includeCompleted, approvalView, includeRequesterJobs } = req.query;
+    const {
+      role = 'requester',
+      status,
+      page = 1,
+      limit = 50,
+      assignee,
+      includeCompleted,
+      approvalView,
+      includeRequesterJobs,
+      view,
+      q,
+      project,
+      jobType,
+      priority,
+      sortBy
+    } = req.query;
     const prisma = getDatabase();
     const userId = req.user.userId;
     const tenantId = req.user.tenantId;
@@ -860,6 +1266,7 @@ router.get('/', async (req, res) => {
     const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
     const shouldIncludeCompleted = String(includeCompleted ?? 'true').toLowerCase() !== 'false';
     const normalizedApprovalView = String(approvalView || '').trim().toLowerCase();
+    const normalizedView = String(view || '').trim().toLowerCase();
     const shouldIncludeRequesterJobs = String(includeRequesterJobs || '').trim().toLowerCase() === 'true' && !normalizedApprovalView;
 
 
@@ -883,6 +1290,59 @@ router.get('/', async (req, res) => {
         { comment: { startsWith: 'Auto-approved', mode: 'insensitive' } }
       ]
     };
+
+    if (normalizedView === 'my_related') {
+      const myRelatedCurrentApproverJobIds = await getMyRelatedCurrentApproverJobIds({
+        prisma,
+        tenantId,
+        userId
+      });
+
+      const myRelatedWhere = buildMyRelatedWhere({
+        tenantId,
+        userId,
+        currentApproverJobIds: myRelatedCurrentApproverJobIds,
+        status,
+        includeCompleted: shouldIncludeCompleted,
+        assignee,
+        project,
+        jobType,
+        priority,
+        query: q
+      });
+
+      const jobs = await prisma.job.findMany({
+        where: myRelatedWhere,
+        select: buildJobListSelect(approvalHistoryWhere)
+      });
+
+      const transformedJobs = sortMyRelatedJobs(
+        transformJobListResults({
+          jobs,
+          userId,
+          currentApproverJobIds: myRelatedCurrentApproverJobIds
+        }),
+        sortBy
+      );
+
+      const skip = (parsedPage - 1) * parsedLimit;
+      const pagedJobs = transformedJobs.slice(skip, skip + parsedLimit);
+
+      return res.json({
+        success: true,
+        data: pagedJobs,
+        meta: {
+          serverNow: new Date().toISOString(),
+          serverTimezone: APP_TIMEZONE
+        },
+        pagination: {
+          page: parsedPage,
+          limit: parsedLimit,
+          total: transformedJobs.length,
+          totalPages: Math.ceil(transformedJobs.length / parsedLimit)
+        }
+      });
+    }
 
     // Helper: build where condition for a single role
     const buildRoleCondition = async (singleRole) => {
@@ -1444,65 +1904,7 @@ router.get('/', async (req, res) => {
     const [jobs, total] = await Promise.all([
       prisma.job.findMany({
         where,
-        select: {
-          id: true,
-          djId: true,
-          subject: true,
-          status: true,
-          priority: true,
-          dueDate: true,
-          startedAt: true,
-          completedAt: true,
-          createdAt: true,
-          acceptanceDate: true,
-          slaDays: true,
-          activityLogs: {
-            select: { createdAt: true },
-            orderBy: { createdAt: 'desc' },
-            take: 1
-          },
-          // Relations with selected fields only
-          project: {
-            select: { id: true, name: true, code: true }
-          },
-          jobType: {
-            select: { id: true, name: true, icon: true, colorTheme: true, slaWorkingDays: true }
-          },
-          requester: {
-            select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true }
-          },
-          assignee: {
-            select: { id: true, firstName: true, lastName: true, displayName: true, avatarUrl: true, isActive: true }
-          },
-          approvals: { // Fetch approvals for history data
-            where: approvalHistoryWhere,
-            select: {
-              approverId: true,
-              status: true,
-              approvedAt: true,
-              createdAt: true,
-              comment: true,
-              approver: {
-                select: {
-                  firstName: true,
-                  lastName: true,
-                  displayName: true,
-                  email: true
-                }
-              }
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 1
-          },
-          // Parent-Child relationship fields
-          isParent: true,
-          parentJobId: true,
-          // Sequential dependency fields
-          predecessorId: true,
-          predecessor: {
-            select: { id: true, djId: true, subject: true, status: true }
-          }
-        },
+        select: buildJobListSelect(approvalHistoryWhere),
         orderBy: { dueDate: 'asc' },
         skip: dbSkip,
         take: dbTake
@@ -1510,85 +1912,10 @@ router.get('/', async (req, res) => {
       prisma.job.count({ where })
     ]);
 
-    let transformed = jobs.map(j => {
-      // Find history data if user has acted on this job
-      let historyData = null;
-      if (req.user?.userId) {
-        const selectedApproval = j.approvals?.find(
-          a => isSameUserId(a.approverId, req.user.userId) && ['approved', 'rejected', 'returned'].includes(a.status)
-        );
-
-        if (selectedApproval) {
-          const actorName = `${selectedApproval.approver?.firstName || ''} ${selectedApproval.approver?.lastName || ''}`.trim()
-            || selectedApproval.approver?.displayName
-            || selectedApproval.approver?.email
-            || null;
-          const historyPresentation = getApprovalHistoryPresentation({
-            status: selectedApproval.status,
-            comment: selectedApproval.comment
-          });
-
-          historyData = {
-            actionDate: selectedApproval.approvedAt || selectedApproval.createdAt,
-            comment: selectedApproval.comment,
-            action: selectedApproval.status,
-            actionType: historyPresentation?.actionType || null,
-            actionLabel: historyPresentation?.actionLabel || null,
-            category: historyPresentation?.category || null,
-            actedBy: actorName,
-            actedById: selectedApproval.approverId,
-            isAdminOverride: historyPresentation?.isAdminOverride || false
-          };
-        }
-      }
-
-      const approvalWaiting = isApprovalWaitingStatus(j.status);
-      const approvalActionable = isApprovalActionableStatus(j.status);
-
-      return {
-        id: j.id,
-        djId: j.djId,
-        subject: j.subject,
-        status: j.status,
-        priority: j.priority,
-        jobType: j.jobType?.name,
-        jobTypeId: j.jobTypeId,
-        jobTypeIcon: j.jobType?.icon,
-        jobTypeColor: j.jobType?.colorTheme,
-        slaWorkingDays: j.jobType?.slaWorkingDays,
-        project: j.project?.name,
-        projectId: j.projectId,
-        projectCode: j.project?.code,
-        deadline: j.dueDate,
-        createdAt: j.createdAt,
-        acceptanceDate: j.acceptanceDate,
-        startedAt: j.startedAt,
-        slaDays: j.slaDays,
-        updatedAt: j.completedAt || j.activityLogs?.[0]?.createdAt || j.createdAt,
-        requesterId: j.requesterId,
-        requester: `${j.requester?.firstName || ''} ${j.requester?.lastName || ''}`.trim() || j.requester?.displayName || j.requester?.email || null,
-        requesterAvatar: j.requester?.avatarUrl,
-        assigneeId: j.assigneeId,
-        assignee: (j.assignee ? `${j.assignee?.firstName || ''} ${j.assignee?.lastName || ''}`.trim() : '') || j.assignee?.displayName || j.assignee?.email || null,
-        assigneeIsActive: j.assignee?.isActive ?? true,
-        assigneeAvatar: j.assignee?.avatarUrl,
-        // Parent-Child relationship metadata
-        isParent: j.isParent || false,
-        parentJobId: j.parentJobId || null,
-        completedAt: j.completedAt,
-        // Sequential dependency metadata
-        predecessorId: j.predecessorId || null,
-        predecessorDjId: j.predecessor?.djId || null,
-        predecessorSubject: j.predecessor?.subject || null,
-        predecessorStatus: j.predecessor?.status || null,
-        lastActivityAt: j.activityLogs?.[0]?.createdAt || j.createdAt,
-        historyData: historyData, // ส่งข้อมูลประวัติแนบไปด้วย
-        isApprovalWaiting: approvalWaiting,
-        isApprovalActionable: approvalActionable,
-        // ✅ Flag: user is the approver for the CURRENT level of this job (for Approvals Queue)
-        // false = user is a future-level approver (can see in DJ List but cannot approve yet)
-        isCurrentApprover: currentApproverJobIds.has(j.id)
-      }
+    let transformed = transformJobListResults({
+      jobs,
+      userId,
+      currentApproverJobIds
     });
 
     if (normalizedApprovalView) {
@@ -1727,11 +2054,7 @@ const DASHBOARD_TERMINAL_STATUSES = [
   ...ASSIGNEE_REJECTED_STATUSES
 ];
 
-const DASHBOARD_DUE_EXCLUDED_STATUSES = [
-  'completed',
-  'closed',
-  'cancelled'
-];
+const DASHBOARD_DUE_EXCLUDED_STATUSES = [...DASHBOARD_TERMINAL_STATUSES];
 
 const DASHBOARD_OVERDUE_EXCLUDED_STATUSES = [...DASHBOARD_TERMINAL_STATUSES];
 

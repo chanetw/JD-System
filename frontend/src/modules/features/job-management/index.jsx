@@ -3,7 +3,7 @@
  * @description Entry Point ของ Job Management Module
  * 
  * Module นี้รับผิดชอบ:
- * - หน้ารายการงานทั้งหมด (DJList)
+ * - หน้ารายการงานของฉัน (DJList)
  * - หน้ารายละเอียดงาน (JobDetail)
  * - หน้าคิวอนุมัติ (ApprovalsQueue)
  * 
@@ -26,7 +26,7 @@ export const routes = [
         path: 'jobs',
         element: <DJList />,
         roles: ['Admin', 'Requester', 'Assignee', 'Approver', 'user', 'staff'], // Include legacy and proper roles
-        title: 'รายการงาน'
+        title: 'รายการงานของฉัน'
     },
     {
         path: 'jobs/:id',
@@ -49,5 +49,5 @@ export const moduleInfo = {
     name: 'job-management',
     
     icon: 'ClipboardDocumentListIcon',
-    description: 'หน้าจอสำหรับดูรายการงาน, รายละเอียด และคิวอนุมัติ'
+    description: 'หน้าจอสำหรับดูรายการงานของฉัน, รายละเอียด และคิวอนุมัติ'
 };

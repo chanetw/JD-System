@@ -372,8 +372,8 @@ export default function UserPortal() {
                         </div>
 
                         <div className="mt-2 grid grid-cols-2 gap-2">
-                            <Link to="/jobs?myJobs=true" className="text-center rounded-lg border border-slate-200 bg-slate-50 py-1.5 text-xs font-semibold text-slate-700 hover:text-rose-600 hover:border-rose-200">
-                                My Jobs
+                            <Link to="/jobs" className="text-center rounded-lg border border-slate-200 bg-slate-50 py-1.5 text-xs font-semibold text-slate-700 hover:text-rose-600 hover:border-rose-200">
+                                งานของฉัน
                             </Link>
                             <Link to="/media-portal" className="text-center rounded-lg border border-slate-200 bg-slate-50 py-1.5 text-xs font-semibold text-slate-700 hover:text-rose-600 hover:border-rose-200">
                                 Media Portal
@@ -393,7 +393,7 @@ export default function UserPortal() {
                             </div>
                         </div>
                         <div className="flex items-center gap-6">
-                            <Link to="/jobs?myJobs=true" className="text-slate-600 hover:text-rose-600 text-sm font-medium">My Jobs</Link>
+                            <Link to="/jobs" className="text-slate-600 hover:text-rose-600 text-sm font-medium">งานของฉัน</Link>
                             <Link to="/media-portal" className="text-slate-600 hover:text-rose-600 text-sm font-medium">Media Portal</Link>
                             {/* Profile Menu Dropdown (Shared Component) */}
                             <div className="relative pl-4 border-l border-slate-200">
@@ -478,18 +478,18 @@ export default function UserPortal() {
                             desc="เปิดงาน Design Job"
                         />
                         <QuickActionCard
-                            to="/jobs?myJobs=true"
+                            to="/jobs"
                             icon={<ClipboardDocumentListIcon className="w-7 h-7 text-indigo-600" />}
                             bgColor="bg-indigo-100 group-hover:bg-indigo-200"
                             title="งานของฉัน"
-                            desc="ดูสถานะงานทั้งหมด"
+                            desc="ดูงานที่เกี่ยวข้องกับคุณ"
                         />
                         <QuickActionCard
                             to="/dashboard"
                             icon={<ComputerDesktopIcon className="w-7 h-7 text-amber-600" />}
                             bgColor="bg-amber-100 group-hover:bg-amber-200"
-                            title="Dashboard"
-                            desc="ภาพรวมสถานะงาน"
+                            title="งาน DJ ทั้งหมด"
+                            desc="ดูภาพรวมและรายการงานทั้งหมด"
                         />
                         <QuickActionCard
                             to="/media-portal"

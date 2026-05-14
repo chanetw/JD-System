@@ -114,7 +114,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed = () => {
                 )}
 
                 <SidebarLink to={dashboardPath} icon={DashboardIcon} onClick={onClose} collapsed={collapsed}>
-                    แผงควบคุม (Dashboard)
+                    รายการงาน DJ ทั้งหมด
                 </SidebarLink>
 
                 {canCreateJob && (
@@ -124,7 +124,7 @@ export default function Sidebar({ collapsed = false, onToggleCollapsed = () => {
                 )}
 
                 <SidebarLink to="/jobs" icon={ListIcon} onClick={onClose} collapsed={collapsed}>
-                    รายการงาน DJ ทั้งหมด
+                    รายการงานของฉัน
                 </SidebarLink>
 
                 {isApprover && (

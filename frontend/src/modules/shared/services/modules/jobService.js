@@ -3,6 +3,15 @@ import { handleResponse } from '../utils';
 import { notificationService } from './notificationService';
 import httpClient from '../httpClient';
 
+const TERMINAL_DUE_STATUSES = new Set([
+    'completed',
+    'closed',
+    'cancelled',
+    'rejected',
+    'rejected_by_assignee',
+    'partially_completed',
+]);
+
 function _extractRoleParam(user) {
     if (!user) return 'requester';
     let roles = [];
@@ -238,6 +247,99 @@ export const jobService = {
         } catch (error) {
             console.error('[jobService] getJobsByRole error:', error);
             return [];
+        }
+    },
+
+    getMyRelatedJobs: async (options = {}) => {
+        try {
+            const {
+                fetchAll = true,
+                limit = 250,
+                includeCompleted = false,
+                q,
+                project,
+                jobType,
+                status,
+                assignee,
+                priority,
+                sortBy = 'createdDate'
+            } = options;
+
+            const pageLimit = Math.min(Math.max(Number(limit) || 250, 1), 500);
+            const normalizedIncludeCompleted = typeof includeCompleted === 'boolean'
+                ? String(includeCompleted)
+                : includeCompleted;
+
+            const buildParams = (page) => Object.fromEntries(
+                Object.entries({
+                    view: 'my_related',
+                    page,
+                    limit: pageLimit,
+                    includeCompleted: normalizedIncludeCompleted,
+                    q,
+                    project,
+                    jobType,
+                    status,
+                    assignee,
+                    priority,
+                    sortBy
+                }).filter(([, value]) => value !== undefined && value !== null && value !== '')
+            );
+
+            const fetchPage = (page) => httpClient.get('/jobs', {
+                params: buildParams(page)
+            });
+
+            const response = await fetchPage(1);
+
+            if (!response.data.success) {
+                throw new Error(response.data.message || 'โหลดรายการงานที่เกี่ยวข้องไม่สำเร็จ');
+            }
+
+            const firstPageData = response.data.data || [];
+            const total = Number(response.data?.pagination?.total || firstPageData.length);
+            const totalPages = Number(response.data?.pagination?.totalPages || 1);
+            let data = firstPageData;
+
+            if (fetchAll && totalPages > 1) {
+                const remainingResponses = await Promise.all(
+                    Array.from({ length: totalPages - 1 }, (_, index) => fetchPage(index + 2))
+                );
+
+                const remainingData = remainingResponses.flatMap((pageResponse) => {
+                    if (!pageResponse.data?.success) {
+                        throw new Error(pageResponse.data?.message || 'โหลดรายการงานที่เกี่ยวข้องไม่ครบ');
+                    }
+                    return pageResponse.data.data || [];
+                });
+
+                data = [...firstPageData, ...remainingData];
+            }
+
+            return {
+                success: true,
+                data,
+                meta: response.data?.meta || {},
+                pagination: {
+                    page: 1,
+                    limit: fetchAll ? data.length : pageLimit,
+                    total,
+                    totalPages: fetchAll ? 1 : totalPages
+                }
+            };
+        } catch (error) {
+            console.error('[jobService] getMyRelatedJobs error:', error);
+            return {
+                success: false,
+                data: [],
+                meta: {},
+                pagination: {
+                    page: 1,
+                    limit: 0,
+                    total: 0,
+                    totalPages: 0
+                }
+            };
         }
     },
 
@@ -769,10 +871,13 @@ export const jobService = {
             }
 
             if (job.deadline) {
+                const statusKey = String(job.status || '').toLowerCase();
+                if (TERMINAL_DUE_STATUSES.has(statusKey)) return;
+
                 const dueDate = new Date(job.deadline);
                 dueDate.setHours(0, 0, 0, 0);
                 if (dueDate.getTime() === today.getTime()) dueToday++;
-                if (dueDate.getTime() < today.getTime() && job.status !== 'completed' && job.status !== 'closed') {
+                if (dueDate.getTime() < today.getTime()) {
                     overdue++;
                 }
             }

@@ -2,7 +2,9 @@ import { getWorkingDays } from './slaCalculator.js';
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
-const CLOSED_STATUSES = new Set(['completed', 'closed', 'cancelled']);
+const CLOSED_STATUSES = new Set(['completed', 'closed']);
+const CANCELLED_STATUSES = new Set(['cancelled']);
+const REJECTED_STATUSES = new Set(['rejected', 'rejected_by_assignee']);
 
 const toStartOfDay = (value) => {
     if (!value) return null;
@@ -45,6 +47,30 @@ export const resolveSlaBadgePresentation = ({
     }
 
     const completedDate = toStartOfDay(completedAt);
+
+    if (REJECTED_STATUSES.has(statusKey)) {
+        return {
+            key: 'rejected',
+            text: 'ถูกปฏิเสธ',
+            className: 'px-2 py-1 text-xs rounded-full bg-red-100 text-red-700 font-medium',
+            isActiveOverdue: false,
+            isCompletedLate: false,
+            dayDiff: null,
+            lateWorkingDays: 0
+        };
+    }
+
+    if (CANCELLED_STATUSES.has(statusKey)) {
+        return {
+            key: 'cancelled',
+            text: 'ยกเลิก',
+            className: 'px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-700 font-medium',
+            isActiveOverdue: false,
+            isCompletedLate: false,
+            dayDiff: null,
+            lateWorkingDays: 0
+        };
+    }
 
     if (CLOSED_STATUSES.has(statusKey)) {
         if (completedDate && completedDate.getTime() > dueDate.getTime()) {

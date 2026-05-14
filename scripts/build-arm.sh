@@ -145,8 +145,7 @@ docker buildx inspect --bootstrap &>/dev/null
 
 if [[ "$PUSH_MODE" == "true" ]]; then
     if ! docker info 2>/dev/null | grep -q '^ Username:'; then
-        echo -e "${RED}❌ Docker registry login not found. Run: docker login${NC}"
-        exit 1
+        echo -e "${YELLOW}⚠ Docker Username not visible from docker info; will try push and report registry auth errors directly.${NC}"
     fi
 fi
 

@@ -626,9 +626,9 @@ function Dashboard() {
           ============================================ */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+                    <h1 className="text-2xl font-bold text-gray-900">รายการงาน DJ ทั้งหมด</h1>
                     <p className="text-gray-500">
-                        สวัสดี, {user?.firstName || 'ผู้ใช้งาน'}{' '}
+                        ดูภาพรวมและติดตามงาน DJ ทั้งหมดในระบบ{' '}
                         <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full text-gray-600">
                             ({user?.roleName || 'User'})
                         </span>
@@ -764,7 +764,7 @@ function Dashboard() {
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <div className="flex items-center gap-2">
                                 <div>
-                                    <h2 className="text-lg font-semibold text-gray-900">รายการงานทั้งหมด</h2>
+                                    <h2 className="text-lg font-semibold text-gray-900">รายการงาน DJ ทั้งหมด</h2>
                                     <p className="text-xs text-gray-500">มุมมองรวมของทุกงานในระบบตาม filter ปัจจุบัน</p>
                                 </div>
                                 {queueTotal > 0 && (

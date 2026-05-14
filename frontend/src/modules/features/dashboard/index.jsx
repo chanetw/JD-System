@@ -14,7 +14,7 @@ export const routes = [
                 <Dashboard />
             </ProtectedRoute>
         ),
-        title: 'Dashboard',
+        title: 'รายการงาน DJ ทั้งหมด',
         roles: ['admin', 'manager', 'supervisor', 'requester', 'assignee', 'approver']
     }
 ];

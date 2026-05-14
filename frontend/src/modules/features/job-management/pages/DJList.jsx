@@ -1,15 +1,15 @@
 /**
  * @file DJList.jsx
- * @description หน้ารายการงาน DJ ทั้งหมด (DJ Job List)
+ * @description หน้ารายการงานที่เกี่ยวกับผู้ใช้งานปัจจุบัน (DJ My Jobs List)
  * 
  * วัตถุประสงค์หลัก:
- * - แสดงรายการงาน Design Job (DJ) ทั้งหมดในระบบ พร้อมระบบคัดกรองข้อมูล (Filters)
+ * - แสดงรายการงาน Design Job (DJ) ที่ผู้ใช้เปิดเอง, ได้รับมอบหมาย, หรือกำลังรออนุมัติ
  * - ค้นหางานด้วยเลขที่ DJ ID หรือหัวข้องาน (Subject)
  * - สนับสนุนการจัดเรียงข้อมูล (Sorting) ตามวันที่สร้างและวันกำหนดส่ง (Deadline)
  * - มีระบบจัดการหน้าข้อมูล (Pagination) เพื่อประสิทธิภาพในการแสดงผล
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useDeferredValue, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Badge from '@shared/components/Badge';
 import Button from '@shared/components/Button';
@@ -19,9 +19,8 @@ import { formatDateToThai } from '@shared/utils/dateUtils';
 import { useAuthStoreV2 } from '@core/stores/authStoreV2';
 import { useSuperSearchStore } from '@core/stores/superSearchStore';
 import { hasRole } from '@shared/utils/permission.utils';
-import { DJ_LIST_FILTER_OPTIONS, PRIORITY_OPTIONS, matchesStatusFilter, normalizePriority } from '@shared/constants/jobStatus';
+import { DJ_LIST_FILTER_OPTIONS, PRIORITY_OPTIONS } from '@shared/constants/jobStatus';
 import { resolveSlaBadgePresentation } from '@shared/utils/slaStatusResolver';
-import { matchesSuperSearch } from '@shared/utils/superSearch';
 
 // Icons
 import {
@@ -29,45 +28,10 @@ import {
     MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
 
-const collectUserSearchValues = (value) => {
-    if (!value) return [];
-    if (typeof value === 'string') return [value];
-
-    const fullName = [
-        value.firstName || value.first_name,
-        value.lastName || value.last_name
-    ].filter(Boolean).join(' ');
-
-    return [
-        value.name,
-        value.displayName,
-        value.display_name,
-        value.email,
-        fullName
-    ].filter(Boolean);
-};
-
-const getRequesterSearchValues = (job) => [
-    job.requester,
-    job.requesterName,
-    job.requester_name,
-    ...collectUserSearchValues(job.requester),
-].filter(Boolean);
-
-const getAssigneeSearchValues = (job) => [
-    job.assignee,
-    job.assigneeName,
-    job.assignee_name,
-    ...collectUserSearchValues(job.assignee),
-].filter(Boolean);
-
 export default function DJList() {
     // === Auth State ===
     const { user } = useAuthStoreV2();
-    const [searchParams, setSearchParams] = useSearchParams();
-
-    // === My Jobs Mode (จาก URL param ?myJobs=true) ===
-    const [myJobsOnly, setMyJobsOnly] = useState(() => searchParams.get('myJobs') === 'true');
+    const [searchParams] = useSearchParams();
 
     // === สถานะข้อมูล (Data Management States) ===
     const [jobs, setJobs] = useState([]);          // ข้อมูลงานต้นฉบับทั้งหมดจาก API
@@ -88,6 +52,7 @@ export default function DJList() {
     const searchQuery = useSuperSearchStore(state => state.query); // ข้อความที่ใช้ค้นหา
     const setSearchQuery = useSuperSearchStore(state => state.setQuery);
     const setSuperSearchMeta = useSuperSearchStore(state => state.setResultMeta);
+    const deferredSearchQuery = useDeferredValue(searchQuery);
     const [sortBy, setSortBy] = useState('createdDate'); // รูปแบบการจัดเรียง (วันที่สร้าง หรือ Deadline)
     const [includeCompleted, setIncludeCompleted] = useState(false); // false = ซ่อน completed/closed เป็นค่าเริ่มต้น
     const shouldIncludeCompletedInQuery = includeCompleted || filters.status === 'completed';
@@ -98,57 +63,75 @@ export default function DJList() {
 
     // === สถานะ Accordion ===
     const [expandedRows, setExpandedRows] = useState(new Set()); // เก็บ ID ของแถวที่กางอยู่
+    const latestLoadRef = useRef(0);
 
     // ============================================
     // Data Loading
     // ============================================
     useEffect(() => {
-        // Only load data when user is authenticated
         if (user) {
-            loadData();
+            loadMasterData();
         }
-    }, [user, shouldIncludeCompletedInQuery]);
+    }, [user]);
 
-    /** โหลดข้อมูลงานและข้อมูลอ้างอิงจาก API */
-    const loadData = async () => {
-        setIsLoading(true);
+    useEffect(() => {
+        if (user) {
+            loadJobs();
+        }
+    }, [user, deferredSearchQuery, filters.project, filters.jobType, filters.status, filters.assignee, filters.priority, sortBy, shouldIncludeCompletedInQuery]);
+
+    /** โหลดข้อมูลอ้างอิงจาก API */
+    const loadMasterData = async () => {
         try {
-            // 🔥 Security: Fetch jobs based on Role (Least Privilege)
-            // Always use getJobsByRole to pass correct role parameter to backend
-            // getJobs() without role defaults to 'requester' on backend, which is incorrect for admin
-            const [jobsResponse, masterDataResult] = await Promise.all([
-                api.getJobsByRole(user, {
-                    includeCompleted: shouldIncludeCompletedInQuery ? 'true' : 'false',
-                    includeRequesterJobs: 'true'
-                }),
-                api.getMasterData()
-            ]);
-
-            // ✅ JobService.getJobsByRole ส่งกลับมาได้สองรูปแบบตามว่า Backend มี stats หรือไม่:
-            // 1. Array โดยตรง (กรณีไม่มี stats)
-            // 2. Object { data: [...], stats: {...} } (กรณีมี stats)
-            // ต้อง Unwrap ก่อนใช้งาน
-            const jobsData = Array.isArray(jobsResponse) ? jobsResponse : (jobsResponse?.data || []);
-
-            console.log(`[DJList] Loaded ${jobsData.length} jobs. First job:`, jobsData[0]);
-
-            // Visibility is enforced by backend; UI should not further restrict by local scope rows.
-            setJobs(jobsData);
-            setFilteredJobs(jobsData);
+            const masterDataResult = await api.getMasterData();
             setMasterData(masterDataResult);
         } catch (error) {
-            console.error('ไม่สามารถโหลดข้อมูลรายการงานได้:', error);
+            console.error('ไม่สามารถโหลดข้อมูลอ้างอิงได้:', error);
+        }
+    };
+
+    /** โหลดงานจาก backend my_related path โดยให้ backend เป็น source of truth ของ search/filter/sort */
+    const loadJobs = async (searchOverride = deferredSearchQuery.trim()) => {
+        const requestId = latestLoadRef.current + 1;
+        latestLoadRef.current = requestId;
+        setIsLoading(true);
+
+        try {
+            const jobsResponse = await api.getMyRelatedJobs({
+                includeCompleted: shouldIncludeCompletedInQuery,
+                q: searchOverride,
+                project: filters.project,
+                jobType: filters.jobType,
+                status: filters.status,
+                assignee: filters.assignee,
+                priority: filters.priority,
+                sortBy
+            });
+
+            if (requestId !== latestLoadRef.current) {
+                return;
+            }
+
+            const jobsData = Array.isArray(jobsResponse) ? jobsResponse : (jobsResponse?.data || []);
+            setJobs(jobsData);
+        } catch (error) {
+            if (requestId === latestLoadRef.current) {
+                console.error('ไม่สามารถโหลดข้อมูลรายการงานได้:', error);
+                setJobs([]);
+            }
         } finally {
-            setIsLoading(false);
+            if (requestId === latestLoadRef.current) {
+                setIsLoading(false);
+            }
         }
     };
 
     // ============================================
-    // Filter & Search Logic
+    // Display Transform Logic
     // ============================================
     useEffect(() => {
-        applyFiltersAndSearch();
-    }, [jobs, filters, searchQuery, sortBy, myJobsOnly]);
+        applyDisplayTransform();
+    }, [jobs]);
 
     useEffect(() => {
         const queryFromUrl = searchParams.get('search');
@@ -157,102 +140,17 @@ export default function DJList() {
         }
     }, [searchParams, setSearchQuery]);
 
-    /** ประมวลผลการคัดกรอง การค้นหา และการจัดเรียงข้อมูล */
-    const applyFiltersAndSearch = () => {
-        let result = [...jobs];
+    /** จัดกลุ่มงาน parent-child สำหรับการแสดงผล โดยใช้ข้อมูลที่ backend filter มาแล้ว */
+    const applyDisplayTransform = () => {
+        let result = jobs.map((job) => ({
+            ...job,
+            children: Array.isArray(job.children) ? [...job.children] : []
+        }));
 
-        // 0. My Jobs filter — แสดงเฉพาะงานที่ user เป็น requester หรือ assignee
-        if (myJobsOnly && user?.id) {
-            result = result.filter(j =>
-                String(j.requesterId) === String(user.id) ||
-                String(j.assigneeId) === String(user.id)
-            );
-        }
-
-        // 1. นำ Filters มาใช้งาน
-        if (filters.project) {
-            result = result.filter(j => j.project === filters.project);
-        }
-        if (filters.jobType) {
-            result = result.filter(j => j.jobType === filters.jobType);
-        }
-        if (filters.assignee) {
-            result = result.filter(j => j.assignee === filters.assignee);
-        }
-        if (filters.priority) {
-            result = result.filter(j => normalizePriority(j.priority) === filters.priority);
-        }
-
-        if (filters.status) {
-            const childrenByParentId = result.reduce((map, job) => {
-                if (job.parentJobId) {
-                    if (!map[job.parentJobId]) map[job.parentJobId] = [];
-                    map[job.parentJobId].push(job);
-                }
-                return map;
-            }, {});
-
-            result = result.filter(job => {
-                const children = childrenByParentId[job.id] || [];
-                const hasChildren = job.isParent && children.length > 1;
-                const calculatedApprovalStatus = hasChildren ? calculateParentApprovalStatus(children) : null;
-                const calculatedJobStatus = hasChildren ? calculateParentJobStatus(children) : null;
-                const display = resolveDisplayStatuses(
-                    job.status,
-                    job.isParent,
-                    hasChildren,
-                    Boolean(job.parentJobId),
-                    calculatedApprovalStatus,
-                    calculatedJobStatus
-                );
-
-                return [job.status, display.approval, display.work].some(status =>
-                    matchesStatusFilter(status, filters.status)
-                );
-            });
-        }
-
-        // 2. นำ Search Query มาใช้งาน (ค้นจากเลขที่ DJ หรือหัวข้องาน)
-        if (searchQuery.trim()) {
-            result = result.filter(j => matchesSuperSearch(j, searchQuery, [
-                job => job.djId,
-                job => job.id,
-                job => job.subject,
-                job => job.project,
-                job => job.jobType,
-                getRequesterSearchValues,
-                getAssigneeSearchValues,
-                job => job.status,
-                job => job.priority,
-            ]));
-        }
-
-        // 3. จัดเรียงข้อมูล (Sort)
-        result.sort((a, b) => {
-            // 3.1 งาน Urgent ที่ยังไม่เสร็จให้อยู่บนสุด
-            const aIsActiveUrgent = a.priority?.toLowerCase() === 'urgent' && !['completed', 'rejected', 'cancelled'].includes(a.status?.toLowerCase());
-            const bIsActiveUrgent = b.priority?.toLowerCase() === 'urgent' && !['completed', 'rejected', 'cancelled'].includes(b.status?.toLowerCase());
-
-            if (aIsActiveUrgent && !bIsActiveUrgent) return -1;
-            if (!aIsActiveUrgent && bIsActiveUrgent) return 1;
-
-            // 3.2 จัดเรียงตามเงื่อนไขปกติ
-            if (sortBy === 'createdDate') {
-                return new Date(b.createdAt) - new Date(a.createdAt);
-            }
-            if (sortBy === 'deadline') {
-                if (!a.deadline) return 1;
-                if (!b.deadline) return -1;
-                return new Date(a.deadline) - new Date(b.deadline);
-            }
-            return 0;
-        });
-
-        // 4. จัดกลุ่มงานตาม Parent-Child Relationship และซ่อน Parent ที่มี Child เดียว
         const parentChildCount = {};
-        const childrenMap = {}; // เพื่อการคำนวณสถานะ
+        const childrenMap = {};
+        const parentIds = new Set(result.filter(job => job.isParent).map(job => job.id));
 
-        // นับจำนวน Child และเก็บความสัมพันธ์
         result.forEach(job => {
             if (job.parentJobId) {
                 parentChildCount[job.parentJobId] = (parentChildCount[job.parentJobId] || 0) + 1;
@@ -266,25 +164,21 @@ export default function DJList() {
             if (job.isParent) {
                 const childCount = parentChildCount[job.id] || 0;
 
-                // ซ่อน Parent ที่มี Child เดียว (ให้แสดง Child เดี่ยวๆ ไปเลย)
                 if (childCount === 1) {
                     console.log(`[DJList] Hidden parent ${job.djId} (has only 1 child)`);
                     return false;
                 }
 
-                // คำนวณสถานะใหม่สำหรับ Parent ที่มี Child > 1
                 if (childCount > 1) {
                     const children = childrenMap[job.id] || [];
                     job.calculatedApprovalStatus = calculateParentApprovalStatus(children);
                     job.calculatedJobStatus = calculateParentJobStatus(children);
-                    job.children = children; // เก็บ children ไว้แสดงใน Accordion
+                    job.children = children;
                 }
             } else if (job.parentJobId) {
-                // ซ่อน Child jobs จากรายการหลัก (จะไปแสดงใต้ Parent แทน)
-                // *ยกเว้น* กรณีที่ Parent ถูกซ่อน (เพราะมี Child เดียว) ให้แสดง Child นี้ในรายการหลัก
                 const siblingCount = parentChildCount[job.parentJobId] || 0;
-                if (siblingCount > 1) {
-                    return false; // ซ่อนไปแสดงใน Accordion
+                if (siblingCount > 1 && parentIds.has(job.parentJobId)) {
+                    return false;
                 }
             }
             return true;
@@ -369,8 +263,6 @@ export default function DJList() {
         });
         setSearchQuery('');
         setIncludeCompleted(false);
-        setMyJobsOnly(false);
-        setSearchParams({});
     };
 
     // ============================================
@@ -416,7 +308,7 @@ export default function DJList() {
     // ============================================
     // Get Unique Values for Filters
     // ============================================
-    const uniqueProjects = [...new Set(jobs.map(j => j.project))]
+    const uniqueProjects = [...new Set(masterData.projects.map(project => project.name))]
         .filter(Boolean)
         .sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }));
     const uniqueAssignees = [...new Set(
@@ -438,8 +330,8 @@ export default function DJList() {
             {/* ส่วนหัวของหน้าจอ */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
-                    <h1 className="text-2xl font-bold text-gray-900">รายการงาน DJ (DJ List)</h1>
-                    <p className="text-gray-500">ค้นหาและติดตามสถานะงาน Design Job ทั้งหมด</p>
+                    <h1 className="text-2xl font-bold text-gray-900">รายการงานของฉัน</h1>
+                    <p className="text-gray-500">ค้นหาและติดตามงานที่คุณเปิดเอง, ได้รับมอบหมาย, หรือกำลังรอคุณอนุมัติ</p>
                 </div>
                 {!hasRole(user, 'assignee') && (
                     <Link to="/create" className="sm:shrink-0">
@@ -450,21 +342,6 @@ export default function DJList() {
                     </Link>
                 )}
             </div>
-
-            {/* My Jobs Banner */}
-            {myJobsOnly && (
-                <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
-                    <span className="text-sm font-medium text-indigo-700">
-                        กำลังแสดงเฉพาะงานของคุณ (งานที่คุณเปิดหรือได้รับมอบหมาย)
-                    </span>
-                    <button
-                        onClick={() => { setMyJobsOnly(false); setSearchParams({}); }}
-                        className="text-xs text-indigo-500 hover:text-indigo-700 underline"
-                    >
-                        แสดงงานทั้งหมด
-                    </button>
-                </div>
-            )}
 
             {/* Search Bar */}
             <div className="bg-white rounded-xl border border-gray-400 shadow-sm p-4">
@@ -529,7 +406,7 @@ export default function DJList() {
                     </label>
                     <div className="grid grid-cols-2 gap-2 sm:flex">
                         <Button variant="ghost" className="text-sm" onClick={handleClearFilters}>ล้างค่า (Clear)</Button>
-                        <Button className="text-sm" onClick={applyFiltersAndSearch}>ใช้งานการคัดกรอง (Apply)</Button>
+                        <Button className="text-sm" onClick={() => loadJobs(searchQuery.trim())}>ใช้งานการคัดกรอง (Apply)</Button>
                     </div>
                 </div>
             </div>
