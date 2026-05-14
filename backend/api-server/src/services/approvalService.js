@@ -1235,21 +1235,6 @@ export class ApprovalService extends BaseService {
         isFinal = true;
       }
 
-      // Persist approval decision for the current job so Approvals Queue history can render reliably.
-      await this.prisma.approval.create({
-        data: {
-          tenantId: job.tenantId,
-          jobId,
-          approverId,
-          stepNumber: currentLevel || 1,
-          status: 'approved',
-          approvedAt: new Date(),
-          comment: effectiveComment,
-          ipAddress: ipAddress || null,
-          userAgent: 'web_action'
-        }
-      });
-
       // 3. Update Job
       const updateData = {
         status: nextStatus
@@ -1268,9 +1253,45 @@ export class ApprovalService extends BaseService {
         console.log(`[Approval] Job ${job.djId} approved with assignee → assigned`);
       }
 
-      await this.prisma.job.update({
-        where: { id: jobId },
-        data: updateData
+      await this.prisma.$transaction(async (tx) => {
+        const updateResult = await tx.job.updateMany({
+          where: {
+            id: jobId,
+            status: job.status
+          },
+          data: updateData
+        });
+
+        if (updateResult.count === 0) {
+          const latestJob = await tx.job.findUnique({
+            where: { id: jobId },
+            select: { status: true }
+          });
+
+          const conflictError = new Error('Job status changed during web approval');
+          conflictError.code = validPendingStatuses.includes(latestJob?.status)
+            ? 'ALREADY_PROCESSED'
+            : 'INVALID_STATUS';
+          conflictError.currentStatus = latestJob?.status || null;
+          throw conflictError;
+        }
+
+        // Persist approval decision only after winning optimistic update guard.
+        await tx.approval.create({
+          data: {
+            tenantId: job.tenantId,
+            jobId,
+            approverId,
+            stepNumber: currentLevel || 1,
+            status: 'approved',
+            approvedAt: new Date(),
+            comment: effectiveComment,
+            ipAddress: ipAddress || null,
+            userAgent: 'web_action'
+          }
+        });
+
+        return updateResult;
       });
 
       if (isFinal && nextStatus === 'assigned') {
@@ -1759,28 +1780,48 @@ export class ApprovalService extends BaseService {
         currentLevel = parseInt(job.status.split('_')[2], 10) || 1;
       }
 
-      // Persist approval decision for the current job so rejected items appear in Approvals Queue history.
-      await this.prisma.approval.create({
-        data: {
-          tenantId: job.tenantId,
-          jobId,
-          approverId,
-          stepNumber: currentLevel,
-          status: 'rejected',
-          approvedAt: new Date(),
-          comment: effectiveComment,
-          ipAddress: ipAddress || null,
-          userAgent: 'web_action'
-        }
-      });
+      await this.prisma.$transaction(async (tx) => {
+        const updateResult = await tx.job.updateMany({
+          where: {
+            id: jobId,
+            status: job.status
+          },
+          data: {
+            status: 'rejected',
+            rejectionSource: 'approver'  // ✅ Direct rejection by approver
+          }
+        });
 
-      // Update to rejected
-      await this.prisma.job.update({
-        where: { id: jobId },
-        data: {
-          status: 'rejected',
-          rejectionSource: 'approver'  // ✅ Direct rejection by approver
+        if (updateResult.count === 0) {
+          const latestJob = await tx.job.findUnique({
+            where: { id: jobId },
+            select: { status: true }
+          });
+
+          const conflictError = new Error('Job status changed during web rejection');
+          conflictError.code = validPendingStatuses.includes(latestJob?.status)
+            ? 'ALREADY_PROCESSED'
+            : 'INVALID_STATUS';
+          conflictError.currentStatus = latestJob?.status || null;
+          throw conflictError;
         }
+
+        // Persist rejection decision only after winning optimistic update guard.
+        await tx.approval.create({
+          data: {
+            tenantId: job.tenantId,
+            jobId,
+            approverId,
+            stepNumber: currentLevel,
+            status: 'rejected',
+            approvedAt: new Date(),
+            comment: effectiveComment,
+            ipAddress: ipAddress || null,
+            userAgent: 'web_action'
+          }
+        });
+
+        return updateResult;
       });
 
       // ----------------------------------------
@@ -2313,6 +2354,8 @@ export class ApprovalService extends BaseService {
         };
       }
 
+      const rejectionStatusSet = new Set(ASSIGNEE_REJECTABLE_STATUSES);
+
       // หา Approver คนสุดท้ายที่อนุมัติงานนี้
       const lastApproval = await this.prisma.approval.findFirst({
         where: {
@@ -2330,15 +2373,36 @@ export class ApprovalService extends BaseService {
         }
       });
 
-      // อัพเดทสถานะงานเป็น assignee_rejected
-      await this.prisma.job.update({
-        where: { id: jobId },
-        data: {
-          status: 'assignee_rejected',
-          rejectedBy: assigneeId,
-          rejectionSource: 'assignee',
-          rejectionComment: comment.trim()
+      await this.prisma.$transaction(async (tx) => {
+        const updateResult = await tx.job.updateMany({
+          where: {
+            id: jobId,
+            assigneeId,
+            status: { in: [...rejectionStatusSet] }
+          },
+          data: {
+            status: 'assignee_rejected',
+            rejectedBy: assigneeId,
+            rejectionSource: 'assignee',
+            rejectionComment: comment.trim()
+          }
+        });
+
+        if (updateResult.count === 0) {
+          const latestJob = await tx.job.findUnique({
+            where: { id: jobId },
+            select: { status: true, assigneeId: true }
+          });
+
+          const conflictError = new Error('Job status changed during assignee rejection');
+          conflictError.code = rejectionProcessedStatuses.has(latestJob?.status)
+            ? 'ALREADY_PROCESSED'
+            : 'INVALID_STATUS';
+          conflictError.currentStatus = latestJob?.status || null;
+          throw conflictError;
         }
+
+        return updateResult;
       });
 
       // Log Activity
@@ -2477,34 +2541,52 @@ export class ApprovalService extends BaseService {
 
       if (!job) throw new Error('Job not found');
 
-      // ตรวจสอบสถานะต้องเป็น assignee_rejected
-      if (job.status !== 'assignee_rejected') {
-        return {
-          success: false,
-          error: 'INVALID_STATUS',
-          message: `งานไม่อยู่ในสถานะรอยืนยันการปฏิเสธ (สถานะปัจจุบัน: ${job.status})`
-        };
-      }
+      await this.prisma.$transaction(async (tx) => {
+        const updateResult = await tx.job.updateMany({
+          where: {
+            id: jobId,
+            status: 'assignee_rejected'
+          },
+          data: {
+            status: 'rejected'
+          }
+        });
 
-      // อัพเดทสถานะเป็น rejected
-      await this.prisma.job.update({
-        where: { id: jobId },
-        data: {
-          status: 'rejected'
-        }
-      });
+        if (updateResult.count === 0) {
+          const latestJob = await tx.job.findUnique({
+            where: { id: jobId },
+            select: { status: true }
+          });
 
-      // Persist final decision so approval history uses the exact confirm timestamp and actor.
-      await this.prisma.approval.create({
-        data: {
-          tenantId: job.tenantId,
-          jobId,
-          approverId,
-          stepNumber: 1,
-          status: 'rejected',
-          approvedAt: new Date(),
-          comment: effectiveComment
+          const alreadyProcessedStatuses = new Set([
+            'rejected',
+            'completed',
+            'closed',
+            'cancelled'
+          ]);
+
+          const conflictError = new Error('Job status changed during assignee rejection confirmation');
+          conflictError.code = alreadyProcessedStatuses.has(latestJob?.status)
+            ? 'ALREADY_PROCESSED'
+            : 'INVALID_STATUS';
+          conflictError.currentStatus = latestJob?.status || null;
+          throw conflictError;
         }
+
+        // Persist final decision so approval history uses the exact confirm timestamp and actor.
+        await tx.approval.create({
+          data: {
+            tenantId: job.tenantId,
+            jobId,
+            approverId,
+            stepNumber: 1,
+            status: 'rejected',
+            approvedAt: new Date(),
+            comment: effectiveComment
+          }
+        });
+
+        return updateResult;
       });
 
       // Log Activity
