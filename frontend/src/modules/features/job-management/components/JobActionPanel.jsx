@@ -28,6 +28,7 @@ const JobActionPanel = ({
     onHardDeleteJob, // Admin: ลบงานถาวร
     onEditJobPriority, // Admin: แก้ไข priority
     onAdminExtendDeadline, // Admin: ขยายกำหนดส่ง
+    isRejectingByAssignee = false, // Prevent double-submission during reject
 }) => {
     const [selectedAssignee, setSelectedAssignee] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -273,7 +274,8 @@ const JobActionPanel = ({
                             {canRejectByAssignee && (
                                 <button
                                     onClick={onOpenAssigneeRejectModal}
-                                    className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject}`}
+                                    disabled={isRejectingByAssignee}
+                                    className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject} ${isRejectingByAssignee ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
                                     ปฏิเสธงาน
                                 </button>

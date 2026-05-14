@@ -120,6 +120,7 @@ export default function JobDetail() {
     // Loading States
     const [isCompleting, setIsCompleting] = useState(false);
     const [isSavingDeliveredQuantities, setIsSavingDeliveredQuantities] = useState(false);
+    const [isRejectingByAssignee, setIsRejectingByAssignee] = useState(false);
 
     // ============================================
     // Data Loading
@@ -590,6 +591,10 @@ export default function JobDetail() {
         if (!assigneeRejectReason.trim()) {
             return Swal.fire({ icon: 'warning', title: 'กรุณาระบุเหตุผลในการปฏิเสธ', confirmButtonColor: '#e11d48' });
         }
+        // Prevent double-submission during request
+        if (isRejectingByAssignee) return;
+        
+        setIsRejectingByAssignee(true);
         try {
             await api.rejectJobByAssignee(job.id, assigneeRejectReason);
             await Swal.fire({
@@ -607,6 +612,8 @@ export default function JobDetail() {
                 fallbackTitle: 'ปฏิเสธงานไม่สำเร็จ'
             });
             Swal.fire({ icon: 'error', title: detail.title, text: detail.text, confirmButtonColor: '#e11d48' });
+        } finally {
+            setIsRejectingByAssignee(false);
         }
     };
 
@@ -1543,6 +1550,7 @@ export default function JobDetail() {
                                         onHardDeleteJob={handleHardDeleteJob}
                                         onEditJobPriority={handleEditJobPriority}
                                         onAdminExtendDeadline={handleAdminExtendDeadline}
+                                        isRejectingByAssignee={isRejectingByAssignee}
                                     />
                                 )}
 
