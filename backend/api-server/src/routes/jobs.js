@@ -2691,6 +2691,15 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Temporary business policy: disable creating urgent jobs from all clients.
+    if (priority === 'urgent') {
+      return res.status(400).json({
+        success: false,
+        error: 'URGENT_PRIORITY_DISABLED',
+        message: 'ปิดการสร้างงานด่วนชั่วคราวตามนโยบายธุรกิจ'
+      });
+    }
+
     // ตรวจสอบ Required Fields
     if (!projectId || !jobTypeId || !subject || !dueDate) {
       return res.status(400).json({
@@ -3683,6 +3692,15 @@ router.post('/parent-child', async (req, res) => {
         success: false,
         error: 'INVALID_PRIORITY',
         message: `ค่า priority ต้องเป็น ${VALID_PRIORITIES.join(' หรือ ')} เท่านั้น`
+      });
+    }
+
+    // Temporary business policy: disable creating urgent jobs from all clients.
+    if (priority === 'urgent') {
+      return res.status(400).json({
+        success: false,
+        error: 'URGENT_PRIORITY_DISABLED',
+        message: 'ปิดการสร้างงานด่วนชั่วคราวตามนโยบายธุรกิจ'
       });
     }
 

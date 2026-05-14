@@ -652,6 +652,9 @@ export default function JobDetail() {
     };
 
     const handleConfirmAssigneeRejection = async () => {
+        if (actionStates.confirmingRejection) return;
+
+        setActionState('confirmingRejection', true);
         try {
             await httpClient.post(`/jobs/${job.id}/confirm-assignee-rejection`, {
                 comment: confirmRejectionComment.trim() || undefined,
@@ -678,6 +681,8 @@ export default function JobDetail() {
                 text: detail.text,
                 confirmButtonColor: '#e11d48'
             });
+        } finally {
+            setActionState('confirmingRejection', false);
         }
     };
 
@@ -690,6 +695,9 @@ export default function JobDetail() {
                 confirmButtonColor: '#e11d48'
             });
         }
+        if (actionStates.denyingRejection) return;
+
+        setActionState('denyingRejection', true);
         try {
             await httpClient.post(`/jobs/${job.id}/deny-assignee-rejection`, {
                 reason: denyRejectionReason.trim()
@@ -714,6 +722,8 @@ export default function JobDetail() {
                 text: detail.text,
                 confirmButtonColor: '#e11d48'
             });
+        } finally {
+            setActionState('denyingRejection', false);
         }
     };
 
@@ -1569,7 +1579,11 @@ export default function JobDetail() {
                                         onHardDeleteJob={handleHardDeleteJob}
                                         onEditJobPriority={handleEditJobPriority}
                                         onAdminExtendDeadline={handleAdminExtendDeadline}
-                                        isRejectingByAssignee={isRejectingByAssignee}
+                                        isApproving={actionStates.approving}
+                                        isRejecting={actionStates.rejecting}
+                                        isRejectingByAssignee={actionStates.rejectingByAssignee}
+                                        isConfirmingRejection={actionStates.confirmingRejection}
+                                        isDenyingRejection={actionStates.denyingRejection}
                                     />
                                 )}
 
@@ -1676,6 +1690,7 @@ export default function JobDetail() {
                             <h3 className="text-lg font-bold text-rose-700">ปฏิเสธงาน</h3>
                             <button
                                 onClick={() => setShowRejectModal(false)}
+                                disabled={actionStates.rejecting}
                                 className="text-slate-400 hover:text-slate-600"
                                 aria-label="ปิดหน้าต่างปฏิเสธงาน"
                             >
@@ -1695,13 +1710,14 @@ export default function JobDetail() {
                                 placeholder="เหตุผล..."
                                 value={rejectReason}
                                 onChange={e => setRejectReason(e.target.value)}
+                                disabled={actionStates.rejecting}
                             />
                             <div className="text-xs text-slate-500 mb-4">
                                 เหตุผลนี้จะถูกส่งให้ผู้อนุมัติใช้ประกอบการพิจารณา
                             </div>
                             <div className="flex gap-2 justify-end">
-                                <Button variant="secondary" onClick={() => setShowRejectModal(false)}>ยกเลิก</Button>
-                                <Button variant="primary" className="!bg-rose-500 !hover:bg-rose-600 !disabled:bg-rose-300" onClick={handleReject}>ยืนยันปฏิเสธ</Button>
+                                <Button variant="secondary" onClick={() => setShowRejectModal(false)} disabled={actionStates.rejecting}>ยกเลิก</Button>
+                                <Button variant="primary" className="!bg-rose-500 !hover:bg-rose-600 !disabled:bg-rose-300" onClick={handleReject} isLoading={actionStates.rejecting} disabled={actionStates.rejecting}>ยืนยันปฏิเสธ</Button>
                             </div>
                         </div>
                     </div>
@@ -1744,7 +1760,7 @@ export default function JobDetail() {
                                     value={finalLink}
                                     onChange={e => setFinalLink(e.target.value)}
                                     placeholder="https://drive.google.com/... หรือ https://figma.com/..."
-                                    disabled={isCompleting}
+                                    disabled={actionStates.completing}
                                 />
                             </div>
 
@@ -1805,7 +1821,7 @@ export default function JobDetail() {
                                 jobTypeLabel={job?.jobType}
                                 values={completeDeliveredItems}
                                 onChange={handleDeliveredItemChange}
-                                disabled={isCompleting || completeUploadingFile}
+                                disabled={actionStates.completing || completeUploadingFile}
                                 title="Job Type และจำนวนงานที่ส่งจริง"
                                 description="กรอกเฉพาะรายการที่ต้องการให้ระบบนับต่างจากจำนวนเดิม หากเว้นว่าง ระบบจะใช้จำนวนเดิมของชิ้นงานนั้น"
                             />
@@ -1820,7 +1836,7 @@ export default function JobDetail() {
                                     rows={3}
                                     value={completeNote}
                                     onChange={e => setCompleteNote(e.target.value)}
-                                    disabled={isCompleting}
+                                    disabled={actionStates.completing}
                                 />
                             </div>
                         </div>
@@ -1863,10 +1879,11 @@ export default function JobDetail() {
                             placeholder="เหตุผลในการปฏิเสธ..."
                             value={assigneeRejectReason}
                             onChange={e => setAssigneeRejectReason(e.target.value)}
+                            disabled={actionStates.rejectingByAssignee}
                         />
                         <div className="flex gap-2 justify-end">
-                            <Button variant="ghost" onClick={() => setShowAssigneeRejectModal(false)}>ยกเลิก</Button>
-                            <Button variant="primary" className="!bg-rose-500 !hover:bg-rose-600 !disabled:bg-rose-300" onClick={handleAssigneeReject}>ยืนยันปฏิเสธ</Button>
+                            <Button variant="ghost" onClick={() => setShowAssigneeRejectModal(false)} disabled={actionStates.rejectingByAssignee}>ยกเลิก</Button>
+                            <Button variant="primary" className="!bg-rose-500 !hover:bg-rose-600 !disabled:bg-rose-300" onClick={handleAssigneeReject} isLoading={actionStates.rejectingByAssignee} disabled={actionStates.rejectingByAssignee}>ยืนยันปฏิเสธ</Button>
                         </div>
                     </div>
                 </div>
@@ -1902,8 +1919,8 @@ export default function JobDetail() {
                             <Button variant="ghost" onClick={() => {
                                 setShowDenyRejectionModal(false);
                                 setDenyRejectionReason('');
-                            }}>ยกเลิก</Button>
-                            <Button variant="primary" onClick={handleDenyRejection}>ยืนยัน (บังคับให้ทำต่อ)</Button>
+                            }} disabled={actionStates.denyingRejection}>ยกเลิก</Button>
+                            <Button variant="primary" onClick={handleDenyRejection} isLoading={actionStates.denyingRejection} disabled={actionStates.denyingRejection}>ยืนยัน (บังคับให้ทำต่อ)</Button>
                         </div>
                     </div>
                 </div>
@@ -2023,8 +2040,8 @@ export default function JobDetail() {
                                 setConfirmRejectionComment('');
                                 setConfirmRejectionCcEmails([]);
                                 setNewCcEmail('');
-                            }}>ยกเลิก</Button>
-                            <Button variant="danger" onClick={handleConfirmAssigneeRejection}>
+                            }} disabled={actionStates.confirmingRejection}>ยกเลิก</Button>
+                            <Button variant="danger" onClick={handleConfirmAssigneeRejection} isLoading={actionStates.confirmingRejection} disabled={actionStates.confirmingRejection}>
                                 ยืนยันการปฏิเสธงาน
                             </Button>
                         </div>

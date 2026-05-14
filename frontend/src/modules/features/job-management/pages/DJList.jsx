@@ -36,6 +36,7 @@ export default function DJList() {
     // === สถานะข้อมูล (Data Management States) ===
     const [jobs, setJobs] = useState([]);          // ข้อมูลงานต้นฉบับทั้งหมดจาก API
     const [filteredJobs, setFilteredJobs] = useState([]); // ข้อมูลงานที่ผ่านการคัดกรองแล้ว
+    const [displayTotalCount, setDisplayTotalCount] = useState(0); // จำนวนรวมที่แสดงผล (รวมรายการที่ถูกยุบใน accordion)
     const [masterData, setMasterData] = useState({ projects: [], jobTypes: [], buds: [] }); // ข้อมูลอ้างอิงสำหรับ Filter
     const [isLoading, setIsLoading] = useState(true); // สถานะการโหลดข้อมูล
 
@@ -59,7 +60,7 @@ export default function DJList() {
 
     // === สถานะการจัดการหน้า (Pagination States) ===
     const [currentPage, setCurrentPage] = useState(1); // หน้าปัจจุบันที่แสดงผล
-    const [itemsPerPage, setItemsPerPage] = useState(10);                         // จำนวนรายการต่อหนึ่งหน้า
+    const [itemsPerPage, setItemsPerPage] = useState(20);                         // จำนวนรายการต่อหนึ่งหน้า
 
     // === สถานะ Accordion ===
     const [expandedRows, setExpandedRows] = useState(new Set()); // เก็บ ID ของแถวที่กางอยู่
@@ -146,6 +147,8 @@ export default function DJList() {
             ...job,
             children: Array.isArray(job.children) ? [...job.children] : []
         }));
+        let hiddenByAccordionCount = 0;
+        let collapsedParentCount = 0;
 
         const parentChildCount = {};
         const childrenMap = {};
@@ -164,20 +167,17 @@ export default function DJList() {
             if (job.isParent) {
                 const childCount = parentChildCount[job.id] || 0;
 
-                if (childCount === 1) {
-                    console.log(`[DJList] Hidden parent ${job.djId} (has only 1 child)`);
-                    return false;
-                }
-
                 if (childCount > 1) {
                     const children = childrenMap[job.id] || [];
                     job.calculatedApprovalStatus = calculateParentApprovalStatus(children);
                     job.calculatedJobStatus = calculateParentJobStatus(children);
                     job.children = children;
+                    collapsedParentCount += 1;
                 }
             } else if (job.parentJobId) {
                 const siblingCount = parentChildCount[job.parentJobId] || 0;
                 if (siblingCount > 1 && parentIds.has(job.parentJobId)) {
+                    hiddenByAccordionCount += 1;
                     return false;
                 }
             }
@@ -185,6 +185,9 @@ export default function DJList() {
         });
 
         setFilteredJobs(result);
+        // Total should reflect logical job count (children hidden under parent accordion are represented by that parent row).
+        // Formula: visible rows + hidden children - parent rows that replaced those hidden children.
+        setDisplayTotalCount(result.length + hiddenByAccordionCount - collapsedParentCount);
         setSuperSearchMeta({ resultCount: result.length, totalCount: jobs.length });
         setCurrentPage(1); // เมื่อเริ่มคัดกรองใหม่ ให้กลับไปที่หน้า 1 เสมอ
     };
@@ -619,7 +622,7 @@ export default function DJList() {
                     <div className="border-t border-gray-200 px-4 py-3">
                         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                             <div className="text-sm text-gray-500">
-                                แสดง {Math.min((currentPage - 1) * itemsPerPage + 1, filteredJobs.length)}-{Math.min(currentPage * itemsPerPage, filteredJobs.length)} จาก {filteredJobs.length} รายการ
+                                แสดง {Math.min((currentPage - 1) * itemsPerPage + 1, filteredJobs.length)}-{Math.min(currentPage * itemsPerPage, filteredJobs.length)} จาก {displayTotalCount} รายการ
                             </div>
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
                                 <label className="flex items-center gap-2 text-sm text-gray-600">

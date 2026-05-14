@@ -1140,7 +1140,7 @@ export default function CreateDJ() {
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                     ความสำคัญ (Priority) <span className="text-red-500">*</span>
                                 </label>
-                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div className="grid grid-cols-1 gap-3">
                                     <button
                                         type="button"
                                         onClick={() => setFormData({ ...formData, priority: 'Normal' })}
@@ -1154,34 +1154,7 @@ export default function CreateDJ() {
                                     >
                                         งานปกติ (Normal)
                                     </button>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => setFormData({ ...formData, priority: 'Urgent' })}
-                                        className={`
-                                            min-h-[44px] rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200 sm:text-base
-                                            ${formData.priority === 'Urgent'
-                                                ? 'bg-red-500 text-white shadow-md ring-2 ring-red-300 animate-pulse'
-                                                : 'bg-gray-100 text-gray-700 hover:bg-red-50 hover:text-red-700'
-                                            }
-                                        `}
-                                    >
-                                        งานด่วน (Urgent)
-                                    </button>
                                 </div>
-
-                                {/* Warning Message for Urgent */}
-                                {formData.priority === 'Urgent' && (
-                                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800 animate-fadeIn">
-                                        <p className="font-semibold mb-2">
-                                            งานด่วนต้องผ่านการอนุมัติเสมอ
-                                        </p>
-                                        <p className="text-xs text-red-700 leading-relaxed">
-                                            เนื่องจากงานด่วนกระทบต่อ SLA ของงานอื่นๆ จึงต้องได้รับการอนุมัติก่อนเข้าสู่ระบบ
-                                            (แม้ว่าประเภทงานจะตั้งค่าข้ามการอนุมัติไว้ก็ตาม)
-                                        </p>
-                                    </div>
-                                )}
                             </div>
 
                             <div>

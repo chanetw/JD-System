@@ -28,7 +28,11 @@ const JobActionPanel = ({
     onHardDeleteJob, // Admin: ลบงานถาวร
     onEditJobPriority, // Admin: แก้ไข priority
     onAdminExtendDeadline, // Admin: ขยายกำหนดส่ง
+    isApproving = false,
+    isRejecting = false,
     isRejectingByAssignee = false, // Prevent double-submission during reject
+    isConfirmingRejection = false,
+    isDenyingRejection = false,
 }) => {
     const [selectedAssignee, setSelectedAssignee] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -86,16 +90,18 @@ const JobActionPanel = ({
                 <div className="flex gap-3">
                     <button
                         onClick={onApprove}
-                        className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors shadow-sm ${ACTION_BUTTON_STYLES.complete}`}
+                        disabled={isApproving || isRejecting}
+                        className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors shadow-sm ${ACTION_BUTTON_STYLES.complete} ${(isApproving || isRejecting) ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                         <CheckIcon className="w-5 h-5" />
-                        Approve & Next
+                        {isApproving ? 'Approving...' : 'Approve & Next'}
                     </button>
                     <button
                         onClick={onOpenRejectModal}
-                        className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject}`}
+                        disabled={isApproving || isRejecting}
+                        className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject} ${(isApproving || isRejecting) ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
-                        Reject / Return
+                        {isRejecting ? 'Rejecting...' : 'Reject / Return'}
                     </button>
                 </div>
             </div>
@@ -316,6 +322,7 @@ const JobActionPanel = ({
                             <div className="flex gap-3">
                                 <button
                                     onClick={onOpenAssigneeRejectModal}
+                                    disabled={isRejectingByAssignee}
                                     className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject}`}
                                 >
                                     ปฏิเสธงาน
@@ -350,6 +357,7 @@ const JobActionPanel = ({
                             {canRejectByAssignee && (
                                 <button
                                     onClick={onOpenAssigneeRejectModal}
+                                    disabled={isRejectingByAssignee}
                                     className={`py-3 px-3 rounded-lg font-medium flex items-center justify-center transition-colors text-sm ${ACTION_BUTTON_STYLES.reject}`}
                                 >
                                     ปฏิเสธ
@@ -381,7 +389,8 @@ const JobActionPanel = ({
                 <p className="text-sm text-gray-600 mb-4">สถานะปัจจุบันยังเป็นงานที่ดำเนินการอยู่ คุณสามารถส่งคำขอปฏิเสธงานได้</p>
                 <button
                     onClick={onOpenAssigneeRejectModal}
-                    className={`w-full py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject}`}
+                    disabled={isRejectingByAssignee}
+                    className={`w-full py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject} ${isRejectingByAssignee ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
                     ปฏิเสธงาน
                 </button>
@@ -425,16 +434,18 @@ const JobActionPanel = ({
                 <div className="flex gap-3">
                     <button
                         onClick={onConfirmAssigneeRejection}
-                        className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject}`}
+                        disabled={isConfirmingRejection || isDenyingRejection}
+                        className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center transition-colors shadow-sm ${ACTION_BUTTON_STYLES.reject} ${(isConfirmingRejection || isDenyingRejection) ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
-                        ยืนยันปฏิเสธงาน
+                        {isConfirmingRejection ? 'กำลังยืนยัน...' : 'ยืนยันปฏิเสธงาน'}
                     </button>
                     <button
                         onClick={onDenyRejection}
-                        className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors shadow-sm ${ACTION_BUTTON_STYLES.neutral}`}
+                        disabled={isConfirmingRejection || isDenyingRejection}
+                        className={`flex-1 py-3 px-4 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors shadow-sm ${ACTION_BUTTON_STYLES.neutral} ${(isConfirmingRejection || isDenyingRejection) ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                         <CheckIcon className="w-5 h-5" />
-                        ไม่อนุมัติคำขอ (ให้ทำต่อ)
+                        {isDenyingRejection ? 'กำลังบันทึก...' : 'ไม่อนุมัติคำขอ (ให้ทำต่อ)'}
                     </button>
                 </div>
             </div>

@@ -192,6 +192,7 @@ export default function ApprovalsQueue() {
     const [jobsByTab, setJobsByTab] = useState({ waiting: [], approved: [], not_approved: [] });
     const [isLoading, setIsLoading] = useState(false); // สถานะการโหลดข้อมูล
     const [isApproving, setIsApproving] = useState(false); // สถานะกำลังอนุมัติงาน
+    const [isRejecting, setIsRejecting] = useState(false); // สถานะกำลังปฏิเสธงาน
     const roleNames = extractRoleNames(user);
     const isAdminUser = roleNames.includes('admin') || roleNames.includes('superadmin');
     const isSelectedAssigneeRejection = selectedJobStatus === 'assignee_rejected';
@@ -466,6 +467,8 @@ export default function ApprovalsQueue() {
 
     /** ดำเนินการอนุมัติผ่าน API */
     const handleConfirmApprove = async () => {
+        if (isApproving) return;
+
         try {
             setIsApproving(true);
             const approveComment = isSelectedAssigneeRejection
@@ -519,7 +522,10 @@ export default function ApprovalsQueue() {
 
     /** ดำเนินการปฏิเสธงานผ่าน API โดยระบุสาเหตุ (Reject/Return) */
     const handleConfirmReject = async () => {
+        if (isRejecting) return;
+
         try {
+            setIsRejecting(true);
             if (isSelectedAssigneeRejection) {
                 const reason = rejectResult.trim();
                 if (!reason) {
@@ -563,6 +569,8 @@ export default function ApprovalsQueue() {
                 fallbackTitle: isSelectedAssigneeRejection ? 'ไม่สามารถไม่อนุมัติคำขอปฏิเสธได้' : 'ไม่สามารถปฏิเสธงานได้'
             });
             showAlert('error', detail.title, detail.text);
+        } finally {
+            setIsRejecting(false);
         }
     };
 
@@ -925,8 +933,8 @@ export default function ApprovalsQueue() {
                         </div>
 
                         <div className="p-6 border-t border-gray-400 bg-gray-50 flex justify-end gap-3">
-                            <Button variant="secondary" onClick={() => { setShowRejectModal(false); setSelectedJobStatus(null); }}>ยกเลิก</Button>
-                            <Button variant="danger" onClick={handleConfirmReject}>
+                            <Button variant="secondary" onClick={() => { setShowRejectModal(false); setSelectedJobStatus(null); }} disabled={isRejecting}>ยกเลิก</Button>
+                            <Button variant="danger" onClick={handleConfirmReject} isLoading={isRejecting} disabled={isRejecting}>
                                 {isSelectedAssigneeRejection ? 'ยืนยันไม่อนุมัติคำขอ' : 'ยืนยันการดำเนินการ'}
                             </Button>
                         </div>
